@@ -33,11 +33,8 @@ ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
 # RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
 RECORDED=""
-# Self-merge state: MERGED_SHA is the merge commit once a PUT succeeds (else empty, which
-# `write_status` renders as `null`); MERGE_PHASE is the reason `maybe_self_merge` parked,
-# read only when MERGED_SHA stayed empty. SELF_MERGE_* are the read of `publish.self_merge`, whose
-# defaults live in `factory/record.mjs policy` alone.
-MERGED_SHA=""; MERGE_PHASE=""; SELF_MERGE_ENABLED=0; SELF_MERGE_MAX_REFOLDS=""; SELF_MERGE_WAIT_SECONDS=""
+# MERGED_SHA is the merge commit `factory/publish.mjs` reported (else empty, which `write_status` renders as `null`).
+MERGED_SHA=""
 fleet_curl()        { curl "$@"; }
 fleet_git()         { git "$@"; }
 fleet_npm()         { npm "$@"; }
@@ -59,41 +56,8 @@ log() {
   printf '%s\n' "$line" >>"$BOOT_LOG"; printf '%s\n' "$line" >&2
 }
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
-# Milliseconds since the epoch. `date +%N` is GNU-only (macOS prints a literal
-# `3N`), and python3 is on every fleet VM and on the laptop bridge's PATH.
-now_ms() { fleet_python3 -c 'import time; print(int(time.time() * 1000))'; }
-# `bounded_run <seconds> <command>`: the command under `bash -lc`, killed after
-# the budget, exit 124 then — the shape coreutils' `timeout` has, without the
-# binary, which macOS lacks and the bridge's PATH never carries (hotfix on
-# run-230, 2026-09-23: the publish sim died on `timeout: command not found`).
-bounded_run() {
-  local secs="$1" cmd="$2" pid watchdog rc
-  bash -lc "$cmd" & pid=$!
-  ( sleep "$secs"; kill "$pid" 2>/dev/null ) & watchdog=$!
-  wait "$pid" 2>/dev/null; rc=$?
-  kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null || true
-  if [ "$rc" -eq 143 ] || [ "$rc" -eq 137 ]; then rc=124; fi
-  return "$rc"
-}
-# No jq: every value read is one flat field of a small document, and an ABSENT field is an answer, not an error; both take the field in $1, the document on stdin.
+# No jq: every value read is one flat field of a small document, and an ABSENT field is an answer, not an error; the field in $1, the document on stdin.
 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
-json_int()   { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*-\?[0-9]\+" || true; } | head -n 1 | sed 's/.*[:[:space:]]//'; }
-# A nested field (`head.sha`) of a document that carries its namesakes elsewhere (`base.sha`), so a real parse, not the first match: the dotted path in $1, the document on stdin; absent, null or unparsable prints empty.
-json_path() {
-  fleet_node -e 'let s = ""; process.stdin.on("data", (d) => { s += d }).on("end", () => {
-    let v; try { v = JSON.parse(s) } catch { v = undefined }
-    for (const k of process.argv[1].split(".")) v = v == null ? undefined : v[k]
-    process.stdout.write(v == null ? "" : String(v)) })' "$1" 2>/dev/null || true
-}
-# The one writer for every end-of-run row (#1167): one JSON object, one line, appended to
-# `<file>` (created if it does not exist). $1 = file, $2 = kind, then any number of
-# `key=value` pairs, each written in argument order — `factory/record.mjs row` renders the
-# line, `ts` included.
-event_row() {
-  local file="$1"; shift
-  mkdir -p "$(dirname "$file")" 2>/dev/null || true
-  fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" row "$@" >>"$file"
-}
 # The failure account: the page, one evidence commit, one push, the run's tag, out — once there is an evidence clone to write from.
 fail() { # $1 = message, $2 = exit code (default 1)
   ERROR="$1"
@@ -324,229 +288,22 @@ run_engine() {
   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
-# The pull request body: the plan's summary paragraph, the probes and their exits off the run's
-# own event log as the receipt, the link to the run's folder at its tag in the evidence repository, the provenance counts, and its closes line — rendered whole by `factory/record.mjs pr-body`.
-pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --plan-json "$PLAN_JSON" --events "$RUN_DIR/events.jsonl" \
-  --evidence "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --provenance "$RUN_DIR/provenance.json"; }
-# The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
-default_branch() {
-  local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
-  case "$ref" in refs/remotes/origin/?*) printf '%s\n' "${ref#refs/remotes/origin/}" ;; *) return 1 ;; esac
-}
-# `publish.self_merge` off `factory/policy.json` in the ENGINE checkout — not the target's.
-# A missing file, a missing `enabled` cell, or a read that fails in any way reads as
-# disabled: self-merge is opt-in, never a default a broken read falls into. The two bounds'
-# defaults are record.mjs's; a disabled read never uses them.
-read_self_merge_policy() {
-  local out
-  out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || out="0"
-  set -- $out
-  SELF_MERGE_ENABLED="${1:-0}"; SELF_MERGE_MAX_REFOLDS="${2:-}"; SELF_MERGE_WAIT_SECONDS="${3:-}"
-}
-# M2: on a moved default branch, hand the target to the Flock's catch-up (factory/flock/catchup.mjs) and, once it says every exam ran green there, force-push the target's new HEAD over the run's own branch — any other exit leaves the target untouched and sets MERGE_PHASE.
-refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
-  local base="$1" onto="$2" line rc=0 reason
-  line="$(env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-      "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
-      "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/factory/flock/catchup.mjs" \
-      --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$base" --onto "$onto" \
-      --run-dir "$RUN_DIR" | tail -n 1)" || rc=$?
-  if [ "$rc" -ne 0 ]; then
-    reason="$(printf '%s' "$line" | json_field reason)"
-    MERGE_PHASE="merge: re-fold refused (${reason:-exit $rc})"
-    log "merge: re-fold onto $onto exited $rc — $MERGE_PHASE"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=false reason="$MERGE_PHASE" || true
-    return 1
-  fi
-  fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$BRANCH" 2>/dev/null || true
-  if ! fleet_git -C "$TARGET_DIR" push --force-with-lease origin "HEAD:refs/heads/$BRANCH"; then
-    MERGE_PHASE="merge: force-with-lease push of the re-folded head was refused"
-    log "merge: $MERGE_PHASE"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=false reason="$MERGE_PHASE" || true
-    return 1
-  fi
-  log "merge: re-folded onto $onto and pushed $BRANCH"
-  # the catch-up remapped provenance.json to the pushed commit's lines: copy that file alone,
-  # since the evidence events.jsonl holds boot rows (publish:pr, merge) the engine's copy lacks
-  [ -f "$RUN_DIR/provenance.json" ] && cp "$RUN_DIR/provenance.json" "$EVIDENCE_DIR/$EVIDENCE_REL/provenance.json" || true
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=true || true
-  return 0
-}
-# M1–M4: the gate was already checked by the caller (green, unheld, enabled). Before every send, and again after
-# every 405/409 refusal, re-fetch the default branch and re-fold onto it if it moved (M2); wait out a `null`
-# mergeable, GitHub's answer for a few seconds after a push while it recomputes (M3); then PUT the squash merge,
-# titled off the plan's own first heading, the SHA this clone actually pushed (no `authorization` header — the
-# edge injects the credential). A 405/409 repeats, up to `max_refolds` merge requests in all; anything else parks.
-maybe_self_merge() { # $1 = the pull request number, $2 = the PR's base branch name
-  local number="$1" base_branch="$2" attempts=0 cur_base="$BASE_SHA" tip
-  local start now answer code reply mergeable head_sha reply_head title payload merge_code merge_reply
-  read_self_merge_policy
-  [ "$SELF_MERGE_ENABLED" = 1 ] || return 0
-  while [ "$attempts" -lt "$SELF_MERGE_MAX_REFOLDS" ]; do
-    if fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$base_branch" 2>/dev/null; then
-      tip="$(fleet_git -C "$TARGET_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"
-    else
-      tip=""
-    fi
-    if [ -n "$tip" ] && [ "$tip" != "$cur_base" ]; then
-      refold_onto "$cur_base" "$tip" || return 0
-      cur_base="$tip"
-    fi
-    # GitHub answers a `mergeable` it computed for whatever head it last processed: right after a
-    # refold's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
-    # naming the head this boot pushed counts; any other head is waited out like a null.
-    head_sha="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
-    mergeable=""; start="$(date +%s)"
-    while :; do
-      answer="$(fleet_curl -sS "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number" -w '\n%{http_code}' 2>/dev/null || true)"
-      code="$(printf '%s' "$answer" | tail -n 1)"; reply="$(printf '%s' "$answer" | sed '$d')"
-      if [ "$code" = 200 ]; then
-        mergeable="$(printf '%s' "$reply" | json_path mergeable)"
-        reply_head="$(printf '%s' "$reply" | json_path head.sha)"
-        [ -n "$mergeable" ] && [ "$reply_head" = "$head_sha" ] && break
-        mergeable=""
-      fi
-      now="$(date +%s)"
-      if [ "$((now - start))" -ge "$SELF_MERGE_WAIT_SECONDS" ]; then
-        MERGE_PHASE="merge: mergeable wait timed out"; return 0
-      fi
-      sleep 1
-    done
-    attempts=$(( attempts + 1 ))
-    title="fleet $RUN_ID: $(plan_title) (#$number)"
-    payload="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" merge-payload title="$title" sha="$head_sha")"
-    answer="$(fleet_curl -sS -X PUT "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls/$number/merge" \
-        -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
-    merge_code="$(printf '%s' "$answer" | tail -n 1)"; merge_reply="$(printf '%s' "$answer" | sed '$d')"
-    event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" merge code="${merge_code:-null}" \
-      message="$(printf '%s' "$merge_reply" | json_path message)" || true
-    case "$merge_code" in
-      2[0-9][0-9])
-        MERGED_SHA="$(printf '%s' "$merge_reply" | json_field sha)"
-        [ -n "$MERGED_SHA" ] || MERGED_SHA="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD)"
-        log "merge: PUT /pulls/$number/merge answered $merge_code — merged as $MERGED_SHA"
-        return 0 ;;
-      405|409)
-        log "merge: PUT /pulls/$number/merge answered $merge_code — re-folding and trying again" ;;
-      *)
-        MERGE_PHASE="merge: PUT /pulls/$number/merge answered ${merge_code:-<none>}"
-        log "merge: $MERGE_PHASE"
-        return 0 ;;
-    esac
-  done
-  MERGE_PHASE="merge: refused after $SELF_MERGE_MAX_REFOLDS refold attempt(s)"
-  log "merge: $MERGE_PHASE"
-}
-# #835: the deploy the self-merge earned, read live, rolled back once on red. Only
-# called once MERGED_SHA is non-empty. PUBLISH_PHASE stays empty — the caller keeps
-# the plain "the pull request was merged" phase — when the plan named no
-# `**Publish:**` line or `publish.probe.enabled` is off; either way that is never a
-# failure of the run. The plan's publish object is `plan_parse.py`'s own, read off the
-# run's one parse (never grepped off the plan text) by `record.mjs publish-cmds`, its
-# three commands one per line, an absent command an empty line.
-PUBLISH_PHASE=""
-# One publish command in the target under the budget, its output to $3: the Cloudflare edge's
-# address and a placeholder token in its environment (the edge injects the credential), and
-# ULTRA_PUBLISH_URL when $4 names the deployed app.
-publish_run() { # $1 = seconds, $2 = command, $3 = its raw log, $4 = the app's url (optional)
-  ( cd "$TARGET_DIR" || exit
-    export CLOUDFLARE_API_BASE_URL="https://cloudflare.int.exe.xyz/client/v4" CLOUDFLARE_API_TOKEN="placeholder"
-    [ -z "${4:-}" ] || export ULTRA_PUBLISH_URL="$4"
-    bounded_run "$1" "$2" ) >"$3" 2>&1
-}
-# publish.json, its cells in argument order
-publish_json() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-json "$@" >"$EVIDENCE_DIR/$EVIDENCE_REL/publish.json"; }
-run_publish_probe() {
-  PUBLISH_PHASE=""
-  local cmds deploy_cmd verify_cmd rollback_cmd policy_out enabled timeout_seconds
-  cmds="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-cmds <"$PLAN_JSON")" || return 0
-  deploy_cmd="$(printf '%s\n' "$cmds" | sed -n '1p')"
-  verify_cmd="$(printf '%s\n' "$cmds" | sed -n '2p')"
-  rollback_cmd="$(printf '%s\n' "$cmds" | sed -n '3p')"
-  [ -n "$deploy_cmd" ] || return 0
-  policy_out="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" publish-policy "$ENGINE_REPO_DIR/factory/policy.json" 2>/dev/null)" || policy_out="0 600"
-  set -- $policy_out
-  enabled="${1:-0}"; timeout_seconds="${2:-600}"
-  [ "$enabled" = 1 ] || return 0
-
-  local pub_dir="$EVIDENCE_DIR/$EVIDENCE_REL"
-  mkdir -p "$pub_dir" "$RUN_DIR"
-  local deploy_raw="$RUN_DIR/.publish-deploy-raw.log" deploy_log="$pub_dir/publish-deploy.log"
-  local verify_raw="$RUN_DIR/.publish-verify-raw.log" verify_log="$pub_dir/publish-verify.log"
-  local rollback_raw="$RUN_DIR/.publish-rollback-raw.log" rollback_log="$pub_dir/publish-rollback.log"
-  local start_ms end_ms deploy_exit deploy_ms verify_exit verify_ms rollback_exit url deploy_cells verify_cells
-
-  start_ms="$(now_ms)"
-  if publish_run "$timeout_seconds" "$deploy_cmd" "$deploy_raw"; then deploy_exit=0; else deploy_exit=$?; fi
-  end_ms="$(now_ms)"; deploy_ms=$(( end_ms - start_ms ))
-  url="$(grep -oE 'https://[A-Za-z0-9.-]*\.workers\.dev' "$deploy_raw" | head -n 1 || true)"
-  tail -c 4000 "$deploy_raw" >"$deploy_log"; rm -f "$deploy_raw"
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:deploy cmd="$deploy_cmd" exit="$deploy_exit" ms="$deploy_ms" url="${url:-null}"
-
-  deploy_cells=(deployCmd="$deploy_cmd" deployExit="$deploy_exit" deployMs="$deploy_ms")
-  if [ "$deploy_exit" != 0 ] || [ -z "$url" ]; then
-    publish_json url="${url:-null}" published=false "${deploy_cells[@]}"
-    PUBLISH_PHASE="the pull request was merged; the deploy failed"
-    return 0
-  fi
-
-  start_ms="$(now_ms)"
-  if publish_run "$timeout_seconds" "$verify_cmd" "$verify_raw" "$url"; then verify_exit=0; else verify_exit=$?; fi
-  end_ms="$(now_ms)"; verify_ms=$(( end_ms - start_ms ))
-  tail -c 4000 "$verify_raw" >"$verify_log"; rm -f "$verify_raw"
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:verify cmd="$verify_cmd" exit="$verify_exit" ms="$verify_ms" url="$url"
-
-  verify_cells=(verifyCmd="$verify_cmd" verifyExit="$verify_exit" verifyMs="$verify_ms")
-  if [ "$verify_exit" = 0 ]; then
-    publish_json url="$url" published=true "${deploy_cells[@]}" "${verify_cells[@]}"
-    PUBLISH_PHASE="the pull request was merged and the app is published"
-    return 0
-  fi
-
-  if [ -z "$rollback_cmd" ]; then
-    publish_json url="$url" published=false "${deploy_cells[@]}" "${verify_cells[@]}"
-    PUBLISH_PHASE="the pull request was merged; the live check was red and no rollback was named"
-    return 0
-  fi
-
-  if publish_run "$timeout_seconds" "$rollback_cmd" "$rollback_raw"; then rollback_exit=0; else rollback_exit=$?; fi
-  tail -c 4000 "$rollback_raw" >"$rollback_log"; rm -f "$rollback_raw"
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:rollback cmd="$rollback_cmd" exit="$rollback_exit"
-
-  publish_json url="$url" published=false "${deploy_cells[@]}" "${verify_cells[@]}" rollbackCmd="$rollback_cmd" rollbackExit="$rollback_exit"
-  PUBLISH_PHASE="the pull request was merged; the live check was red and the deploy was rolled back"
-}
-# One POST, one JSON answer: the status rides as the answer's last line, and a run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
+# The publish, in plain sequence after the engine (#1441): `factory/publish.mjs` opens the pull
+# request (a draft when the engine did not finish green), self-merges it under `publish.self_merge`
+# (catching the run up to a moved main), and runs the deploy the merge earned. It prints the run's
+# state, phase, PR url, PR author and merge sha one per line, or a refusal this fails on.
 publish() { # $1 = the engine's exit code
-  local base title draft body payload answer code reply state number phase_text
-  local audit_args audit_line
+  local out rc=0 state phase_text audit_args audit_line
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
-  base="$(default_branch)" || fail "publish: cannot read the target's default branch from refs/remotes/origin/HEAD"
-  title="fleet $RUN_ID: $(plan_title)"; body="$(pr_body)"
-  if [ "$1" = 0 ]; then draft=false; else draft=true; fi
-  payload="$(fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-payload title="$title" head="$BRANCH" base="$base" body="$body" draft="$draft")"
-  answer="$(fleet_curl -sS -X POST "https://$GITHUB_INT_HOST/api/v3/repos/$TARGET_REPO/pulls" -H 'content-type: application/json' -d "$payload" -w '\n%{http_code}' 2>/dev/null || true)"
-  code="$(printf '%s' "$answer" | tail -n 1)"; reply="$(printf '%s' "$answer" | sed '$d')"
-  case "$code" in 2[0-9][0-9]) : ;; *) log "publish: POST /repos/$TARGET_REPO/pulls answered ${code:-<nothing>}"; fail "${reply:0:2000}" ;; esac
-  PR_URL="$(printf '%s' "$reply" | json_field html_url)"; PR_AUTHOR="$(printf '%s' "$reply" | json_field login)"
-  number="$(printf '%s' "$reply" | json_int number)"
-  log "publish: $PR_URL (base $base, draft $draft, author ${PR_AUTHOR:-<unknown>})"
-  event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" publish:pr url="$PR_URL" number="${number:-null}" draft="$draft"
-  if [ "$1" = 0 ]; then state=done; else state=parked; fi
-  MERGED_SHA=""; MERGE_PHASE=""
-  if [ "$1" = 0 ] && [ "$HOLD_FLAG" != 1 ] && [ -n "$number" ]; then
-    maybe_self_merge "$number" "$base"
-  fi
-  if [ -n "$MERGED_SHA" ]; then
-    phase_text="the pull request was merged"
-    run_publish_probe
-    [ -n "$PUBLISH_PHASE" ] && phase_text="$PUBLISH_PHASE"
-  elif [ -n "$MERGE_PHASE" ]; then
-    phase_text="$MERGE_PHASE"; state=parked
-  else
-    phase_text="the pull request is open"
-  fi
+  out="$(fleet_node "$ENGINE_REPO_DIR/factory/publish.mjs" --engine-exit "$1" --hold "$HOLD_FLAG" --run-id "$RUN_ID" \
+    --target-repo "$TARGET_REPO" --target-dir "$TARGET_DIR" --branch "$BRANCH" --base-sha "$BASE_SHA" \
+    --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --run-dir "$RUN_DIR" --evidence-dir "$EVIDENCE_DIR/$EVIDENCE_REL" \
+    --evidence-url "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --github-host "$GITHUB_INT_HOST" \
+    --anthropic-url "$ANTHROPIC_PROXY_URL" --typesafe-url "$TYPESAFE_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
+  [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
+  state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
+  PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
   write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
   close_run "$state" "$phase_text"
   audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)

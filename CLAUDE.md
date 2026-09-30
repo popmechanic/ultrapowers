@@ -139,7 +139,8 @@ the engine's exit code is the merge decision.
   the clause it proves — an untagged prover settles nothing. One case per behaviour. A run
   caught up to a moved main re-runs the plan's setup, probes and check on it. Answer a
   gate rejection by narrowing the clause, never by adding legs. A size budget is a note the PR
-  reports, never a clause. Publish is shell, not a seam.
+  reports, never a clause. Publish runs after the engine, in plain sequence, never inside it
+  (`factory/publish.mjs`, #1441).
 - **The plan is a submission, not a contract (#990).** A worker that outgrows a clause or its
   Files set declares an amendment in the open (`driver:amendment` row, the reviewer's lens,
   the PR card, the release census); a reviewer judges it on merits and never reverts it for

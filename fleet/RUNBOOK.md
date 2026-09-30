@@ -496,7 +496,7 @@ on the live branch, under `runs/<owner>-<repo>/<N>/` of the evidence repository:
 
 | file | what it holds |
 |---|---|
-| `publish.json` | `{url, published, deploy: {cmd, exit, ms}, verify: {cmd, exit, ms} or null, rollback: {cmd, exit} or null}` — the whole probe's outcome, rendered by `factory/record.mjs publish-json` |
+| `publish.json` | `{url, published, deploy: {cmd, exit, ms}, verify: {cmd, exit, ms} or null, rollback: {cmd, exit} or null}` — the whole probe's outcome, written by `factory/publish.mjs` |
 | `publish-deploy.log` | the deploy command's last 4000 bytes of combined stdout+stderr |
 | `publish-verify.log` | the verify command's last 4000 bytes |
 | `publish-rollback.log` | the rollback command's last 4000 bytes, only when a rollback ran |
