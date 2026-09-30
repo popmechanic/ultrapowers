@@ -19,9 +19,14 @@ a temporary repository of the tool's own, deleted after.
 
 Two clocks: launch is the laptop's commit clock, the claim and the log stamps are the VM's clock,
 so every seconds figure carries whatever skew lies between the two."""
-import argparse, datetime, json, re, shutil, statistics, subprocess, sys, tempfile
+import argparse, datetime, json, os, re, shutil, statistics, subprocess, sys, tempfile
 
 LOGS = ("fleet-setup.log", "fleet-boot.log")
+# Never wait on a person: no credential prompt, no ssh host-key question, and a bound on every call.
+GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0",
+           "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15"}
+REACH_S = 30     # the one remote check
+GIT_S = 120      # any other git call, a blob fetch included
 STAMP = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)\s+(.*)$")
 
 
@@ -30,7 +35,10 @@ class Unreadable(Exception):
 
 
 def git(repo, *a, check=True):
-    r = subprocess.run(["git", "-C", repo, *a], capture_output=True)
+    try:
+        r = subprocess.run(["git", "-C", repo, *a], capture_output=True, env=GIT_ENV, timeout=GIT_S)
+    except subprocess.TimeoutExpired:
+        raise Unreadable(f"git {' '.join(a)}: no answer within {GIT_S} s")
     if check and r.returncode:
         raise Unreadable(f"git {' '.join(a)}: {r.stderr.decode('utf-8', 'replace').strip()}")
     return r.stdout.decode("utf-8", "replace") if not r.returncode else None
@@ -99,8 +107,11 @@ def main():
         except Unreadable as e:
             sys.exit(str(e))
         # Reach the remote once, before any run: an unreachable remote is not n=0.
-        r = subprocess.run(["git", "-C", repo, "ls-remote", "-q", "--exit-code", "origin", "HEAD"],
-                           capture_output=True)
+        try:
+            r = subprocess.run(["git", "-C", repo, "ls-remote", "-q", "--exit-code", "origin", "HEAD"],
+                               capture_output=True, env=GIT_ENV, timeout=REACH_S)
+        except subprocess.TimeoutExpired:
+            sys.exit(f"cannot reach the record at {a.remote}: no answer within {REACH_S} s")
         if r.returncode not in (0, 2):    # 2: reached, but no HEAD ref
             err = " ".join(r.stderr.decode("utf-8", "replace").split())
             sys.exit(f"cannot reach the record at {a.remote}: {err}")
