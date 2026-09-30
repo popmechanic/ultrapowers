@@ -61,7 +61,7 @@ keeps the name `factory/`. Models never run git.
 ## Evidence
 
 The boot copies `events.jsonl` into the evidence worktree every tick only when the bytes
-differ (temp file + `mv`), and commits `status.json`, `events.jsonl`, `engine.log`,
+differ (temp file + `mv`), and commits `status.json`, `plan.json` (the parse the engine read), `events.jsonl`, `engine.log`,
 `fleet-boot.log` and (when the setup script left one) `fleet-setup.log` to
 `live/<owner>-<repo>/run-<N>` in the operator's evidence repository (read from
 `$HOME/fleet-evidence-repo`, under `runs/<owner>-<repo>/<N>/`) every `FLEET_COMMIT_SECONDS`
