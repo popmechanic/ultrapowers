@@ -55,6 +55,8 @@ export function workloadFromPlan(planPath) {
     files: t.files || [],
     depends_on: edges.filter((e) => e.to === t.id).map((e) => e.from),
     facts: (t.proofRuns || []).map(bash),
+    // the clause ids each fact is tagged with (`Run: ... [M1]`), one list per fact
+    factClauses: t.proofRunClauses || [],
   }));
 
   const cmds = (parsed.checks || []).filter((c) => !c.minor).map((c) => c.cmd);

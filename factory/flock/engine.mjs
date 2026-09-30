@@ -39,6 +39,8 @@ import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { peerNote } from './peer_note.mjs'
+import { buildProvenance } from './provenance.mjs'
+import { linesRun } from './coverage.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -102,6 +104,11 @@ const JEV_PEER = PEER_MODE !== 'off' && !!process.env.TYPESAFE_BASE_URL
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
 const SCOPE_MODE = POLICY_FLOCK?.scope?.mode ?? 'enforce'
 if (!['enforce', 'record'].includes(SCOPE_MODE)) { console.error('engine: policy flock.scope.mode is enforce or record'); process.exit(2) }
+// provenance.json (#1404): `record` runs each task's tagged facts once more on the landed snapshot
+// with coverage on (coverage.mjs) so the record names the changed code no probe ran; `off` skips
+// it (coverage null). The policy cell flock.provenance.coverage, else record.
+const PROV_COVERAGE = POLICY_FLOCK?.provenance?.coverage ?? 'record'
+if (!['record', 'off'].includes(PROV_COVERAGE)) { console.error('engine: policy flock.provenance.coverage is record or off'); process.exit(2) }
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -157,6 +164,10 @@ const trial = (key, question, state, kind, row, then) => {
 // #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), and
 // its Jev read; the reads are kept for the settle's check (peerRewriteDraft)
 const taskOf = {}   // agent -> the task its current session holds
+// the weave's authorship label (weave.py task_label): `A.2` is builder A on task 2, so a reused
+// builder's later task meets its earlier task's lines as a peer's; a label's task is after the dot
+const task_label = (agent, task) => task == null ? agent : agent + '.' + task
+const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
 const peerReads = []
 function peerRewrites (agent, rel, rewrites) {
   for (const w of rewrites || []) {
@@ -164,8 +175,8 @@ function peerRewrites (agent, rel, rewrites) {
     const row = { agent, task: mine && mine.id, path: rel, peers: w.peers, before: w.before, peer: w.peer, after: w.after }
     ev('peer:rewrite', row)
     if (!JEV_PEER) continue
-    const side = (a) => { const t = taskOf[a]; return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a } }
-    trial('kept', PEER_QUESTION, { path: rel, before: w.before, peer: w.peer, after: w.after, tasks: [side(agent), ...w.peers.map(side)] },
+    const side = (a) => { const i = a.indexOf('.'); const t = i < 0 ? null : W.tasks.find((x) => x.id === a.slice(i + 1)); return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a } }
+    trial('kept', PEER_QUESTION, { path: rel, before: w.before, peer: w.peer, after: w.after, tasks: [side(labelOf(agent)), ...w.peers.map(side)] },
       'jev:peer-rewrite', row, (o) => peerReads.push(o))
   }
 }
@@ -333,7 +344,7 @@ async function blame (agent, cwd, output) {
   const r = await weave({ op: 'authors_keyed', agent, path: rel })
   const who = r.ok ? r.authors[line - 1] : null
   const whoSet = who ? who.split('|') : []
-  return { cause: !who ? 'unknown' : whoSet.includes(agent) ? 'own' : who === 'base' ? 'base' : 'peer:' + who, path: rel, line }
+  return { cause: !who ? 'unknown' : whoSet.includes(labelOf(agent)) ? 'own' : who === 'base' ? 'base' : 'peer:' + who, path: rel, line }
 }
 
 // peer lines an agent's change removed or replaced, by identity: the fall, per peer, in the
@@ -342,7 +353,7 @@ async function keyedOwners (agent, rel) {
   const r = await weave({ op: 'authors_keyed', agent, path: rel })
   const c = {}
   if (!r.ok) return c
-  for (const a of r.authors) if (a !== 'base' && !a.split('|').includes(agent)) c[a] = (c[a] || 0) + 1
+  for (const a of r.authors) if (a !== 'base' && !a.split('|').includes(labelOf(agent))) c[a] = (c[a] || 0) + 1
   return c
 }
 function peerFall (before, after) {
@@ -363,7 +374,7 @@ async function syncFromDisk (agent) {
     const hasWeave = view !== '' || BASE_PATHS.includes(p)
     if (text === null && !hasWeave) continue
     if (text === view) continue
-    const r = await must({ op: 'rewrite', agent, path: p, content: text })
+    const r = await must({ op: 'rewrite', agent, path: p, content: text, task: taskOf[agent]?.id })
     edited(agent, p)
     drift += 1
     ev('fallback', { agent, path: p, peer_lines: r.peer_lines_touched, deleted: text === null })
@@ -378,7 +389,7 @@ async function recordEditCall (agent, rel, before, edits) {
   const owners0 = await keyedOwners(agent, rel)
   for (const e of edits) {
     for (const s of editSpans(text, e.old_string, e.new_string, e.replace_all)) {
-      const r = await must({ op: 'edit', agent, path: rel, ...s })
+      const r = await must({ op: 'edit', agent, path: rel, ...s, task: taskOf[agent]?.id })
       peerText += r.peer_lines_touched
       peerRewrites(agent, rel, r.peerRewrites)
     }
@@ -572,7 +583,10 @@ Rules:
 async function pullInto (agent, task) {
   // a resolve task (R:<path>) scopes to its own path
   if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
-  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS }) : null
+  // new files peers created cannot conflict with anything here, so they are always in scope (#1405)
+  const base = new Set(BASE_PATHS)
+  const created = [...new Set(Object.entries(lastEditT).filter(([a]) => a !== agent).flatMap(([, ps]) => Object.keys(ps)))].filter((p) => !base.has(p))
+  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS, created }) : null
   const r = await must(scope ? { op: 'pull', agent, paths: [...scope] } : { op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) {
@@ -686,7 +700,7 @@ async function scriptedSession (agent, task) {
     }
     await syncFromDisk(agent)
     // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
-    // call), standing in for a weave fault like run-247's.
+    // call), standing in for a weave fault like run-247's. It passes no task: its lines stay unlabelled by task.
     for (const [p, text] of Object.entries(SCRIPT['@unwritten'] || {})) await must({ op: 'rewrite', agent, path: p, content: text })
     await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
@@ -861,11 +875,11 @@ async function session (agent, task) {
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
           const owners0 = await keyedOwners(agent, rel)
-          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); peerRewrites(agent, rel, r.peerRewrites); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
+          const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); rec = { ...peerFall(owners0, await keyedOwners(agent, rel)), peerText: r.peer_lines_touched }; how = before == null ? 'new-file' : 'write'
         } else {
           rec = await recordEditCall(agent, rel, before, name === 'MultiEdit' ? ti.edits : [ti])
           const view = (await must({ op: 'view', agent, path: rel })).text
-          if (view !== readOr(fp)) { const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp) }); peerRewrites(agent, rel, r.peerRewrites); how = 'edit-call-mismatch' }
+          if (view !== readOr(fp)) { const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); how = 'edit-call-mismatch' }
         }
         // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
@@ -881,8 +895,11 @@ async function session (agent, task) {
         const r = await weave({ op: 'authors_keyed', agent, path: rel })
         if (!r.ok) return {}
         const tasks = {}
-        for (const [a, t] of Object.entries(taskOf)) if (t && a !== agent) tasks[a] = { id: t.id, title: t.title }
-        const note = peerNote({ path: rel, authors: r.authors, agent, tasks })
+        for (const a of new Set(r.authors.flatMap((w) => w.split('|')))) {
+          const t = a.includes('.') && W.tasks.find((x) => x.id === a.slice(a.indexOf('.') + 1))
+          if (t) tasks[a] = { id: t.id, title: t.title }
+        }
+        const note = peerNote({ path: rel, authors: r.authors, agent: task_label(agent, task.id), tasks })
         if (note) {
           ev('peer:note', { agent, task: task.id, path: rel })
           return { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }
@@ -1145,6 +1162,8 @@ fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read()
 writeCompactRecord()
 writeFailureRecord()
 log('summary', JSON.stringify(summary))
+// the join's blame and text, asked before the weave closes, for provenance.json at landing
+const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
 wp.stdin.end()
 const landed = await land()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
@@ -1201,18 +1220,61 @@ async function land () {
     if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
+    writeProvenance(outcome.snap)
     await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {
     const sha = commitSnapshot(lastEdge.snap, `flock: draft ${lastEdge.snap}`)
     if (sha) {
+      writeProvenance(lastEdge.snap)
       for (const t of W.tasks) {
         if ((lastEdge.perTask[t.id] || []).some((x) => x !== 0)) ev('parked', { task: t.id, reason: `red at ${lastEdge.snap}` })
       }
     }
   }
   return 1
+}
+
+// provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task, the surprises and,
+// under flock.provenance.coverage `record`, the changed code no tagged fact ran. Each task's fact at
+// index i proves t.clauses[i] (claims-v1: t.factClauses[i]); it runs with linesRun in a fresh edge copy of the snapshot, and its
+// lines merge per clause. The join's blame is kept only for paths whose text is the landed text.
+function writeProvenance (snap) {
+  try {
+    const s = snapshots.find((x) => x.snap === snap)
+    if (!s) return
+    const landed = Object.fromEntries(Object.entries(s.files).filter(([p]) => s.exists[p]))
+    const blame = Object.fromEntries(Object.entries(JOIN.blame).filter(([p]) => p in landed && JOIN.files[p] === landed[p]))
+    const events = fs.readFileSync(path.join(OUT, 'events.jsonl'), 'utf8').split('\n').filter((l) => l.trim())
+      .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
+    let coverage = null
+    if (PROV_COVERAGE === 'record') {
+      coverage = {}
+      const dir = path.join(WORK, 'provenance')
+      fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
+      for (const [p, text] of Object.entries(s.files)) {
+        const f = path.join(dir, p)
+        if (s.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
+      }
+      for (const t of W.tasks) {
+        (t.facts || []).forEach((argv, i) => {
+          // a stories-v1 fact proves t.clauses[i]; a claims-v1 fact, the clauses its `Run:` line tags
+          const clauses = t.clauses ? (t.clauses[i] ? [t.clauses[i]] : []) : ((t.factClauses || [])[i] || [])
+          if (!clauses.length) return
+          const { lines } = linesRun({ argv, cwd: dir, env: RUN_ENV, timeoutMs: 60000 })
+          for (const clause of clauses) {
+            const into = coverage[clause] = coverage[clause] || {}
+            for (const [p, ns] of Object.entries(lines)) into[p] = [...new Set([...(into[p] || []), ...ns])].sort((a, b) => a - b)
+          }
+        })
+      }
+    }
+    const prov = buildProvenance({ landed, blame, events, lost: s.lost || [], coverage })
+    fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov }, null, 1))
+  } catch (e) {
+    ev('provenance:error', { snap, error: String(e && e.message || e).slice(0, 500) })
+  }
 }
 
 // ── what went wrong: red-checks.json on every run ──────

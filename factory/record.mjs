@@ -293,11 +293,42 @@ function draftReasonLines (rows) {
   return out
 }
 
-/** `pr-body <plan.md> --events <file> [--evidence <url>]` — the paragraph, an
+/** How many lines a provenance `lines` value names: `a-b` is b-a+1, `a` is 1, anything else 0. */
+function lineCount (lines) {
+  const m = /^(\d+)(?:-(\d+))?$/.exec(String(lines ?? ''))
+  if (!m) return 0
+  return m[2] === undefined ? 1 : Math.max(0, Number(m[2]) - Number(m[1]) + 1)
+}
+
+/** The `### Provenance` section over the engine's `provenance.json` (#1404): the heading, an
+ *  empty line and one counts line — changed lines, the tasks that changed them, the lines no
+ *  probe ran (`unmeasured` when `unproven` is null) and the exceptions by kind. An absent,
+ *  missing or unparseable file adds nothing. */
+function provenanceLines (provenancePath) {
+  if (!provenancePath) return []
+  let prov
+  try { prov = JSON.parse(readFileSync(provenancePath, 'utf8')) } catch { return [] }
+  if (!prov || typeof prov !== 'object') return []
+  const hunks = Array.isArray(prov.hunks) ? prov.hunks : []
+  const changed = hunks.reduce((n, h) => n + lineCount(h && h.lines), 0)
+  const tasks = new Set(hunks.filter((h) => h && h.task !== undefined).map((h) => String(h.task))).size
+  const unproven = Array.isArray(prov.unproven)
+    ? prov.unproven.reduce((n, u) => n + lineCount(u && u.lines), 0)
+    : 'unmeasured'
+  const kinds = { contested: 0, lost: 0, ordered: 0, foreign: 0 }
+  for (const e of Array.isArray(prov.exceptions) ? prov.exceptions : []) {
+    if (e && Object.hasOwn(kinds, e.kind)) kinds[e.kind]++
+  }
+  return ['### Provenance', '',
+    `${changed} changed lines from ${tasks} tasks; ${unproven} not run by any probe; ` +
+    `exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
+}
+
+/** `pr-body <plan.md> --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
  *  empty line, the receipt, an empty line, the closes; every line, including
- *  the two empty ones, ends in a newline. A draft's reason follows the receipt,
- *  and when any `jev:step` row exists, its table follows that. */
-export function renderPrBody (planPath, eventsPath, evidenceUrl) {
+ *  the two empty ones, ends in a newline. The provenance section follows the receipt,
+ *  a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
+export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
   const events = eventsPath ? readEventRows(eventsPath) : []
@@ -308,6 +339,9 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl) {
   out += '\n'
   for (const line of rows) out += line + '\n'
   out += '\n'
+  const provenance = provenanceLines(provenancePath)
+  for (const line of provenance) out += line + '\n'
+  if (provenance.length) out += '\n'
   const draft = draftReasonLines(events)
   for (const line of draft) out += line + '\n'
   if (draft.length) out += '\n'
@@ -507,7 +541,9 @@ export function main (argv) {
       if (planPath === undefined) return usageError('pr-body: missing <plan.md>')
       const { rest, eventsPath } = extractEvents(args.slice(2))
       const at = rest.indexOf('--evidence')
-      process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined))
+      const pv = rest.indexOf('--provenance')
+      process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined,
+        pv >= 0 ? rest[pv + 1] : undefined))
       return 0
     }
     case 'policy': {

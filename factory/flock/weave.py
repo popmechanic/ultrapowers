@@ -6,10 +6,11 @@ Line identity comes from edit calls (`edit`), never from diffing a finished
 file, except for the fallback (`rewrite`: a Write or a shell change), which
 diffs the visible text and replays the result as edits.
 
-Authorship rides inside the weave: a stored line is `text + SEP + author`, so
-two agents writing the same text are two lines (which they are), a line's
-author is readable at any time, and the vendored kernel is untouched. `base`
-authors every line of BASE.
+Authorship rides beside the weave, keyed by line identity (`line_keys`): one
+sidecar per copy, `{path: {key: set(label)}}`, gossiped with the copy. A label
+is `task_label(agent, task)` (`A.2`: builder A on task 2), so a builder's later
+task sees its earlier task's lines as a peer's. Stored lines are plain text;
+a line with no sidecar entry is authored `base` (every line of BASE is).
 
 Requests (all answer {"ok": true, ...} or {"ok": false, "error": ...}):
   base     {root, paths}                  read BASE files into the base weave
@@ -28,10 +29,14 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
 Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
 sub-edit that replaced or deleted lines a peer wrote: `peer` the peer's lines, `before` what those
 lines had replaced when the peer wrote them, `after` what this edit put there.
-  lost          {}                        [{path, author, lines}]: lines each agent's published copy shows
-                                          as its own that the join of every published copy no longer shows
+  lost          {}                        [{path, author, by, lines}]: lines of the join of every published
+                                          copy that someone other than their author (`by`) removed
+
+Added for #1404 (one authorship mechanism, keyed by task):
+  edit, rewrite take an optional task; every label recorded, compared or answered is task_label(agent, task)
+  blame         {}                        {path: [label per visible line of the join]} (`a|b` or `base`)
 """
-import difflib, json, os, re, sys, threading
+import difflib, json, os, sys, threading
 
 KERNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "skills", "ultrapowers", "kernel")
 sys.path[:0] = [os.path.join(KERNEL, "vendor")]
@@ -101,39 +106,26 @@ def run_on_kernel_thread(fn, *args, **kwargs):
         raise box["exc"]
     return box["result"]
 
-SEP = "␟"
 M = manyana
 
 
-TAG = os.environ.get("FLOCK_TAG", "0") == "1"
-INSERTED = {}   # (agent copy, path) -> {text: set(authors)}: the authorship sidecar when TAG is off
 REPLACED = {}   # (path, text) -> the visible lines the edit that wrote `text` replaced (#1401)
 
 
-def tag(lines, who):
-    return [l + SEP + who for l in lines] if TAG else list(lines)
-
-
-# A stored line is `text + SEP + label`, and only the LAST SEP is ours: the text may carry the
-# character itself (this file's own `SEP = ...` line does), and splitting at the first one cut
-# every such line short (ultrapowers run-247 merged `SEP = "` into this file, 2026-09-27).
-_LABEL = re.compile(r"[A-Za-z0-9:_|.+-]{1,64}")
-
-
-def _split(line):
-    if SEP in line:
-        text, label = line.rsplit(SEP, 1)
-        if _LABEL.fullmatch(label):
-            return text, label
-    return line, None
+def task_label(agent, task):
+    """The authorship label of `agent` working `task`: `A.2`, or `A` with no task."""
+    return agent if task is None else agent + "." + str(task)
 
 
 def strip(line):
-    return _split(line)[0]
+    # Identity: no stored line carries a label (in-line stamping cut run-247's line, #1326).
+    return line
 
 
-def author(line):
-    return _split(line)[1] or "base"
+def label_of(side, key):
+    """A line's author labels from a keyed sidecar, joined `|` in sorted order, or `base`."""
+    who = side.get(key)
+    return "|".join(sorted(who)) if who else "base"
 
 
 def visible_raw(state):
@@ -278,6 +270,15 @@ def _union_auth(into, other):
             dst.setdefault(k, set()).update(who)
 
 
+def _union_del(into, other):
+    # one deleting label per entry; the smallest wins, so the union is order-free
+    for path, m in other.items():
+        dst = into.setdefault(path, {})
+        for k, by in m.items():
+            if k not in dst or by < dst[k]:
+                dst[k] = by
+
+
 class Keeper:
     def __init__(self):
         self.base = {}        # path -> weave state
@@ -287,9 +288,15 @@ class Keeper:
         # copy, gossiped with it (a union, so order-free).
         self.kauth = {}       # copy -> {path -> {key -> set(author)}}
         self.kauth_pub = {}   # agent -> the sidecar as of its last publish
+        # #1404: the label of the edit that deleted each entry, published and pulled like kauth
+        self.kdel = {}        # copy -> {path -> {key -> label}}
+        self.kdel_pub = {}    # agent -> the sidecar as of its last publish
 
     def auth(self, who):
         return self.kauth.setdefault(who, {})
+
+    def dels(self, who):
+        return self.kdel.setdefault(who, {})
 
     def copy(self, agent):
         if agent not in self.copies:
@@ -309,18 +316,15 @@ class Keeper:
     def r_base(self, root, paths):
         for p in paths:
             with open(os.path.join(root, p), encoding="utf-8") as f:
-                self.base[p] = M.initial_state(tag(f.read().split("\n"), "base"))
+                self.base[p] = M.initial_state(f.read().split("\n"))
         return {"paths": len(paths)}
 
-    def who(self, agent, path, raw):
-        if TAG or SEP in raw:
-            return author(raw)
-        ins = INSERTED.get(path, {}).get(raw)
-        if not ins:
-            return "base"
-        return sorted(ins)[0] if len(ins) == 1 else "|".join(sorted(ins))
+    def who(self, agent, path, key):
+        """The author labels of the entry `key` in `agent`'s copy of `path`, by the keyed sidecar."""
+        return label_of(self.auth(agent).get(path, {}), key)
 
-    def r_edit(self, agent, path, vstart, vend, lines, refine=True):
+    def r_edit(self, agent, path, vstart, vend, lines, refine=True, task=None):
+        label = task_label(agent, task)
         cur = self.lines(agent, path)
         subs = [(vstart, vend, lines)]
         if refine and vend > vstart and lines:
@@ -329,10 +333,11 @@ class Keeper:
         deleted, touched, peers, rewrites = 0, 0, set(), []
         for a, z, new_lines in reversed(subs):
             st = self.state(agent, path)
-            vis_raw = visible_raw(st)
-            owners = [self.who(agent, path, r) for r in vis_raw[a:z]]
-            gone_text = [strip(r) for r in vis_raw[a:z]]
-            theirs = [(o, t) for o, t in zip(owners, gone_text) if o not in (agent, "base")]
+            ss = M.deserialize_state(st)
+            vis_keys = [k for e, k in zip(ss, line_keys(ss)) if e[3] % 2][a:z]
+            owners = [self.who(agent, path, k) for k in vis_keys]
+            gone_text = visible_raw(st)[a:z]
+            theirs = [(o, t) for o, t in zip(owners, gone_text) if o not in (label, "base")]
             if theirs:
                 rewrites.append({"peers": sorted({p for o, _ in theirs for p in o.split("|")}),
                                  "peer": [t for _, t in theirs],
@@ -340,24 +345,25 @@ class Keeper:
                                  "after": list(new_lines)})
             for l in new_lines:
                 REPLACED[(path, l)] = gone_text
-            new, gone = apply_edit(st, a, z, tag(new_lines, agent))
+            new, gone = apply_edit(st, a, z, list(new_lines))
             self.copy(agent)[path] = new
             if new_lines:   # ticket 2: the keyed sidecar learns the new lines' identity
                 fresh = collections.Counter(line_keys(new)) - collections.Counter(line_keys(st))
                 side = self.auth(agent).setdefault(path, {})
                 for k in fresh:
-                    side.setdefault(k, set()).add(agent)
-            for l in new_lines:
-                INSERTED.setdefault(path, {}).setdefault(l, set()).add(agent)
+                    side.setdefault(k, set()).add(label)
+            dside = self.dels(agent).setdefault(path, {})   # a key survives its deletion: the counter is not in it
+            for k in vis_keys:
+                dside[k] = label
             deleted += len(gone)
             for o in owners:
-                if o not in (agent, "base"):
+                if o not in (label, "base"):
                     touched += 1
                     peers.add(o)
         return {"deleted": deleted, "peer_lines_touched": touched, "peers": sorted(peers), "subedits": len(subs),
                 "peerRewrites": rewrites[::-1]}
 
-    def r_rewrite(self, agent, path, content):
+    def r_rewrite(self, agent, path, content, task=None):
         old = self.lines(agent, path)
         new = [] if content is None else content.split("\n")
         if content is not None and not old and path not in self.copy(agent):
@@ -367,7 +373,7 @@ class Keeper:
         for tag_, i1, i2, j1, j2 in reversed(ops):
             if tag_ == "equal":
                 continue
-            r = self.r_edit(agent, path, i1, i2, new[j1:j2], refine=False)
+            r = self.r_edit(agent, path, i1, i2, new[j1:j2], refine=False, task=task)
             touched += r["peer_lines_touched"]
             peers |= set(r["peers"])
             rewrites[:0] = r["peerRewrites"]
@@ -380,6 +386,7 @@ class Keeper:
     def r_publish(self, agent):
         self.published[agent] = dict(self.copy(agent))
         self.kauth_pub[agent] = _copy.deepcopy(self.auth(agent))
+        self.kdel_pub[agent] = _copy.deepcopy(self.dels(agent))
         return {"paths": len(self.published[agent])}
 
     def r_pull(self, agent, paths=None):
@@ -406,6 +413,7 @@ class Keeper:
                     if st != before:   # ticket 2: concurrent inserts at one anchor (even when mine already holds theirs)
                         flags = same_anchor(before, st, after, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
                 _union_auth(self.auth(agent), {p: peer_auth.get(p, {})})
+                _union_del(self.dels(agent), {p: self.kdel_pub.get(peer, {}).get(p, {})})
                 if flags:
                     flagged.append({"path": p, "from": peer, "flags": flags})
                 if before != after:
@@ -449,27 +457,42 @@ class Keeper:
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
                 "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest}
 
-    def r_lost(self):
-        """Per (path, author): the visible lines of the author's published copy that the author wrote
-        (keyed sidecar) and whose key is not visible in the join, in file order."""
-        join = {}
-        for who in self.published:
-            for p, st in self.published[who].items():
-                join[p] = st if p not in join else M.merge_states(join[p], st)[0]
-        seen = {}
-        for p, st in join.items():
-            js = M.deserialize_state(st)
-            seen[p] = {k for e, k in zip(js, line_keys(js)) if e[3] % 2}
-        lost = []
+    def _join(self):
+        """The join of every published copy (merged as r_merged merges them), with the union of
+        their authorship and deletion sidecars."""
+        join, auth, dels = {}, {}, {}
         for who, pub in self.published.items():
-            pauth = self.kauth_pub.get(who, {})
             for p, st in pub.items():
-                ps, side = M.deserialize_state(st), pauth.get(p, {})
-                gone = [strip(e[0]) for e, k in zip(ps, line_keys(ps))
-                        if e[3] % 2 and who in side.get(k, ()) and k not in seen.get(p, ())]
-                if gone:
-                    lost.append({"path": p, "author": who, "lines": gone})
-        return {"lost": sorted(lost, key=lambda d: (d["path"], d["author"]))}
+                join[p] = st if p not in join else M.merge_states(join[p], st)[0]
+            _union_auth(auth, self.kauth_pub.get(who, {}))
+            _union_del(dels, self.kdel_pub.get(who, {}))
+        return join, auth, dels
+
+    def r_lost(self):
+        """Per (path, author label, deleting label): the entries of the join that are invisible, were
+        written by someone (not base), and were deleted by a label not among their authors, in weave order."""
+        join, auth, dels = self._join()
+        lost = {}
+        for p, st in join.items():
+            js, side, dside = M.deserialize_state(st), auth.get(p, {}), dels.get(p, {})
+            for e, k in zip(js, line_keys(js)):
+                if e[3] % 2 or not side.get(k):
+                    continue
+                by = dside.get(k)
+                if by in side[k]:
+                    continue
+                lost.setdefault((p, label_of(side, k), by or ""), []).append(e[0])
+        return {"lost": [{"path": p, "author": a, "by": b or None, "lines": ls}
+                         for (p, a, b), ls in sorted(lost.items(), key=lambda kv: kv[0])]}
+
+    def r_blame(self):
+        """{path: [label per visible line]} for the join of every published copy."""
+        join, auth, _ = self._join()
+        out = {}
+        for p, st in join.items():
+            js, side = M.deserialize_state(st), auth.get(p, {})
+            out[p] = [label_of(side, k) for e, k in zip(js, line_keys(js)) if e[3] % 2]
+        return {"blame": out}
 
     # ── ticket 2 (additive): authorship by identity ──
     def r_authors_keyed(self, agent, path):
