@@ -12,9 +12,9 @@
 import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
-import {at, defaultAsk, noul} from './jev';
+import {at, defaultAsk, loadQuestions, noul} from './jev';
 
-const Q = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'factory', 'questions.json'), 'utf8')).sets.authoring_gate.questions;
+const Q = loadQuestions().authoring_gate.questions as Record<string, any>;
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
 
 type Diet = {task: string | number; claim: string; proof: string; hash: string; base?: Record<string, unknown>};

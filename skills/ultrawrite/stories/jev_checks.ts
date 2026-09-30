@@ -12,9 +12,9 @@ import {parseArgs} from 'node:util';
 import {loadBundle, type Bundle} from './bundle';
 import {runChecks} from './checks';
 import {checkProduct, saveProduct, type Product} from './product';
-import {at, defaultAsk, noul, type Ask} from './jev';
+import {at, defaultAsk, loadQuestions, noul, type Ask} from './jev';
 
-const SETS = JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'factory', 'questions.json'), 'utf8')).sets;
+const SETS = loadQuestions() as Record<string, any>;
 const GROUPS = ['ambiguity', 'coherence', 'near_miss', 'content_branch', 'redundancy', 'surprise', 'map', 'decompose', 'gate', 'link', 'about_product'];
 const Q = Object.fromEntries(GROUPS.map((g) => [g, SETS[`authoring_${g}`].questions]));
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;

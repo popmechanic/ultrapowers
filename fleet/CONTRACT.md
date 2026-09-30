@@ -49,8 +49,8 @@ evidence repository.
 ## Literals
 - **Run id:** `N` = 1 + max N over the evidence repository's `live/<owner>-<repo>/run-<N>` branches
   and its `<owner>-<repo>/run-<N>` tags (`<owner>-<repo>` the target's) — the branches are transient
-  and the tags are the record, so a run number is read from both shapes and never from one
-  (`--run N` overrides). A refused plan push re-reads
+  and the tags are the record, so a run number is read from both shapes and never from one.
+  A refused plan push re-reads
   the highest run and retries with the next N, up to three pushes in all, so the push and not the
   read is what reserves N. `RUN_ID=run-N`.
 - **VM name:** `fleet-r<N>-<yymmddHHMM>-<4 hex>` (e.g. `fleet-r70-2609032215-a1b2`). exe.dev does not reserve

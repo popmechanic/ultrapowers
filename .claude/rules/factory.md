@@ -36,7 +36,8 @@ keeps the name `factory/`. Models never run git.
 
 ## Judgment and policy
 
-- **Every judgment is a question** in `questions.json` (`flock_step`), sent over
+- **Every judgment is a question** in `factory/questions.json` (the engine's four `flock_*`
+  sets; the authoring sets live beside ultrawrite, #1449), sent over
   `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
 - **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
   `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.

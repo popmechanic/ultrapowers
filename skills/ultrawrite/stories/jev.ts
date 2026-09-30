@@ -11,9 +11,20 @@ export type Ask = (state: unknown, questions: unknown) => Promise<Record<string,
 
 const BASE_URL = process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai';
 
+// The operator's own directory: ULTRAPOWERS_HOME, else ~/.ultrapowers.
+export function home(): string {
+  return process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers');
+}
+
+// The authoring question sets, from questions.json beside this file (#1449), read once.
+let sets: Record<string, {questions?: Record<string, unknown>}> | undefined;
+export function loadQuestions(): Record<string, {questions?: Record<string, unknown>}> {
+  sets ??= JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8')).sets ?? {};
+  return sets!;
+}
+
 export function key(): string {
-  const home = process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers');
-  const line = readFileSync(join(home, 'typesafe.env'), 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='));
+  const line = readFileSync(join(home(), 'typesafe.env'), 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='));
   if (!line) throw new Error('no TYPESAFE_API_KEY');
   return line.slice('TYPESAFE_API_KEY='.length).trim();
 }

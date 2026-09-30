@@ -6,9 +6,9 @@
 //   bun skills/ultrawrite/stories/notebook.ts add <worked|failed|lands|author|retired> <text>
 //   bun skills/ultrawrite/stories/notebook.ts log <plan-id> --rounds N --explains N --fixes N
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
-import {homedir} from 'node:os';
 import {dirname, join} from 'node:path';
 import {parseArgs} from 'node:util';
+import {home} from './jev';
 
 const SECTIONS: Record<string, string> = {
   worked: '## Words that worked',
@@ -43,7 +43,7 @@ Read at the start of every planning session. Every *Please explain* and every fi
 ## Plan readings
 `;
 
-const path = () => join(process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers'), 'notebook.md');
+const path = () => join(home(), 'notebook.md');
 
 function ensure(): string {
   const p = path();

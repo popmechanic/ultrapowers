@@ -306,8 +306,7 @@ on stdin. It prints the run number and the VM name. A refusal
 exits before the plan branch is pushed and before any lobby verb runs.
 
 `--engine <sha>` pins the engine; the default is the public tip of this
-repository, because the sandbox clones from GitHub. `--run N` overrides the
-run number.
+repository, because the sandbox clones from GitHub.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
 and does not merge it (a measurement run). `--again` is the one way to launch
 a plan that is already live on the target: without it the launcher refuses
