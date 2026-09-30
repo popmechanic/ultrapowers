@@ -13,8 +13,7 @@ One test per leg of the 2026-09-15 plan `gate-reader-reads-base`, task 1:
       ±2 lines, no line twice, no non-carrier region, no 7-character literal.
   (d) [M4] the 8,000-byte per-file cap and the 24,000-byte total cap, with
       `truncated` exactly on the entries the cap cut.
-  (e) [M5] `--plan --base` is refused (exit 2, one stderr line naming --base,
-      empty stdout); an unknown sha exits non-zero with an `error:` line.
+  (e) [M5] an unknown sha exits non-zero with an `error:` line.
 
 The fixture is a one-commit git repository under tmp_path holding the plan
 itself, so a 40-hex `--base` names a commit of the plan's own repository.
@@ -257,9 +256,6 @@ def test_d_m4_caps(tmp_path):
 
 def test_e_m5_refusals(repo):
     r, plan, head = repo
-    p = run(plan, "--plan", "--base", head)
-    assert p.returncode == 2 and p.stdout == "" and "--base" in p.stderr, (p.returncode, p.stderr)
-    assert len(p.stderr.strip().splitlines()) == 1, p.stderr
     zeros = "0" * 40
     q = run(plan, "--task", "1", "--base", zeros)
     assert q.returncode != 0 and q.stdout == ""

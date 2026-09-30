@@ -29,7 +29,7 @@ Added for ticket 2 (#359; every earlier request answers as before, plus fields):
 Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
 sub-edit that replaced or deleted lines a peer wrote: `peer` the peer's lines, `before` what those
 lines had replaced when the peer wrote them, `after` what this edit put there.
-  lost          {}                        [{path, author, by, lines}]: lines of the join of every published
+  merged        also answers lost [{path, author, by, lines}]: lines of the join of every published
                                           copy that someone other than their author (`by`) removed
 
 Added for #1404 (one authorship mechanism, keyed by task):
@@ -520,11 +520,6 @@ class Keeper:
             _union_auth(auth, self.kauth_pub.get(who, {}))
             _union_del(dels, self.kdel_pub.get(who, {}))
         return join, auth, dels
-
-    def r_lost(self):
-        """Per (path, author label, deleting labels): the entries of the join that are invisible, were
-        written by someone (not base), and none of whose deleting labels is among their authors, in weave order."""
-        return {"lost": _lost_of(*self._join())}
 
     def r_blame(self):
         """{path: [label per visible line]} for the join of every published copy."""
