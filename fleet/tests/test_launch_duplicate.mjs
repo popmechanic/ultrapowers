@@ -263,7 +263,7 @@ const assertLaunched = (d, leg) => {
   ]
   const janitorIn = async (record) => {
     const exec = makeExec({ rules: [sshRule("ls '", vmsPayload(rows)), recordRule(record), NO_REMOTE_OPS, NO_NETWORK_GIT] })
-    return janitor({ argv: [], exec, config: CAPPED, now: () => NOW, kata: null })
+    return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW, kata: null })
   }
   const recorded = await janitorIn(RUNNING)
   assert.deepEqual(
