@@ -812,20 +812,12 @@ an exe VM with 2 vCPU / 4 GB)
 
 **The factory's board.**
 
-- The spoke's `credential_provider` argv is flags, not positions: `node <engine>/factory/kata-credential.mjs
-  --kata-json <file> --admin-url https://kata.int.exe.xyz --state-dir <dir>`. Passed positionally the helper
-  throws on an undefined path and exits 1, the daemon logs `federation config reconciliation … state=pending
-  category=hub_unavailable status=0`, the helper's state directory stays empty, and the boot logs `board: … did
-  not bind within 120s` — with the network and both integrations fine (run-193, 2026-09-18; #1149). Tell a dark
-  hub from a dead helper from the VM: `~/.local/bin/fleet-kata --daemon hub federation identity --json` answering
-  `web_session_required` means the hub was reached.
-- A bound spoke is `"role":"spoke"` with `"provider_status":"ready"` in `kata federation status --json` (by hand on the VM:
-  `~/.local/bin/fleet-kata federation status --json` — the boot writes that wrapper with the spoke's
-  `KATA_HOME` and `KATA_SERVER` set, and it is the sandbox's only kata since #1190); there
-  is no `"status"` cell to wait for. run-194's spoke reconciled one second after its daemon started and the
-  boot still waited its whole 120 s on a string Kata never prints, then ran the engine without its board
-  (2026-09-18; #1155). The same document answered the open measurement: `pull_cursor_event_id` moved and
-  `last_successful_sync_at` was set, so the edge passes the spoke's own bearer through `kata-sync`.
+- The sandbox runs no kata of its own (#1390): the engine writes the hub directly through
+  `https://kata.int.exe.xyz`, where the edge injects the hub's bearer. The boot passes it
+  `--kata-url`, `--kata-json` and `--kata-actor` exactly when `$FLEET_HOME/plans/<run>.kata.json`
+  exists — the plan commit's `kata.json`, written by the boot; a plan commit without one runs with
+  no board, and the boot log says `board: no … kata.json`. Before #1390 a per-sandbox daemon's bind
+  wait took about 35 s of a 74 s boot (runs 283–284, 2026-09-30).
 - A factory run that ended `parked` or `failed` leaves its hub run issue open but marks it: the boot
   (`close_run` and the nothing-ahead park in `boot()`, and `fail()` once its evidence is ready in
   `factory/boot.sh`) runs `board.mjs mark-run`, which writes `work.state` = `parked`|`failed` on the run

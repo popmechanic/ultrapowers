@@ -1,21 +1,14 @@
 /**
  * fleet/tests/test_factory_board.mjs — the exam for `factory/board.mjs`'s
- * CLI: the one module that talks to Kata, holding the spoke's config write,
- * the bound-wait, and the run's close, so the boot only ever calls them
- * (Authorized-by #1222, map #1131 rule 6; CLAUDE.md "`board.mjs` is the only
- * module that talks to Kata and never fails a run").
+ * CLI: the one module that talks to Kata, holding the run's close, so the
+ * boot only ever calls it (Authorized-by #1222, map #1131 rule 6; CLAUDE.md
+ * "`board.mjs` is the only module that talks to Kata and never fails a
+ * run"). The spoke's `spoke-config`, `wait` and `install` are gone (#1390),
+ * and with them the legs that drove them.
  *
  * The Machine clauses under test, restated so a reader can map every
  * assertion back to the contract:
  *
- *   M1 `spoke-config` writes `config.toml` and `fleet-kata` byte-equal to
- *      the Context templates, creates `<home>/kata/helper`, prints
- *      `<name> <id>\n`, exit 0 — or, missing `project.id`, exit 1, empty
- *      stdout, neither file written.
- *   M2 `wait` prints the LOCAL `project_id` and exits 0 once the federation
- *      status document reads ready for our project and the run's first
- *      task issue answers 2xx; past `--seconds` without that, exit 1 with
- *      empty stdout.
  *   M3 `close-run` against a 200-answering stub sends exactly three POSTs,
  *      in task-then-run order, each with the right path, Idempotency-Key,
  *      no `authorization` header, and a body of the given shape; the events
@@ -24,29 +17,23 @@
  *      (rows carry `code: 500`); a missing kata.json exits 0, sends
  *      nothing, and writes the one documented skip row.
  *
- * Legs, each naming the clause it proves: (a) [M1] spoke-config's two files,
- * byte for byte, and its refusal; (b) [M2] wait's bound/unbound exit and
- * stdout; (c) [M3] close-run's three POSTs and its three event rows;
- * (d) [M4] close-run's never-fails shape over a 500 stub and a missing
- * kata.json.
+ * Legs, each naming the clause it proves: (c) [M3] close-run's three POSTs
+ * and its three event rows; (d) [M4] close-run's never-fails shape over a
+ * 500 stub and a missing kata.json. The stub answers `{}`, so the rows'
+ * receipts (`event_id`, `event_at`) read null here and are not asserted.
  *
  * The CLI is driven as a child process, every spawn's `env` built by
  * `simEnv` from `./_helpers.mjs` (`test_sims_are_hermetic.mjs` names any
- * spawn whose `env` is not). `wait`'s `kata` is a `#!/bin/sh` stub this file
- * writes onto a `simEnv`-built `bin` directory; the admin host, the spoke's
- * issue host and (for M2) the stub `kata`'s document are a `node:http`
- * server on `127.0.0.1:0`, recording method/path/headers/body per request.
+ * spawn whose `env` is not). The admin host is a `node:http` server on
+ * `127.0.0.1:0`, recording method/path/headers/body per request.
  * Everything lives under `fs.mkdtempSync(path.join(os.tmpdir(), …))`.
  *
  * `execFileSync` is *synchronous*: it blocks this process's own event loop
  * until the child exits, so a stub `http` server hosted here could never
  * `accept()` a connection from a child that is itself waiting on that same
- * stub — a real deadlock, not a sandboxing artifact (confirmed by hand
- * against a scratch implementation of the CLI before this file was handed
- * in). Leg (a) — `spoke-config`, which touches no stub server — drives the
- * CLI with `execFileSync`; legs (b)-(d), which do, drive it with `spawn`
- * wrapped in a promise (`runCliAsync`) so this process's event loop stays
- * free to service the stub while the child runs.
+ * stub — a real deadlock. Every leg drives the CLI with `spawn` wrapped in
+ * a promise (`runCliAsync`) so this process's event loop stays free to
+ * service the stub while the child runs.
  *
  * Assumed of the code under test: the CLI's subcommands, flags and
  * exit/stdout/stderr shapes are exactly as the task's Context section spells
@@ -59,7 +46,7 @@ import fs from 'node:fs'
 import http from 'node:http'
 import os from 'node:os'
 import path from 'node:path'
-import { execFileSync, spawn } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 import { simEnv } from './_helpers.mjs'
@@ -68,22 +55,11 @@ const MODULE = fileURLToPath(new URL('../../factory/board.mjs', import.meta.url)
 
 const mkdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'board-exam-'))
 
-/** Runs the CLI as a child process synchronously; throws (with
- *  `.status`/`.stdout`) on a non-zero exit, exactly like `execFileSync`
- *  does. Only safe for a leg that touches no stub server of this process's
- *  own (see the header comment) — used by leg (a) alone. */
-const runCli = (args, { bin, home, timeout } = {}) =>
-  execFileSync(process.execPath, [MODULE, ...args], {
-    env: simEnv({ bin, home }),
-    encoding: 'utf8',
-    stdio: 'pipe',
-    timeout: timeout ?? 10000,
-  })
-
 /** Runs the CLI as a child process asynchronously, never throwing: resolves
  *  `{ stdout, stderr, status }` once the child exits (or is killed past
- *  `timeoutMs`). Used by every leg that also runs a stub `http` server in
- *  this process (see the header comment on why `execFileSync` cannot be). */
+ *  `timeoutMs`). Used by every leg, each of which also runs a stub `http`
+ *  server in this process (see the header comment on why `execFileSync`
+ *  cannot be). */
 const runCliAsync = (args, { bin, home, timeoutMs } = {}) =>
   new Promise((resolve) => {
     const child = spawn(process.execPath, [MODULE, ...args], { env: simEnv({ bin, home }) })
@@ -123,140 +99,6 @@ const closeStub = (stub) => new Promise((resolve) => stub.server.close(resolve))
 
 const readEventRows = (file) =>
   fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.length > 0).map((l) => JSON.parse(l))
-
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] `spoke-config`
-// ══════════════════════════════════════════════════════════════════════════
-
-{
-  const root = mkdir()
-  const kataJson = path.join(root, 'kata.json')
-  fs.writeFileSync(kataJson, JSON.stringify({ project: { name: 'o-r', id: 31 } }))
-  const engineDir = path.join(root, 'engine-dir')
-  const home = path.join(root, 'home')
-  fs.mkdirSync(home, { recursive: true })
-
-  const stdout = runCli(['spoke-config', '--kata-json', kataJson, '--engine-dir', engineDir, '--home', home])
-
-  assert.equal(stdout, 'o-r 31\n',
-    '(a) [M1] spoke-config over the o-r/31 kata.json prints exactly `o-r 31\\n`; got ' + JSON.stringify(stdout))
-
-  const expectedToml = [
-    'listen = "127.0.0.1:7777"',
-    '',
-    '[[daemon]]',
-    'name = "hub"',
-    'url = "https://kata-sync.int.exe.xyz"',
-    '',
-    '[[federation.project]]',
-    'hub = "hub"',
-    'spoke_project = "o-r"',
-    'hub_project = "o-r"',
-    'intent = "collaborate"',
-    'credential_provider = ["node", "' + engineDir + '/factory/kata-credential.mjs", "--kata-json", "' +
-      kataJson + '", "--admin-url", "https://kata.int.exe.xyz", "--state-dir", "' + home + '/kata/helper"]',
-  ].join('\n') + '\n'
-
-  const tomlPath = path.join(home, 'kata', 'config.toml')
-  assert.equal(fs.readFileSync(tomlPath, 'utf8'), expectedToml,
-    '(a) [M1] `<home>/kata/config.toml` is byte-equal to the twelve-line template filled in with the ' +
-    'defaults and the given name/id/engine-dir/kata-json/home')
-
-  const expectedWrapper = '#!/bin/sh\n' +
-    'exec env "KATA_HOME=' + home + '/kata" "KATA_SERVER=http://127.0.0.1:7777" "' + home + '/.local/bin/kata" "$@"\n'
-  const wrapperPath = path.join(home, '.local', 'bin', 'fleet-kata')
-  assert.equal(fs.readFileSync(wrapperPath, 'utf8'), expectedWrapper,
-    '(a) [M1] `<home>/.local/bin/fleet-kata` is byte-equal to the two-line wrapper, defaulting `--kata-url` ' +
-    'to `http://127.0.0.1:7777`')
-  assert.equal(fs.statSync(wrapperPath).mode & 0o777, 0o755,
-    '(a) [M1] `fleet-kata`\'s mode is 0755; got ' + (fs.statSync(wrapperPath).mode & 0o777).toString(8))
-
-  assert.ok(fs.statSync(path.join(home, 'kata', 'helper')).isDirectory(),
-    '(a) [M1] `<home>/kata/helper` was created as a directory')
-}
-
-{
-  const root = mkdir()
-  const kataJson = path.join(root, 'kata.json')
-  fs.writeFileSync(kataJson, JSON.stringify({ project: { name: 'o-r' } }))
-  const engineDir = path.join(root, 'engine-dir')
-  const home = path.join(root, 'home')
-  fs.mkdirSync(home, { recursive: true })
-
-  let error = null
-  try {
-    runCli(['spoke-config', '--kata-json', kataJson, '--engine-dir', engineDir, '--home', home])
-  } catch (e) {
-    error = e
-  }
-  assert.ok(error, '(a) [M1] spoke-config over a kata.json with no project.id throws (non-zero exit)')
-  assert.equal(error.status, 1,
-    '(a) [M1] its exit code is exactly 1; got ' + JSON.stringify(error.status))
-  assert.equal((error.stdout ?? '').toString(), '',
-    '(a) [M1] it prints nothing to stdout; got ' + JSON.stringify((error.stdout ?? '').toString()))
-  assert.equal(fs.existsSync(path.join(home, 'kata', 'config.toml')), false,
-    '(a) [M1] `config.toml` was not written')
-  assert.equal(fs.existsSync(path.join(home, '.local', 'bin', 'fleet-kata')), false,
-    '(a) [M1] `fleet-kata` was not written')
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] `wait`
-// ══════════════════════════════════════════════════════════════════════════
-
-{
-  const root = mkdir()
-  const bin = path.join(root, 'bin')
-  fs.mkdirSync(bin, { recursive: true })
-  const kataJson = path.join(root, 'kata.json')
-  fs.writeFileSync(kataJson, JSON.stringify({ tasks: { 1: { uid: 't1' } } }))
-
-  const boundDoc = '{"role":"spoke","provider_status":"ready","project":"o-r","project_id": 2}'
-  fs.writeFileSync(path.join(bin, 'kata'), '#!/bin/sh\ncat <<\'DOC\'\n' + boundDoc + '\nDOC\n')
-  fs.chmodSync(path.join(bin, 'kata'), 0o755)
-
-  const stub = await startStub(200)
-  try {
-    const result = await runCliAsync(
-      ['wait', '--project', 'o-r', '--kata-json', kataJson, '--kata-url', stub.url, '--seconds', '5'],
-      { bin, timeoutMs: 15000 },
-    )
-    assert.equal(result.status, 0,
-      '(b) [M2] wait over the bound document and a 200 issue answer exits 0; got status ' +
-      JSON.stringify(result.status) + ', stderr ' + JSON.stringify(result.stderr))
-    assert.equal(result.stdout, '2\n',
-      '(b) [M2] it prints exactly `2\\n`; got ' + JSON.stringify(result.stdout))
-  } finally {
-    await closeStub(stub)
-  }
-}
-
-{
-  const root = mkdir()
-  const bin = path.join(root, 'bin')
-  fs.mkdirSync(bin, { recursive: true })
-  const kataJson = path.join(root, 'kata.json')
-  fs.writeFileSync(kataJson, JSON.stringify({ tasks: { 1: { uid: 't1' } } }))
-
-  const unboundDoc = '{"role":"standalone","provider_status":"pending","project":"o-r"}'
-  fs.writeFileSync(path.join(bin, 'kata'), '#!/bin/sh\ncat <<\'DOC\'\n' + unboundDoc + '\nDOC\n')
-  fs.chmodSync(path.join(bin, 'kata'), 0o755)
-
-  const stub = await startStub(200)
-  try {
-    const result = await runCliAsync(
-      ['wait', '--project', 'o-r', '--kata-json', kataJson, '--kata-url', stub.url, '--seconds', '1'],
-      { bin, timeoutMs: 8000 },
-    )
-    assert.equal(result.status, 1,
-      '(b) [M2] wait over the unbound document with --seconds 1 exits 1; got status ' +
-      JSON.stringify(result.status))
-    assert.equal(result.stdout, '',
-      '(b) [M2] it prints nothing to stdout; got ' + JSON.stringify(result.stdout))
-  } finally {
-    await closeStub(stub)
-  }
-}
 
 // ══════════════════════════════════════════════════════════════════════════
 // (c) [M3] `close-run` against a 200-answering stub
@@ -421,119 +263,6 @@ const readEventRows = (file) =>
       'skipped:"no kata.json to read"}; got ' + JSON.stringify(rest))
   } finally {
     await closeStub(stub)
-  }
-}
-
-// ── #1222 pass two: "The boot's exam drives the probe to `alive`, and the
-//    boot hands its dead and misplaced pieces to their modules" — the fourth
-//    `board.mjs` subcommand, `install`, which moves the fetch/check/extract/
-//    install `board_up` did over `curl`+`sha256sum`+`tar` in shell into this
-//    module (`factory/boot.sh` afterward carries neither `sha256sum` nor
-//    `KATA_ASSET`). Driven with `runCliAsync` (it touches a stub server of
-//    its own) against a `node:http` stub on `127.0.0.1:0` serving
-//    `/SHA256SUMS` and `/kata_0.18.0_linux_amd64.tar.gz`, the archive a
-//    fixture this leg builds itself with the real `tar` binary (on
-//    `simEnv`'s own `PATH`, beside `git`) over a `mkdtemp` directory holding
-//    one file `kata`. `spawnSync`/`node:crypto` are pulled in with a dynamic
-//    `import()` so the file's static imports above stay untouched.
-// ────────────────────────────────────────────────────────────────────────
-
-// ── (f) [M4] `install` over a matching digest ───────────────────────────
-{
-  const { spawnSync } = await import('node:child_process')
-  const crypto = await import('node:crypto')
-
-  const root = mkdir()
-  const work = path.join(root, 'work')
-  fs.mkdirSync(work, { recursive: true })
-
-  const memberBytes = Buffer.from('#!/bin/sh\necho kata-fixture-binary\n')
-  fs.writeFileSync(path.join(work, 'kata'), memberBytes)
-  const archivePath = path.join(work, 'kata_0.18.0_linux_amd64.tar.gz')
-  const tarRes = spawnSync('tar', ['-czf', archivePath, '-C', work, 'kata'], { env: simEnv({}), encoding: 'utf8' })
-  assert.equal(tarRes.status, 0,
-    "(f) [M4] the exam's own fixture archive builds with the real tar binary — got status " +
-    JSON.stringify(tarRes.status) + ', stderr ' + JSON.stringify(tarRes.stderr))
-  const archiveBytes = fs.readFileSync(archivePath)
-  const digest = crypto.createHash('sha256').update(archiveBytes).digest('hex')
-  const sumsText = digest + '  kata_0.18.0_linux_amd64.tar.gz\n'
-
-  const server = http.createServer((req, res) => {
-    if (req.url === '/SHA256SUMS') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(sumsText); return }
-    if (req.url === '/kata_0.18.0_linux_amd64.tar.gz') { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(archiveBytes); return }
-    res.writeHead(404); res.end()
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const releaseBase = `http://127.0.0.1:${server.address().port}/`
-
-  try {
-    const home = path.join(root, 'home')
-    fs.mkdirSync(home, { recursive: true })
-    const kataPath = path.join(home, '.local', 'bin', 'kata')
-
-    const result = await runCliAsync(
-      ['install', '--version', '0.18.0', '--release-base', releaseBase, '--home', home],
-      { timeoutMs: 15000 },
-    )
-    assert.equal(result.status, 0,
-      '(f) [M4] install over a matching digest exits 0; got status ' + JSON.stringify(result.status) +
-      ', stderr ' + JSON.stringify(result.stderr))
-    assert.equal(result.stdout, kataPath + '\n',
-      '(f) [M4] it prints exactly <H>/.local/bin/kata plus a newline; got ' + JSON.stringify(result.stdout))
-    assert.equal(fs.statSync(kataPath).mode & 0o777, 0o755,
-      '(f) [M4] the installed file\'s mode is 0755; got ' + (fs.statSync(kataPath).mode & 0o777).toString(8))
-    assert.deepEqual(fs.readFileSync(kataPath), memberBytes,
-      "(f) [M4] the installed file's bytes equal the archive member kata's bytes")
-  } finally {
-    await new Promise((resolve) => server.close(resolve))
-  }
-}
-
-// ── (g) [M4] `install` over an altered digest ───────────────────────────
-{
-  const { spawnSync } = await import('node:child_process')
-
-  const root = mkdir()
-  const work = path.join(root, 'work')
-  fs.mkdirSync(work, { recursive: true })
-
-  const memberBytes = Buffer.from('#!/bin/sh\necho kata-fixture-binary\n')
-  fs.writeFileSync(path.join(work, 'kata'), memberBytes)
-  const archivePath = path.join(work, 'kata_0.18.0_linux_amd64.tar.gz')
-  const tarRes = spawnSync('tar', ['-czf', archivePath, '-C', work, 'kata'], { env: simEnv({}), encoding: 'utf8' })
-  assert.equal(tarRes.status, 0,
-    "(g) [M4] the exam's own fixture archive builds with the real tar binary — got status " +
-    JSON.stringify(tarRes.status) + ', stderr ' + JSON.stringify(tarRes.stderr))
-  const archiveBytes = fs.readFileSync(archivePath)
-  // A digest that does not match the archive's real sha256 — sixty-four
-  // zeros never equals a real sha256 hex digest.
-  const badSumsText = '0'.repeat(64) + '  kata_0.18.0_linux_amd64.tar.gz\n'
-
-  const server = http.createServer((req, res) => {
-    if (req.url === '/SHA256SUMS') { res.writeHead(200, { 'content-type': 'text/plain' }); res.end(badSumsText); return }
-    if (req.url === '/kata_0.18.0_linux_amd64.tar.gz') { res.writeHead(200, { 'content-type': 'application/octet-stream' }); res.end(archiveBytes); return }
-    res.writeHead(404); res.end()
-  })
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const releaseBase = `http://127.0.0.1:${server.address().port}/`
-
-  try {
-    const home = path.join(root, 'home')
-    fs.mkdirSync(home, { recursive: true })
-    const kataPath = path.join(home, '.local', 'bin', 'kata')
-
-    const result = await runCliAsync(
-      ['install', '--version', '0.18.0', '--release-base', releaseBase, '--home', home],
-      { timeoutMs: 15000 },
-    )
-    assert.equal(result.status, 1,
-      '(g) [M4] install over an altered SHA256SUMS digest exits 1; got status ' + JSON.stringify(result.status))
-    assert.equal(result.stdout, '',
-      '(g) [M4] it prints nothing on stdout; got ' + JSON.stringify(result.stdout))
-    assert.equal(fs.existsSync(kataPath), false,
-      '(g) [M4] it leaves no file at <H>/.local/bin/kata')
-  } finally {
-    await new Promise((resolve) => server.close(resolve))
   }
 }
 

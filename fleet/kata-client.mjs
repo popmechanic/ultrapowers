@@ -309,9 +309,19 @@ export const makeKataClient = ({ transport, actor }) => {
       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/metadata',
                  body: { actor, patch }, headers: { 'If-Match': '"rev-' + revision + '"' } }),
 
-    comment: (projectId, uid, body) =>
-      mutation({ method: 'POST', path: issuePath(projectId, uid) + '/comments',
-                 body: { actor, body } }),
+    // A comment answers the comment kata stored, not the issue, so this reads
+    // its receipt — `comment.uid` and `comment.created_at`, each null when
+    // absent — rather than the issue projection every other mutation returns.
+    // Kata keeps a comment's `Idempotency-Key` for 7 days, so a retried post
+    // under the same key is the same comment.
+    comment: async (projectId, uid, body, { idempotencyKey } = {}) => {
+      const json = await send({ method: 'POST', path: issuePath(projectId, uid) + '/comments',
+                                body: { actor, body },
+                                headers: idempotencyKey === undefined
+                                  ? {} : { 'Idempotency-Key': String(idempotencyKey) } })
+      const c = (json && json.comment) || {}
+      return { comment_uid: c.uid ?? null, created_at: c.created_at ?? null }
+    },
 
     // One label onto an issue's own set. Kata merges rather than appends, so the
     // same label twice is the same label once — which is why this sends exactly

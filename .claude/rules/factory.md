@@ -42,17 +42,15 @@ keeps the name `factory/`. Models never run git.
 
 ## Kata (the board)
 
-- `board.mjs` owns the board's lifecycle on the sandbox (spoke config, bind, run close; `boot.sh` only calls its CLI) and
-  never fails a run; hub writes are never the run's failure, and the boot's ping is the one
-  gate. `kata-credential.mjs` is the spoke's `credential_provider` helper (#983).
-- The board is a Kata 0.18 spoke per sandbox, syncing through `kata-sync.int.exe.xyz` (the
-  spoke's own bearer passes through untouched); the helper administers through
-  `kata.int.exe.xyz`, where the edge injects the hub's. The record is rows in `events.jsonl`.
+- The board is the Kata 0.18 hub, written directly through `kata.int.exe.xyz`, where the edge
+  injects the hub's bearer; the sandbox runs no kata daemon and no credential helper. The boot
+  writes the plan commit's `kata.json` to `$FLEET_HOME/plans/<run>.kata.json` and, when it is
+  there, passes the engine `--kata-url`, `--kata-json` and `--kata-actor`. The record is rows in
+  `events.jsonl`.
+- `board.mjs` owns the run's close and marks (`boot.sh` only calls its CLI) and never fails a
+  run; hub writes are never the run's failure, and the boot's ping is the one gate.
 - **Seams:** every `*.int.exe.xyz` host is `https://` (an http 301, followed, turns a POST into
-  a GET). A `done` close needs a ≥40-character message. `federation status --json` has no
-  `status` cell: bound reads `"role":"spoke"` + `"provider_status":"ready"`, unbound
-  `standalone` + `pending`; a helper exiting non-zero is logged as
-  `category=hub_unavailable status=0`, which looks like a network fault and isn't.
+  a GET). A `done` close needs a ≥40-character message.
 - A byte-identical plan relaunched while its twin is live collides on the board (412, #1308);
   serialize them.
 

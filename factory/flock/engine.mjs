@@ -4,8 +4,8 @@
 //
 //   node factory/flock/engine.mjs --plan <plan.md> --target <dir> --base <sha> --run-dir <dir>
 //        [--builder sdk|scripted:<json>] [--clock 13800] [--quiet 45] [--stall-minutes 20]
-//        [--kata-url <url> --kata-project <id> --kata-json <record> [--kata-actor engine:<run>]]
-//   (with all of --kata-url, --kata-project and --kata-json, and a record that reads, the board's
+//        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
+//   (with both --kata-url and --kata-json, and a record that reads, the board's
 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
 //    flight; without them the Flock keeps its plain stand-in board and sends nothing.)
 //
@@ -51,10 +51,11 @@ const TARGET = path.resolve(need('target'))
 const BASE_SHA = need('base')
 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 const RUN_DIR = path.resolve(need('run-dir'))
-// --kata-url / --kata-project / --kata-json / --kata-actor: the boot passes them to either engine.
-// With the first three and a record that reads, each board move is mirrored onto the task's Kata
-// issue as a comment (factory/flock/kata_mirror.mjs), never awaited, never failing the run; each
-// attempt is a `kata:mirror` event row. Otherwise the board is the plain stand-in.
+// --kata-url / --kata-json / --kata-actor: the boot passes them to either engine. With the first
+// two and a record that reads, each board move is mirrored straight onto the task's issue on the
+// hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
+// never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
+// comment uid. Otherwise the board is the plain stand-in.
 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 const BUILDER = arg('builder', 'sdk')
@@ -303,9 +304,9 @@ const known = {}   // per builder: the paths its copy holds (openBuilder seeds e
 // ── the board: the stand-in; mirrored onto Kata when the boot passes a record. ──
 const BOARD = 'standin'
 const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT) })
-const KATA_URL = arg('kata-url'), KATA_PROJECT = arg('kata-project'), KATA_JSON = arg('kata-json')
+const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
 let kataRecord = null
-if (KATA_URL && KATA_PROJECT && KATA_JSON) {
+if (KATA_URL && KATA_JSON) {
   try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
 }
 // posts queued or in flight, so the engine can let them land (bounded) before it exits
@@ -319,7 +320,8 @@ if (kataRecord) {
   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
-  mirrorBoard(board, { kata, projectId: KATA_PROJECT, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run && kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
+  // the record's project.id is the hub's own project id: posts go straight to the hub
+  mirrorBoard(board, { kata, projectId: kataRecord.project && kataRecord.project.id, run: W.name, tasks: (kataRecord && kataRecord.tasks) || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run && kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
 }
 
 // ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
