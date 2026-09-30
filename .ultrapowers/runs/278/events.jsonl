@@ -714,3 +714,9 @@
 {"t":856614,"kind":"tool","agent":"G","task":"2","tool":"Edit","target":"/home/exedev/run/work/agents/G/fleet/tests/test_launch_duplicate.mjs","ts":"2026-09-30T01:10:50.396Z"}
 {"t":856780,"kind":"edit","agent":"G","task":"2","tool":"Edit","path":"fleet/tests/test_launch_duplicate.mjs","how":"edit-call","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:10:50.562Z"}
 {"t":857222,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; node test_launch_duplicate.mjs 2>&1 | tail -8","ts":"2026-09-30T01:10:51.004Z"}
+{"t":871781,"kind":"tool","agent":"G","task":"2","tool":"Write","target":"/home/exedev/run/work/agents/G/fleet/tests/test_setup_script_evidence.mjs","ts":"2026-09-30T01:11:05.563Z"}
+{"t":871931,"kind":"edit","agent":"G","task":"2","tool":"Write","path":"fleet/tests/test_setup_script_evidence.mjs","how":"new-file","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:11:05.713Z"}
+{"t":872338,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; node test_setup_script_evidence.mjs 2>&1 | tail -5","ts":"2026-09-30T01:11:06.120Z"}
+{"t":926925,"kind":"tool","agent":"G","task":"2","tool":"Write","target":"/home/exedev/run/work/agents/G/fleet/tests/test_launch_evidence.mjs","ts":"2026-09-30T01:12:00.707Z"}
+{"t":927064,"kind":"edit","agent":"G","task":"2","tool":"Write","path":"fleet/tests/test_launch_evidence.mjs","how":"new-file","peer_lines":0,"peers":[],"peer_lines_text":0,"outside":false,"ts":"2026-09-30T01:12:00.846Z"}
+{"t":927314,"kind":"tool","agent":"G","task":"2","tool":"Bash","target":"cd /home/exedev/run/work/agents/G/fleet/tests; node test_launch_evidence.mjs 2>&1 | tail -15","ts":"2026-09-30T01:12:01.096Z"}
