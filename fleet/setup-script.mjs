@@ -97,6 +97,7 @@ export function renderSetupScript({ run, evidence, bootstrap, unit }) {
 set -euo pipefail
 RUN=${run}
 exec >>"$HOME/fleet-setup.log" 2>&1
+stamp() { printf '%s setup: %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$1"; }
 LIB="\${FLEET_LIB_DIR:-/usr/local/lib/fleet}"
 BUS="\${FLEET_USER_BUS:-/run/user/$(id -u)/bus}"
 BUS_WAIT="\${FLEET_BUS_WAIT_SECONDS:-60}"
@@ -113,6 +114,7 @@ cd "$work"
 # The platform's setup unit starts ahead of user@.service, so the user bus may
 # not exist yet and a --user call would fail with "Failed to connect to bus".
 # The deadline is in seconds of wall clock, not a count of tries.
+stamp bus
 deadline=$(( $(date +%s%3N) + BUS_WAIT * 1000 ))
 while [ ! -S "$BUS" ]; do
   if [ "$(date +%s%3N)" -ge "$deadline" ]; then
@@ -122,28 +124,34 @@ while [ ! -S "$BUS" ]; do
   sleep 0.2
 done
 
+# The three fetches are latency-bound, so all start at once; each is its own
+# job, waited on by its own pid, so a failed curl or a bad sum still stops the
+# script under set -e.
+stamp fetch
 # node: nodejs.org only, and only once the release's own sums agree.
-curl -fsSL -o SHASUMS256.txt ${SHASUMS_URL}
+( curl -fsSL -o SHASUMS256.txt ${SHASUMS_URL}
 curl -fsSL -o ${NODE_TARBALL} ${NODE_URL}
 grep " ${NODE_TARBALL}$" SHASUMS256.txt | sha256sum -c -
-sudo -n tar -xJf ${NODE_TARBALL} -C /usr/local --strip-components=1
-
+sudo -n tar -xJf ${NODE_TARBALL} -C /usr/local --strip-components=1 ) & node_pid=$!
 # bun: the pinned release, with bunx beside it.
-curl -fsSL -o bun.zip ${BUN_URL}
+( curl -fsSL -o bun.zip ${BUN_URL}
 unzip -q -o bun.zip
 sudo -n install -m 0755 bun-linux-x64/bun /usr/local/bin/bun
-sudo -n ln -sf bun /usr/local/bin/bunx
-
+sudo -n ln -sf bun /usr/local/bin/bunx ) & bun_pid=$!
 # celld: the pinned release, against the digest the plugin records.
-curl -fsSL -o ${CELLD_ASSET} ${CELLD_URL}
+( curl -fsSL -o ${CELLD_ASSET} ${CELLD_URL}
 echo '${CELLD_SHA256}  ${CELLD_ASSET}' | sha256sum -c -
 gzip -dc ${CELLD_ASSET} >celld
-sudo -n install -m 0755 celld /usr/local/bin/celld
+sudo -n install -m 0755 celld /usr/local/bin/celld ) & celld_pid=$!
+wait "$node_pid"
+wait "$bun_pid"
+wait "$celld_pid"
 
-# pytest: python3 here is externally managed, so apt is the only sane path.
-sudo -n apt-get update -qq
-sudo -n apt-get install -y --no-install-recommends python3-pytest python3-pytest-xdist
+# pytest: the image's uv, pinned to exactly what noble's packages shipped.
+stamp pytest
+sudo -n uv pip install --system --break-system-packages pytest==7.4.4 pytest-xdist==3.4.0
 
+stamp files
 # Quoted heredocs: both files land as handed in, expanding nothing.
 cat <<'${BOOTSTRAP_TAG}' >bootstrap.sh
 ${heredocBody(BOOTSTRAP_TAG, bootstrap)}${BOOTSTRAP_TAG}
@@ -157,14 +165,16 @@ printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions
 git config --global user.name fleet
 git config --global user.email fleet@exe.dev
 
-
+stamp daemon-reload
 systemctl --user daemon-reload
 # Credentials reach this box by the policy tag:fleet, with no documented order
 # against this script; wait, bounded, until Reflection lists claude-max.
+stamp credentials
 for i in $(seq 1 30); do
   curl -fsS https://reflection.int.exe.xyz/integrations | grep -q '"claude-max"' && break
   sleep 2
 done
+stamp start
 systemctl --user start "fleet-run@$RUN.service"
 sudo -n rm -f -- "$0"
 `

@@ -161,6 +161,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(home, { recursive: true })
   fs.mkdirSync(bin, { recursive: true })
   writeGitConfig(home)
+  fs.writeFileSync(path.join(home, 'fleet-setup.log'), 'setup: the sim\'s one setup line\n')
 
   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
   wireEvidence(home, evidenceDir)
@@ -298,10 +299,12 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     [
       `runs/o-r/${runN}/engine.log`,
       `runs/o-r/${runN}/events.jsonl`,
+      `runs/o-r/${runN}/fleet-boot.log`,
+      `runs/o-r/${runN}/fleet-setup.log`,
       `runs/o-r/${runN}/plan.md`,
       `runs/o-r/${runN}/status.json`
     ],
-    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
+    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
