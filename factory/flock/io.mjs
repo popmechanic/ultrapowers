@@ -8,6 +8,15 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 
+// factory/policy.json's `flock` cells; undefined when the file is unreadable, so every reader takes its default
+export const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
+// One time limit per fact and for the plan's setup, read by the run and by its catch-up alike (#1448):
+// a fact that timed out red in the run cannot pass at catch-up on a looser limit.
+export const EXAM_MS = {
+  fact: (POLICY_FLOCK?.exam?.fact_timeout_seconds ?? 60) * 1000,
+  setup: (POLICY_FLOCK?.exam?.setup_timeout_seconds ?? 300) * 1000,
+}
+
 // the engine's commits and the catch-up's are authored `flock`
 const IDENTITY = ['-c', 'user.name=flock', '-c', 'user.email=flock@ultrapowers.invalid']
 

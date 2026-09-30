@@ -12,7 +12,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { workloadFromPlan } from './plan.mjs'
 import { remapProvenance } from './provenance.mjs'
-import { gitIn, utf8, writeFiles, startWeave } from './io.mjs'
+import { gitIn, utf8, writeFiles, startWeave, EXAM_MS } from './io.mjs'
 
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined }
 const PLAN = arg('--plan'), T = arg('--target'), BASE = arg('--base'), ONTO = arg('--onto'), RUN_DIR = arg('--run-dir')
@@ -90,8 +90,9 @@ const exam = (cmd, timeout) => {
   const r = spawnSync(cmd[0], cmd.slice(1), { cwd: T, env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024 })
   if (r.status !== 0) back(`${cmd.join(' ')} exited ${r.status ?? r.signal}: ${(r.stdout + r.stderr).slice(-400)}`)
 }
-if (work.setup) exam(work.setup, 1_800_000)
-for (const t of work.tasks) for (const f of t.facts) exam(f, 120_000)
+// the run's own limits (EXAM_MS), so a fact red on time in the run is red here too
+if (work.setup) exam(work.setup, EXAM_MS.setup)
+for (const t of work.tasks) for (const f of t.facts) exam(f, EXAM_MS.fact)
 if (work.check) exam(work.check, work.checkTimeoutMs ?? 120_000)
 // The exams may leave artifacts; the commit is what the boot pushes.
 if (out(['rev-parse', 'HEAD']) !== head) back('an exam moved HEAD')

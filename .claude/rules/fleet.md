@@ -70,9 +70,10 @@ Read a past run at
 ## Tests
 
 `ls fleet/tests/test_*.mjs` is the list: the launcher, doctor, token and board-read sims, the
-factory sims (`test_factory_*`), the Jev client, and the hermeticity guard. `_helpers.mjs`,
-`_boot_helpers.mjs` and `_lobby_helpers.mjs` are the rig; `probe_*.mjs` are live probes run by
-hand (see `PROBES.md`).
+factory sims (`test_factory_*`), the Flock's scripted runs (`test_flock_*`), the Jev client, and
+the hermeticity guard. `_helpers.mjs`, `_boot_helpers.mjs`, `_lobby_helpers.mjs` and
+`_flock_helpers.mjs` are the rig; `probe_*.mjs` are live probes and the Bun `*_probe.mjs` files
+are run by hand (see `PROBES.md`).
 
 ## Traps
 

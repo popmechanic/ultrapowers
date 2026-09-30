@@ -24,6 +24,14 @@
     }
   },
   "flock": {
+    "exam": {
+      "fact_timeout_seconds": 60,
+      "setup_timeout_seconds": 300,
+      "n": 0,
+      "window": "none",
+      "basis": "the engine's limits before #1448; the catch-up reads the same cells, so a caught-up run is examined as strictly as the run",
+      "rollback": "none: catch-up's former 120 / 1800 let a fact red on time in the run pass at publish (#1448)"
+    },
     "pulls": {
       "mode": "narrow",
       "n": 1,
