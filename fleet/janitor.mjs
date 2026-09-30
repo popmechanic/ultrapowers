@@ -23,8 +23,11 @@ import { fileURLToPath } from 'node:url'
 import { projectNamed, runIssueOf } from './kata-client.mjs'
 import {
   DEFAULT_CONFIG_PATH,
+  PLAN_FILE,
   Refusal,
   defaultExec,
+  evidenceUrlFor,
+  git,
   hubFromEnv,
   integrationBranchFor,
   isFullSha,
@@ -841,6 +844,100 @@ export async function janitor ({
   return {
     dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs, evidence: evidenceRepo
   }
+}
+
+/**
+ * The rows of the janitor's `runs` list that carry this launch's plan on this
+ * launch's target and whose record does not say the run ended (#1036). The
+ * plan's identity is its text's blob sha: the launcher hashes `planText` with
+ * `git hash-object --stdin` (no `-w` — nothing is written before the refusal
+ * is decided), and reads each candidate row's `runs/<slug>/<N>/plan.md` blob
+ * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
+ * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
+ * fetch or a `rev-parse` that fails means the branch is gone — the run is
+ * publishing or has published, and no engine reads its task issues any more —
+ * so that row is not a duplicate.
+ */
+async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
+  const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
+  if (candidates.length === 0) return []
+  const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
+  if (hashed.code !== 0) return []
+  const wanted = String(hashed.stdout ?? '').trim()
+  const found = []
+  for (const row of candidates) {
+    const branch = liveBranchFor(target, row.run)
+    const fetched = await git(exec, repoDir, ['fetch', evidenceUrlFor(evidence), `refs/heads/${branch}`])
+    if (fetched.code !== 0) continue
+    const planFile = `${runFolderFor(target, row.run)}/${PLAN_FILE}`
+    const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `FETCH_HEAD:${planFile}`])
+    if (blob.code !== 0) continue
+    if (String(blob.stdout ?? '').trim() === wanted) found.push({ run: row.run, vm: row.vm })
+  }
+  return found
+}
+
+/**
+ * A launch's reap and duplicate check (#1437): `fleet/launch.mjs` calls it
+ * after the hub's ping and before the run number is read. Answers
+ * `{ reaped, reapError, again }` — the VMs this pass removed, why the pass
+ * failed (or null), and the live runs of this plan that `again` let through —
+ * or throws the launcher's own refusal.
+ *
+ * Nothing schedules the janitor, so every launch is where it runs — before
+ * the run number is read, so the fleet a launch joins is already clear of the
+ * VMs of runs that finished over an hour ago. `hub` is the client the launch
+ * built, so the janitor asks the hub the launch already reached — or, with no
+ * hub, reads the target. A reap that fails is reported and not fatal: the run
+ * being launched is worth more than the ballast the janitor came for.
+ */
+export async function preflight ({
+  exec = defaultExec, now = () => new Date(), hub, evidence, repoDir, target, planText, again = false
+}) {
+  const reaped = []
+  let reapError = null
+  let fleetRuns = null
+  try {
+    const reap = await janitor({ argv: [], exec, now, kata: hub, evidence })
+    fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
+    for (const action of reap.actions) {
+      if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
+    }
+  } catch (error) {
+    reapError = String(error?.message ?? error) || 'launch: the reap failed'
+  }
+
+  // A reap that failed leaves no fleet list for the duplicate guard (#1036) to
+  // read — refuse rather than launch with the guard silently skipped, unless
+  // the operator passed `--again` to launch without it.
+  if (fleetRuns === null && again !== true) {
+    throw new Refusal(
+      `launch: the reap did not answer, so the duplicate guard (#1036) cannot run — ${reapError}; ` +
+      'pass --again to launch without it'
+    )
+  }
+
+  // ── The duplicate check (#1036). A plan that is already live on this target
+  //    is refused here, before the run number is read and before anything is
+  //    pushed: a second launch of the same plan re-answers the live run's task
+  //    issues on the hub and bumps their revision, and the first run dies at
+  //    Setup on `kata-revision-mismatch`. "The same plan" is the plan text's
+  //    git blob sha — the identity the hub's `Idempotency-Key` is built from —
+  //    never the comment's `plan=` commit, which carries the run number in its
+  //    subject and so differs on every launch. A row whose record says the run
+  //    ended never refuses, however recently; a row with no record yet counts
+  //    as live. When the reap itself failed there is no list and no refusal.
+  const duplicates = fleetRuns === null
+    ? []
+    : await liveDuplicatesOf({ exec, repoDir, target, evidence, planText, runs: fleetRuns })
+  if (duplicates.length > 0 && again !== true) {
+    throw new Refusal(duplicates.map((d) =>
+      `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
+      'pass --again to launch it again on purpose (a byte-identical replay re-answers the live ' +
+      "run's task issues on the hub and bumps their revision)"
+    ).join('\n'))
+  }
+  return { reaped, reapError, again: duplicates }
 }
 
 const renderAction = (a, dryRun) =>

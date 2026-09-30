@@ -160,6 +160,9 @@ export const runFolderFor = (target, run) => `runs/${targetSlug(target)}/${run}`
 export const liveBranchFor = (target, run) => `live/${targetSlug(target)}/run-${run}`
 export const runTagFor = (target, run) => `${targetSlug(target)}/run-${run}`
 export const evidenceUrlFor = (repo) => `https://github.com/${repo}.git`
+/** Where the plan lands in a run's folder: the launcher commits it there and
+ *  the janitor's duplicate check reads it back. */
+export const PLAN_FILE = 'plan.md'
 
 const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 

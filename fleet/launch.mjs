@@ -26,6 +26,7 @@ import {
   FLEET_DEFAULTS,
   FLEET_TAG,
   LobbyError,
+  PLAN_FILE,
   Refusal,
   buildComment,
   defaultExec,
@@ -61,7 +62,7 @@ import { fleetConfigAccount } from './doctor.mjs'
 // config names one, and the name rule: the credential tool's own, so the
 // launcher refuses a name it would refuse, before anything is executed.
 import { ACCOUNT_RE, DEFAULT_ACCOUNT } from './claude-token.mjs'
-import { janitor } from './janitor.mjs'
+import { preflight } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
 import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
 import { verifyPlanPins } from './plan-pins.mjs'
@@ -80,9 +81,6 @@ export const usage = () => USAGE
  *  attachment `tag:fleet` is what grants a fleet VM its credentials. */
 const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
 
-/** Where the plan lands in the run's folder (`runs/<slug>/<N>/`) of the
- *  commit the launcher pushes to the evidence repository. */
-const PLAN_FILE = 'plan.md'
 /** The plan's gate record, committed beside it: the laptop's authoring census
  *  (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
  *  run's tag. No engine reads it; the census does. */
@@ -425,60 +423,10 @@ function usageRefusal (account, label, window) {
 }
 
 /**
- * The rows of the janitor's `runs` list that carry this launch's plan on this
- * launch's target and whose record does not say the run ended (#1036). The
- * plan's identity is its text's blob sha: the launcher hashes `planText` with
- * `git hash-object --stdin` (no `-w` — nothing is written before the refusal
- * is decided), and reads each candidate row's `runs/<slug>/<N>/plan.md` blob
- * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
- * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
- * fetch or a `rev-parse` that fails means the branch is gone — the run is
- * publishing or has published, and no engine reads its task issues any more —
- * so that row is not a duplicate.
+ * The launch line's own shape, refused before the plan is read and before
+ * anything executes. Answers the parsed flags and the plan path as given.
  */
-async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
-  const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
-  if (candidates.length === 0) return []
-  const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
-  if (hashed.code !== 0) return []
-  const wanted = String(hashed.stdout ?? '').trim()
-  const found = []
-  for (const row of candidates) {
-    const branch = liveBranchFor(target, row.run)
-    const fetched = await git(exec, repoDir, ['fetch', evidenceUrlFor(evidence), `refs/heads/${branch}`])
-    if (fetched.code !== 0) continue
-    const planFile = `${runFolderFor(target, row.run)}/${PLAN_FILE}`
-    const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `FETCH_HEAD:${planFile}`])
-    if (blob.code !== 0) continue
-    if (String(blob.stdout ?? '').trim() === wanted) found.push({ run: row.run, vm: row.vm })
-  }
-  return found
-}
-
-/**
- * Everything the launcher does, with the exec seam, the clock, the sleep and
- * the name's random half injected. Answers the launched run's record.
- *
- * The body parks the directory it fetched the compiler into on `held`, so the
- * temp tree is removed however the launch ends — the resolved run, a refusal
- * halfway down, or a throw from the lobby.
- */
-export async function launch (params) {
-  const held = { compilerDir: null }
-  try {
-    return await launchBody({ ...params, held })
-  } finally {
-    if (held.compilerDir !== null) {
-      await fsp.rm(held.compilerDir, { recursive: true, force: true })
-    }
-  }
-}
-
-async function launchBody ({
-  argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
-  refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
-  kata, kataEnvPath = defaultKataEnvPath(), held
-}) {
+function validateArgs (argv) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
   // `parseArgs` keeps unknown keys for each CLI to refuse for itself, so any
   // flag this launcher does not read — a typo, or one the retired factory
@@ -488,9 +436,7 @@ async function launchBody ({
     if (!LAUNCH_FLAGS.includes(name)) throw new Refusal(`launch: unknown flag --${name}`)
   }
 
-  // ── Local validation. Nothing has been executed at this point, and nothing
-  //    will be until every one of these passes. ──────────────────────────────
-  let planPath = positional[0]
+  const planPath = positional[0]
   if (!planPath) throw new Refusal(`launch: a plan path is required\n${usage()}`)
   const target = opts.target
   if (!isSafeTarget(target)) {
@@ -525,6 +471,196 @@ async function launchBody ({
       `launch: --account must be a name matching ${ACCOUNT_RE.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`
     )
   }
+  return { opts, planPath }
+}
+
+/**
+ * The launch checkout is whole, names the target, and has `--base`. A shallow
+ * checkout is refused first, before anything is read off the origin: its
+ * history is truncated, so no `merge-base` it could answer says anything about
+ * where `--base` sits. The launcher does not deepen it — an operator's clone
+ * is theirs, and a launch is not the place to rewrite it.
+ */
+async function checkCheckout ({ exec, repoDir, target, base }) {
+  const shallow = await git(exec, repoDir, ['rev-parse', '--is-shallow-repository'])
+  if (shallow.code === 0 && String(shallow.stdout ?? '').trim() === 'true') {
+    throw new Refusal(
+      `launch: --repo ${repoDir} ${SHALLOW_FIX}: a truncated history cannot answer whether --base ${base} is on ${target}'s default branch`
+    )
+  }
+
+  const originUrl = await readOriginUrl({ exec, repoDir })
+  const originTarget = targetOfOriginUrl(originUrl)
+  if (originTarget !== target) {
+    throw new Refusal(
+      `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
+    )
+  }
+
+  const baseCheck = await git(exec, repoDir, ['rev-parse', '--verify', `${base}^{commit}`])
+  if (baseCheck.code !== 0) {
+    throw new Refusal(
+      `launch: ${repoDir} has no commit ${base}:\n${output(baseCheck)}`
+    )
+  }
+}
+
+/**
+ * The base is on the target's default branch, or it is a refusal. The origin
+ * names its own default branch and that branch's tip in one
+ * `ls-remote --symref`; the fetch brings the tip's history into this checkout,
+ * and `merge-base --is-ancestor` answers the question. Every one of the three
+ * is a read of the target, and the only ref any of them writes is this
+ * checkout's `refs/remotes/origin/<default>`: `HEAD`, the local branches and
+ * the working tree are the operator's and stay as they were.
+ */
+async function checkBaseOnDefault ({ exec, repoDir, target, base }) {
+  const origin = await readDefaultBranch({ exec, repoDir })
+  const fetched = await git(exec, repoDir, ['fetch', 'origin', origin.branch])
+  // A fetch that answered non-zero is not itself the refusal — a checkout that
+  // already has the tip needs nothing from it. What is fatal is not having the
+  // tip afterward, because then no ancestry answer means anything.
+  const hasTip = await git(exec, repoDir, ['cat-file', '-e', `${origin.tip}^{commit}`])
+  if (hasTip.code !== 0) {
+    throw new Refusal(
+      `launch: ${repoDir} does not have ${target}'s ${origin.branch} tip ${origin.tip} — git fetch origin ${origin.branch} answered exit ${fetched.code}:\n${output(fetched)}`
+    )
+  }
+  // git refreshes `refs/remotes/origin/<default>` on a fetch only when the line
+  // named a configured remote and its refspec covers the branch; the launch's
+  // one effect on the checkout should not depend on either, so the ref is
+  // pointed at the tip the fetch just brought.
+  if (fetched.code === 0) {
+    await git(exec, repoDir, ['update-ref', `refs/remotes/origin/${origin.branch}`, origin.tip])
+  }
+  const ancestry = await git(exec, repoDir, ['merge-base', '--is-ancestor', base, origin.tip])
+  if (ancestry.code !== 0) {
+    throw new Refusal(
+      `launch: --base ${base} is not on ${target}'s ${origin.branch} (tip ${origin.tip}) — ${BASE_OFF_MAIN_FIX}`
+    )
+  }
+}
+
+/**
+ * What the parse says the fleet cannot run, refused as soon as a real
+ * `compiled` object exists and before the credential, the push and the verb:
+ * a publishing plan with no credential at the edge, a publishing plan whose
+ * `wrangler.jsonc` declares `assets`, a probe runner the sandbox lacks, and a
+ * box the pool cannot hold. `sizing` is `sizeFromCompile`'s second argument.
+ */
+async function refuseUnlaunchable ({ exec, repoDir, base, compiled, integrations, sizing }) {
+  // The credential a publishing plan needs at the edge (a plan with no
+  // `**Publish:**` line, the common case, carries no `publish` key and is
+  // never refused here), against the `integrations` this launch already read
+  // for the GitHub check.
+  const publishRefused = publishRefusal({ compiled, integrations })
+  if (publishRefused !== null) {
+    throw new Refusal(publishRefused)
+  }
+  // #1313: exe.dev's edge replaces `Authorization`, so wrangler's asset-upload
+  // JWT is refused 401 (#1312) — a publishing plan against a target whose
+  // `wrangler.jsonc` at --base declares `assets` can only die in
+  // `publish:deploy`, after every task merged. Refused here, before the pool,
+  // the credential and the push. Retires with #1312's pack step.
+  const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base, compiled })
+  if (assetsConfig !== null) {
+    throw new Refusal(
+      `launch: the plan carries a **Publish:** line but ${assetsConfig} at --base declares assets, ` +
+      "and the edge refuses wrangler's asset upload (#1312) — add the pack step that serves the page " +
+      'from the Worker and drop assets; no VM was created and nothing was pushed'
+    )
+  }
+  // #645: a probe or check whose command word the sandbox lacks would exit 127
+  // in its first second on the box, after the push and the `new`; read every
+  // word against `SANDBOX_TOOLCHAIN` here, before the pool, the credential and
+  // the push, and refuse by name.
+  const missingRunners = toolchainViolations(compiled)
+  if (missingRunners.length) {
+    throw new Refusal(missingRunners.map(({ task, word, cmd }) =>
+      `launch: task ${task}: probe runner '${word}' is not in the sandbox toolchain — ${cmd}`
+    ).join('\n'))
+  }
+  const size = sizeFromCompile(compiled, sizing)
+  const memoryGb = parseMemoryGb(size.memory)
+
+  // One run must fit the plan's pool. Allocation is over-committable and
+  // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
+  // contention bounds concurrency, and two plans at once is by design. The
+  // parse does not move with N, so the widest wave, and the box it asks for,
+  // are the same under every N.
+  const capacity = await readPlanCapacity(exec)
+  if (capacity.maxCpus < Number(size.cpu)) {
+    throw new Refusal(
+      `launch: --cpu ${size.cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
+    )
+  }
+  if (capacity.maxMemoryGb < memoryGb) {
+    throw new Refusal(
+      `launch: --memory ${size.memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
+    )
+  }
+}
+
+/**
+ * The credential, refreshed or held, then its usage read — right after the
+ * refresh has just run or held, so the record is unexpired and `--no-rotate`
+ * cannot mint anything. A row at or past the wall on either window is a
+ * refusal before any push; an unread row is never a refusal (#1114). Answers
+ * the refresh's own answer and the launch line's `usage:` line.
+ */
+function readCredential ({ account, refreshCredential, readUsage }) {
+  const cred = refreshCredential(account)
+  if (cred.refused) {
+    throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
+  }
+  if (!cred.ok) {
+    throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
+  }
+
+  const usageRow = readUsage(account)
+  if (usageRow.unread) {
+    return { cred, usageLine: `usage: ${account} unread — ${usageRow.reason}` }
+  }
+  const { sevenDay, fiveHour } = usageRow
+  if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
+    throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
+  }
+  if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
+    throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
+  }
+  const usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
+    `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+  return { cred, usageLine }
+}
+
+/**
+ * Everything the launcher does, with the exec seam, the clock, the sleep and
+ * the name's random half injected. Answers the launched run's record.
+ *
+ * The body parks the directory it fetched the compiler into on `held`, so the
+ * temp tree is removed however the launch ends — the resolved run, a refusal
+ * halfway down, or a throw from the lobby.
+ */
+export async function launch (params) {
+  const held = { compilerDir: null }
+  try {
+    return await launchBody({ ...params, held })
+  } finally {
+    if (held.compilerDir !== null) {
+      await fsp.rm(held.compilerDir, { recursive: true, force: true })
+    }
+  }
+}
+
+async function launchBody ({
+  argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
+  refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
+  kata, kataEnvPath = defaultKataEnvPath(), held
+}) {
+  // ── Local validation. Nothing has been executed at this point, and nothing
+  //    will be until every one of these passes. ──────────────────────────────
+  const { opts, planPath: givenPlanPath } = validateArgs(argv)
+  const target = opts.target
 
   const settings = config ?? await loadFleetConfig()
   // Which keychain entry this run signs in with: the flag, else the config's
@@ -602,7 +738,7 @@ async function launchBody ({
   // downstream read, refusal message and `python3` argv
   // carries, so the launcher and the children it spawns with `cwd: repoDir`
   // agree on which file `planPath` names.
-  planPath = path.resolve(repoDir, planPath)
+  const planPath = path.resolve(repoDir, givenPlanPath)
 
   let planText
   try {
@@ -643,32 +779,7 @@ async function launchBody ({
   }
 
   // ── Reads. Still nothing mutated, on exe.dev or on the target. ────────────
-
-  // A shallow checkout is refused first, before anything is read off the
-  // origin: its history is truncated, so no `merge-base` it could answer says
-  // anything about where `--base` sits. The launcher does not deepen it — an
-  // operator's clone is theirs, and a launch is not the place to rewrite it.
-  const shallow = await git(exec, repoDir, ['rev-parse', '--is-shallow-repository'])
-  if (shallow.code === 0 && String(shallow.stdout ?? '').trim() === 'true') {
-    throw new Refusal(
-      `launch: --repo ${repoDir} ${SHALLOW_FIX}: a truncated history cannot answer whether --base ${opts.base} is on ${target}'s default branch`
-    )
-  }
-
-  const originUrl = await readOriginUrl({ exec, repoDir })
-  const originTarget = targetOfOriginUrl(originUrl)
-  if (originTarget !== target) {
-    throw new Refusal(
-      `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
-    )
-  }
-
-  const baseCheck = await git(exec, repoDir, ['rev-parse', '--verify', `${opts.base}^{commit}`])
-  if (baseCheck.code !== 0) {
-    throw new Refusal(
-      `launch: ${repoDir} has no commit ${opts.base}:\n${output(baseCheck)}`
-    )
-  }
+  await checkCheckout({ exec, repoDir, target, base: opts.base })
 
   // The plan's hash pins are facts about `--base`, and the checkout has it now:
   // a stale one is found here, with local git reads only, before the first
@@ -693,39 +804,8 @@ async function launchBody ({
     exec, repoDir, base: opts.base, planPath, planText, compilerPath: compiler.scriptPath
   })
 
-  // ── The base is on the target's default branch, or it is a refusal. The
-  //    origin names its own default branch and that branch's tip in one
-  //    `ls-remote --symref`; the fetch brings the tip's history into this
-  //    checkout, and `merge-base --is-ancestor` answers the question. Every one
-  //    of the three is a read of the target, and the only ref any of them
-  //    writes is this checkout's `refs/remotes/origin/<default>`: `HEAD`, the
-  //    local branches and the working tree are the operator's and stay as they
-  //    were.
-  const origin = await readDefaultBranch({ exec, repoDir })
-  const fetched = await git(exec, repoDir, ['fetch', 'origin', origin.branch])
-  // A fetch that answered non-zero is not itself the refusal — a checkout that
-  // already has the tip needs nothing from it. What is fatal is not having the
-  // tip afterward, because then no ancestry answer means anything.
-  const hasTip = await git(exec, repoDir, ['cat-file', '-e', `${origin.tip}^{commit}`])
-  if (hasTip.code !== 0) {
-    throw new Refusal(
-      `launch: ${repoDir} does not have ${target}'s ${origin.branch} tip ${origin.tip} — git fetch origin ${origin.branch} answered exit ${fetched.code}:\n${output(fetched)}`
-    )
-  }
-  // git refreshes `refs/remotes/origin/<default>` on a fetch only when the line
-  // named a configured remote and its refspec covers the branch; the launch's
-  // one effect on the checkout should not depend on either, so the ref is
-  // pointed at the tip the fetch just brought.
-  if (fetched.code === 0) {
-    await git(exec, repoDir, ['update-ref', `refs/remotes/origin/${origin.branch}`, origin.tip])
-  }
-  const ancestry = await git(exec, repoDir, ['merge-base', '--is-ancestor', opts.base, origin.tip])
-  if (ancestry.code !== 0) {
-    throw new Refusal(
-      `launch: --base ${opts.base} is not on ${target}'s ${origin.branch} (tip ${origin.tip}) — ${BASE_OFF_MAIN_FIX}`
-    )
-  }
-
+  // ── The base is on the target's default branch, or it is a refusal.
+  await checkBaseOnDefault({ exec, repoDir, target, base: opts.base })
 
   // One `integrations list --json`, asked for the target's GitHub object.
   const integrations = await listIntegrations(exec)
@@ -756,56 +836,11 @@ async function launchBody ({
     }
   }
 
-  // ── The reap. Nothing schedules the janitor, so every launch is where it
-  //    runs — before the run number is read, so the fleet a launch joins is
-  //    already clear of the VMs of runs that finished over an hour ago.
-  //    `hub` is the client built above, so the janitor asks the hub this
-  //    launch already reached — or, with no hub, reads the target. A reap
-  //    that fails is reported and not fatal: the run being launched is worth
-  //    more than the ballast the janitor came for.
-  const reaped = []
-  let reapError = null
-  let fleetRuns = null
-  try {
-    const reap = await janitor({ argv: [], exec, now, kata: hub, evidence })
-    fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
-    for (const action of reap.actions) {
-      if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
-    }
-  } catch (error) {
-    reapError = String(error?.message ?? error) || 'launch: the reap failed'
-  }
-
-  // A reap that failed leaves no fleet list for the duplicate guard (#1036) to
-  // read — refuse rather than launch with the guard silently skipped, unless
-  // the operator passed `--again` to launch without it.
-  if (fleetRuns === null && opts.again !== true) {
-    throw new Refusal(
-      `launch: the reap did not answer, so the duplicate guard (#1036) cannot run — ${reapError}; ` +
-      'pass --again to launch without it'
-    )
-  }
-
-  // ── The duplicate check (#1036). A plan that is already live on this target
-  //    is refused here, before the run number is read and before anything is
-  //    pushed: a second launch of the same plan re-answers the live run's task
-  //    issues on the hub and bumps their revision, and the first run dies at
-  //    Setup on `kata-revision-mismatch`. "The same plan" is the plan text's
-  //    git blob sha — the identity the hub's `Idempotency-Key` is built from —
-  //    never the comment's `plan=` commit, which carries the run number in its
-  //    subject and so differs on every launch. A row whose record says the run
-  //    ended never refuses, however recently; a row with no record yet counts
-  //    as live. When the reap itself failed there is no list and no refusal.
-  const again = fleetRuns === null
-    ? []
-    : await liveDuplicatesOf({ exec, repoDir, target, evidence, planText, runs: fleetRuns })
-  if (again.length > 0 && opts.again !== true) {
-    throw new Refusal(again.map((d) =>
-      `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
-      'pass --again to launch it again on purpose (a byte-identical replay re-answers the live ' +
-      "run's task issues on the hub and bumps their revision)"
-    ).join('\n'))
-  }
+  // ── The reap and the duplicate check (#1036), before the run number is
+  //    read: `janitor.mjs`'s `preflight`.
+  const { reaped, reapError, again } = await preflight({
+    exec, now, hub, evidence, repoDir, target, planText, again: opts.again
+  })
 
   // The N this launch asks for: one past the highest the evidence repository
   // carries for this target *now*, which another launch can
@@ -821,85 +856,11 @@ async function launchBody ({
   const firstCompiled = await compilePlanForRun({
     exec, repoDir, planPath, stamp: `run-${firstRun}`, compilerPath: compiler.parserPath
   })
-  // The credential a publishing plan needs at the edge — checked as soon as a
-  // real `compiled` object exists (a plan with no `**Publish:**` line, the
-  // common case, carries no `publish` key and is never refused here), against
-  // the `integrations` this launch already read for the GitHub check above.
-  const publishRefused = publishRefusal({ compiled: firstCompiled, integrations })
-  if (publishRefused !== null) {
-    throw new Refusal(publishRefused)
-  }
-  // #1313: exe.dev's edge replaces `Authorization`, so wrangler's asset-upload
-  // JWT is refused 401 (#1312) — a publishing plan against a target whose
-  // `wrangler.jsonc` at --base declares `assets` can only die in
-  // `publish:deploy`, after every task merged. Refused here, before the pool,
-  // the credential and the push. Retires with #1312's pack step.
-  const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base: opts.base, compiled: firstCompiled })
-  if (assetsConfig !== null) {
-    throw new Refusal(
-      `launch: the plan carries a **Publish:** line but ${assetsConfig} at --base declares assets, ` +
-      "and the edge refuses wrangler's asset upload (#1312) — add the pack step that serves the page " +
-      'from the Worker and drop assets; no VM was created and nothing was pushed'
-    )
-  }
-  // #645: a probe or check whose command word the sandbox lacks would exit 127
-  // in its first second on the box, after the push and the `new`; read every
-  // word against `SANDBOX_TOOLCHAIN` here, before the pool, the janitor, the
-  // credential and the push, and refuse by name.
-  const missingRunners = toolchainViolations(firstCompiled)
-  if (missingRunners.length) {
-    throw new Refusal(missingRunners.map(({ task, word, cmd }) =>
-      `launch: task ${task}: probe runner '${word}' is not in the sandbox toolchain — ${cmd}`
-    ).join('\n'))
-  }
-  const firstSize = sizeFromCompile(firstCompiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
-  const memoryGb = parseMemoryGb(firstSize.memory)
-
-  // One run must fit the plan's pool. Allocation is over-committable and
-  // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
-  // contention bounds concurrency, and two plans at once is by design. Still
-  // before the credential, the push and the verb, so a refusal here has
-  // mutated nothing — and the parse does not move with N, so the widest wave,
-  // and the box it asks for, are the same under every N.
-  const capacity = await readPlanCapacity(exec)
-  if (capacity.maxCpus < Number(firstSize.cpu)) {
-    throw new Refusal(
-      `launch: --cpu ${firstSize.cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
-    )
-  }
-  if (capacity.maxMemoryGb < memoryGb) {
-    throw new Refusal(
-      `launch: --memory ${firstSize.memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
-    )
-  }
-
-  const cred = refreshCredential(account)
-  if (cred.refused) {
-    throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
-  }
-  if (!cred.ok) {
-    throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
-  }
-
-  // The usage read, right after the refresh has just run or held — the record
-  // is unexpired and `--no-rotate` cannot mint anything. A row at or past the
-  // wall on either window is a refusal before any push; an unread row is
-  // never a refusal (#1114).
-  const usageRow = readUsage(account)
-  let usageLine
-  if (usageRow.unread) {
-    usageLine = `usage: ${account} unread — ${usageRow.reason}`
-  } else {
-    const { sevenDay, fiveHour } = usageRow
-    if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
-      throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
-    }
-    if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
-      throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
-    }
-    usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
-      `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
-  }
+  const sizing = { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory }
+  await refuseUnlaunchable({
+    exec, repoDir, base: opts.base, compiled: firstCompiled, integrations, sizing
+  })
+  const { cred, usageLine } = readCredential({ account, refreshCredential, readUsage })
 
   // ── The plan commit, pushed to the evidence repository before the VM exists. Plumbing
   //    against a temporary index, so the operator's index and working tree are
@@ -958,7 +919,7 @@ async function launchBody ({
   const planSha = plan.sha
   // The size and the width the verb carries, read off the parse the push
   // filed — the same parse under every N.
-  const { width, cpu, memory } = sizeFromCompile(plan.compiled, { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory })
+  const { width, cpu, memory } = sizeFromCompile(plan.compiled, sizing)
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
