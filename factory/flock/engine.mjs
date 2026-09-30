@@ -29,7 +29,6 @@ import { scopeOf } from './scope.mjs'
 import { editSpans } from './edit_spans.mjs'
 import { compactRecord } from './compact_record.mjs'
 import { pullScope } from './pulls.mjs'
-import { findGit } from '../gitblock.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 import { readTrial, resolveState, releaseState, claimOf } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
@@ -126,6 +125,9 @@ const T0 = Date.now()
 const now = () => Date.now() - T0
 // every fact, the check and setup see the base they are judged against
 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
+// agents never run git (#1443): a builder's PATH starts with a git that refuses, so git is refused
+// however it is reached — a script, a test, a Makefile. Facts, the check and setup keep RUN_ENV's git.
+const NOGIT = path.join(HERE, 'nogit')
 
 fs.mkdirSync(OUT, { recursive: true })
 const CHECK_OUT = path.join(OUT, 'checks')
@@ -796,7 +798,8 @@ async function session (agent, task) {
       if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
       }
-      if (input.tool_name === 'Bash' && findGit(ti.command || '') !== null) {
+      // the PATH shim cannot see a git named by its absolute path (`/usr/bin/git`)
+      if (input.tool_name === 'Bash' && /(^|[^\w.-])\/[\w./-]*\/git(?![\w./-])/.test(ti.command || '')) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'agents never run git' } }
       }
       if (input.tool_name === 'Bash') {
@@ -888,7 +891,7 @@ async function session (agent, task) {
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
     // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
     // spelt in parts so no line names the retired switch's constant.
-    env: { ...process.env, ['ENABLE_TOOL' + '_SEARCH']: 'false' },
+    env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ['ENABLE_TOOL' + '_SEARCH']: 'false' },
   } })
   let result = null
   live.add(agent)
