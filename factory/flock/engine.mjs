@@ -3,11 +3,11 @@
 // round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
 //
 //   node factory/flock/engine.mjs --plan <plan.md> --target <dir> --base <sha> --run-dir <dir>
-//        [--builder sdk|scripted:<json>] [--clock 13800] [--quiet 45] [--stall-minutes 20]
+//        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
 //        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
 //   (with both --kata-url and --kata-json, and a record that reads, the board's
 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
-//    flight; without them the Flock keeps its plain stand-in board and sends nothing.)
+//    flight; without them the board stays in memory and sends nothing.)
 //
 // With N builders working one plan together, each on its own copy, merging with each other
 // between tool batches, the swarm settles on green code; the engine then leaves the target one
@@ -25,7 +25,7 @@ import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import util from 'node:util'
 import { workloadFromPlan } from './plan.mjs'
-import { makeBoard } from './flock_board.mjs'
+import { Board } from './flock_board.mjs'
 import { scopeOf } from './scope.mjs'
 import { editSpans } from './edit_spans.mjs'
 import { compactRecord } from './compact_record.mjs'
@@ -55,7 +55,7 @@ const RUN_DIR = path.resolve(need('run-dir'))
 // two and a record that reads with an integer project.id and a run.uid, each board move is mirrored straight onto the task's issue on the
 // hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
 // never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
-// comment uid. Otherwise the board is the plain stand-in.
+// comment uid. Otherwise the board stays in memory.
 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 const BUILDER = arg('builder', 'sdk')
@@ -81,7 +81,6 @@ const CAP = 16
 const MODEL = 'claude-opus-5-5'
 // under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
-const QUIET_MS = Number(arg('quiet', 45)) * 1000
 const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
 // pulls `narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
 // `all`, every published change, is the rollback. The policy cell flock.pulls.mode, else all.
@@ -301,9 +300,8 @@ const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir,
 const agentDir = (a) => path.join(WORK, 'agents', a)
 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 
-// ── the board: the stand-in; mirrored onto Kata when the boot passes a record. ──
-const BOARD = 'standin'
-const board = await makeBoard(BOARD, { tasks: W.tasks, now, runName: path.basename(OUT) })
+// ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
+const board = new Board({ tasks: W.tasks, now })
 const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
 let kataRecord = null
 if (KATA_URL && KATA_JSON) {
@@ -329,12 +327,6 @@ if (kataRecord) {
   mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
 }
 
-// ── edit-location errors (gap 3 at scale): an Edit the tool refused, by why ──
-const editFailures = { not_unique: 0, not_found: 0, stale: 0, other: 0 }
-const failKind = (err) => /Found \d+ matches|multiple|not unique/i.test(err) ? 'not_unique'
-  : /not found|did not match|no match/i.test(err) ? 'not_found'
-    : /modified since|has not been read|read it first/i.test(err) ? 'stale' : 'other'
-
 // ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
   return task.facts.map((cmd) => {
@@ -345,20 +337,6 @@ function runFacts (cwd, task) {
 const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
 const redText = (task, red) => red.map((r) =>
   `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
-const TRACE = /File "([^"]+)", line (\d+)/g
-async function blame (agent, cwd, output) {
-  // gap 4: whose line does a red point at? the last in-copy frame of the traceback
-  const hits = [...output.matchAll(TRACE)].map((m) => [m[1], Number(m[2])]).filter(([f]) => f.startsWith(cwd + '/') || !f.startsWith('/'))
-  if (!hits.length) return { cause: 'unknown' }
-  const [f, line] = hits[hits.length - 1]
-  const rel = f.startsWith(cwd + '/') ? f.slice(cwd.length + 1) : f
-  // ticket 2 fix (a): authorship by identity (authors_keyed), not by text, which names a
-  // repeated BASE line's author wrongly (research/identity/keys.log). "A|B" = both wrote it.
-  const r = await weave({ op: 'authors_keyed', agent, path: rel })
-  const who = r.ok ? r.authors[line - 1] : null
-  const whoSet = who ? who.split('|') : []
-  return { cause: !who ? 'unknown' : whoSet.includes(labelOf(agent)) ? 'own' : who === 'base' ? 'base' : 'peer:' + who, path: rel, line }
-}
 
 // peer lines an agent's change removed or replaced, by identity: the fall, per peer, in the
 // count of visible lines that peer wrote (an agent's own change never adds a peer's line)
@@ -450,7 +428,7 @@ function closeEntries (p, by, note, via) {
   lastChange = now()
 }
 
-// ── early close (`--early-close held`, the final atlas race). On atlas every resolve task changed
+// ── early close (the final atlas race). On atlas every resolve task changed
 // nothing (n=5 runs): the conflicts were already resolved by the agents, and ~25 s went to handing
 // them out once everyone was idle. The fact that closes one early, per open conflict on path p, at
 // every edge: some agent S published p, S's last edit to p came after the last time a peer's side
@@ -503,7 +481,7 @@ async function stall (kind, evidence) {
 let edgeChain = Promise.resolve()
 let lastEdge = null
 const snapshots = []
-let bestGreen = -1, sinceBest = 0, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
+let bestGreen = -1, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
 const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
@@ -565,11 +543,9 @@ function edge (reason) {
     ev('survival', { snap, lost })
     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists, lost })
     edgeLatency.push(now() - asked)
-    // ticket 5: livelock, record-only. Facts rose on every new snapshot of every recorded run
-    // (0 regressions over 53 edges, n=15 runs), so K snapshots with no new best is unseen: it
-    // posts a stall belief and changes nothing (an experiment; rollback: delete this block).
+    // the best-green count (facts green, plus the check) the no-progress stop reads (#1334)
     const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
-    if (g > bestGreen) { bestGreen = g; sinceBest = 0; lastRise = now() } else if (++sinceBest === 2 * board.tasks.size) await stall('livelock', { snap, snapshots_without_progress: sinceBest, best: bestGreen })
+    if (g > bestGreen) { bestGreen = g; lastRise = now() }
     ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined, red: undefined })
     log('edge', snap, lastEdge.green ? 'GREEN' : 'red', JSON.stringify(perTask), 'check', chk.status, m.conflicts.length ? 'conflicts ' + m.conflicts + ' (blocking: ' + (blocking.join(',') || 'none') + ')' : '')
     return lastEdge
@@ -716,7 +692,7 @@ async function scriptedSession (agent, task) {
     // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
     // call), standing in for a weave fault like run-247's. It passes no task: its lines stay unlabelled by task.
     for (const [p, text] of Object.entries(SCRIPT['@unwritten'] || {})) await must({ op: 'rewrite', agent, path: p, content: text })
-    await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
+    await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' })
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
   }
   usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
@@ -744,9 +720,7 @@ async function session (agent, task) {
         const t = board.tasks.get(a.task || task.id) || task
         const res = runFacts(cwd, t)
         const red = res.filter((r) => r.exit !== 0)
-        const causes = []
-        for (const r of red) causes.push(await blame(agent, cwd, r.tail))
-        ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), causes, errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
+        ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
       }),
     // ticket 4 follow-up: waiting for a peer. Peers' work reaches a copy only between tool calls,
@@ -818,7 +792,7 @@ async function session (agent, task) {
         return say('deleted ' + rel)
       }),
     tool('publish', "Publish your copy's changes so the other agents receive them.", {},
-      async () => { await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id }); await board.publish(agent, task.id); edge('publish ' + agent); return say('published') }),
+      async () => { await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id }); edge('publish ' + agent); return say('published') }),
     tool('resolve_conflict', 'Close an open conflict in a file: the text in your copy now says what both sides meant (edit it first with Edit if it did not).',
       { path: z.string(), note: z.string() },
       async (a) => {
@@ -837,7 +811,7 @@ async function session (agent, task) {
           ev('facts:red', { agent, task: task.id, at: 'done', exits: red.map((r) => r.exit) })
           return say('not done: these facts fail on your copy. Fix them, run run_proof, then call done again.\n\n' + redText(task, red))
         }
-        await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' }); await board.publish(agent, task.id)
+        await syncFromDisk(agent); await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' })
         st.done = a.summary; st.closed = true
         await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
         return say('published and marked done; your copy is closed to edits. End your turn now.')
@@ -919,23 +893,7 @@ async function session (agent, task) {
           return { hookSpecificOutput: { hookEventName: 'PostToolUse', additionalContext: note } }
         }
       } else if (name === 'Bash') {
-        const drift = await syncFromDisk(agent)
-        const cmd = ti.command || ''
-        if (/pytest/.test(cmd)) {
-          const out = JSON.stringify(input.tool_response || '')
-          const red = /\d+ failed|error/i.test(out) && !/\b0 failed\b/.test(out)
-          ev('test', { agent, task: task.id, red, drift, cause: red ? await blame(agent, cwd, out.replace(/\\n/g, '\n').replace(/\\"/g, '"')) : null })
-          if (red) st.redRuns += 1
-        }
-      }
-      return {}
-    }] }],
-    PostToolUseFailure: [{ hooks: [async (input) => {
-      if (['Edit', 'MultiEdit'].includes(input.tool_name) && !input.is_interrupt) {
-        const kind = failKind(String(input.error || ''))
-        editFailures[kind] += 1
-        const ti = input.tool_input || {}
-        ev('edit:fail', { agent, task: task.id, tool: input.tool_name, kind, path: String(ti.file_path || '').slice(cwd.length + 1), error: String(input.error || '').slice(0, 200), old_lines: String(ti.old_string || '').split('\n').length })
+        await syncFromDisk(agent)
       }
       return {}
     }] }],
@@ -972,7 +930,7 @@ async function session (agent, task) {
   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
   clearTimeout(killer); stops.delete(agent)
   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
-  usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0, wall_ms: now() - (usage.startT = usage.startT || 0) })
+  usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0 })
   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
@@ -1086,7 +1044,7 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-ev('start', { workload: W.name, agents: 'elastic', cap: CAP, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: 'explicit', early_close: 'held', order: 'chain', pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
+ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: PULLS, chain: Object.fromEntries(board.cp) })
 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
 // the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
 // (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
@@ -1158,20 +1116,18 @@ await edgeChain
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 const summary = {
-  workload: W.name, agents: 'elastic', builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(), publish: 'explicit', early_close: 'held', order: 'chain',
+  workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
-  snapshots: snapshots.length, beliefs: board.beliefCount,
+  snapshots: snapshots.length, beliefs: board.beliefs.length,
   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
-  outcome, settle_mode: 'tested', debounce_ms: debounceMs(),
+  outcome, debounce_ms: debounceMs(),
   attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
-  edit_failures: editFailures,
   tokens: usage.reduce((a, u) => ({ input: a.input + (u.usage?.input_tokens || 0), output: a.output + (u.usage?.output_tokens || 0), cache_read: a.cache_read + (u.usage?.cache_read_input_tokens || 0), cache_write: a.cache_write + (u.usage?.cache_creation_input_tokens || 0) }), { input: 0, output: 0, cache_read: 0, cache_write: 0 }),
   sessions: usage.length,
   cost_usd: Math.round(usage.reduce((a, u) => a + (u.cost_usd || 0), 0) * 1000) / 1000,
 }
 fs.writeFileSync(path.join(OUT, 'summary.json'), JSON.stringify(summary, null, 1))
-fs.writeFileSync(path.join(OUT, 'snapshots.json'), JSON.stringify(snapshots))
 fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read(), null, 1))
 writeCompactRecord()
 writeFailureRecord()
