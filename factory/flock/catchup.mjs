@@ -104,7 +104,7 @@ if (provFile && fs.existsSync(provFile)) {
     const record = JSON.parse(fs.readFileSync(provFile, 'utf8'))
     // only the paths the record names, null on a side where the path is absent
     const named = new Set()
-    for (const k of ['hunks', 'unproven', 'exceptions']) for (const e of Array.isArray(record[k]) ? record[k] : []) if (e && typeof e.path === 'string') named.add(e.path)
+    for (const k of ['hunks', 'exceptions']) for (const e of Array.isArray(record[k]) ? record[k] : []) if (e && typeof e.path === 'string') named.add(e.path)
     const moved = changed(runSha, head)
     const texts = {}
     for (const p of named) {

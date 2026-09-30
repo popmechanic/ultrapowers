@@ -1,22 +1,17 @@
 // A run's provenance (#1404): what no other source holds. Git has the text and the plan has each
 // task's Files and Claim, so neither is copied; this names which task wrote every changed line of
-// the landed snapshot, the surprises, and the changed code no probe ran.
+// the landed snapshot and the surprises. (The coverage pass that named the changed code no probe
+// ran was retired unread, #1442.)
 //
-// buildProvenance({ landed, blame, events, lost, coverage, executable }) is pure:
+// buildProvenance({ landed, blame, events, lost }) is pure:
 //   landed    {path: text} of the landed snapshot
 //   blame     the weave's `blame` map: {path: [label per landed line]}: `base`, a task label `A.2`,
 //             labels joined `|` when several wrote identical text, or a label with no dot (no task)
 //   events    events.jsonl rows
 //   lost      the snapshot's `survival` list [{path, author, by, lines}]
-//   coverage  {clause: {path: [lines]}} or null
-//   executable {path: [lines that can run]} (executable.mjs), optional
-// answers { hunks, exceptions, unproven }. The final empty line of a text ending in a newline is
-// neither a hunk line nor unproven; a changed line no clause covers is unproven when it is listed in
-// executable[path] if that path has an entry, else when it is not blank and not comment-only (#1407).
+// answers { hunks, exceptions }. The final empty line of a text ending in a newline is not a hunk line.
 
-const CODE = /\.(py|mjs|js|cjs)$/
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-const COMMENT = (p) => (/\.py$/.test(p) ? /^\s*#/ : /^\s*\/\//)
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 // a label's task: the text after its dot; several labels give their tasks joined `|` in label
@@ -42,32 +37,17 @@ function runs (keys) {
   return out
 }
 
-export function buildProvenance ({ landed, blame, events = [], lost = [], coverage = null, executable = null }) {
+export function buildProvenance ({ landed, blame, events = [], lost = [] }) {
   const paths = Object.keys(landed || {}).filter((p) => blame && Array.isArray(blame[p])).sort(cmp)
   const linesOf = (p) => String(landed[p] ?? '').split('\n')
-  const covered = (p, n) => Object.keys(coverage || {}).filter((c) => (coverage[c][p] || []).includes(n)).sort(cmp)
-  const hunks = [], foreign = [], unproven = coverage ? [] : null
+  const hunks = [], foreign = []
   for (const p of paths) {
     const labels = blame[p]
     const text = linesOf(p)
     const tail = String(landed[p] ?? '').endsWith('\n') ? text.length - 1 : -1
     const tasks = labels.map((l, i) => (l === 'base' || i === tail ? undefined : taskOf(l)))
-    for (const r of runs(tasks.map((t) => (t === null ? undefined : t)))) {
-      const h = { path: p, lines: span(r.from, r.to), task: r.key }
-      if (coverage) {
-        const cl = new Set()
-        for (let n = r.from; n <= r.to; n++) for (const c of covered(p, n)) cl.add(c)
-        h.clauses = [...cl].sort(cmp)
-      }
-      hunks.push(h)
-    }
+    for (const r of runs(tasks.map((t) => (t === null ? undefined : t)))) hunks.push({ path: p, lines: span(r.from, r.to), task: r.key })
     for (const r of runs(tasks.map((t) => (t === null ? true : undefined)))) foreign.push({ kind: 'foreign', path: p, lines: span(r.from, r.to) })
-    if (coverage && CODE.test(p)) {
-      const list = executable && Array.isArray(executable[p]) ? new Set(executable[p]) : null
-      const runnable = (i) => (list ? list.has(i + 1) : (text[i] ?? '').trim() !== '' && !COMMENT(p).test(text[i] ?? ''))
-      const bare = tasks.map((t, i) => (t != null && runnable(i) && !covered(p, i + 1).length ? t : undefined))
-      for (const r of runs(bare)) unproven.push({ path: p, lines: span(r.from, r.to), task: r.key })
-    }
   }
 
   const rows = events || []
@@ -94,11 +74,11 @@ export function buildProvenance ({ landed, blame, events = [], lost = [], covera
   }
   ordered.sort((a, b) => cmp(a.path, b.path) || a.at - b.at)
   for (const o of ordered) delete o.at
-  return { hunks, exceptions: [...contested, ...lostRows, ...ordered, ...foreign], unproven }
+  return { hunks, exceptions: [...contested, ...lostRows, ...ordered, ...foreign] }
 }
 
 // remapProvenance(prov, texts) is pure: texts {path: {from, to}} gives a path's text in the run's
-// commit and in the caught-up commit. Every line span of such a path (in hunks, unproven, and the
+// commit and in the caught-up commit. Every line span of such a path (in hunks and the
 // exceptions' `lines` span or `line`) is carried line by line through the longest common subsequence
 // of the two texts' lines; a line with no match drops, and each mapped set is cut back into runs of
 // consecutive lines (an entry whose lines all drop disappears). A side may be null for a file absent
@@ -182,5 +162,5 @@ export function remapProvenance (prov, texts) {
     }
     return out
   }
-  return { ...prov, hunks: remap(prov.hunks), exceptions: remap(prov.exceptions), unproven: remap(prov.unproven) }
+  return { ...prov, hunks: remap(prov.hunks), exceptions: remap(prov.exceptions) }
 }
