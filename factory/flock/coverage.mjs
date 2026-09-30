@@ -3,7 +3,7 @@
 // process (a sitecustomize.py on PYTHONPATH installing sys.settrace) the command starts,
 // children of `bash -lc` included, and answers { exit, lines }: lines maps each file under
 // cwd (relative path, node_modules excluded) to its run line numbers, ascending.
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -84,7 +84,8 @@ function under (root, p) {
   return rel.split(path.sep).join('/')
 }
 
-export function linesRun ({ argv, cwd, env = process.env, timeoutMs = 60000 }) {
+// The temp dirs and environment one covered command runs with.
+function covSetup (cwd, env) {
   const root = fs.realpathSync(cwd)
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-cov-'))
   const nodeDir = path.join(tmp, 'node'); const pyDir = path.join(tmp, 'py'); const siteDir = path.join(tmp, 'site')
@@ -97,37 +98,99 @@ export function linesRun ({ argv, cwd, env = process.env, timeoutMs = 60000 }) {
     FLOCK_COVERAGE_ROOT: root,
     FLOCK_COVERAGE_PY_OUT: pyDir
   }
-  try {
-    const r = spawnSync(argv[0], argv.slice(1), { cwd, env: childEnv, timeout: timeoutMs, stdio: 'ignore' })
-    const exit = r.error && r.error.code === 'ETIMEDOUT' ? 124 : r.status === null ? (r.signal ? 128 : 1) : r.status
-    const sets = new Map()
-    const add = (rel, nums) => {
-      if (!sets.has(rel)) sets.set(rel, new Set())
-      for (const n of nums) sets.get(rel).add(n)
-    }
-    for (const name of fs.readdirSync(nodeDir)) {
-      let data
-      try { data = JSON.parse(fs.readFileSync(path.join(nodeDir, name), 'utf8')) } catch { continue }
-      for (const s of data.result || []) {
-        if (!s.url || !s.url.startsWith('file://')) continue
-        let file
-        try { file = fs.realpathSync(fileURLToPath(s.url)) } catch { continue }
-        const rel = under(root, file)
-        if (rel) add(rel, nodeLines(file, s.functions || []))
-      }
-    }
-    for (const name of fs.readdirSync(pyDir)) {
-      let data
-      try { data = JSON.parse(fs.readFileSync(path.join(pyDir, name), 'utf8')) } catch { continue }
-      for (const [file, nums] of Object.entries(data)) {
-        const rel = under(root, file)
-        if (rel) add(rel, nums)
-      }
-    }
-    const lines = {}
-    for (const [rel, s] of [...sets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) lines[rel] = [...s].sort((a, b) => a - b)
-    return { exit, lines }
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true })
+  return { root, tmp, nodeDir, pyDir, childEnv }
+}
+
+function covLines ({ root, nodeDir, pyDir }) {
+  const sets = new Map()
+  const add = (rel, nums) => {
+    if (!sets.has(rel)) sets.set(rel, new Set())
+    for (const n of nums) sets.get(rel).add(n)
   }
+  for (const name of fs.readdirSync(nodeDir)) {
+    let data
+    try { data = JSON.parse(fs.readFileSync(path.join(nodeDir, name), 'utf8')) } catch { continue }
+    for (const s of data.result || []) {
+      if (!s.url || !s.url.startsWith('file://')) continue
+      let file
+      try { file = fs.realpathSync(fileURLToPath(s.url)) } catch { continue }
+      const rel = under(root, file)
+      if (rel) add(rel, nodeLines(file, s.functions || []))
+    }
+  }
+  for (const name of fs.readdirSync(pyDir)) {
+    let data
+    try { data = JSON.parse(fs.readFileSync(path.join(pyDir, name), 'utf8')) } catch { continue }
+    for (const [file, nums] of Object.entries(data)) {
+      const rel = under(root, file)
+      if (rel) add(rel, nums)
+    }
+  }
+  const lines = {}
+  for (const [rel, s] of [...sets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) lines[rel] = [...s].sort((a, b) => a - b)
+  return lines
+}
+
+export function linesRun ({ argv, cwd, env = process.env, timeoutMs = 60000 }) {
+  const cov = covSetup(cwd, env)
+  try {
+    const r = spawnSync(argv[0], argv.slice(1), { cwd, env: cov.childEnv, timeout: timeoutMs, stdio: 'ignore' })
+    const exit = r.error && r.error.code === 'ETIMEDOUT' ? 124 : r.status === null ? (r.signal ? 128 : 1) : r.status
+    return { exit, lines: covLines(cov) }
+  } finally {
+    fs.rmSync(cov.tmp, { recursive: true, force: true })
+  }
+}
+
+// One job ({ argv, cwd, env }) as linesRun runs it, but asynchronously and as the leader of its own
+// process group: at timeoutMs the whole group is killed (grandchildren of `bash -lc` included) and
+// it answers exit 124.
+function linesRunAsync ({ argv, cwd, env = process.env }, timeoutMs) {
+  const cov = covSetup(cwd, env)
+  const done = (exit) => {
+    try { return { exit, lines: covLines(cov) } } finally { fs.rmSync(cov.tmp, { recursive: true, force: true }) }
+  }
+  return new Promise((resolve) => {
+    let child
+    try {
+      child = spawn(argv[0], argv.slice(1), { cwd, env: cov.childEnv, stdio: 'ignore', detached: true })
+    } catch { resolve(done(1)); return }
+    let timedOut = false
+    const killGroup = () => { try { process.kill(-child.pid, 'SIGKILL') } catch {} }
+    const timer = setTimeout(() => { timedOut = true; killGroup() }, timeoutMs)
+    let settled = false
+    const finish = (exit) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      // the leader is gone; anything it left behind in its group goes too
+      killGroup()
+      resolve(done(exit))
+    }
+    child.on('error', () => finish(1))
+    child.on('exit', (code, signal) => finish(timedOut ? 124 : code === null ? (signal ? 128 : 1) : code))
+  })
+}
+
+// linesRunAll(jobs, { parallel, timeoutMs, budgetMs }): every job as linesRun runs it, at most
+// `parallel` at once, each killed with its process group at timeoutMs (exit 124); a job not started
+// within budgetMs of the call answers { exit: null, lines: {}, skipped: true } and never runs.
+// Answers keep the jobs' order.
+export async function linesRunAll (jobs, { parallel = 4, timeoutMs = 60000, budgetMs = 300000 } = {}) {
+  const start = Date.now()
+  const out = new Array(jobs.length)
+  let next = 0
+  const worker = async () => {
+    while (next < jobs.length) {
+      const i = next++
+      if (Date.now() - start >= budgetMs) { out[i] = { exit: null, lines: {}, skipped: true }; continue }
+      try {
+        out[i] = { ...(await linesRunAsync(jobs[i], timeoutMs)), skipped: false }
+      } catch {
+        out[i] = { exit: 1, lines: {}, skipped: false }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(parallel, jobs.length)) }, worker))
+  return out
 }

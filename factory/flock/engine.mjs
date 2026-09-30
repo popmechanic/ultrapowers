@@ -40,7 +40,7 @@ import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
-import { linesRun } from './coverage.mjs'
+import { linesRunAll } from './coverage.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d }
@@ -109,6 +109,11 @@ if (!['enforce', 'record'].includes(SCOPE_MODE)) { console.error('engine: policy
 // it (coverage null). The policy cell flock.provenance.coverage, else record.
 const PROV_COVERAGE = POLICY_FLOCK?.provenance?.coverage ?? 'record'
 if (!['record', 'off'].includes(PROV_COVERAGE)) { console.error('engine: policy flock.provenance.coverage is record or off'); process.exit(2) }
+// the coverage pass's bounds: facts run `parallel` at once, each killed with its process group after
+// fact_timeout_seconds, none started once budget_seconds have passed (defaults 4, 60, 300)
+const PROV_PARALLEL = POLICY_FLOCK?.provenance?.parallel ?? 4
+const PROV_FACT_TIMEOUT_MS = (POLICY_FLOCK?.provenance?.fact_timeout_seconds ?? 60) * 1000
+const PROV_BUDGET_MS = (POLICY_FLOCK?.provenance?.budget_seconds ?? 300) * 1000
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -1179,7 +1184,7 @@ function peerRewriteDraft () {
   if (!s || !s.lost) return
   const losing = []
   for (const e of s.lost) {
-    const covers = (l) => (r) => r.path === e.path && (r.peers || []).includes(e.author) && (r.peer || []).includes(l)
+    const covers = (l) => (r) => r.path === e.path && String(e.author).split('|').some((a) => (r.peers || []).includes(a)) && (r.peer || []).includes(l)
     const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
     for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !losing.includes(r)) losing.push(r)
     if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
@@ -1220,14 +1225,14 @@ async function land () {
     if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
-    writeProvenance(outcome.snap)
+    await writeProvenance(outcome.snap)
     await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {
     const sha = commitSnapshot(lastEdge.snap, `flock: draft ${lastEdge.snap}`)
     if (sha) {
-      writeProvenance(lastEdge.snap)
+      await writeProvenance(lastEdge.snap)
       for (const t of W.tasks) {
         if ((lastEdge.perTask[t.id] || []).some((x) => x !== 0)) ev('parked', { task: t.id, reason: `red at ${lastEdge.snap}` })
       }
@@ -1238,9 +1243,11 @@ async function land () {
 
 // provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task, the surprises and,
 // under flock.provenance.coverage `record`, the changed code no tagged fact ran. Each task's fact at
-// index i proves t.clauses[i] (claims-v1: t.factClauses[i]); it runs with linesRun in a fresh edge copy of the snapshot, and its
-// lines merge per clause. The join's blame is kept only for paths whose text is the landed text.
-function writeProvenance (snap) {
+// index i proves t.clauses[i] (claims-v1: t.factClauses[i]); every tagged fact is one job of a single
+// linesRunAll call in a fresh edge copy of the snapshot, and its lines merge per clause; the jobs'
+// counts (ran, timed_out, skipped) go in as `coverage`. The join's blame is kept only for paths whose
+// text is the landed text.
+async function writeProvenance (snap) {
   try {
     const s = snapshots.find((x) => x.snap === snap)
     if (!s) return
@@ -1249,6 +1256,7 @@ function writeProvenance (snap) {
     const events = fs.readFileSync(path.join(OUT, 'events.jsonl'), 'utf8').split('\n').filter((l) => l.trim())
       .map((l) => { try { return JSON.parse(l) } catch { return null } }).filter(Boolean)
     let coverage = null
+    let counts = null
     if (PROV_COVERAGE === 'record') {
       coverage = {}
       const dir = path.join(WORK, 'provenance')
@@ -1257,21 +1265,29 @@ function writeProvenance (snap) {
         const f = path.join(dir, p)
         if (s.exists[p]) { fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text) } else fs.rmSync(f, { force: true })
       }
+      const tagged = []
       for (const t of W.tasks) {
         (t.facts || []).forEach((argv, i) => {
           // a stories-v1 fact proves t.clauses[i]; a claims-v1 fact, the clauses its `Run:` line tags
           const clauses = t.clauses ? (t.clauses[i] ? [t.clauses[i]] : []) : ((t.factClauses || [])[i] || [])
-          if (!clauses.length) return
-          const { lines } = linesRun({ argv, cwd: dir, env: RUN_ENV, timeoutMs: 60000 })
-          for (const clause of clauses) {
-            const into = coverage[clause] = coverage[clause] || {}
-            for (const [p, ns] of Object.entries(lines)) into[p] = [...new Set([...(into[p] || []), ...ns])].sort((a, b) => a - b)
-          }
+          if (clauses.length) tagged.push({ argv, clauses })
         })
       }
+      const answers = await linesRunAll(tagged.map(({ argv }) => ({ argv, cwd: dir, env: RUN_ENV })),
+        { parallel: PROV_PARALLEL, timeoutMs: PROV_FACT_TIMEOUT_MS, budgetMs: PROV_BUDGET_MS })
+      counts = { ran: 0, timed_out: 0, skipped: 0 }
+      answers.forEach(({ exit, lines, skipped }, k) => {
+        if (skipped) counts.skipped++
+        else if (exit === 124) counts.timed_out++
+        else counts.ran++
+        for (const clause of tagged[k].clauses) {
+          const into = coverage[clause] = coverage[clause] || {}
+          for (const [p, ns] of Object.entries(lines)) into[p] = [...new Set([...(into[p] || []), ...ns])].sort((a, b) => a - b)
+        }
+      })
     }
     const prov = buildProvenance({ landed, blame, events, lost: s.lost || [], coverage })
-    fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov }, null, 1))
+    fs.writeFileSync(path.join(OUT, 'provenance.json'), JSON.stringify({ snap, ...prov, coverage: counts }, null, 1))
   } catch (e) {
     ev('provenance:error', { snap, error: String(e && e.message || e).slice(0, 500) })
   }
