@@ -6,15 +6,16 @@
 // a slow or failing Kata never holds up or breaks the board. One task's comments go out one after
 // another, so Kata records them in board order. `onPost` hears every attempted post; `track`, when
 // given, receives each post's promise (settled or not, it never rejects) so a caller can let the
-// queue drain before it exits. Each post carries the Idempotency-Key `<run>:task:<id>:<n>` (or
-// `<run>:run:<n>` on the run issue), n counting that issue's posts from 1, and is `ok` only when
-// the hub answered with the comment's uid: the record then holds the hub's receipt.
+// queue drain before it exits. Each post carries the Idempotency-Key `<runUid>:task:<id>:<n>` (or
+// `<runUid>:run:<n>` on the run issue), n counting that issue's posts from 1: the run uid is unique
+// on the hub, so two repositories at the same run number never share a key. A post is `ok` only
+// when the hub answered with the comment's uid: the record then holds the hub's receipt.
 //
 // It wraps post as well: a belief `about` the engine held at `surfaceAt` or more (default 0.8) is
 // commented on its task's issue, or on the run issue `runUid` when it names no task with one, so a
 // builder sure the engine itself is wrong is seen on the board mid-run. Other beliefs post nothing.
 
-export function mirrorBoard (board, { kata, projectId, run, tasks = {}, onPost, track, runUid, surfaceAt = 0.8 } = {}) {
+export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track, runUid, surfaceAt = 0.8 } = {}) {
   const orig = { claim: board.claim, release: board.release, reopen: board.reopen, done: board.done, post: board.post }
   const reopening = new Set()
   const tails = new Map()   // uid -> the last queued post for that issue
@@ -29,7 +30,7 @@ export function mirrorBoard (board, { kata, projectId, run, tasks = {}, onPost, 
     const scope = own ? `task:${task}` : 'run'
     const n = (counts.get(scope) || 0) + 1
     counts.set(scope, n)
-    const key = `${run}:${scope}:${n}`
+    const key = `${runUid}:${scope}:${n}`
     const send = () => {
       let p
       try { p = Promise.resolve(kata.comment(projectId, uid, what, { idempotencyKey: key })) } catch (e) { p = Promise.reject(e) }

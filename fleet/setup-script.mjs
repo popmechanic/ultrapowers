@@ -147,9 +147,9 @@ wait "$node_pid"
 wait "$bun_pid"
 wait "$celld_pid"
 
-# pytest: the image's uv, pinned to exactly what noble's packages shipped.
+# pytest: the image's uv, every distribution pinned to what noble's packages shipped.
 stamp pytest
-sudo -n uv pip install --system --break-system-packages pytest==7.4.4 pytest-xdist==3.4.0
+sudo -n uv pip install --system --break-system-packages pytest==7.4.4 pytest-xdist==3.4.0 pluggy==1.4.0 packaging==24.0 iniconfig==1.1.1 execnet==2.0.0
 
 stamp files
 # Quoted heredocs: both files land as handed in, expanding nothing.
@@ -176,6 +176,7 @@ for i in $(seq 1 30); do
 done
 stamp start
 systemctl --user start "fleet-run@$RUN.service"
+stamp done
 sudo -n rm -f -- "$0"
 `
 

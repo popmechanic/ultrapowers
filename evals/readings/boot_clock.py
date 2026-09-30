@@ -9,18 +9,27 @@ second before its lobby `new`); the first claim is the `ts` of the first `sessio
 `runs/<slug>/<N>/events.jsonl` at the tag `<slug>/run-<N>`. Per run it prints
 `run-<N> launch_to_first_claim_s=<s>`, then, when the run's folder carries `fleet-setup.log` or
 `fleet-boot.log`, one line per stamped log line: its step and its seconds since the plan commit.
-The last line is `n=<runs read> window=run-<first>..run-<last> median_s=<s>`. The tags are
-fetched blobless into a temporary repository of the tool's own, deleted after."""
+A run it cannot read (no tag, no `events.jsonl`, no `session:start` row) prints one
+`run-<N> skipped: <reason>` line and the reading goes on. The last line is
+`n=<runs read> of=<runs asked> window=run-<first read>..run-<last read> median_s=<s>`, so a gap
+shows. The tags are fetched blobless into a temporary repository of the tool's own, deleted after.
+
+Two clocks: launch is the laptop's commit clock, the claim and the log stamps are the VM's clock,
+so every seconds figure carries whatever skew lies between the two."""
 import argparse, datetime, json, re, shutil, statistics, subprocess, sys, tempfile
 
 LOGS = ("fleet-setup.log", "fleet-boot.log")
 STAMP = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)\s+(.*)$")
 
 
+class Unreadable(Exception):
+    """A run the tool cannot read; the reading skips it and says why."""
+
+
 def git(repo, *a, check=True):
     r = subprocess.run(["git", "-C", repo, *a], capture_output=True)
     if check and r.returncode:
-        sys.exit(f"git {' '.join(a)}: {r.stderr.decode('utf-8', 'replace').strip()}")
+        raise Unreadable(f"git {' '.join(a)}: {r.stderr.decode('utf-8', 'replace').strip()}")
     return r.stdout.decode("utf-8", "replace") if not r.returncode else None
 
 
@@ -46,12 +55,15 @@ def read_run(repo, remote, slug, n):
     claim = None
     for line in git(repo, "show", f"{tag}:{folder}/events.jsonl").splitlines():
         if line.strip().startswith("{"):
-            e = json.loads(line)
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
             if e.get("kind") == "session:start":
                 claim = when(e["ts"])
                 break
     if claim is None:
-        sys.exit(f"{tag}: no session:start row in {folder}/events.jsonl")
+        raise Unreadable(f"no session:start row in {folder}/events.jsonl")
     out = [f"run-{n} launch_to_first_claim_s={(claim - launch).total_seconds():.1f}"]
     for log in LOGS:
         text = git(repo, "show", f"{tag}:{folder}/{log}", check=False)
@@ -71,19 +83,28 @@ def main():
     runs = sorted(set(a.runs))
     repo = tempfile.mkdtemp(prefix="boot_clock-")
     try:
-        git(repo, "init", "-q")
-        # The fetch URL as a promisor remote, so blobs the blobless fetch skipped load on demand.
-        git(repo, "remote", "add", "origin", a.remote)
-        git(repo, "config", "remote.origin.promisor", "true")
-        git(repo, "config", "remote.origin.partialclonefilter", "blob:none")
-        secs = []
+        try:
+            git(repo, "init", "-q")
+            # The fetch URL as a promisor remote, so blobs the blobless fetch skipped load on demand.
+            git(repo, "remote", "add", "origin", a.remote)
+            git(repo, "config", "remote.origin.promisor", "true")
+            git(repo, "config", "remote.origin.partialclonefilter", "blob:none")
+        except Unreadable as e:
+            sys.exit(str(e))
+        read = []
         for n in runs:
-            s, lines = read_run(repo, "origin", a.slug, n)
-            secs.append(s)
+            try:
+                s, lines = read_run(repo, "origin", a.slug, n)
+            except Unreadable as e:
+                print(f"run-{n} skipped: {' '.join(str(e).split())}", flush=True)
+                continue
+            read.append((n, s))
             print("\n".join(lines), flush=True)
     finally:
         shutil.rmtree(repo, ignore_errors=True)
-    print(f"n={len(secs)} window=run-{runs[0]}..run-{runs[-1]} median_s={statistics.median(secs):.1f}")
+    window = f"run-{read[0][0]}..run-{read[-1][0]}" if read else "none"
+    median = f"{statistics.median(s for _, s in read):.1f}" if read else "none"
+    print(f"n={len(read)} of={len(runs)} window={window} median_s={median}")
 
 
 if __name__ == "__main__":
