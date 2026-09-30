@@ -34,7 +34,7 @@ import { probeWordsOf, toolchainViolations, SANDBOX_TOOLCHAIN } from '../toolcha
 import { Refusal, defaultExec } from '../lobby.mjs'
 import { simEnv } from './_helpers.mjs'
 import {
-  answer, cleanup, cmdRule, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  answer, cleanup, cmdRule, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const { launch } = launchModule
@@ -129,7 +129,8 @@ const isFunction = (leg, name, value) => assert.equal(
   const ORIGIN_URL = `https://github.com/${TARGET}.git`
   const ENGINE = 'd'.repeat(40)
   const NOW = new Date('2026-09-22T12:00:00.000Z')
-  const CAPPED = { cpu: '6', memory: '8GB' }
+  const EVIDENCE = 'ops/evidence'
+  const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
   const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
   const PLAN = '# a plan\n\nOne plan whose probe runs cargo.\n'
 
@@ -148,8 +149,11 @@ const isFunction = (leg, name, value) => assert.equal(
       argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
     answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
   }
+  // The evidence repository's URL goes to its own bare; every other github.com
+  // URL, and `origin`, to the target's.
   const pointAtOrigin = (repo, argv) => {
-    const pointed = argv.map((a) => (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
+    const pointed = argv.map((a) => a === `https://github.com/${EVIDENCE}.git` ? repo.evidence.bare
+      : (a === 'origin' || /github\.com/.test(String(a)) ? repo.origin : a))
     const fetchAt = argv.indexOf('fetch')
     if (fetchAt < 0) return pointed
     const remoteAt = argv.indexOf('origin', fetchAt)
@@ -178,6 +182,7 @@ const isFunction = (leg, name, value) => assert.equal(
   const root = tempDir('fleet-launch-probe-runners-')
   const repo = makeTargetRepo({ root, files: { 'README.md': '# target\n', 'src/a.rs': 'fn main() {}\n' } })
   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
+  repo.evidence = makeEvidenceRepo({ root, name: EVIDENCE })
   fs.mkdirSync(path.join(repo.dir, 'plans'), { recursive: true })
   fs.writeFileSync(path.join(repo.dir, 'plans', 'a-plan.md'), PLAN)
 
@@ -187,7 +192,9 @@ const isFunction = (leg, name, value) => assert.equal(
       localRemote(repo),
       compilerRule,
       sshRule('help ', HELP_OK),
-      sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
+      sshRule('integrations list --json', answer([
+        { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+      ])),
       sshRule('billing plan --json', answer(BILLING_OK)),
       sshRule("ls '", vmsPayload([])),
       sshRule('new ', NEW_OK),

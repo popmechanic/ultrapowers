@@ -51,7 +51,8 @@ import { USAGE, usage, launch } from '../launch.mjs'
 import { EXE_HOST, Refusal } from '../lobby.mjs'
 import {
   BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+  answer, cleanup, cmdRule, engineRule, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir,
+  thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
 const TARGET = 'acme/widgets'
@@ -59,7 +60,8 @@ const GH = 'gh-acme-widgets'
 const ORIGIN_URL = `https://github.com/${TARGET}.git`
 const ENGINE = 'c'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
-const CAPPED = { cpu: '6', memory: '8GB' }
+const EVIDENCE = 'ops/evidence'
+const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
@@ -77,13 +79,15 @@ const HELP_OK = (cmd, argv) => {
 const NO_RECORD = answer('')
 const recordRule = (res) => cmdRule('gh', 'api', res)
 
-const readRules = ({ repo }) => [
+const readRules = ({ repo, evidence }) => [
   engineRule(ENGINE),
   COMPILER_FETCH,
-  localRemote(repo),
+  localRemote(repo, evidence),
   compilerRule(ONE_TASK),
   sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
+  sshRule('integrations list --json', answer([
+    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+  ])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule("ls '", vmsPayload([])),
   sshRule('new ', NEW_OK),
@@ -102,7 +106,8 @@ function workspace () {
   fs.mkdirSync(planDir)
   const planPath = path.join(planDir, 'a-plan.md')
   fs.writeFileSync(planPath, PLAN)
-  return { root, repo, planPath, cleanup: () => cleanup(root) }
+  const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
+  return { root, repo, evidence, planPath, cleanup: () => cleanup(root) }
 }
 
 const argvFor = (ws, extra = []) => [
@@ -120,7 +125,7 @@ const launchIn = (ws, { exec, extra = [] }) => launch({
 })
 const drive = async (extra) => {
   const ws = workspace()
-  const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
+  const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence }) })
   let result = null
   let error = null
   try {

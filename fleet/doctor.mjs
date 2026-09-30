@@ -9,7 +9,7 @@
  * the config and policy readers come from `./lobby.mjs`, one copy for both
  * the doctor and the launcher.
  *
- * Nine rows, all reads, every one of them answered by exe.dev's own truth or
+ * Ten rows, all reads, every one of them answered by exe.dev's own truth or
  * by this laptop's own keychain:
  *
  *   exe-dev       `ssh exe.dev whoami` names an account.
@@ -28,6 +28,11 @@
  *                 <name> --json`, `policy.selector`). That policy is the one
  *                 way a credential reaches a fleet VM: exe.dev refuses `new
  *                 --integration` and `integrations attach` since 2026-09-11.
+ *   evidence      the one-time setup of the operator's evidence repository,
+ *                 walked in order and stopped at the first miss: the key
+ *                 `evidence` in `~/.ultrapowers/fleet.json`, the repository
+ *                 itself (`gh api repos/<owner>/<repo>`), and its
+ *                 `gh-<owner>-<repo>` integration on the policy `tag:fleet`.
  *   verb-drift    `help <verb>` for every verb in the verb record, and
  *                 the diff against the flags recorded there. A flag that
  *                 appeared or vanished is a finding in a green row; only a
@@ -75,13 +80,14 @@ import {
   parseJson,
   parseMemoryGb,
   parsePolicy,
+  readEvidenceSetting,
   readPlanCapacity
 } from './lobby.mjs'
 
-/** The nine rows, in the order the doctor reports them. Each id is also a
+/** The ten rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'verb-drift', 'kata', 'cloudflare'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -281,12 +287,13 @@ function poolRow (res, pool, config) {
 const READ_KEYS = Object.keys(FLEET_DEFAULTS)
 
 /** The names something outside the doctor reads, as the row's detail spells
- *  them: `account` picks the keychain entry a run signs in with. It is the
- *  launcher's to read; the doctor only asks whether what it names is there. */
-const LAUNCHER_KEYS = Object.freeze(['account'])
+ *  them: `account` picks the keychain entry a run signs in with, and
+ *  `evidence` names the repository a run keeps its record in. They are the
+ *  launcher's to read; the doctor only asks whether what they name is there. */
+const LAUNCHER_KEYS = Object.freeze(['account', 'evidence'])
 
-/** Every name the config file may carry: the two the doctor reads, and the one
- *  the launcher does. A name outside this list is a key nothing reads. */
+/** Every name the config file may carry: the two the doctor reads, and the
+ *  ones the launcher does. A name outside this list is a key nothing reads. */
 const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
 
 /**
@@ -713,6 +720,47 @@ function integrationsRow (found, target, policies) {
   return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} on the policy ${FLEET_POLICY}`)
 }
 
+// ── evidence ─────────────────────────────────────────────────────────────────
+
+/** The read that asks whether the evidence repository exists, as the argv of
+ *  `exec('gh', …)`. */
+const evidenceRepoRead = (evidence) => ['api', `repos/${evidence}`]
+
+/**
+ * The one-time setup that lets a run keep its record in the operator's own
+ * evidence repository — whatever repository the run drives — walked in the
+ * order an operator does it and stopped at the first miss, each naming its
+ * fix: the key `evidence` in `~/.ultrapowers/fleet.json`; the repository
+ * itself (`repoRes`, the answer of `gh api repos/<owner>/<repo>`, null when
+ * there was no key to read); its `gh-<owner>-<repo>` integration in the
+ * listing, then that object's policy, judged by `policyRowFor`.
+ */
+function evidenceRow (evidence, repoRes, found, policyRes) {
+  if (evidence === null) {
+    return row(
+      'evidence',
+      'missing',
+      'no evidence repository set — add "evidence": "<owner>/<repo>" to ~/.ultrapowers/fleet.json'
+    )
+  }
+  if (repoRes === null || repoRes.code !== 0) {
+    return row(
+      'evidence',
+      'missing',
+      `gh api repos/${evidence} answered code ${repoRes?.code ?? 1} — gh repo create ${evidence} --private`
+    )
+  }
+  if (found === null) {
+    return row('evidence', 'missing', 'integrations list printed no readable JSON')
+  }
+  const name = targetIntegration(evidence)
+  if (!found.has(name)) {
+    return row('evidence', 'missing', `no ${name} integration for ${evidence} — node fleet/target.mjs ${evidence}`)
+  }
+  const off = policyRowFor(name, { id: 'evidence', found, policyRes })
+  return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is on the policy ${FLEET_POLICY}`)
+}
+
 // ── kata ─────────────────────────────────────────────────────────────────────
 
 /** The hub's VM, the integration that fronts it, and the one command that
@@ -804,9 +852,12 @@ function cloudflareRow (found, policyRes) {
  * `account` is that file's own `account` — `fleetConfigAccount` for the same
  * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
  * overrides the verb record the `verb-drift` row reads.
+ *
+ * `evidence` is that file's own `evidence` — `readEvidenceSetting` for the same
+ * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, verbsPath = null
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null
 } = {}) {
   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -815,6 +866,10 @@ export async function doctor ({
     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
   }
   const wantAccount = account === null || account === undefined ? null : String(account)
+  const wantEvidence = evidence === null || evidence === undefined ? null : String(evidence)
+  if (wantEvidence !== null && !isSafeTarget(wantEvidence)) {
+    throw new Error(`evidence takes owner/repo, not ${JSON.stringify(wantEvidence)}`)
+  }
 
   const read = (remote) => lobbyRead(run, remote)
   const whoami = await read(READS.whoami)
@@ -846,6 +901,13 @@ export async function doctor ({
   const cloudflarePolicy = found !== null && found.has(CLOUDFLARE_INTEGRATION)
     ? await read(policyRead(CLOUDFLARE_INTEGRATION))
     : null
+  // The evidence row's reads, each only when the step before it answered: the
+  // repository, then its integration's policy when the listing names it.
+  const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
+  const evidenceName = wantEvidence === null ? null : targetIntegration(wantEvidence)
+  const evidencePolicy = evidenceRepo !== null && evidenceRepo.code === 0 && found !== null && found.has(evidenceName)
+    ? (policies.get(evidenceName) ?? await read(policyRead(evidenceName)))
+    : null
   const drift = await verbDrift({
     help: (verb) => read(`help ${verb}`),
     recordPath: verbsPath
@@ -858,6 +920,7 @@ export async function doctor ({
     accountsRow(accounts, found, wantAccount),
     githubRow(github),
     integrationsRow(found, want, policies),
+    evidenceRow(wantEvidence, evidenceRepo, found, evidencePolicy),
     verbDriftRow(drift),
     kataRow(found, kataPolicy, kataVms),
     cloudflareRow(found, cloudflarePolicy)
@@ -901,9 +964,10 @@ async function main (argv) {
   const config = await loadFleetConfig({ path: configPath })
   const configKeys = await fleetConfigKeys({ path: configPath })
   const account = await fleetConfigAccount({ path: configPath })
+  const evidence = await readEvidenceSetting({ path: configPath })
   let result
   try {
-    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account })
+    result = await doctor({ config, exec: defaultExec, target: opts.target, configKeys, account, evidence })
   } catch (error) {
     process.stderr.write(`${error.message}\n`)
     process.exitCode = 2

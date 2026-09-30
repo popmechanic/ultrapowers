@@ -72,7 +72,8 @@ import { defaultReadUsage, defaultRefreshCredential, launch, renderLaunch, USAGE
 import { Refusal, defaultExec } from '../lobby.mjs'
 import {
   BILLING_OK, COMPILER_FETCH, NEW_OK, NO_NETWORK_GIT, NO_REMOTE_OPS, ONE_TASK,
-  answer, cleanup, cmdRule, engineRule, localRemote, makeExec, makeTargetRepo, pointAtOrigin, sshRule, tempDir,
+  answer, cleanup, cmdRule, engineRule, localRemote, makeEvidenceRepo, makeExec, makeTargetRepo, pointAtOrigin, sshRule,
+  tempDir,
   thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
@@ -127,7 +128,8 @@ const GH = 'gh-popmechanic-smoke'
 const ORIGIN_URL = `https://github.com/${TARGET}.git`
 const ENGINE = 'b'.repeat(40)
 const NOW = new Date('2026-09-16T03:20:00.000Z')
-const CAPPED = { cpu: '6', memory: '8GB' }
+const EVIDENCE = 'ops/evidence'
+const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
@@ -151,13 +153,16 @@ const compilerRule = (compiled) => ({
 const NO_RECORD = answer('')
 const recordRule = (res) => cmdRule('gh', 'api', res)
 
+// `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
 const readRules = ({ repo }) => [
   engineRule(ENGINE),
   COMPILER_FETCH,
-  localRemote(repo),
+  localRemote(repo, repo.evidence),
   compilerRule(ONE_TASK),
   sshRule('help ', HELP_OK),
-  sshRule('integrations list --json', answer([{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }])),
+  sshRule('integrations list --json', answer([
+    { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
+  ])),
   sshRule('billing plan --json', answer(BILLING_OK)),
   sshRule("ls '", vmsPayload([])),
   sshRule('new ', NEW_OK),
@@ -170,6 +175,7 @@ function workspace () {
   const root = tempDir('fleet-launch-credential-')
   const repo = makeTargetRepo({ root, files: { ...SEED } })
   repo.git(['remote', 'set-url', 'origin', ORIGIN_URL])
+  repo.evidence = makeEvidenceRepo({ root, name: EVIDENCE })
   const planDir = path.join(root, 'plans-src')
   fs.mkdirSync(planDir)
   const planPath = path.join(planDir, 'a-plan.md')
@@ -386,7 +392,7 @@ const pushOrderRule = (repo, order) => ({
   when: (cmd, argv) => cmd === 'git' && argv.includes('push') && !argv.some((a) => /ultrapowers/.test(String(a))),
   answer: (cmd, argv, options) => {
     order.push('push')
-    return defaultExec('git', pointAtOrigin(repo, argv), options ?? {})
+    return defaultExec('git', pointAtOrigin(repo, argv, repo.evidence), options ?? {})
   }
 })
 {

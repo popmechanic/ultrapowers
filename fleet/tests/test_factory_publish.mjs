@@ -27,7 +27,10 @@
  *       exactly the green shape; no row's own JSON ever carries the stubs'
  *       stdout text; the deploy and verify commands both saw the Cloudflare
  *       env vars, and only the verify probe saw `ULTRA_PUBLISH_URL`;
- *       status.json's phase is the exact "...and the app is published" text.
+ *       status.json's phase is the exact "...and the app is published" text;
+ *       and publish.json, publish-deploy.log and publish-verify.log sit in
+ *       `runs/o-r/<N>/` at the run's tag `o-r/run-<N>` in the evidence
+ *       repository (#1395).
  *
  *   (b) [M3] the red case: deploy is green, verify exits 1 — events.jsonl
  *       carries deploy, verify{exit:1}, exactly one rollback{exit:0} row;
@@ -136,7 +139,8 @@ async function runCase (rig, runN, markCase) {
   rig.writeGitConfig(home)
   if (markCase) fs.writeFileSync(path.join(home, 'publish-case'), markCase)
 
-  const { originDir, base, plan } = rig.buildOrigin(root, runN)
+  const { originDir, evidenceDir, base, plan } = rig.buildOrigin(root, runN)
+  rig.wireEvidence(home, evidenceDir)
   rig.git(root, ['clone', originDir, path.join(home, 'target')])
   rig.buildEngineDir(home, ENGINE_SHA)
   rig.writeStubs(bin, { claudeAuth: 'oauth' })
@@ -148,36 +152,37 @@ async function runCase (rig, runN, markCase) {
   }
 
   const res = await rig.runBootAsync({ bin, home, env })
-  return { res, root, home, bin, originDir, base, plan }
+  return { res, root, home, bin, originDir, evidenceDir, base, plan }
 }
 
-function readEvidence (originDir, runN, p) {
-  return git(originDir, ['show', `ultra/evidence/run-${runN}:.ultrapowers/runs/${runN}/${p}`])
+// The run's record is its folder `runs/o-r/<N>/` at its tag `o-r/run-<N>` in the evidence repository.
+function readEvidence (evidenceDir, runN, p) {
+  return git(evidenceDir, ['show', `o-r/run-${runN}:runs/o-r/${runN}/${p}`])
 }
 
-function evidenceRunDirEntries (originDir, runN) {
-  return git(originDir, ['ls-tree', '-r', '--name-only', `ultra/evidence/run-${runN}`])
-    .split('\n').filter((p) => p.startsWith(`.ultrapowers/runs/${runN}/`))
+function evidenceRunDirEntries (evidenceDir, runN) {
+  return git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
+    .split('\n').filter((p) => p.startsWith(`runs/o-r/${runN}/`))
 }
 
 // ── (a) [M2, M6] the green case ───────────────────────────────────────────
 
 {
   const runN = '601'
-  const { res, home, originDir } = await runCase(PUBLISH_RIG, runN, 'green')
+  const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'green')
   assert.equal(
     res.code, 0,
     `(a) [M2] the green publish case exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const status = JSON.parse(readEvidence(originDir, runN, 'status.json'))
+  const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'done', '(a) [M2] status.json state is "done"')
   assert.equal(
     status.phase, 'the pull request was merged and the app is published',
     '(a) [M2] status.json phase is exactly "the pull request was merged and the app is published"'
   )
 
-  const eventsText = readEvidence(originDir, runN, 'events.jsonl')
+  const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
@@ -202,7 +207,7 @@ function evidenceRunDirEntries (originDir, runN) {
   assert.ok(!eventsText.includes('Deployed fixture-worker triggers'), "(a) [M6] events.jsonl never embeds the deploy stub's stdout")
   assert.ok(!eventsText.includes('fixture: verify ok'), "(a) [M6] events.jsonl never embeds the verify stub's stdout")
 
-  const publishJson = JSON.parse(readEvidence(originDir, runN, 'publish.json'))
+  const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
   assert.deepEqual(
     publishJson,
     {
@@ -220,18 +225,19 @@ function evidenceRunDirEntries (originDir, runN) {
     '(a) [M2] no rollback call log exists — bunx wrangler rollback was never invoked'
   )
 
-  const runDirEntries = evidenceRunDirEntries(originDir, runN).slice().sort()
+  const runDirEntries = evidenceRunDirEntries(evidenceDir, runN).slice().sort()
   assert.deepEqual(
     runDirEntries,
     [
-      `.ultrapowers/runs/${runN}/engine.log`,
-      `.ultrapowers/runs/${runN}/events.jsonl`,
-      `.ultrapowers/runs/${runN}/publish-deploy.log`,
-      `.ultrapowers/runs/${runN}/publish-verify.log`,
-      `.ultrapowers/runs/${runN}/publish.json`,
-      `.ultrapowers/runs/${runN}/status.json`
+      `runs/o-r/${runN}/engine.log`,
+      `runs/o-r/${runN}/events.jsonl`,
+      `runs/o-r/${runN}/plan.md`,
+      `runs/o-r/${runN}/publish-deploy.log`,
+      `runs/o-r/${runN}/publish-verify.log`,
+      `runs/o-r/${runN}/publish.json`,
+      `runs/o-r/${runN}/status.json`
     ],
-    `(a) [M2] the evidence run directory carries the three publish files alongside the base three — got ${JSON.stringify(runDirEntries)}`
+    `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan and the base three — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M6] both probe commands ran in the target checkout under the
@@ -259,20 +265,20 @@ function evidenceRunDirEntries (originDir, runN) {
 
 {
   const runN = '602'
-  const { res, home, originDir } = await runCase(PUBLISH_RIG, runN, 'red')
+  const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'red')
   assert.equal(
     res.code, 0,
     `(b) [M3] the red publish case still exits 0 (a live check going red never fails the boot) — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const status = JSON.parse(readEvidence(originDir, runN, 'status.json'))
+  const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'done', '(b) [M3] status.json state is "done"')
   assert.equal(
     status.phase, 'the pull request was merged; the live check was red and the deploy was rolled back',
     '(b) [M3] status.json phase is exactly the rolled-back text'
   )
 
-  const eventsText = readEvidence(originDir, runN, 'events.jsonl')
+  const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
@@ -292,7 +298,7 @@ function evidenceRunDirEntries (originDir, runN) {
     "(b) [M3] the rollback row names the plan's own rollback command"
   )
 
-  const publishJson = JSON.parse(readEvidence(originDir, runN, 'publish.json'))
+  const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
   assert.equal(publishJson.published, false, '(b) [M3] publish.json published is false')
   assert.equal(publishJson.verify.exit, 1, '(b) [M3] publish.json verify.exit is 1')
   assert.equal(publishJson.rollback.exit, 0, '(b) [M3] publish.json rollback.exit is 0')
@@ -312,19 +318,19 @@ function evidenceRunDirEntries (originDir, runN) {
 
 {
   const runN = '603'
-  const { res, home, originDir } = await runCase(PUBLISH_RIG, runN, 'deploy-failed')
+  const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'deploy-failed')
   assert.equal(
     res.code, 0,
     `(c) [M4] the deploy-failed publish case still exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const status = JSON.parse(readEvidence(originDir, runN, 'status.json'))
+  const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
   assert.equal(
     status.phase, 'the pull request was merged; the deploy failed',
     '(c) [M4] status.json phase is exactly "the pull request was merged; the deploy failed"'
   )
 
-  const eventsText = readEvidence(originDir, runN, 'events.jsonl')
+  const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
@@ -336,7 +342,7 @@ function evidenceRunDirEntries (originDir, runN) {
   assert.equal(deployRow.exit, 1, '(c) [M4] the deploy row carries exit 1')
   assert.equal(deployRow.url, null, '(c) [M4] the deploy row carries url null')
 
-  const publishJson = JSON.parse(readEvidence(originDir, runN, 'publish.json'))
+  const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
   assert.deepEqual(
     publishJson,
     {
@@ -357,13 +363,13 @@ function evidenceRunDirEntries (originDir, runN) {
 
 {
   const runN = '604'
-  const { res, originDir } = await runCase(PLAIN_RIG, runN)
+  const { res, evidenceDir } = await runCase(PLAIN_RIG, runN)
   assert.equal(
     res.code, 0,
     `(d) [M5] the no-Publish-line case exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const eventsText = readEvidence(originDir, runN, 'events.jsonl')
+  const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   const publishRows = rows.filter((r) => r.kind.startsWith('publish:') && r.kind !== 'publish:pr')
   assert.equal(
@@ -371,7 +377,7 @@ function evidenceRunDirEntries (originDir, runN) {
     `(d) [M5] events.jsonl carries no publish:* row beyond publish:pr — got ${JSON.stringify(publishRows.map((r) => r.kind))}`
   )
 
-  const runDirEntries = evidenceRunDirEntries(originDir, runN)
+  const runDirEntries = evidenceRunDirEntries(evidenceDir, runN)
   assert.ok(
     !runDirEntries.some((p) => p.endsWith('/publish.json')),
     `(d) [M5] no publish.json is committed to the evidence tree — got ${JSON.stringify(runDirEntries)}`

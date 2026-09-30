@@ -1,18 +1,18 @@
 #!/bin/bash
 # factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
-# plan off `ultra/plan-run-<N>`, proves the credential through `factory/preflight.mjs`,
-# runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record on
-# `ultra/evidence-run-<N>`, then publishes, merges and tags. Every external program
-# goes through a `fleet_*` wrapper and every path hangs off `$FLEET_HOME`, so the exam
-# drives this against stubs.
+# plan off `live/<slug>/run-<N>` of the operator's evidence repository (named in
+# `$FLEET_HOME/fleet-evidence-repo`), proves the credential through `factory/preflight.mjs`,
+# runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record in
+# `runs/<slug>/<N>/` on that live branch, then publishes and merges, and however the run ends
+# leaves one tag `<slug>/run-<N>` there. Nothing but `ultra/integration-run-<N>` is written to the
+# target. Every external program goes through a `fleet_*` wrapper and every path hangs off
+# `$FLEET_HOME`, so the exam drives this against stubs.
 set -euo pipefail
 FLEET_HOME="${FLEET_HOME:-/home/exedev}"
 REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
-PLAN_BLOB_PATH=".ultrapowers/plan.md"
-KATA_BLOB_PATH=".ultrapowers/kata.json"
 KATA_VERSION="0.18.0"
 KATA_RELEASE_BASE="https://github.com/kenn-io/kata/releases/download/v$KATA_VERSION/"
 # The helper administers through the host where the edge injects the hub's bearer; the spoke syncs through the other.
@@ -30,7 +30,7 @@ TARGET_DIR="$FLEET_HOME/target"; EVIDENCE_DIR="$FLEET_HOME/evidence"
 RUN_DIR="$FLEET_HOME/run"; ENGINE_LOG="$FLEET_HOME/engine.log"
 BOOT_LOG="$FLEET_HOME/fleet-boot.log"; DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
 RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
-BRANCH=""; PLAN_BRANCH=""; EVIDENCE_BRANCH=""; EVIDENCE_REL=""; PLAN_FILE=""
+BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PAST_DIR=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
 BOARD_BOUND=""; BOARD_UNIT=""; BOARD_PROJECT_ID=""; BOARD_PROJECT_NAME=""; BOARD_KATA_JSON=""
@@ -87,11 +87,11 @@ event_row() {
   mkdir -p "$(dirname "$file")" 2>/dev/null || true
   fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" row "$@" >>"$file"
 }
-# The failure account: the page, one evidence commit, one push, out — once there is an evidence branch to write to.
+# The failure account: the page, one evidence commit, one push, the run's tag, out — once there is an evidence clone to write from.
 fail() { # $1 = message, $2 = exit code (default 1)
   ERROR="$1"; log "FAILED: $1"
   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
-    FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"
+    FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags
     # The hub hears the failure too (#1288): the spoke leaves, then `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
     board_down || true
     fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state failed --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true; fi
@@ -120,26 +120,53 @@ parse_assignment() { # $1 = the comment line
   is_target "$TARGET_REPO" || fail "assignment: target is not owner/repo ('$TARGET_REPO')"
   is_sha "$BASE_SHA"       || fail "assignment: base is not a 40-hex sha ('$BASE_SHA')"
   is_sha "$ENGINE_SHA"     || fail "assignment: engine is not a 40-hex sha ('$ENGINE_SHA')"
-  RUN_ID="run-$RUN_N"; BRANCH="ultra/integration-$RUN_ID"; PLAN_BRANCH="ultra/plan-$RUN_ID"
-  EVIDENCE_BRANCH="ultra/evidence-$RUN_ID"; EVIDENCE_REL=".ultrapowers/runs/$RUN_N"
+  RUN_ID="run-$RUN_N"; BRANCH="ultra/integration-$RUN_ID"; SLUG="${TARGET_REPO/\//-}"
+  LIVE_BRANCH="live/$SLUG/$RUN_ID"; EVIDENCE_REL="runs/$SLUG/$RUN_N"
   PLAN_FILE="$FLEET_HOME/plans/$RUN_ID.md"; ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
   STATUS_FILE="$EVIDENCE_DIR/$EVIDENCE_REL/status.json"
   log "assignment: $RUN_ID target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA kind=$ENGINE_KIND"
+  read_evidence_repo
 }
-# The clone is left AT BASE, the plan checked against the assignment's `plan=` before a model reads a word of it, and the evidence branch a DETACHED WORKTREE OF THE TARGET CLONE so its receipts land on the target and nowhere else.
+# The operator's evidence repository, one `<owner>/<repo>` line the first-boot setup script wrote; never derived from the target.
+read_evidence_repo() {
+  local file="$FLEET_HOME/fleet-evidence-repo"
+  EVIDENCE_REPO="$({ head -n 1 "$file" 2>/dev/null || true; } | tr -d '[:space:]')"
+  is_target "$EVIDENCE_REPO" || fail "evidence: $file is absent or not one owner/repo line ('$EVIDENCE_REPO') — the first-boot setup script writes it"
+  log "evidence: $EVIDENCE_REPO (from $file)"
+}
+# The clone is left AT BASE; the evidence repository is a shallow clone of the run's live branch alone, whose tip on a fresh clone must be the assignment's `plan=` before a model reads a word of the plan.
 prepare() {
-  local landed at
+  local landed
   [ -e "$TARGET_DIR/.git" ] || fleet_git clone "https://$GITHUB_INT_HOST/$TARGET_REPO.git" "$TARGET_DIR" || fail "clone: target $TARGET_REPO through $GITHUB_INT_HOST"
   fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
-  fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$PLAN_BRANCH" || fail "plan: cannot fetch $PLAN_BRANCH from $TARGET_REPO"
-  landed="$(fleet_git -C "$TARGET_DIR" rev-parse FETCH_HEAD 2>/dev/null || true)"
-  [ "$landed" = "$PLAN_SHA" ] || fail "plan: $PLAN_BRANCH is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
-  mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$PLAN_BLOB_PATH" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $PLAN_BLOB_PATH"
-  log "plan: $PLAN_BRANCH at $PLAN_SHA -> $PLAN_FILE"
-  [ -e "$EVIDENCE_DIR/.git" ] && { EVIDENCE_READY=1; return 0; }
-  if fleet_git -C "$TARGET_DIR" fetch origin "refs/heads/$EVIDENCE_BRANCH" 2>/dev/null; then at=FETCH_HEAD; else at="$PLAN_SHA"; fi
-  fleet_git -C "$TARGET_DIR" worktree add --detach "$EVIDENCE_DIR" "$at" || fail "evidence: worktree add $EVIDENCE_DIR at $at"
-  EVIDENCE_READY=1; log "evidence: worktree at $at"
+  if [ ! -e "$EVIDENCE_DIR/.git" ]; then
+    fleet_git clone --depth=1 --single-branch --branch "$LIVE_BRANCH" "https://$GITHUB_INT_HOST/$EVIDENCE_REPO.git" "$EVIDENCE_DIR" \
+      || fail "plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST"
+    landed="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
+    [ "$landed" = "$PLAN_SHA" ] || fail "plan: $LIVE_BRANCH of $EVIDENCE_REPO is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
+  fi
+  mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/plan.md" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $EVIDENCE_REL/plan.md"
+  EVIDENCE_READY=1; log "plan: $LIVE_BRANCH of $EVIDENCE_REPO at $PLAN_SHA -> $PLAN_FILE"
+}
+# The previous run's record, for the engine: the highest `<slug>/run-<M>` tag below this run, its run folder
+# extracted to `$FLEET_HOME/past/<M>`. Any miss is one `past:` log line and no `--past-dir`.
+find_past() {
+  local listing ref m best=""
+  listing="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "refs/tags/$SLUG/run-*" 2>/dev/null)" \
+    || { log "past: cannot list $SLUG/run-* tags in $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+  while read -r _ ref; do
+    m="${ref#refs/tags/$SLUG/run-}"
+    case "$m" in *[!0-9]* | "") continue ;; esac
+    [ "$m" -lt "$RUN_N" ] 2>/dev/null || continue
+    if [ -z "$best" ] || [ "$m" -gt "$best" ]; then best="$m"; fi
+  done <<<"$listing"
+  [ -n "$best" ] || { log "past: no $SLUG/run-* tag below $RUN_N in $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+  fleet_git -C "$EVIDENCE_DIR" fetch --depth=1 origin "refs/tags/$SLUG/run-$best" 2>/dev/null \
+    || { log "past: cannot fetch $SLUG/run-$best from $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+  rm -rf "$FLEET_HOME/past/$best"; mkdir -p "$FLEET_HOME/past/$best"
+  if ! fleet_git -C "$EVIDENCE_DIR" archive --format=tar "FETCH_HEAD:runs/$SLUG/$best" | tar -x -C "$FLEET_HOME/past/$best"
+  then log "past: $SLUG/run-$best carries no runs/$SLUG/$best/ — the engine starts with no past"; return 0; fi
+  PAST_DIR="$FLEET_HOME/past/$best"; log "past: $SLUG/run-$best -> $PAST_DIR"
 }
 # One writer, twelve cells, written atomically through `factory/record.mjs status`.
 # `startedAt` is the run's clock and is set once; every write stamps `updatedAt`.
@@ -174,17 +201,15 @@ evidence_commit() { # $1 = commit subject
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0
-  # `-f`: the evidence worktree is a worktree of the TARGET, whose own
-  # `.gitignore` may ignore `*.log` — tinyapp-fixture's does, and run-38 and
-  # run-39 tagged no engine.log and no publish-deploy.log (2026-09-24). The
-  # record is the run's, not the target's, so its files are added whatever
-  # the target ignores.
+  # `-f`: whatever a `.gitignore` says — the target's once ignored `*.log`, and
+  # run-38 and run-39 tagged no engine.log and no publish-deploy.log
+  # (2026-09-24) — the run's named files are its record and are added.
   fleet_git -C "$EVIDENCE_DIR" add -f -- "${paths[@]}" || log "evidence: add refused"
   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
   while :; do
-    if fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:refs/heads/$EVIDENCE_BRANCH"; then return 0; fi
+    if fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:refs/heads/$LIVE_BRANCH"; then return 0; fi
     n=$(( n + 1 )); if [ "$n" -ge 5 ]; then log "evidence: push rejected $n times — the commit stays local"; return 0; fi
-    fleet_git -C "$EVIDENCE_DIR" pull --rebase origin "$EVIDENCE_BRANCH" || true
+    fleet_git -C "$EVIDENCE_DIR" pull --rebase origin "$LIVE_BRANCH" || true
   done
 }
 # One tick of the relay: copy only when the bytes differ, through a temporary name in the destination directory.
@@ -218,8 +243,8 @@ preflight() {
 board_up() {
   local blob kata_bin out local_id
   BOARD_UNIT="fleet-kata-$RUN_N"
-  blob="$(fleet_git -C "$TARGET_DIR" show "$PLAN_SHA:$KATA_BLOB_PATH" 2>/dev/null || true)"
-  [ -n "$blob" ] || { log "board: no $KATA_BLOB_PATH at $PLAN_SHA — the run proceeds without a spoke"; return 0; }
+  blob="$(fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/kata.json" 2>/dev/null || true)"
+  [ -n "$blob" ] || { log "board: no $EVIDENCE_REL/kata.json at $PLAN_SHA — the run proceeds without a spoke"; return 0; }
   mkdir -p "$FLEET_HOME/plans"; BOARD_KATA_JSON="$FLEET_HOME/plans/$RUN_ID.kata.json"
   printf '%s' "$blob" >"$BOARD_KATA_JSON"
   if ! kata_bin="$(fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" install --version "$KATA_VERSION" --release-base "$KATA_RELEASE_BASE" --home "$FLEET_HOME")"
@@ -262,8 +287,9 @@ engine_deps() {
 }
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
-  local pid board_args=() engine_entry="factory/flock/engine.mjs"
+  local pid board_args=() past_args=() engine_entry="factory/flock/engine.mjs"
   [ -n "$BOARD_BOUND" ] && board_args=(--kata-url "$KATA_URL" --kata-project "$BOARD_PROJECT_ID" --kata-json "$BOARD_KATA_JSON" --kata-actor "engine:$RUN_ID")
+  [ -n "$PAST_DIR" ] && past_args=(--past-dir "$PAST_DIR")
   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
   ( set +e
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
@@ -272,7 +298,7 @@ run_engine() {
         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
         --plan "$PLAN_FILE" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
-        ${board_args[@]+"${board_args[@]}"} >>"$ENGINE_LOG" 2>&1
+        ${board_args[@]+"${board_args[@]}"} ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
     printf '%s\n' "$?" >"$DONE_MARKER" ) &
   pid=$!
   # The exit is looked for every second and the events relayed every FLEET_COMMIT_SECONDS: one
@@ -288,9 +314,9 @@ run_engine() {
 }
 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
 # The pull request body: the plan's summary paragraph, the probes and their exits off the run's
-# own event log as the receipt, the evidence tag's link, and its closes line — rendered whole by `factory/record.mjs pr-body`.
+# own event log as the receipt, the link to the run's folder at its tag in the evidence repository, and its closes line — rendered whole by `factory/record.mjs pr-body`.
 pr_body() { fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" pr-body "$PLAN_FILE" --events "$RUN_DIR/events.jsonl" \
-  --evidence "https://github.com/$TARGET_REPO/tree/ultra/evidence/$RUN_ID/$EVIDENCE_REL"; }
+  --evidence "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL"; }
 # The target's default branch as the remote advertised it: a PR against a guessed `main` on a `master` repo is refused, or worse taken.
 default_branch() {
   local ref; ref="$(fleet_git -C "$TARGET_DIR" symbolic-ref refs/remotes/origin/HEAD 2>/dev/null || true)"
@@ -518,21 +544,16 @@ publish() { # $1 = the engine's exit code
   evidence_commit "$RUN_ID: audit"
   record_tags
 }
-# What a run leaves behind is the two tags; the branches are only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
+# What a run leaves behind is its one tag in the evidence repository; the live branch is only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
 record_tags() {
-  local pt="refs/tags/ultra/plan/$RUN_ID" et="refs/tags/ultra/evidence/$RUN_ID" head listing lp le
+  local tag="refs/tags/$SLUG/$RUN_ID" head listed
   head="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
-  [ -n "$head" ] || { log "record: the evidence worktree has no HEAD to tag — both branches kept"; return 0; }
-  fleet_git -C "$TARGET_DIR" push origin "$PLAN_SHA:$pt" || { log "record: pushing $pt at $PLAN_SHA was rejected — both branches kept"; return 0; }
-  fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$et" || { log "record: pushing $et at $head was rejected — both branches kept"; return 0; }
-  listing="$(fleet_git -C "$TARGET_DIR" ls-remote --tags origin "$pt" "$et" 2>/dev/null || true)"
-  lp="$(printf '%s\n' "$listing" | awk -v r="$pt" '$2 == r { print $1 }')"
-  le="$(printf '%s\n' "$listing" | awk -v r="$et" '$2 == r { print $1 }')"
-  if [ "$lp" != "$PLAN_SHA" ] || [ "$le" != "$head" ]; then
-    log "record: origin lists $pt at '${lp:-<nothing>}' and $et at '${le:-<nothing>}', not $PLAN_SHA and $head — $PLAN_BRANCH and $EVIDENCE_BRANCH kept"
-    return 0; fi
-  fleet_git -C "$TARGET_DIR" push origin --delete "refs/heads/$PLAN_BRANCH" "refs/heads/$EVIDENCE_BRANCH" || { log "record: the tags are on origin but the delete was rejected — both branches kept"; return 0; }
-  log "record: $pt at $PLAN_SHA and $et at $head — both branches deleted"
+  [ -n "$head" ] || { log "record: the evidence clone has no HEAD to tag — $LIVE_BRANCH kept"; return 0; }
+  fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$tag" || { log "record: pushing $tag at $head was rejected — $LIVE_BRANCH kept"; return 0; }
+  listed="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "$tag" 2>/dev/null | awk -v r="$tag" '$2 == r { print $1 }' || true)"
+  [ "$listed" = "$head" ] || { log "record: $EVIDENCE_REPO lists $tag at '${listed:-<nothing>}', not $head — $LIVE_BRANCH kept"; return 0; }
+  fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
+  log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
 }
 # The run's close: the spoke leaves first — the three closes measured to work (runs
 # 36, 197 and 37, by hand, 2026-09-21) were sent after `leave`, and `board_down` is
@@ -557,7 +578,7 @@ boot() {
   local comment code head; comment="$(read_assignment)"
   [ -n "$comment" ] || fail "assignment: no comment in FLEET_ASSIGNMENT or at $REFLECTION_URL/comment"
   parse_assignment "$comment"
-  VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare
+  VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare; find_past
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
   engine_deps; preflight; board_up; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence

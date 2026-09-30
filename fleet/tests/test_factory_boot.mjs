@@ -16,33 +16,47 @@
  * Legs, each naming the Machine clause(s) it measures:
  *
  *   (a) `claude auth status` answers `api_key` — the boot fails before the
- *       engine ever runs, and the evidence branch's `status.json` records
- *       `state: "failed"` with an `error` naming `api_key`. Kept from BASE
- *       unchanged (Context: "the legs they pin are unchanged"); no Machine
- *       clause of this task names it on its own.
+ *       engine ever runs, and `status.json` at the run's tag records
+ *       `state: "failed"` with an `error` naming `api_key`.
  *
- *   (b) [M1, M3, M5] the clean run: the engine stub lands one task, the PR is
- *       opened and merged, the run closes — every assertion this file made
- *       at BASE, plus the one line ending ` preflight: alive` in
- *       `<home>/fleet-boot.log` (count exactly 1, M1), plus the evidence
- *       tree carrying exactly `status.json`, `events.jsonl` and `engine.log`
- *       and no path containing `exams/` (M3, since the boot writes no exam
- *       file to the evidence branch), plus `<home>/merge-put.json` byte-equal
- *       to the exam's own rendering of the merge payload (M5).
+ *   (b) [M1, M3, M4] the clean run: the engine stub lands one task, the PR is
+ *       opened and merged, the run closes — plus the one line ending
+ *       ` preflight: alive` in `<home>/fleet-boot.log`; the evidence
+ *       repository holding the tag `o-r/run-<N>` whose `runs/o-r/<N>/` is
+ *       exactly `engine.log`, `events.jsonl`, `plan.md` and `status.json`
+ *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
+ *       exactly `main` and the integration branch (M1); the PR body's
+ *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
+ *       there being no earlier tag (M4); and `<home>/merge-put.json`
+ *       byte-equal to the exam's own rendering of the merge payload.
  *
- *   (c) the engine stub exits 3 — the boot fails with exactly `"engine exit
- *       3"` and no plan/evidence tag is ever cut. Kept from BASE unchanged,
- *       same footing as (a).
+ *   (c) [M2] the engine stub exits 3 — the boot fails with exactly `"engine
+ *       exit 3"`, and the run is tagged all the same: `status.json` at
+ *       `o-r/run-<N>` says `failed` and the live branch is gone.
  *
- *   (d) [M2] `node <engineDir>/factory/flock/engine.mjs` with no arguments,
+ *   (d) `node <engineDir>/factory/flock/engine.mjs` with no arguments,
  *       through the rig's own `buildEngineDir` symlink, exits 2
  *       (`engine: --plan is required`).
  *
- * The rig, once per case: a bare `origin.git` seeded via a throwaway scratch
- * clone with a `README` commit (`base`) and, on top of it, a
- * `.ultrapowers/plan.md` commit pushed only to `refs/heads/ultra/plan-run-<N>`
- * (`plan`) — `main` itself is never advanced past `base`. `<FLEET_HOME>/
- * target` is a plain clone of that origin. `<FLEET_HOME>/engines/<sha>/
+ *   (e) the stale head: the merge PUT waits for the pushed head.
+ *
+ *   (f) [M4] with tags `o-r/run-9`, `-77` and `-900` in the evidence
+ *       repository, run 506's engine gets `--past-dir` whose basename is `77`
+ *       and whose `status.json` is byte-equal to the tag's.
+ *
+ *   (g) [M5] with no `<home>/fleet-evidence-repo` the boot exits non-zero,
+ *       a `fleet-boot.log` line names `fleet-evidence-repo`, and neither
+ *       repository's refs move.
+ *
+ * The rig, once per case: a bare `origin.git` (the target) holding only a
+ * `README` commit (`base`) on `main`, and a bare `evidence.git` (the
+ * operator's `ops/evidence`, `main` seeded with a hand archive) taking the
+ * launcher's parentless plan commit (`plan`, `runs/o-r/<N>/plan.md`) on
+ * `refs/heads/live/o-r/run-<N>`. `wireEvidence` writes
+ * `<home>/fleet-evidence-repo` as the first-boot setup script would and maps
+ * `https://stub.invalid/ops/evidence.git` to that bare in the case HOME's
+ * `.gitconfig`; the `systemd-run` stub records the engine's argv to
+ * `<home>/engine-argv`. `<FLEET_HOME>/target` is a plain clone of the origin. `<FLEET_HOME>/engines/<sha>/
  * factory` and `.../skills` are symlinks to this checkout's own `factory/`
  * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (d),
  * `factory/flock/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
@@ -62,8 +76,8 @@
  * What this exam assumes about `factory/boot.sh`, since it is the one piece
  * of context a later reader lacks: that credential-probe failure and engine
  * failure both still route through `fail()` writing `status.json` onto the
- * evidence branch before exiting non-zero (so (a) and (c) can read it back
- * from a branch ref); that a plan commit with no `.ultrapowers/kata.json`
+ * live branch and cutting the run's tag before exiting non-zero (so (a) and
+ * (c) can read it back at the tag); that a plan commit with no `kata.json`
  * blob leaves the board unbound, so `close_run()` takes its early-return
  * path and appends exactly one `board:close` row; that `factory/policy.json`'s
  * `publish.self_merge.enabled: true` (already in this repo) is what makes
@@ -87,10 +101,14 @@ import path from 'node:path'
 import { bootRig } from './_boot_helpers.mjs'
 
 const {
-  ENGINE_SHA, MERGE_SHA, EXPECTED_STATUS_KEYS,
-  git, writeGitConfig, buildOrigin, buildEngineDir, lsRemote, assignment,
+  ENGINE_SHA, MERGE_SHA, EXPECTED_STATUS_KEYS, SLUG,
+  git, writeGitConfig, buildOrigin, seedPastRun, wireEvidence, refsOf, buildEngineDir, assignment,
   writeStubs, baseEnv, makeProxyServer, runBootAsync, runAsync
 } = bootRig()
+
+/** A file of run `runN`'s folder at its tag `o-r/run-<runN>` in the evidence bare. */
+const atTag = (evidenceDir, runN, p) => git(evidenceDir, ['show', `${SLUG}/run-${runN}:runs/${SLUG}/${runN}/${p}`])
+const engineArgv = (home) => fs.readFileSync(path.join(home, 'engine-argv'), 'utf8').split('\n').filter((l) => l !== '')
 
 const proxyServer = await makeProxyServer()
 const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
@@ -107,7 +125,8 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(bin, { recursive: true })
   writeGitConfig(home)
 
-  const { originDir, base, plan } = buildOrigin(root, runN)
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
   git(root, ['clone', originDir, path.join(home, 'target')])
   buildEngineDir(home, ENGINE_SHA)
   writeStubs(bin, { claudeAuth: 'api_key' })
@@ -124,8 +143,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(a) the boot exits non-zero on an api_key answer — got 0, stdout: ${res.stdout}, stderr: ${res.stderr}`
   )
 
-  const statusText = git(originDir, ['show', `ultra/evidence-run-${runN}:.ultrapowers/runs/${runN}/status.json`])
-  const status = JSON.parse(statusText)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'failed', '(a) status.json records state "failed"')
   assert.ok(
     typeof status.error === 'string' && status.error.includes('api_key'),
@@ -144,7 +162,8 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(bin, { recursive: true })
   writeGitConfig(home)
 
-  const { originDir, base, plan } = buildOrigin(root, runN)
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
   git(root, ['clone', originDir, path.join(home, 'target')])
   buildEngineDir(home, ENGINE_SHA)
   writeStubs(bin, { claudeAuth: 'oauth' })
@@ -174,8 +193,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
 
   const landedSha = fs.readFileSync(path.join(home, 'landed-sha'), 'utf8').trim()
 
-  const statusText = git(originDir, ['show', `ultra/evidence/run-${runN}:.ultrapowers/runs/${runN}/status.json`])
-  const status = JSON.parse(statusText)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
   assert.deepEqual(
     Object.keys(status), EXPECTED_STATUS_KEYS,
     `(b) [M1] status.json carries exactly the thirteen named keys, in order — got ${JSON.stringify(Object.keys(status))}`
@@ -191,7 +209,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(b) [M1] status.json tasks is exactly the one folded task — got ${JSON.stringify(status.tasks)}`
   )
 
-  const eventsText = git(originDir, ['show', `ultra/evidence/run-${runN}:.ultrapowers/runs/${runN}/events.jsonl`])
+  const eventsText = atTag(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   for (const [i, row] of rows.entries()) {
     assert.ok(
@@ -215,10 +233,17 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
 
   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
   // `factory/record.mjs` renders the receipt from `edge` rows (this stub engine writes none, so the
-  // body carries only the evidence line) and the evidence tag's run folder.
+  // body carries only the evidence line) and the run folder at its tag in the evidence repository.
+  const evidenceLine = `**Evidence:** https://github.com/ops/evidence/tree/o-r/run-${runN}/runs/o-r/${runN}`
   const expectedBody = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.\n\n' +
-    `**Evidence:** https://github.com/o/r/tree/ultra/evidence/run-${runN}/.ultrapowers/runs/${runN}\n\n` +
+    `${evidenceLine}\n\n` +
     'Closes #1222'
+  // [M3] the body carries exactly that line.
+  assert.deepEqual(
+    JSON.parse(fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')).body.split('\n').filter((l) => l.startsWith('**Evidence:**')),
+    [evidenceLine],
+    '(b) [M3] the PR body carries exactly the one evidence line, byte-exact'
+  )
   const expectedPrPost = JSON.stringify({
     title: `fleet run-${runN}: A widget that answers its size`,
     head: `ultra/integration-run-${runN}`,
@@ -231,29 +256,22 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(b) [M1] the PR POST payload is byte-equal to the exam's own rendering — got ${prPost}`
   )
 
-  const tags = lsRemote(originDir, '--tags')
-  assert.equal(
-    tags[`refs/tags/ultra/plan/run-${runN}`], plan,
-    '(b) [M1] the ultra/plan/run-<N> tag points at the plan commit'
-  )
-  assert.ok(
-    `refs/tags/ultra/evidence/run-${runN}` in tags,
-    '(b) [M1] the ultra/evidence/run-<N> tag exists'
+  // [M1] the evidence repository holds the run's one tag and no live branch; the
+  // target holds exactly `main` and the integration branch.
+  const evidenceRefs = refsOf(evidenceDir)
+  assert.ok(`refs/tags/o-r/run-${runN}` in evidenceRefs, '(b) [M1] the evidence repository holds the o-r/run-<N> tag')
+  assert.ok(!(`refs/heads/live/o-r/run-${runN}` in evidenceRefs), '(b) [M1] refs/heads/live/o-r/run-<N> is gone')
+  const heads = refsOf(originDir)
+  assert.deepEqual(
+    Object.keys(heads).sort(),
+    ['refs/heads/main', `refs/heads/ultra/integration-run-${runN}`],
+    `(b) [M1] the target's refs are exactly main and the integration branch — got ${JSON.stringify(Object.keys(heads))}`
   )
 
-  const heads = lsRemote(originDir, '--heads')
-  assert.ok(
-    `refs/heads/ultra/integration-run-${runN}` in heads,
-    '(b) [M1] the ultra/integration-run-<N> branch exists'
-  )
-  assert.ok(
-    !(`refs/heads/ultra/plan-run-${runN}` in heads),
-    '(b) [M1] the ultra/plan-run-<N> branch is gone'
-  )
-  assert.ok(
-    !(`refs/heads/ultra/evidence-run-${runN}` in heads),
-    '(b) [M1] the ultra/evidence-run-<N> branch is gone'
-  )
+  // [M4] no earlier o-r/run-<M> tag, so the engine is started with no --past-dir.
+  const argv = engineArgv(home)
+  assert.ok(argv.includes('--plan'), `(b) [M4] the systemd-run stub recorded the engine's argv — got ${JSON.stringify(argv)}`)
+  assert.ok(!argv.includes('--past-dir'), `(b) [M4] with no earlier tag the engine gets no --past-dir — got ${JSON.stringify(argv)}`)
 
   const integrationTree = git(originDir, ['ls-tree', '-r', '--name-only', `ultra/integration-run-${runN}`])
     .split('\n').filter(Boolean)
@@ -266,27 +284,24 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(b) [M1] the integration tree carries tests/test_widget.mjs — nothing strips it from the pull request anymore — got ${JSON.stringify(integrationTree)}`
   )
 
-  // [M3] the boot writes no exam file to the evidence branch: under this
-  // run's own `.ultrapowers/runs/<N>/` the evidence tree carries exactly
-  // status.json, events.jsonl and engine.log, and no committed path
-  // contains exams/. (The evidence worktree is a detached worktree of the
-  // target clone itself, so its tree also carries the target's own files —
-  // `README`, `.ultrapowers/plan.md` — outside that run directory.)
-  const evidenceTree = git(originDir, ['ls-tree', '-r', '--name-only', `ultra/evidence/run-${runN}`])
+  // [M1] the tag's tree under `runs/o-r/<N>/` is exactly the plan and the
+  // three record files, and no committed path contains exams/.
+  const evidenceTree = git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
     .split('\n').filter(Boolean)
   assert.ok(
     !evidenceTree.some((p) => p.includes('exams/')),
-    `(b) [M3] the evidence tree carries no exams/ path — got ${JSON.stringify(evidenceTree)}`
+    `(b) the evidence tree carries no exams/ path — got ${JSON.stringify(evidenceTree)}`
   )
-  const runDirEntries = evidenceTree.filter((p) => p.startsWith(`.ultrapowers/runs/${runN}/`))
+  const runDirEntries = evidenceTree.filter((p) => p.startsWith(`runs/o-r/${runN}/`))
   assert.deepEqual(
     runDirEntries.slice().sort(),
     [
-      `.ultrapowers/runs/${runN}/engine.log`,
-      `.ultrapowers/runs/${runN}/events.jsonl`,
-      `.ultrapowers/runs/${runN}/status.json`
+      `runs/o-r/${runN}/engine.log`,
+      `runs/o-r/${runN}/events.jsonl`,
+      `runs/o-r/${runN}/plan.md`,
+      `runs/o-r/${runN}/status.json`
     ],
-    `(b) [M3] .ultrapowers/runs/${runN}/ carries exactly status.json, events.jsonl and engine.log — got ${JSON.stringify(runDirEntries)}`
+    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
@@ -319,7 +334,8 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(bin, { recursive: true })
   writeGitConfig(home)
 
-  const { originDir, base, plan } = buildOrigin(root, runN)
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
   git(root, ['clone', originDir, path.join(home, 'target')])
   buildEngineDir(home, ENGINE_SHA)
   writeStubs(bin, { claudeAuth: 'oauth' })
@@ -337,20 +353,14 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(c) the boot exits with the engine's own code 3 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const statusText = git(originDir, ['show', `ultra/evidence-run-${runN}:.ultrapowers/runs/${runN}/status.json`])
-  const status = JSON.parse(statusText)
-  assert.equal(status.state, 'failed', '(c) status.json records state "failed"')
+  // [M2] a failed run is tagged too: its status at the tag says failed, and its live branch is gone.
+  const evidenceRefs = refsOf(evidenceDir)
+  assert.ok(`refs/tags/o-r/run-${runN}` in evidenceRefs, '(c) [M2] the failed run leaves the o-r/run-<N> tag')
+  assert.ok(!(`refs/heads/live/o-r/run-${runN}` in evidenceRefs), '(c) [M2] refs/heads/live/o-r/run-<N> is gone')
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
-
-  const tags = lsRemote(originDir, '--tags')
-  assert.ok(
-    !(`refs/tags/ultra/plan/run-${runN}` in tags),
-    '(c) no ultra/plan/run-<N> tag is ever cut'
-  )
-  assert.ok(
-    !(`refs/tags/ultra/evidence/run-${runN}` in tags),
-    '(c) no ultra/evidence/run-<N> tag is ever cut'
-  )
+  assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
 }
 
 // ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────
@@ -381,7 +391,8 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(bin, { recursive: true })
   writeGitConfig(home)
 
-  const { originDir, base, plan } = buildOrigin(root, runN)
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
   git(root, ['clone', originDir, path.join(home, 'target')])
   buildEngineDir(home, ENGINE_SHA)
   writeStubs(bin, { claudeAuth: 'oauth' })
@@ -402,7 +413,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     `(e) the stale-head run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
   )
 
-  const eventsText = git(originDir, ['show', `ultra/evidence/run-${runN}:.ultrapowers/runs/${runN}/events.jsonl`])
+  const eventsText = atTag(evidenceDir, runN, 'events.jsonl')
   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
   const mergeRows = rows.filter((r) => r.kind === 'merge')
   assert.equal(
@@ -414,6 +425,84 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
     mergeRows[0].message, 'Pull Request successfully merged',
     `(e) [M2] the merge row carries GitHub's reply message — got ${JSON.stringify(mergeRows[0].message)}`
   )
+}
+
+// ── (f) [M4] the previous run: --past-dir at the highest earlier tag ────────
+
+{
+  const runN = '506'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-f-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, evidenceScratch, base, plan } = buildOrigin(root, runN)
+  // Two earlier runs and one later: the engine gets the highest below N, 77.
+  seedPastRun(evidenceDir, evidenceScratch, 9, { 'status.json': '{"run":"9","state":"done"}\n' })
+  seedPastRun(evidenceDir, evidenceScratch, 77, {
+    'status.json': '{"run":"77","state":"parked","tasks":{"1":{"state":"parked"}}}\n',
+    'events.jsonl': '{"kind":"landing"}\n'
+  })
+  seedPastRun(evidenceDir, evidenceScratch, 900, { 'status.json': '{"run":"900","state":"done"}\n' })
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+  const res = await runBootAsync({ bin, home, env })
+  assert.equal(res.code, 0, `(f) the run with earlier tags exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
+
+  const argv = engineArgv(home)
+  const at = argv.indexOf('--past-dir')
+  assert.ok(at >= 0 && at + 1 < argv.length, `(f) [M4] the engine is started with --past-dir — got ${JSON.stringify(argv)}`)
+  const pastDir = argv[at + 1]
+  assert.equal(path.basename(pastDir), '77', `(f) [M4] --past-dir's basename is the highest earlier run, 77 — got ${pastDir}`)
+  assert.equal(
+    fs.readFileSync(path.join(pastDir, 'status.json'), 'utf8'),
+    atTag(evidenceDir, 77, 'status.json'),
+    '(f) [M4] the past directory\'s status.json is byte-equal to runs/o-r/77/status.json at o-r/run-77'
+  )
+}
+
+// ── (g) [M5] no fleet-evidence-repo: the boot fails naming it, the target untouched ──
+
+{
+  const runN = '507'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-g-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir, { setting: false })
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+  const targetBefore = refsOf(originDir)
+  const evidenceBefore = refsOf(evidenceDir)
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+  }
+  const res = await runBootAsync({ bin, home, env })
+  assert.notEqual(res.code, 0, `(g) [M5] the boot exits non-zero with no fleet-evidence-repo — got 0, stderr: ${res.stderr}`)
+  const bootLog = fs.readFileSync(path.join(home, 'fleet-boot.log'), 'utf8')
+  assert.ok(
+    bootLog.split('\n').some((l) => l.includes('fleet-evidence-repo')),
+    `(g) [M5] a fleet-boot.log line names fleet-evidence-repo — got:\n${bootLog}`
+  )
+  assert.deepEqual(refsOf(originDir), targetBefore, '(g) [M5] the target\'s refs are unchanged')
+  assert.deepEqual(refsOf(evidenceDir), evidenceBefore, '(g) the evidence repository\'s refs are unchanged')
 }
 
 proxyServer.close()

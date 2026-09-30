@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -35,7 +35,8 @@ Three things a stranger will not know:
   this one.
 - The `*.exe.xyz` pattern matters as much as `exe.dev` itself: a run VM is
   reached over ssh at the `ssh_dest` that `ls --json` reports, and its status
-  record is `.ultrapowers/runs/<N>/status.json` on the evidence branch; there is no page.
+  record is `runs/<owner>-<repo>/<N>/status.json` in the evidence repository
+  (the `evidence` row below); there is no page.
 - **This key launches.** A second key registered with `ssh-key add --tag=fleet`
   sees and reaps only fleet-tagged VMs, and cannot bind a credential; that is
   the one for a machine that only reaps by hand, never the one that launches.
@@ -282,6 +283,47 @@ Three things this command hides:
   not on the box, and the edge proxies only that repository's own paths. A
   target with no object is a launch refusal, public repo or not: the clone
   would work and the push would not.
+
+## evidence
+
+A run keeps its record — `runs/<owner>-<repo>/<N>/status.json` and the rest of
+its folder — in one repository of your own, the evidence repository, not in the
+repository it drives. Setting it up is done once. The row walks the three steps
+in order and stops at the first one still to do, naming its fix:
+
+1. **The key is set.** `~/.ultrapowers/fleet.json` carries
+   `"evidence": "<owner>/<repo>"` (for example `popmechanic/fleet-evidence`).
+   Fix: add that key to the file.
+2. **The repository exists.** The doctor asks `gh api repos/<owner>/<repo>`;
+   anything but exit 0 is a repository still to make. Fix:
+
+   ```bash
+   gh repo create <owner>/<repo> --private
+   ```
+
+3. **Its integration is on the policy.** The evidence repository is reached
+   from a fleet VM the way every repository is: through its own exe.dev
+   integration `gh-<owner>-<repo>`, carrying the policy `tag:fleet`. Fix:
+
+   ```bash
+   node <plugin-root>/fleet/target.mjs <owner>/<repo>
+   ```
+
+   An object that exists off the policy gets the get/set two-step the doctor
+   prints, as in `## integrations`.
+
+**In a browser:** nothing, unless `gh` is not signed in on this laptop
+(`gh auth login`).
+
+Two things a stranger will not know:
+
+- **A foreign target still records to your repository.** A run on someone
+  else's repository — one you can open a pull request against but never write
+  a branch to — keeps its record in your own evidence repository all the same,
+  under `runs/<their-owner>-<their-repo>/`. That is why the setting is yours and
+  not the target's.
+- **Private is the point.** The record carries plans, transcripts and verdicts;
+  `--private` keeps them yours.
 
 ## verb-drift
 

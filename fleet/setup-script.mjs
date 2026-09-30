@@ -75,11 +75,20 @@ function heredocBody(tag, text) {
   return body
 }
 
+/** `<owner>/<repo>` — the only shape `evidence` may take, since it lands inside
+ *  a single-quoted shell literal. */
+const EVIDENCE_REPO = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+$/
+
 /**
- * The setup script for one run. `bootstrap` and `unit` are carried verbatim.
+ * The setup script for one run. `bootstrap` and `unit` are carried verbatim;
+ * `evidence` is the operator's evidence repository (#1395), written beside
+ * them to `$HOME/fleet-evidence-repo`, where the boot reads it.
  */
-export function renderSetupScript({ run, bootstrap, unit }) {
+export function renderSetupScript({ run, evidence, bootstrap, unit }) {
   if (!/^[0-9]+$/.test(String(run))) throw new Error(`run must be digits, got ${run}`)
+  if (typeof evidence !== 'string' || !EVIDENCE_REPO.test(evidence) || /\/\.\.?$/.test(evidence)) {
+    throw new Error(`evidence must be <owner>/<repo>, got ${JSON.stringify(evidence ?? null)}`)
+  }
 
   const script = `#!/usr/bin/env bash
 # fleet first-boot setup, generated for one run and thrown away by its own last
@@ -143,6 +152,7 @@ sudo -n install -m 0555 bootstrap.sh "$LIB/bootstrap.sh"
 mkdir -p "$HOME/.config/systemd/user" "$HOME/.claude"
 cat <<'${UNIT_TAG}' >"$HOME/.config/systemd/user/fleet-run@.service"
 ${heredocBody(UNIT_TAG, unit)}${UNIT_TAG}
+printf '%s\\n' '${evidence}' >"$HOME/fleet-evidence-repo"
 printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}' >"$HOME/.claude/settings.json"
 git config --global user.name fleet
 git config --global user.email fleet@exe.dev

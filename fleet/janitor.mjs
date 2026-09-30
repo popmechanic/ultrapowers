@@ -7,8 +7,11 @@
  * The janitor is the expiry. One `ls 'fleet-r*' --json` through the lobby gives
  * the fleet, and every row carries its own assignment comment, so `run=` and
  * `target=` come out of the row itself. The run's STATE is asked of the hub —
- * kata is the live record since #913 — and read off the target's evidence only
- * when the hub cannot answer (#938 item 1).
+ * kata is the live record since #913 — and read off the run's record in the
+ * operator's evidence repository only when the hub cannot answer (#938 item 1,
+ * #1395). That repository is the `evidence` key of `~/.ultrapowers/fleet.json`
+ * (or the one the launcher hands in), never the target; with none set, nothing
+ * is read from any evidence repository and the reap goes on by the hub.
  *
  * The hub. `~/.ultrapowers/kata-hub.env` names it (`KATA_URL`); it is reached
  * exactly as the launcher reaches it, `fleet/kata-client.mjs`'s `sshTransport`:
@@ -38,13 +41,13 @@
  * The fallback. A hub that cannot be read — the env file absent, ssh or curl
  * failing, any answer that is not an answer — darkens the pass: the first such
  * error is kept, no further hub request is made, and every row from there is
- * read from the target's evidence, the shape the janitor had before the hub:
+ * read from the evidence repository, keyed by the target's slug:
  *
- *   gh api repos/<target>/contents/.ultrapowers/runs/<N>/status.json?ref=ultra/evidence/run-<N>
+ *   gh api repos/<evidence>/contents/runs/<slug>/<N>/status.json?ref=<slug>/run-<N>
  *
  * — the contents envelope, whose base64 `content` is the status page — and, only
- * when the tag answered no envelope, the same path at `?ref=ultra/evidence-run-<N>`:
- * a finished run has been through the boot's `record_tags` and has only the tag,
+ * when the tag answered no envelope, the same path at `?ref=live/<slug>/run-<N>`:
+ * a finished run has been sealed and has only the tag,
  * a run in flight has only the branch. A run the hub is up for but has no
  * project or run issue for (launched before the hub, or filed under another
  * name) is read from the evidence the same way, row by row, without darkening
@@ -82,10 +85,13 @@
  *
  * — and when the unit has failed (or hit its `Result=timeout`) under a record
  * that still says the run is in flight, it writes the death: the unit's journal
- * to `.ultrapowers/runs/<N>/janitor-journal.txt`, then the page itself back
+ * to `runs/<slug>/<N>/janitor-journal.txt`, then the page itself back
  * with `state` `failed`, both `gh api -X PUT` on the contents API against the
- * evidence BRANCH, when the branch has a page (a hub-read row's page is read
- * then, and only then); and, when the hub answered the row, one metadata patch
+ * run's LIVE branch in the evidence repository, when the branch has a page (a
+ * hub-read row's page is read then, and only then); once the page is written
+ * the run is sealed (`fleet/close-out.mjs`'s `sealRun`: the tag cut at the
+ * branch head through the refs API, then the live branch deleted); and, when
+ * the hub answered the row, one metadata patch
  * of the run issue — `work.state` `failed`, `work.attention` `needs-human`,
  * `work.attention_msg` the death's own line — under the idempotency key
  * `janitor:run-<N>:death`, so the hub's record says what the page says. The
@@ -100,9 +106,10 @@
  * is left exactly as it was.
  *
  * The reap is the only removal. The janitor merges nothing — an approved run
- * merges its own pull request from the sandbox — and it deletes no branch and
- * no tag of its own, so every action it records is an `rm` and its writes are
- * the death's and the close-out's (below; its sweep is retire's); the rest of its `gh` surface is reads: the contents API for a
+ * merges its own pull request from the sandbox — and on the target it deletes
+ * no branch and no tag, so every action it records is an `rm` and its writes
+ * are the death's and the close-out's, each ending in a seal of the evidence
+ * repository's live branch; the rest of its `gh` surface is reads: the contents API for a
  * fallback page, and #724's two —
  *
  *   gh api repos/<target>/git/matching-refs/heads/ultra/integration-run-
@@ -118,16 +125,17 @@
  * to find.
  *
  * The one write beyond the death's is the close-out (#1314). Beside that
- * report, each target the rows named is read once more for orphans —
+ * report, each target the rows named is read once more for orphans, in the
+ * evidence repository —
  *
- *   gh api repos/<target>/git/matching-refs/heads/ultra/evidence-run-
+ *   gh api repos/<evidence>/git/matching-refs/heads/live/<slug>/run-
  *
  * — and every run there that no row of this pass carries has its branch page
- * read (`?ref=ultra/evidence-run-<N>`). A page still saying `booting`,
+ * read (`?ref=live/<slug>/run-<N>`). A page still saying `booting`,
  * `running` or `publishing`, last updated longer ago than `--age`, is a run
  * whose VM is gone and which will never record its own end, so the janitor
  * hands it to `fleet/close-out.mjs`'s `closeOut`: the page put back on the
- * evidence branch with `state` `failed`, then retire's sweep for the target.
+ * live branch with `state` `failed`, then the run sealed.
  * A finished page, or a live one younger than `--age`, is left alone.
  *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, handing
@@ -142,13 +150,12 @@ import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { closeOut } from './close-out.mjs'
+import { closeOut, sealRun } from './close-out.mjs'
 import { KataError, runIssueOf } from './kata-client.mjs'
 import {
+  DEFAULT_CONFIG_PATH,
   Refusal,
   defaultExec,
-  evidenceBranchFor,
-  evidenceTagFor,
   hubFromEnv,
   integrationBranchFor,
   isFullSha,
@@ -157,15 +164,20 @@ import {
   isVmName,
   kataProjectFor,
   listVms,
+  liveBranchFor,
   lobby,
   LobbyError,
   parseArgs,
   parseComment,
   parseDuration,
   parseJson,
+  readEvidenceSetting,
   runCli,
+  runFolderFor,
   runOfBranch,
-  runOfVmName
+  runOfEvidenceRef,
+  runOfVmName,
+  runTagFor
 } from './lobby.mjs'
 
 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--dry-run] [--json] [--help]'
@@ -358,7 +370,7 @@ function hubReader (hub) {
   }
 }
 
-// ── The fallback: the run's page, read off the target ───────────────────────
+// ── The fallback: the run's page, read off the evidence repository ──────────
 
 /**
  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
@@ -370,9 +382,12 @@ export const ghApi = async (exec, apiPath) => {
   return res.code === 0 ? parseJson(res.stdout) : null
 }
 
-/** One file of a run's evidence, as the contents API addresses it. */
-const contentsPath = (target, run, file) =>
-  `repos/${target}/contents/.ultrapowers/runs/${run}/${file}`
+/**
+ * One file of a run's evidence, as the contents API addresses it: in the
+ * operator's evidence repository (#1395), under the TARGET's run folder.
+ */
+const contentsPath = (evidence, target, run, file) =>
+  `repos/${evidence}/contents/${runFolderFor(target, run)}/${file}`
 
 /**
  * The run's status page at one ref. The answer is the contents envelope —
@@ -383,8 +398,8 @@ const contentsPath = (target, run, file) =>
  * envelope whose content is not a JSON object is an answer all the same, and
  * carries a null `page` so no second ref is read behind a ref that spoke.
  */
-export async function readContentsAt (exec, target, run, ref) {
-  const payload = await ghApi(exec, `${contentsPath(target, run, 'status.json')}?ref=${ref}`)
+export async function readContentsAt (exec, evidence, target, run, ref) {
+  const payload = await ghApi(exec, `${contentsPath(evidence, target, run, 'status.json')}?ref=${ref}`)
   if (!payload || typeof payload.content !== 'string') return null
   const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
   const page = decoded && typeof decoded === 'object' ? decoded : null
@@ -394,13 +409,15 @@ export async function readContentsAt (exec, target, run, ref) {
 }
 
 /**
- * The run's status page as the row loop reads it: the evidence tag first, the
- * evidence branch only behind a tag that answered no envelope. Null when
- * neither ref has a page.
+ * The run's status page as the row loop reads it: the run's tag first, its
+ * live branch only behind a tag that answered no envelope. Null when neither
+ * ref has a page, and null without a read when there is no evidence
+ * repository to read.
  */
-async function evidenceReading (exec, target, run) {
-  const found = await readContentsAt(exec, target, run, evidenceTagFor(run)) ??
-    await readContentsAt(exec, target, run, evidenceBranchFor(run))
+async function evidenceReading (exec, evidence, target, run) {
+  if (evidence === null) return null
+  const found = await readContentsAt(exec, evidence, target, run, runTagFor(target, run)) ??
+    await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run))
   if (found === null || found.page === null) return null
   const state = typeof found.page.state === 'string' ? found.page.state : null
   return {
@@ -541,37 +558,46 @@ const deathError = (run, unit, state, said) =>
  * pushed between the read and the write, and the next pass reads the fresh
  * record. A patch the hub refuses is reported on the entry, never thrown.
  */
-async function writeDeath ({ exec, dryRun, row, run, target, reading, unit, at, hub }) {
+async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at, hub }) {
   const fromHub = reading.source === 'hub'
   const said = fromHub ? 'hub' : 'page'
-  const death = { vm: row.name, run, state: reading.state, unit, applied: false }
+  const death = { vm: row.name, run, target, state: reading.state, unit, applied: false }
   if (fromHub) death.hubMarked = false
   // `--dry-run` reads — the unit read above was one — and writes nothing.
   if (dryRun) return death
 
-  const branch = evidenceBranchFor(run)
-  const found = fromHub ? await readContentsAt(exec, target, run, branch) : reading
+  const branch = liveBranchFor(target, run)
+  // No evidence repository: no page to read, and the hub's marking alone.
+  const found = evidence === null
+    ? null
+    : fromHub ? await readContentsAt(exec, evidence, target, run, branch) : reading
   const page = found?.page ?? null
   if (page !== null) {
     const journal = await onVm(exec, row.sshDest, journalCommand(run))
     const log = journal.code === 0
       ? String(journal.stdout ?? '')
       : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
-    await ghPut(exec, contentsPath(target, run, 'janitor-journal.txt'), {
+    await ghPut(exec, contentsPath(evidence, target, run, 'janitor-journal.txt'), {
       branch,
       message: `janitor: run ${run} journal at death`,
       content: log
     })
 
     const written = { ...page, state: 'failed', updatedAt: at, error: deathError(run, unit, reading.state, said) }
-    const res = await ghPut(exec, contentsPath(target, run, 'status.json'), {
+    const res = await ghPut(exec, contentsPath(evidence, target, run, 'status.json'), {
       branch,
       message: `janitor: run ${run} failed — ${unitSummary(unit)}`,
       content: `${JSON.stringify(written, null, 2)}\n`,
       sha: found.sha
     })
-    if (res.code === 0) death.applied = true
-    else death.error = `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
+    if (res.code === 0) {
+      death.applied = true
+      // The page now says failed: the run is sealed — tagged at the page just
+      // written, its live branch deleted once the tag is verified there.
+      death.sealed = await sealRun({ exec, evidence, target, run })
+    } else {
+      death.error = `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
+    }
   }
 
   if (fromHub) {
@@ -614,9 +640,12 @@ async function writeDeath ({ exec, dryRun, row, run, target, reading, unit, at, 
 const matchingRefsPath = (target) =>
   `repos/${target}/git/matching-refs/heads/${integrationBranchFor('')}`
 
-/** The same prefix match for the evidence branches (#1314). */
-const evidenceRefsPath = (target) =>
-  `repos/${target}/git/matching-refs/heads/${evidenceBranchFor('')}`
+/**
+ * The same prefix match for a target's live branches (#1314), in the evidence
+ * repository (#1395): `live/<slug>/run-`.
+ */
+const evidenceRefsPath = (evidence, target) =>
+  `repos/${evidence}/git/matching-refs/heads/${liveBranchFor(target, '')}`
 
 /**
  * The runs those heads name, ascending. A 404 or an answer that is not an
@@ -693,30 +722,32 @@ async function closedUnmergedBranches (exec, targets) {
 // ── #1314: the runs no VM carries, whose page still says live ──────────────
 
 /**
- * One `matching-refs` read per target for its evidence branches; for every
- * run no row of this pass carries on that target, its branch page. A live
- * page older than `ageMs` is closed out — `closed` false under `--dry-run`.
+ * One `matching-refs` read per target for its live branches in the evidence
+ * repository; for every run no row of this pass carries on that target, its
+ * branch page. A live page older than `ageMs` is closed out — `closed` false
+ * under `--dry-run`. No evidence repository, no reads and no close-outs.
  */
-async function closeOutOrphans ({ exec, targets, carried, nowMs, ageMs, now, dryRun }) {
+async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs, now, dryRun }) {
   const closed = []
+  if (evidence === null) return closed
   for (const target of [...targets].sort()) {
-    const payload = await ghApi(exec, evidenceRefsPath(target))
+    const payload = await ghApi(exec, evidenceRefsPath(evidence, target))
     if (!Array.isArray(payload)) continue
     const orphans = []
     for (const entry of payload) {
-      const run = runOfBranch(entry?.ref)
+      const run = runOfEvidenceRef(target, entry?.ref)
       if (run === null || orphans.includes(run) || carried.has(`${target}#${run}`)) continue
       orphans.push(run)
     }
     for (const run of orphans.sort((a, b) => a - b)) {
-      const found = await readContentsAt(exec, target, run, evidenceBranchFor(run))
+      const found = await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run))
       const page = found?.page ?? null
       if (page === null) continue
       const state = typeof page.state === 'string' ? page.state : null
       if (!LIVE_STATES.includes(state)) continue
       const updated = Date.parse(String(page.updatedAt))
       if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
-      const out = await closeOut({ exec, target, run, now, dryRun })
+      const out = await closeOut({ exec, target, run, evidence, now, dryRun })
       // A VM that came up between the listing and the close-out is not an
       // orphan: closeOut said so, and there is nothing to report.
       if (out.state === null) continue
@@ -730,19 +761,26 @@ async function closeOutOrphans ({ exec, targets, carried, nowMs, ageMs, now, dry
  * Everything the janitor does, with the exec seam, the clock and the hub
  * injected. `kata` is the hub client (`null`: no hub, read the target);
  * undefined reads `kataEnvPath` (default `~/.ultrapowers/kata-hub.env`) and
- * builds one.
+ * builds one. `evidence` is the evidence repository (#1395); handed none, the
+ * `evidence` key of `configPath` (default `~/.ultrapowers/fleet.json`) is.
+ * With neither, nothing is read from any evidence repository and the reap
+ * goes on by the hub alone.
  */
 export async function janitor ({
-  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath
+  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath
 }) {
   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
   const dryRun = opts['dry-run'] === true
   const age = opts.age === undefined || opts.age === true ? DEFAULT_AGE : String(opts.age)
   const ageMs = parseDuration(age)
   if (ageMs === null) throw new Refusal(`janitor: --age must look like 1h or 30m, got ${JSON.stringify(age)}`)
-  // The janitor sizes nothing, so it reads no `fleet.json`; `kata-hub.env` is
-  // the only file under `~/.ultrapowers/` it opens — the run's state lives on
-  // the hub and the target.
+  // The janitor sizes nothing, so of `fleet.json` it reads the one key
+  // `evidence` — and only when it was handed no repository; `kata-hub.env` is
+  // the only other file under `~/.ultrapowers/` it opens. The run's state
+  // lives on the hub and in the evidence repository.
+  const evidenceRepo = isSafeTarget(evidence)
+    ? evidence
+    : await readEvidenceSetting({ path: configPath ?? DEFAULT_CONFIG_PATH() })
   const hub = await openHub({ exec, kata, kataEnvPath })
   const fromHub = hubReader(hub)
 
@@ -788,8 +826,8 @@ export async function janitor ({
     targets.add(target)
     carried.add(`${target}#${run}`)
 
-    // The hub first; the target's evidence when the hub cannot answer this row.
-    const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, target, run)
+    // The hub first; the evidence repository when the hub cannot answer this row.
+    const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, evidenceRepo, target, run)
     runs.push({
       vm: row.name,
       run,
@@ -809,7 +847,7 @@ export async function janitor ({
       const unit = await readUnit(exec, row.sshDest, run)
       if (unit !== null && unitIsDead(unit)) {
         deaths.push(await writeDeath({
-          exec, dryRun, row, run, target, reading, unit, at: nowIso, hub
+          exec, dryRun, row, run, target, evidence: evidenceRepo, reading, unit, at: nowIso, hub
         }))
         // The record now says the run died as of now: the reap is the next
         // pass's, an hour on, and that hour is the operator's window to ssh in.
@@ -852,7 +890,7 @@ export async function janitor ({
   //    They come after the row loop, so every read order above is unchanged.
   const branches = await closedUnmergedBranches(exec, targets)
   // ── #1314: beside it, the orphans — the runs no VM carries, still live. ───
-  const closedOut = await closeOutOrphans({ exec, targets, carried, nowMs, ageMs, now, dryRun })
+  const closedOut = await closeOutOrphans({ exec, evidence: evidenceRepo, targets, carried, nowMs, ageMs, now, dryRun })
 
   // ── Then the one mutation there is: the reap, through the lobby. ──────────
   if (!dryRun) {
@@ -873,7 +911,9 @@ export async function janitor ({
   const hubReport = hub.client === null && hub.host === null && hub.dark === null
     ? null
     : { host: hub.host, dark: hub.dark }
-  return { dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs }
+  return {
+    dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs, evidence: evidenceRepo
+  }
 }
 
 const renderAction = (a, dryRun) =>
@@ -889,7 +929,7 @@ const renderDeathHub = (d, dryRun) => {
 
 const renderDeath = (d, dryRun) =>
   `${dryRun ? 'would write death' : 'death'} ${d.vm}  run=${d.run} ` +
-  `${d.state} → failed: ${unitSummary(d.unit)} — ${evidenceBranchFor(d.run)}` +
+  `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}` +
   renderDeathHub(d, dryRun)
 
 /**
@@ -909,7 +949,7 @@ const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never remo
 
 /** A hub that could not be asked: first, because every line below was read another way. */
 const renderHub = (h) =>
-  `hub ${h.host ?? 'none'} unreachable (${h.dark}) — every run read from the target's evidence instead`
+  `hub ${h.host ?? 'none'} unreachable (${h.dark}) — every run read from the evidence repository instead`
 
 const renderJanitor = (result) => {
   const lines = [

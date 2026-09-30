@@ -147,6 +147,69 @@ export const runOfBranch = (ref) => {
   return match ? Number(match[1]) : null
 }
 
+// ── The evidence repository ─────────────────────────────────────────────────
+
+/**
+ * The evidence repository is the operator's setting (#1395): the key
+ * `evidence` (`<owner>/<repo>`) in `~/.ultrapowers/fleet.json`, overridden for
+ * one launch by `--evidence-repo`. Nothing derives it from the target, and
+ * there is no default. Pure: the override when it is a safe target, else
+ * `config.evidence` when it is one, else null.
+ */
+export const evidenceRepoFor = (config, override = null) => {
+  if (isSafeTarget(override)) return override
+  const setting = config?.evidence
+  return isSafeTarget(setting) ? setting : null
+}
+
+/**
+ * The one reader of the `evidence` key: its value, or null when the file is
+ * absent, unreadable or not a JSON object, names no key, or names a value
+ * `isSafeTarget` refuses. Beside `loadFleetConfig`, which stays the pool's.
+ */
+export async function readEvidenceSetting ({ path: configPath } = {}) {
+  const target = configPath ?? DEFAULT_CONFIG_PATH()
+  let parsed
+  try {
+    parsed = JSON.parse(await fsp.readFile(target, 'utf8'))
+  } catch {
+    return null
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+  return evidenceRepoFor(parsed)
+}
+
+/**
+ * A run's place in the evidence repository, keyed by the TARGET's slug
+ * (collision-free across owners — `facebook/react` lands in
+ * `runs/facebook-react/<N>/`):
+ *
+ *   `runs/<slug>/<N>`       the run's folder
+ *   `live/<slug>/run-<N>`   the branch the run writes while it flies
+ *   `<slug>/run-<N>`        the tag that outlives it
+ */
+export const runFolderFor = (target, run) => `runs/${targetSlug(target)}/${run}`
+export const liveBranchFor = (target, run) => `live/${targetSlug(target)}/run-${run}`
+export const runTagFor = (target, run) => `${targetSlug(target)}/run-${run}`
+export const evidenceUrlFor = (repo) => `https://github.com/${repo}.git`
+
+const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+/**
+ * The run an evidence-repository ref carries for `target`, or null — the live
+ * branch or the tag, with or without its `refs/heads/` / `refs/tags/` head.
+ * The slug is matched literally and as a whole path segment, so a foreign
+ * slug, a peeled `^{}` line and a non-numeric tail are all null.
+ */
+export const runOfEvidenceRef = (target, ref) => {
+  const slug = escapeRegex(targetSlug(target))
+  const shape = new RegExp(
+    `^(?:(?:refs/heads/)?live/${slug}/run-([1-9][0-9]*)|(?:refs/tags/)?${slug}/run-([1-9][0-9]*))$`
+  )
+  const match = shape.exec(String(ref ?? ''))
+  return match ? Number(match[1] ?? match[2]) : null
+}
+
 // ── Constants the whole laptop side agrees on ───────────────────────────────
 
 export const EXE_HOST = 'exe.dev'
@@ -589,6 +652,32 @@ export async function highestRunOnTarget (exec, repoDir) {
     const ref = line.split('\t')[1]
     if (ref === undefined) continue
     const run = runOfBranch(ref.trim())
+    if (run !== null && run > best) best = run
+  }
+  return best
+}
+
+/**
+ * The highest run `target` has in the evidence repository: one `ls-remote`
+ * over its live branches and tags (run from `repoDir`), the highest
+ * `runOfEvidenceRef` or 0. A non-zero listing is a refusal, never a zero.
+ */
+export async function highestRunInEvidence (exec, repoDir, evidenceRepo, target) {
+  const slug = targetSlug(target)
+  const url = evidenceUrlFor(evidenceRepo)
+  const patterns = [`refs/heads/live/${slug}/run-*`, `refs/tags/${slug}/run-*`]
+  const res = await git(exec, repoDir, ['ls-remote', url, ...patterns])
+  if (res.code !== 0) {
+    refuse(
+      `git ls-remote ${url} ${patterns.map((p) => `'${p}'`).join(' ')} in ${repoDir} ` +
+      `failed (exit ${res.code}):\n${output(res)}`
+    )
+  }
+  let best = 0
+  for (const line of String(res.stdout ?? '').split('\n')) {
+    const ref = line.split('\t')[1]
+    if (ref === undefined) continue
+    const run = runOfEvidenceRef(target, ref.trim())
     if (run !== null && run > best) best = run
   }
   return best

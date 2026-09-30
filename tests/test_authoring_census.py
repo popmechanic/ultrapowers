@@ -16,8 +16,9 @@ The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
   * (c)/[M2] `--register` prints one line per option of every question of every
     row, in row order then question order then option order, and no header.
   * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
-    record from the plan tag and the status and report from the evidence tag,
-    skips the run whose plan tag has no record with one stderr line naming it,
+    record, the status and the report from the run's folder in the evidence
+    repository (#1395), skips the run with no record with one stderr line
+    naming it,
     invokes the binary `--gh` names and no other, and then prints the M1 table
     over `<dir>`.
 
@@ -323,19 +324,26 @@ def fake_gh(tmp_path, answers, name="fakebin"):
     return gh, bindir / "calls.jsonl"
 
 
-def plan_path(number):
-    return ("repos/o/r/contents/.ultrapowers/gate-verdicts.json"
-            "?ref=ultra/plan/run-%d" % number)
+#: The operator's evidence repository the fetch tests read from (#1395): the
+#: run folders live there, never in the target `o/r`.
+EVIDENCE = "ops/evidence"
 
 
-def status_path(number):
-    return ("repos/o/r/contents/.ultrapowers/runs/%d/status.json"
-            "?ref=ultra/evidence/run-%d" % (number, number))
+def run_file_path(number, name, evidence=EVIDENCE):
+    return ("repos/%s/contents/runs/o-r/%d/%s?ref=o-r/run-%d"
+            % (evidence, number, name, number))
 
 
-def report_path(number):
-    return ("repos/o/r/contents/.ultrapowers/runs/%d/report.json"
-            "?ref=ultra/evidence/run-%d" % (number, number))
+def plan_path(number, evidence=EVIDENCE):
+    return run_file_path(number, "gate-verdicts.json", evidence)
+
+
+def status_path(number, evidence=EVIDENCE):
+    return run_file_path(number, "status.json", evidence)
+
+
+def report_path(number, evidence=EVIDENCE):
+    return run_file_path(number, "report.json", evidence)
 
 
 def lines(text):
@@ -476,15 +484,20 @@ def fetch_answers():
     }
 
 
-def run_fetch(tmp_path, answers=None, runs="131..133"):
-    """`--fetch` over the fake: `answers` defaults to part one's table."""
+def run_fetch(tmp_path, answers=None, runs="131..133",
+              repo_args=("--evidence-repo", EVIDENCE)):
+    """`--fetch` over the fake: `answers` defaults to part one's table, and
+    `repo_args` name the evidence repository (the flag, by default)."""
     into = tmp_path / "fetched"
     into.mkdir()
     gh, calls = fake_gh(tmp_path, fetch_answers() if answers is None
                         else answers)
     env, bare_log = decoy_env(tmp_path)
+    # The laptop's own `~/.ultrapowers/fleet.json` is never read: HOME is
+    # the test's.
+    env["HOME"] = str(tmp_path / "home")
     p = census("--fetch", "o/r", "--runs", runs, "--into", str(into),
-               "--gh", str(gh), env=env)
+               "--gh", str(gh), *repo_args, env=env)
     return p, into, calls, bare_log
 
 
@@ -532,10 +545,11 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
 
 def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
     """(d)/[M3]: each call's first two arguments are `api` and a
-    `repos/o/r/contents/` path carrying the expected `ref=` tag — the plan tag
-    for the record, the evidence tag for the status and the report — and no
-    argv names any other repository. The three plan reads, the two status reads
-    and the two report reads the leg asks for are all made."""
+    `repos/ops/evidence/contents/runs/o-r/<N>/` path at the run's tag
+    `o-r/run-<N>` — the record, the status and the report all in the one
+    folder — and no argv names any other repository. The three record reads,
+    the two status reads and the two report reads the leg asks for are all
+    made."""
     p, _into, calls, _bare = run_fetch(tmp_path)
     argvs = [json.loads(line) for line in lines(calls.read_text())
              if line.strip()]
@@ -545,11 +559,12 @@ def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
     expected |= {report_path(n) for n in (131, 132, 133)}
     for argv in argvs:
         assert argv[0] == "api", argv
-        assert argv[1].startswith("repos/o/r/contents/"), argv
+        assert argv[1].startswith("repos/ops/evidence/contents/runs/o-r/"), \
+            argv
         assert argv[1] in expected, argv
         for token in argv:
             for owner_repo in re.findall(r"repos/([^/]+/[^/?]+)", token):
-                assert owner_repo == "o/r", argv
+                assert owner_repo == EVIDENCE, argv
     made = {argv[1] for argv in argvs}
     for required in (plan_path(131), plan_path(132), plan_path(133),
                      status_path(131), status_path(133),
@@ -565,6 +580,84 @@ def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):
     decoy first on PATH is never run."""
     p, _into, _calls, bare_log = run_fetch(tmp_path)
     assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
+
+
+# ------------------------------------------- the evidence repository (#1395)
+
+def test_the_contents_path_is_byte_exact():
+    """[M1]: one run file's `gh api` path, in the evidence repository's run
+    folder at the run's tag."""
+    module = load_module()
+    assert module.evidence_contents_path(
+        "ops/evidence", "o/r", 5, "status.json") == \
+        "repos/ops/evidence/contents/runs/o-r/5/status.json?ref=o-r/run-5"
+
+
+def test_the_flag_asks_for_exactly_the_three_run_folder_paths(tmp_path):
+    """[M2]: `--runs 5..5 --evidence-repo ops/evidence` asks `gh api` for the
+    record, the status and the report of run 5 — those three, no other."""
+    answers = {
+        plan_path(5): blob(RECORD_131).decode("utf-8"),
+        status_path(5): blob(STATUS_131).decode("utf-8"),
+        report_path(5): blob(REPORT_FETCHED).decode("utf-8"),
+    }
+    p, into, calls, _bare = run_fetch(tmp_path, answers=answers, runs="5..5")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert sorted(argv[1] for argv in call_log(calls)) == sorted(answers), \
+        call_log(calls)
+    for name in ("gate-verdicts.json", "status.json", "report.json"):
+        assert (into / "run-5" / name).is_file(), name
+
+
+def test_the_config_key_steers_the_reads(tmp_path):
+    """[M3]: with no `--evidence-repo`, `--fetch` reads from the repository
+    the `evidence` key of `--config` names."""
+    config = tmp_path / "fleet.json"
+    config.write_text(json.dumps({"evidence": "cfg/ev"}))
+    answers = {plan_path(5, "cfg/ev"): blob(RECORD_131).decode("utf-8")}
+    p, into, calls, _bare = run_fetch(
+        tmp_path, answers=answers, runs="5..5",
+        repo_args=("--config", str(config)))
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert sorted(argv[1] for argv in call_log(calls)) == sorted([
+        plan_path(5, "cfg/ev"), status_path(5, "cfg/ev"),
+        report_path(5, "cfg/ev")]), call_log(calls)
+    assert (into / "run-5/gate-verdicts.json").read_bytes() == \
+        blob(RECORD_131)
+
+
+def test_the_flag_wins_over_the_config(tmp_path):
+    """[M3]: `--evidence-repo` overrides the config's `evidence`."""
+    config = tmp_path / "fleet.json"
+    config.write_text(json.dumps({"evidence": "cfg/ev"}))
+    p, _into, calls, _bare = run_fetch(
+        tmp_path, answers={}, runs="5..5",
+        repo_args=("--evidence-repo", EVIDENCE, "--config", str(config)))
+    assert [argv[1] for argv in call_log(calls)] == [plan_path(5)], \
+        call_log(calls)
+
+
+def test_a_config_without_the_key_exits_2_naming_it_and_calls_no_gh(tmp_path):
+    """[M3]: a config that lacks `evidence` and no flag — exit 2, a stderr
+    line naming `evidence`, and the fake `gh` never invoked."""
+    config = tmp_path / "fleet.json"
+    config.write_text(json.dumps({"other": "x"}))
+    p, _into, calls, bare_log = run_fetch(
+        tmp_path, runs="5..5", repo_args=("--config", str(config)))
+    assert p.returncode == 2, p.stdout + p.stderr
+    assert any("evidence" in line for line in lines(p.stderr)), p.stderr
+    assert not calls.exists(), calls.read_text()
+    assert not bare_log.exists(), bare_log.read_text()
+
+
+def test_a_missing_default_config_exits_2_and_calls_no_gh(tmp_path):
+    """[M3]: no flag, no `--config`, and no `~/.ultrapowers/fleet.json` under
+    the test's HOME — exit 2 naming `evidence`, no `gh` call."""
+    p, _into, calls, bare_log = run_fetch(tmp_path, runs="5..5", repo_args=())
+    assert p.returncode == 2, p.stdout + p.stderr
+    assert "evidence" in p.stderr, p.stderr
+    assert not calls.exists(), calls.read_text()
+    assert not bare_log.exists(), bare_log.read_text()
 
 
 # -------------------------------------------------------- the Proof's `Run:`
@@ -590,14 +683,16 @@ def load_module():
 
 def test_the_produced_symbols_carry_the_names_the_task_spells(tmp_path):
     """Interfaces/Produces: `census_rows(root)`, `render_table(rows)`,
-    `render_register(rows)` and `fetch_runs(target, first, last, into, gh)`,
+    `render_register(rows)`, `fetch_runs(target, first, last, into, gh,
+    evidence)` and `evidence_contents_path(evidence, target, number, name)`,
     with those parameter names; `census_rows` answers one dict per row."""
     module = load_module()
     wanted = {
         "census_rows": ["root"],
         "render_table": ["rows"],
         "render_register": ["rows"],
-        "fetch_runs": ["target", "first", "last", "into", "gh"],
+        "fetch_runs": ["target", "first", "last", "into", "gh", "evidence"],
+        "evidence_contents_path": ["evidence", "target", "number", "name"],
     }
     for name, params in wanted.items():
         fn = getattr(module, name, None)
@@ -937,8 +1032,8 @@ def test_c_a_report_that_does_not_answer_leaves_the_file_unwritten(tmp_path):
 
 def test_c_both_report_paths_are_requested_as_api_reads_of_the_evidence_tag(
         tmp_path):
-    """(c)/[M1]: exactly `repos/o/r/contents/.ultrapowers/runs/131/report.json
-    ?ref=ultra/evidence/run-131` and its 132 twin, each once, each an `api`
+    """(c)/[M1]: exactly `repos/ops/evidence/contents/runs/o-r/131/report.json
+    ?ref=o-r/run-131` and its 132 twin, each once, each an `api`
     call naming exactly two arguments — the shape the two existing fetches
     already use."""
     p, _into, calls, _bare = run_fetch(
@@ -957,7 +1052,8 @@ def test_c_both_report_paths_are_requested_as_api_reads_of_the_evidence_tag(
     for argv in argvs:
         assert len(argv) == 2, argv
         assert argv[0] == "api", argv
-        assert argv[1].startswith("repos/o/r/contents/"), argv
+        assert argv[1].startswith("repos/ops/evidence/contents/runs/o-r/"), \
+            argv
         assert "?ref=" in argv[1], argv
         assert argv[1] in expected, argv
 

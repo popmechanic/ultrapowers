@@ -1009,32 +1009,24 @@ async function settle () {
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 ev('start', { workload: W.name, agents: 'elastic', cap: CAP, model: MODEL, clock_ms: CLOCK_MS, quiet_ms: QUIET_MS, board: BOARD, publish: 'explicit', early_close: 'held', order: 'chain', pulls: PULLS, chain: board.cp ? Object.fromEntries(board.cp) : undefined })
 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
-// the previous run (#1335): when this run follows one on the same repository, read what its
-// evidence tag recorded (status, events, red checks) and brief every builder with it. Any failure
-// (no remote, no tag, a missing file) is logged once and leaves the brief as it was.
+// the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
+// (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
+// --past-dir <dir> (basename = the run number); read what it recorded (status, events, red
+// checks) and brief every builder with it. No --past-dir reads nothing. Any failure (a missing
+// directory or file) is logged once and leaves the brief as it was.
 let PAST = null
 {
-  const n = Number((/^run-(\d+)$/.exec(process.env.ULTRAPOWERS_FLEET_RUN || '') || [])[1])
-  if (n > 1) {
-    const g = (args) => {
-      const r = spawnSync('git', ['-C', TARGET, ...args], { encoding: 'utf8', timeout: 30000, maxBuffer: 64 * 1024 * 1024 })
-      if (r.error) throw r.error
-      if (r.status !== 0) throw new Error(`git ${args.join(' ')} exited ${r.status}: ${String(r.stderr).trim()}`)
-      return r.stdout
-    }
+  const dir = arg('past-dir')
+  if (dir) {
     try {
-      const runs = g(['ls-remote', '--tags', 'origin', 'refs/tags/ultra/evidence/run-*']).split('\n')
-        .map((l) => /refs\/tags\/ultra\/evidence\/run-(\d+)$/.exec(l.trim())).filter(Boolean).map((m) => Number(m[1])).filter((m) => m < n)
-      if (!runs.length) throw new Error(`no evidence tag below run-${n} on origin`)
-      const m = Math.max(...runs)
-      const ref = `refs/tags/ultra/evidence/run-${m}`
-      g(['fetch', '-q', '--depth=1', 'origin', `${ref}:${ref}`])
-      const read = (f) => JSON.parse(g(['show', `${ref}:.ultrapowers/runs/${m}/${f}`]))
-      const status = read('status.json')
-      const events = g(['show', `${ref}:.ultrapowers/runs/${m}/events.jsonl`]).split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+      const m = Number(path.basename(path.resolve(dir)))
+      if (!Number.isInteger(m) || m < 1) throw new Error(`past dir ${dir} is not named by a run number`)
+      const text = (f) => fs.readFileSync(path.join(dir, f), 'utf8')
+      const status = JSON.parse(text('status.json'))
+      const events = text('events.jsonl').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
       // optional: runs before #1352, and factory runs, have no red-checks.json; pastItems reads null as none
       let redChecks = null
-      try { redChecks = read('red-checks.json') } catch { /* no red checks recorded */ }
+      try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
       const items = pastItems({ status, events, redChecks })
       ev('past', { run: m, items: items ? items.length : 0 })
       if (items) {

@@ -13,13 +13,18 @@ is a question about the pile. This census is that pile read into one table.
     authoring_census.py --from <dir>
     authoring_census.py --from <dir> --register
     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
+        [--evidence-repo <owner>/<repo>] [--config <path>]
 
 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
 `run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
 with no record is not a row.
 `--register` prints one line per option of every question instead of the table
-(#735). `--fetch` fills `<dir>` from the plan and evidence tags over `gh api`
-and then prints the table over it. `--gh` swaps that binary — the test seam,
+(#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
+`runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
+`<owner>-<repo>/run-<N>`, and then prints the table over it. The evidence
+repository is `--evidence-repo`, else the `evidence` key of `--config`
+(default `~/.ultrapowers/fleet.json`); with neither the fetch exits 2 before
+any read (#1395). `--gh` swaps that binary — the test seam,
 and the hook for a caller with its own wrapper; nothing here reaches the
 network by any other route, and only under `--fetch`.
 """
@@ -303,22 +308,35 @@ def render_register(rows):
     return "\n".join(lines)
 
 
-# --- --fetch: the two tags a run leaves behind -----------------------------
+# --- --fetch: the run folder in the evidence repository --------------------
 
-def _contents(target, path, ref):
-    """The `gh api` path for one file at one ref."""
-    return "repos/%s/contents/%s?ref=%s" % (target, path, ref)
+def _slug(target):
+    """`<owner>/<repo>` as the one path segment a run folder and tag use."""
+    return target.replace("/", "-")
 
 
-def _fetch_file(gh, target, path, ref):
-    """The bytes of one file at one ref, or None when `gh` exits non-zero.
+def run_tag(target, number):
+    """The tag a run's folder is read at: `<owner>-<repo>/run-<N>`."""
+    return "%s/run-%d" % (_slug(target), int(number))
+
+
+def evidence_contents_path(evidence, target, number, name):
+    """The `gh api` path for one file of run `number` of `target`: the file
+    `runs/<owner>-<repo>/<N>/<name>` of the evidence repository, at the run's
+    tag `<owner>-<repo>/run-<N>`."""
+    return "repos/%s/contents/runs/%s/%d/%s?ref=%s" % (
+        evidence, _slug(target), int(number), name, run_tag(target, number))
+
+
+def _fetch_file(gh, path):
+    """The bytes of one contents path, or None when `gh` exits non-zero.
 
     `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
     newlines, so the decode is over the whole string. The call names exactly
     two arguments — `api` and the contents path — so a caller's wrapper sees
     the same shape the real binary does."""
     proc = subprocess.run(
-        gh + ["api", _contents(target, path, ref)],
+        gh + ["api", path],
         capture_output=True, text=True)
     if proc.returncode != 0:
         return None
@@ -335,14 +353,15 @@ def _fetch_file(gh, target, path, ref):
         return None
 
 
-def fetch_runs(target, first, last, into, gh="gh"):
+def fetch_runs(target, first, last, into, gh="gh", *, evidence):
     """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
     `run-<N>/report.json` for each N from `first` to `last` inclusive; return
     the runs written.
 
-    The plan tag `ultra/plan/run-<N>` carries the record and the evidence tag
-    `ultra/evidence/run-<N>` carries both the status and the report. A run
-    whose plan tag has no record is skipped whole — one line on stderr, nothing
+    All three live in the run's folder `runs/<owner>-<repo>/<N>/` of the
+    operator's evidence repository `evidence`, at the tag
+    `<owner>-<repo>/run-<N>`; the record is read first. A run
+    whose tag has no record is skipped whole — one line on stderr, nothing
     written for it, no directory left behind — because a run with no record is
     no row. A status that does not answer leaves that file unwritten and the
     row's `run_min` a `-`, and a report that does not answer leaves that file
@@ -355,24 +374,22 @@ def fetch_runs(target, first, last, into, gh="gh"):
     command = shlex.split(gh) if isinstance(gh, str) else list(gh)
     written = []
     for number in range(int(first), int(last) + 1):
-        record = _fetch_file(
-            command, target, ".ultrapowers/gate-verdicts.json",
-            "ultra/plan/run-%d" % number)
+        record = _fetch_file(command, evidence_contents_path(
+            evidence, target, number, RECORD_NAME))
         if record is None:
-            print("census: run %d has no gate record at ultra/plan/run-%d "
-                  "— skipped" % (number, number), file=sys.stderr)
+            print("census: run %d has no gate record at %s in %s — skipped"
+                  % (number, run_tag(target, number), evidence),
+                  file=sys.stderr)
             continue
         directory = into / ("run-%d" % number)
         directory.mkdir(parents=True, exist_ok=True)
         (directory / RECORD_NAME).write_bytes(record)
-        status = _fetch_file(
-            command, target, ".ultrapowers/runs/%d/status.json" % number,
-            "ultra/evidence/run-%d" % number)
+        status = _fetch_file(command, evidence_contents_path(
+            evidence, target, number, STATUS_NAME))
         if status is not None:
             (directory / STATUS_NAME).write_bytes(status)
-        report = _fetch_file(
-            command, target, ".ultrapowers/runs/%d/report.json" % number,
-            "ultra/evidence/run-%d" % number)
+        report = _fetch_file(command, evidence_contents_path(
+            evidence, target, number, REPORT_NAME))
         if report is not None:
             (directory / REPORT_NAME).write_bytes(report)
         written.append(number)
@@ -380,6 +397,21 @@ def fetch_runs(target, first, last, into, gh="gh"):
 
 
 RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
+
+# The operator's setting: its `evidence` key names the evidence repository.
+DEFAULT_CONFIG = "~/.ultrapowers/fleet.json"
+
+
+def _configured_evidence(config):
+    """The `evidence` value of the config at `config`, or None when the file
+    is absent, unreadable, or lacks a non-empty string there. Nothing guesses
+    a repository in its place."""
+    try:
+        setting = json.loads(Path(config).expanduser().read_text())
+    except (OSError, ValueError):
+        return None
+    value = _obj(setting).get("evidence")
+    return value if isinstance(value, str) and value.strip() else None
 
 
 def main(argv=None):
@@ -398,6 +430,12 @@ def main(argv=None):
                     help="the inclusive run range to fetch")
     ap.add_argument("--into", metavar="DIR",
                     help="where --fetch writes the runs it reads")
+    ap.add_argument("--evidence-repo", metavar="OWNER/REPO",
+                    help="the evidence repository --fetch reads run folders "
+                         "from; default the `evidence` key of --config")
+    ap.add_argument("--config", metavar="PATH", default=DEFAULT_CONFIG,
+                    help="the operator's setting file; default "
+                         "`~/.ultrapowers/fleet.json`")
     ap.add_argument("--gh", default="gh",
                     help="the gh binary (or command) to run; default `gh`")
     args = ap.parse_args(argv)
@@ -417,7 +455,14 @@ def main(argv=None):
             print("census: --runs `%s` counts backwards" % args.runs,
                   file=sys.stderr)
             return 1
-        fetch_runs(args.fetch, first, last, Path(args.into), args.gh)
+        evidence = args.evidence_repo or _configured_evidence(args.config)
+        if not evidence:
+            print("census: no evidence repository — give --evidence-repo "
+                  "<owner>/<repo> or set the `evidence` key in %s"
+                  % args.config, file=sys.stderr)
+            return 2
+        fetch_runs(args.fetch, first, last, Path(args.into), args.gh,
+                   evidence=evidence)
         root = Path(args.into)
     elif args.root:
         root = Path(args.root)
