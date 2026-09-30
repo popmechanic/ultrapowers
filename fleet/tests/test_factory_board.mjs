@@ -145,7 +145,7 @@ const readEventRows = (file) =>
       '(c) [M3] the three POSTs land, in order, on task 1, task 2, then the run; got ' +
       JSON.stringify(stub.requests.map((r) => r.path)))
 
-    const expectedKeys = ['run-9:task:1:close', 'run-9:task:2:close', 'run-9:run:close']
+    const expectedKeys = ['r-uid:task:1:close', 'r-uid:task:2:close', 'r-uid:run:close']
     assert.deepEqual(stub.requests.map((r) => r.headers['idempotency-key']), expectedKeys,
       '(c) [M3] their Idempotency-Key headers are exactly the three keys, in order; got ' +
       JSON.stringify(stub.requests.map((r) => r.headers['idempotency-key'])))

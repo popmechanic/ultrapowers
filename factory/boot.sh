@@ -159,7 +159,10 @@ prepare() {
       [ "$landed" = "$PLAN_SHA" ] || fail "plan: $LIVE_BRANCH of $EVIDENCE_REPO is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
     fi
   ) & epid=$!
-  wait "$tpid" || { ERROR="$(cat "$err.target" 2>/dev/null || true)"; wait "$epid" || true; fail "${ERROR:-clone: target $TARGET_REPO through $GITHUB_INT_HOST}"; }
+  # When both clones failed, the one `fail` names both reasons, the target's first.
+  wait "$tpid" || { local terr eerr=""; terr="$(cat "$err.target" 2>/dev/null || true)"
+    wait "$epid" || eerr="$(cat "$err.evidence" 2>/dev/null || true)"
+    fail "${terr:-clone: target $TARGET_REPO through $GITHUB_INT_HOST}${eerr:+; $eerr}"; }
   wait "$epid" || { ERROR="$(cat "$err.evidence" 2>/dev/null || true)"; fail "${ERROR:-plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST}"; }
   mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/plan.md" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $EVIDENCE_REL/plan.md"
   EVIDENCE_READY=1; log "plan: $LIVE_BRANCH of $EVIDENCE_REPO at $PLAN_SHA -> $PLAN_FILE"

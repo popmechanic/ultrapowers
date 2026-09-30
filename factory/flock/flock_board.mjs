@@ -1,5 +1,5 @@
 // The Flock's board (map #1292): the in-memory stand-in the engine (factory/flock/engine.mjs)
-// uses — Kata's verbs (ready, claim, release, done, reopen, post_belief, board_read, publish,
+// uses — Kata's verbs (ready, claim, release, park, done, reopen, post_belief, board_read, publish,
 // add task), no Kata. Every op is timed (wall, µs).
 
 // Each claimer starts its walk of the ready list at its own offset, so N claimers
@@ -72,6 +72,7 @@ class StandInBoard extends Timed {
   }
   release (t, why) { return this.op('release', () => { t.state = 'ready'; t.owner = null; t.notes.push(why) }) }
   reopen (t, why) { return this.release(t, why) }
+  park (t, why) { return this.op('park', () => { t.state = 'parked'; t.owner = null; t.notes.push(why) }) }
   done (t) { return this.op('done', () => { t.state = 'done' }) }
   publish () { return this.op('publish', () => null) }
   post (b) { return this.op('post', () => { const x = { id: this.beliefs.length + 1, t: this.now(), ...b }; this.beliefs.push(x); this.beliefCount += 1; return x }) }

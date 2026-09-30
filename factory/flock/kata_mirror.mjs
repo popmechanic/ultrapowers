@@ -1,7 +1,7 @@
 // Mirror a Flock board's task moves onto Kata as comments, so `fleet/board-read.mjs` shows each
 // claim, release, reopen and close while the run is in flight, not only the closes at the end.
 //
-// mirrorBoard wraps claim, release, reopen and done on the board object in place and returns it.
+// mirrorBoard wraps claim, release, park, reopen and done on the board object in place and returns it.
 // Each comment starts after the board operation it mirrors has completed and is never awaited:
 // a slow or failing Kata never holds up or breaks the board. One task's comments go out one after
 // another, so Kata records them in board order. `onPost` hears every attempted post; `track`, when
@@ -16,7 +16,7 @@
 // builder sure the engine itself is wrong is seen on the board mid-run. Other beliefs post nothing.
 
 export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track, runUid, surfaceAt = 0.8 } = {}) {
-  const orig = { claim: board.claim, release: board.release, reopen: board.reopen, done: board.done, post: board.post }
+  const orig = { claim: board.claim, release: board.release, park: board.park, reopen: board.reopen, done: board.done, post: board.post }
   const reopening = new Set()
   const tails = new Map()   // uid -> the last queued post for that issue
   const report = (rec) => { if (onPost) try { onPost(rec) } catch {} }
@@ -53,6 +53,11 @@ export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track
   board.release = async function (t, why, ...rest) {
     const r = await orig.release.call(this, t, why, ...rest)
     if (!reopening.has(t)) post(t, String(why))
+    return r
+  }
+  board.park = async function (t, why, ...rest) {
+    const r = await orig.park.call(this, t, why, ...rest)
+    post(t, 'parked: ' + why)
     return r
   }
   board.reopen = async function (t, why, ...rest) {
