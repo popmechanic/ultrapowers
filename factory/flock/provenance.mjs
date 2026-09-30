@@ -66,9 +66,11 @@ export function buildProvenance ({ landed, blame, events = [], lost = [], covera
   const contested = []
   for (const w of rows.filter((e) => e.kind === 'peer:rewrite')) {
     if (!(w.path in (landed || {})) || !Array.isArray(w.after) || !w.after.length) continue
-    const text = linesOf(w.path)
-    if (!w.after.every((l) => text.includes(l))) continue
-    const line = text.findIndex((l) => w.after.includes(l)) + 1
+    // only the writer's own lines count: a rewrite landed when every `after` line is among them
+    const text = linesOf(w.path), labels = blame[w.path] || [], own = `${w.agent}.${w.task}`
+    const mine = text.map((l, i) => (String(labels[i] ?? '').split('|').includes(own) ? l : undefined))
+    if (!w.after.every((l) => mine.includes(l))) continue
+    const line = mine.findIndex((l) => l !== undefined && w.after.includes(l)) + 1
     const read = rows.find((e) => e.kind === 'jev:peer-rewrite' && e.path === w.path && same(e.after, w.after))
     contested.push({ kind: 'contested', path: w.path, line, wrote: w.task ?? null, over: (w.peers || []).map((l) => taskOf(l) ?? l).join('|'), jev: read ? (read.answer ?? null) : null })
   }
@@ -85,4 +87,62 @@ export function buildProvenance ({ landed, blame, events = [], lost = [], covera
   ordered.sort((a, b) => cmp(a.path, b.path) || a.at - b.at)
   for (const o of ordered) delete o.at
   return { hunks, exceptions: [...contested, ...lostRows, ...ordered, ...foreign], unproven }
+}
+
+// remapProvenance(prov, texts) is pure: texts {path: {from, to}} gives a path's text in the run's
+// commit and in the caught-up commit. Every line span of such a path (in hunks, unproven, and the
+// exceptions' `lines` span or `line`) is carried line by line through the longest common subsequence
+// of the two texts' lines; a line with no match drops, and each mapped set is cut back into runs of
+// consecutive lines (an entry whose lines all drop disappears). Other paths and keys are kept.
+const SPAN = /^\d+(-\d+)?$/
+
+// old line (1-based) -> new line (1-based), for the lines the LCS keeps
+function lineMap (from, to) {
+  const a = String(from).split('\n'), b = String(to).split('\n')
+  const map = new Map()
+  let s = 0
+  while (s < a.length && s < b.length && a[s] === b[s]) { map.set(s + 1, s + 1); s++ }
+  let ea = a.length, eb = b.length
+  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) { ea--; eb--; map.set(ea + 1, eb + 1) }
+  const n = ea - s, m = eb - s
+  const L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) {
+    for (let j = m - 1; j >= 0; j--) L[i][j] = a[s + i] === b[s + j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1])
+  }
+  for (let i = 0, j = 0; i < n && j < m;) {
+    if (a[s + i] === b[s + j]) { map.set(s + i + 1, s + j + 1); i++; j++ } else if (L[i + 1][j] >= L[i][j + 1]) i++
+    else j++
+  }
+  return map
+}
+
+// a span through the map, as the spans of its surviving lines' runs
+function mapSpan (text, map) {
+  const [x, y] = String(text).split('-').map(Number)
+  const got = []
+  for (let n = x; n <= (y ?? x); n++) if (map.has(n)) got.push(map.get(n))
+  got.sort((p, q) => p - q)
+  const out = []
+  for (const n of got) {
+    const last = out[out.length - 1]
+    if (last && n === last[1] + 1) last[1] = n
+    else if (!last || n !== last[1]) out.push([n, n])
+  }
+  return out.map(([p, q]) => span(p, q))
+}
+
+export function remapProvenance (prov, texts) {
+  const maps = new Map(Object.entries(texts || {}).map(([p, t]) => [p, lineMap(t.from, t.to)]))
+  const remap = (list) => {
+    if (!Array.isArray(list)) return list
+    const out = []
+    for (const e of list) {
+      const map = e && maps.get(e.path)
+      if (!map) out.push(e)
+      else if (typeof e.lines === 'string' && SPAN.test(e.lines)) for (const s of mapSpan(e.lines, map)) out.push({ ...e, lines: s })
+      else if (Number.isInteger(e.line)) { if (map.has(e.line)) out.push({ ...e, line: map.get(e.line) }) } else out.push(e)
+    }
+    return out
+  }
+  return { ...prov, hunks: remap(prov.hunks), exceptions: remap(prov.exceptions), unproven: remap(prov.unproven) }
 }

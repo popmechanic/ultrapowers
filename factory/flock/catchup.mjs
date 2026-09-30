@@ -13,6 +13,7 @@ import path from 'node:path'
 import readline from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { workloadFromPlan } from './plan.mjs'
+import { remapProvenance } from './provenance.mjs'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined }
@@ -112,4 +113,17 @@ if (work.check) exam(work.check, work.checkTimeoutMs ?? 120_000)
 // The exams may leave artifacts; the commit is what the boot pushes.
 if (out(['rev-parse', 'HEAD']) !== head) back('an exam moved HEAD')
 if (RUN_DIR) { try { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSync(path.join(RUN_DIR, 'catchup.json'), JSON.stringify({ head, onto: ONTO, run: runSha }) + '\n') } catch {} }
+// The record's line numbers were the run's commit's; carry them to the caught-up commit's.
+const provFile = RUN_DIR && path.join(RUN_DIR, 'provenance.json')
+if (provFile && fs.existsSync(provFile)) {
+  try {
+    const texts = {}
+    for (const p of changed(runSha, head)) {
+      const from = utf8(blob(runSha, p)), to = utf8(blob(head, p))
+      if (typeof from === 'string' || typeof to === 'string') texts[p] = { from: from ?? '', to: to ?? '' }
+    }
+    const prov = remapProvenance(JSON.parse(fs.readFileSync(provFile, 'utf8')), texts)
+    fs.writeFileSync(provFile, JSON.stringify({ ...prov, caughtUp: { run: runSha, head } }, null, 2) + '\n')
+  } catch (e) { process.stderr.write(`catchup: provenance not remapped — ${e.message}\n`) }
+}
 finish({ refolded: true, head }, 0)

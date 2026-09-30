@@ -98,6 +98,9 @@
     },
     "provenance": {
       "coverage": "record",
+      "parallel": 4,
+      "fact_timeout_seconds": 60,
+      "budget_seconds": 300,
       "n": 0,
       "window": "none",
       "basis": "operator pick 2026-09-29 (#1404 Depth 3)",
