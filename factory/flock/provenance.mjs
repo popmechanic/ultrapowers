@@ -2,17 +2,21 @@
 // task's Files and Claim, so neither is copied; this names which task wrote every changed line of
 // the landed snapshot, the surprises, and the changed code no probe ran.
 //
-// buildProvenance({ landed, blame, events, lost, coverage }) is pure:
+// buildProvenance({ landed, blame, events, lost, coverage, executable }) is pure:
 //   landed    {path: text} of the landed snapshot
 //   blame     the weave's `blame` map: {path: [label per landed line]}: `base`, a task label `A.2`,
 //             labels joined `|` when several wrote identical text, or a label with no dot (no task)
 //   events    events.jsonl rows
 //   lost      the snapshot's `survival` list [{path, author, by, lines}]
 //   coverage  {clause: {path: [lines]}} or null
-// answers { hunks, exceptions, unproven }.
+//   executable {path: [lines that can run]} (executable.mjs), optional
+// answers { hunks, exceptions, unproven }. The final empty line of a text ending in a newline is
+// neither a hunk line nor unproven; a changed line no clause covers is unproven when it is listed in
+// executable[path] if that path has an entry, else when it is not blank and not comment-only (#1407).
 
 const CODE = /\.(py|mjs|js|cjs)$/
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
+const COMMENT = (p) => (/\.py$/.test(p) ? /^\s*#/ : /^\s*\/\//)
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 // a label's task: the text after its dot; several labels give their tasks joined `|` in label
@@ -38,14 +42,16 @@ function runs (keys) {
   return out
 }
 
-export function buildProvenance ({ landed, blame, events = [], lost = [], coverage = null }) {
+export function buildProvenance ({ landed, blame, events = [], lost = [], coverage = null, executable = null }) {
   const paths = Object.keys(landed || {}).filter((p) => blame && Array.isArray(blame[p])).sort(cmp)
   const linesOf = (p) => String(landed[p] ?? '').split('\n')
   const covered = (p, n) => Object.keys(coverage || {}).filter((c) => (coverage[c][p] || []).includes(n)).sort(cmp)
   const hunks = [], foreign = [], unproven = coverage ? [] : null
   for (const p of paths) {
     const labels = blame[p]
-    const tasks = labels.map((l) => (l === 'base' ? undefined : taskOf(l)))
+    const text = linesOf(p)
+    const tail = String(landed[p] ?? '').endsWith('\n') ? text.length - 1 : -1
+    const tasks = labels.map((l, i) => (l === 'base' || i === tail ? undefined : taskOf(l)))
     for (const r of runs(tasks.map((t) => (t === null ? undefined : t)))) {
       const h = { path: p, lines: span(r.from, r.to), task: r.key }
       if (coverage) {
@@ -57,7 +63,9 @@ export function buildProvenance ({ landed, blame, events = [], lost = [], covera
     }
     for (const r of runs(tasks.map((t) => (t === null ? true : undefined)))) foreign.push({ kind: 'foreign', path: p, lines: span(r.from, r.to) })
     if (coverage && CODE.test(p)) {
-      const bare = tasks.map((t, i) => (t != null && !covered(p, i + 1).length ? t : undefined))
+      const list = executable && Array.isArray(executable[p]) ? new Set(executable[p]) : null
+      const runnable = (i) => (list ? list.has(i + 1) : (text[i] ?? '').trim() !== '' && !COMMENT(p).test(text[i] ?? ''))
+      const bare = tasks.map((t, i) => (t != null && runnable(i) && !covered(p, i + 1).length ? t : undefined))
       for (const r of runs(bare)) unproven.push({ path: p, lines: span(r.from, r.to), task: r.key })
     }
   }
@@ -93,26 +101,56 @@ export function buildProvenance ({ landed, blame, events = [], lost = [], covera
 // commit and in the caught-up commit. Every line span of such a path (in hunks, unproven, and the
 // exceptions' `lines` span or `line`) is carried line by line through the longest common subsequence
 // of the two texts' lines; a line with no match drops, and each mapped set is cut back into runs of
-// consecutive lines (an entry whose lines all drop disappears). Other paths and keys are kept.
+// consecutive lines (an entry whose lines all drop disappears). A side may be null for a file absent
+// there: with `to` null every entry of that path drops. Other paths and keys are kept.
 const SPAN = /^\d+(-\d+)?$/
 
-// old line (1-based) -> new line (1-based), for the lines the LCS keeps
+// old line (1-based) -> new line (1-based), for the lines a longest common subsequence keeps; a
+// null side (the file is absent there) keeps none. Myers' diff with its middle snake, so memory
+// stays linear in the two lengths and time is O((n+m)·D).
 function lineMap (from, to) {
-  const a = String(from).split('\n'), b = String(to).split('\n')
   const map = new Map()
-  let s = 0
-  while (s < a.length && s < b.length && a[s] === b[s]) { map.set(s + 1, s + 1); s++ }
-  let ea = a.length, eb = b.length
-  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) { ea--; eb--; map.set(ea + 1, eb + 1) }
-  const n = ea - s, m = eb - s
-  const L = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1))
-  for (let i = n - 1; i >= 0; i--) {
-    for (let j = m - 1; j >= 0; j--) L[i][j] = a[s + i] === b[s + j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1])
+  if (from === null || from === undefined || to === null || to === undefined) return map
+  const ids = new Map()
+  const id = (l) => { let v = ids.get(l); if (v === undefined) ids.set(l, v = ids.size); return v }
+  const a = Int32Array.from(String(from).split('\n'), id), b = Int32Array.from(String(to).split('\n'), id)
+  const match = (a0, a1, b0, b1) => {
+    while (a0 < a1 && b0 < b1 && a[a0] === b[b0]) { map.set(a0 + 1, b0 + 1); a0++; b0++ }
+    while (a1 > a0 && b1 > b0 && a[a1 - 1] === b[b1 - 1]) { a1--; b1--; map.set(a1 + 1, b1 + 1) }
+    if (a0 === a1 || b0 === b1) return
+    const [x0, y0, x1, y1] = middleSnake(a0, a1, b0, b1)
+    match(a0, a0 + x0, b0, b0 + y0)
+    for (let x = x0, y = y0; x < x1; x++, y++) map.set(a0 + x + 1, b0 + y + 1)
+    match(a0 + x1, a1, b0 + y1, b1)
   }
-  for (let i = 0, j = 0; i < n && j < m;) {
-    if (a[s + i] === b[s + j]) { map.set(s + i + 1, s + j + 1); i++; j++ } else if (L[i + 1][j] >= L[i][j + 1]) i++
-    else j++
+  // the snake (start and end, relative to a0 and b0) a shortest edit path crosses halfway
+  const middleSnake = (a0, a1, b0, b1) => {
+    const N = a1 - a0, M = b1 - b0, delta = N - M, odd = (delta & 1) !== 0
+    const max = Math.ceil((N + M) / 2), off = max + 1
+    const vf = new Int32Array(2 * max + 3), vb = new Int32Array(2 * max + 3)
+    for (let d = 0; d <= max; d++) {
+      for (let k = -d; k <= d; k += 2) {
+        let x = (k === -d || (k !== d && vf[off + k - 1] < vf[off + k + 1])) ? vf[off + k + 1] : vf[off + k - 1] + 1
+        let y = x - k
+        const xs = x, ys = y
+        while (x < N && y < M && a[a0 + x] === b[b0 + y]) { x++; y++ }
+        vf[off + k] = x
+        const kb = delta - k
+        if (odd && kb >= -(d - 1) && kb <= d - 1 && x + vb[off + kb] >= N) return [xs, ys, x, y]
+      }
+      for (let k = -d; k <= d; k += 2) {
+        let x = (k === -d || (k !== d && vb[off + k - 1] < vb[off + k + 1])) ? vb[off + k + 1] : vb[off + k - 1] + 1
+        let y = x - k
+        const xs = x, ys = y
+        while (x < N && y < M && a[a1 - 1 - x] === b[b1 - 1 - y]) { x++; y++ }
+        vb[off + k] = x
+        const kf = delta - k
+        if (!odd && kf >= -d && kf <= d && x + vf[off + kf] >= N) return [N - x, M - y, N - xs, M - ys]
+      }
+    }
+    throw new Error('no middle snake')
   }
+  match(0, a.length, 0, b.length)
   return map
 }
 

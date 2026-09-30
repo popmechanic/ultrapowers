@@ -6,6 +6,8 @@
 // `--provenance`, and prints the first line after `### Provenance` and its blank line.
 // `node fleet/tests/provenance_pr_probe.mjs partial` adds partial `coverage` counts
 // (`ran` 2, `timed_out` 1, `skipped` 0, `unmeasured` 1) to the provenance file.
+// `node fleet/tests/provenance_pr_probe.mjs shared` writes instead one line each of tasks `1`,
+// `1|2` (written identically by both) and `2`, no exceptions and `unproven` `[]`.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -31,7 +33,15 @@ fs.writeFileSync(plan, [
 const events = path.join(tmp, 'events.jsonl')
 fs.writeFileSync(events, '')
 const provenance = path.join(tmp, 'provenance.json')
-fs.writeFileSync(provenance, JSON.stringify({
+fs.writeFileSync(provenance, JSON.stringify(process.argv[2] === 'shared' ? {
+  hunks: [
+    { path: 'a.js', lines: '1', task: '1' },
+    { path: 'a.js', lines: '2', task: '1|2' },
+    { path: 'a.js', lines: '3', task: '2' },
+  ],
+  exceptions: [],
+  unproven: [],
+} : {
   hunks: [
     { path: 'a.js', lines: '3-4', task: '1', clauses: ['M1'] },
     { path: 'b.js', lines: '7', task: '2' },

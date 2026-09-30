@@ -12,6 +12,9 @@ const runsOf = (lines) => {
   return runs.map(([a, b]) => a === b ? String(a) : `${a}-${b}`)
 }
 const joinAnd = (xs) => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]
+// More than MAX_RUNS runs list the first MAX_RUNS and a count, so a large interleaved file keeps the note short.
+const MAX_RUNS = 20
+const joinRuns = (xs) => xs.length > MAX_RUNS ? xs.slice(0, MAX_RUNS).join(', ') + ` and ${xs.length - MAX_RUNS} more` : joinAnd(xs)
 
 export function peerNote ({ path, authors, agent, tasks = {} }) {
   const byOwner = new Map()
@@ -23,7 +26,7 @@ export function peerNote ({ path, authors, agent, tasks = {} }) {
   if (!byOwner.size) return null
   const clauses = [...byOwner].map(([who, lines]) => {
     const t = who.includes('|') ? null : tasks[who]
-    const head = lines.length === 1 ? `line ${lines[0]} was` : `lines ${joinAnd(runsOf(lines))} were`
+    const head = lines.length === 1 ? `line ${lines[0]} was` : `lines ${joinRuns(runsOf(lines))} were`
     return `${head} written by ${who}${t ? ` (task ${t.id}: ${t.title})` : ''}`
   })
   return `In ${path}, ${clauses.join('; ')}; keep what they changed when you edit them.`

@@ -272,12 +272,51 @@ def _union_del(into, other):
     _union_auth(into, other)
 
 
+def _lost_of(join, auth, dels):
+    """Per (path, author label, deleting labels): the entries of the join that are invisible, were
+    written by someone (not base), and none of whose deleting labels is among their authors, in weave order."""
+    lost = {}
+    for p, st in join.items():
+        js, side, dside = M.deserialize_state(st), auth.get(p, {}), dels.get(p, {})
+        for e, k in zip(js, line_keys(js)):
+            if e[3] % 2 or not (side.get(k, set()) - {"base"}):
+                continue
+            by = dside.get(k, set())
+            if by & side[k]:
+                continue
+            lost.setdefault((p, label_of(side, k), "|".join(sorted(by))), []).append(e[0])
+    return [{"path": p, "author": a, "by": b or None, "lines": ls}
+            for (p, a, b), ls in sorted(lost.items(), key=lambda kv: kv[0])]
+
+
 def _union_rep(into, other):
-    # one edit writes a key, so its replaced lines agree wherever the key travels
+    # one identity may be written by several labels (identical text at one spot): keep each
+    # label's replaced lines; the tuples are immutable and shared, never copied
     for path, m in other.items():
         dst = into.setdefault(path, {})
-        for k, gone in m.items():
-            dst.setdefault(k, list(gone))
+        for k, by in m.items():
+            mine = dst.get(k)
+            if mine is None:
+                dst[k] = dict(by)
+            else:
+                for lab, gone in by.items():
+                    mine.setdefault(lab, gone)
+
+
+def _copy_rep(side):
+    # the structure is copied, the shared tuples of replaced lines are not
+    return {p: {k: dict(by) for k, by in m.items()} for p, m in side.items()}
+
+
+def _before(by):
+    # the replaced lines of every writing label, in sorted label order, repeats removed
+    seen, out = set(), []
+    for lab in sorted(by):
+        for line in by[lab]:
+            if line not in seen:
+                seen.add(line)
+                out.append(line)
+    return out
 
 
 class Keeper:
@@ -293,7 +332,7 @@ class Keeper:
         self.kdel = {}        # copy -> {path -> {key -> set(label)}}  (#1409: every deleter)
         self.kdel_pub = {}    # agent -> the sidecar as of its last publish
         # #1410: the visible lines the edit that wrote each entry replaced, keyed by identity
-        self.krep = {}        # copy -> {path -> {key -> [line]}}
+        self.krep = {}        # copy -> {path -> {key -> {label -> (line, ...)}}}
         self.krep_pub = {}    # agent -> the sidecar as of its last publish
 
     def auth(self, who):
@@ -349,7 +388,7 @@ class Keeper:
                 rside = self.reps(agent).get(path, {})
                 rewrites.append({"peers": sorted({p for o, _, _ in theirs for p in o.split("|")}),
                                  "peer": [t for _, t, _ in theirs],
-                                 "before": [b for _, _, k in theirs for b in rside.get(k, [])],
+                                 "before": [b for _, _, k in theirs for b in _before(rside.get(k, {}))],
                                  "after": list(new_lines)})
             new, gone = apply_edit(st, a, z, list(new_lines))
             self.copy(agent)[path] = new
@@ -357,9 +396,10 @@ class Keeper:
                 fresh = collections.Counter(line_keys(new)) - collections.Counter(line_keys(st))
                 side = self.auth(agent).setdefault(path, {})
                 rside = self.reps(agent).setdefault(path, {})
+                gone_t = tuple(gone_text)   # one per sub-edit, shared by its new lines
                 for k in fresh:
                     side.setdefault(k, set()).add(label)
-                    rside[k] = list(gone_text)
+                    rside.setdefault(k, {})[label] = gone_t
             dside = self.dels(agent).setdefault(path, {})   # a key survives its deletion: the counter is not in it
             for k in vis_keys:
                 dside.setdefault(k, set()).add(label)
@@ -395,7 +435,7 @@ class Keeper:
         self.published[agent] = dict(self.copy(agent))
         self.kauth_pub[agent] = _copy.deepcopy(self.auth(agent))
         self.kdel_pub[agent] = _copy.deepcopy(self.dels(agent))
-        self.krep_pub[agent] = _copy.deepcopy(self.reps(agent))
+        self.krep_pub[agent] = _copy_rep(self.reps(agent))
         return {"paths": len(self.published[agent])}
 
     def r_pull(self, agent, paths=None):
@@ -443,8 +483,9 @@ class Keeper:
 
     def r_merged(self, order=None):
         out, conflicts, annotated, adds_only = {}, [], {}, {}
-        same, auth = {}, {}   # ticket 2 (additive): same-anchor flags, the join's digest
+        same, auth, dels = {}, {}, {}   # ticket 2 (additive): same-anchor flags, the join's digest
         for who in (order or list(self.published)):
+            _union_del(dels, self.kdel_pub.get(who, {}))
             pub, pauth = self.published[who], self.kauth_pub.get(who, {})
             for p, st in pub.items():
                 if p not in out:
@@ -465,7 +506,9 @@ class Keeper:
         exists = {p: bool(visible_raw(st)) for p, st in out.items()}
         digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
-                "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest}
+                "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
+                # the survival fact from this same join, so a snapshot and its lost lines never part
+                "lost": _lost_of(out, auth, dels)}
 
     def _join(self):
         """The join of every published copy (merged as r_merged merges them), with the union of
@@ -481,19 +524,7 @@ class Keeper:
     def r_lost(self):
         """Per (path, author label, deleting labels): the entries of the join that are invisible, were
         written by someone (not base), and none of whose deleting labels is among their authors, in weave order."""
-        join, auth, dels = self._join()
-        lost = {}
-        for p, st in join.items():
-            js, side, dside = M.deserialize_state(st), auth.get(p, {}), dels.get(p, {})
-            for e, k in zip(js, line_keys(js)):
-                if e[3] % 2 or not (side.get(k, set()) - {"base"}):
-                    continue
-                by = dside.get(k, set())
-                if by & side[k]:
-                    continue
-                lost.setdefault((p, label_of(side, k), "|".join(sorted(by))), []).append(e[0])
-        return {"lost": [{"path": p, "author": a, "by": b or None, "lines": ls}
-                         for (p, a, b), ls in sorted(lost.items(), key=lambda kv: kv[0])]}
+        return {"lost": _lost_of(*self._join())}
 
     def r_blame(self):
         """{path: [label per visible line]} for the join of every published copy."""

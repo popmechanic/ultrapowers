@@ -104,8 +104,10 @@ evidence repository.
     - `provenance.json` — the whole account of the run's changed lines: `hunks`, the changed
       lines by task (`path`, `lines`, `task`), with the clauses whose probes ran them; the
       exceptions only (`contested`, `lost`, `ordered`, `foreign`); and `unproven`, the changed
-      code no tagged probe ran (`null` when unmeasured). The PR body's `### Provenance` line
-      counts it.
+      code no tagged probe ran (`null` when unmeasured); and `coverage`, the counts of the tagged
+      probes that `ran`, `timed_out`, were `skipped` or went `unmeasured`. The PR body's
+      `### Provenance` line counts it: a hunk whose `task` joins several with `|` (lines two tasks
+      wrote identically) counts each of its tasks once.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
     `checks/`. (History: the retired factory engine wrote none of these seven.)
   - `ultra/integration-run-<N>` on the target — the work, and the only ref the product repository
@@ -194,7 +196,9 @@ evidence repository.
   of the target's default branch is refused (the publish fold would have nothing to fold onto), and so
   is a shallow launch clone, whose history cannot answer that question → the `--base` check
   and the parse both run files fetched at `engine=` — `skills/ultrapowers/scripts/plan_check.py` and
-  the `plan_parse.py` it imports, the sandbox's own parser,
+  the `plan_parse.py` it imports, the sandbox's own parser (beside its other fact lines,
+  `plan_check.py` prints one `SHARED fact:` line per path two or more tasks list — a fact, never a
+  refusal),
   at that sha, `git show` from the laptop's plugin checkout, else `gh api` from popmechanic/ultrapowers,
   into a temp directory — and a launch whose two files cannot be fetched is refused before any push;
   the launch line carries `compiler=<sha>` → read every command word of every task's `Run:`

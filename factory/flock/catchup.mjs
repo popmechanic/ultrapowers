@@ -117,12 +117,18 @@ if (RUN_DIR) { try { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSyn
 const provFile = RUN_DIR && path.join(RUN_DIR, 'provenance.json')
 if (provFile && fs.existsSync(provFile)) {
   try {
+    const record = JSON.parse(fs.readFileSync(provFile, 'utf8'))
+    // only the paths the record names, null on a side where the path is absent
+    const named = new Set()
+    for (const k of ['hunks', 'unproven', 'exceptions']) for (const e of Array.isArray(record[k]) ? record[k] : []) if (e && typeof e.path === 'string') named.add(e.path)
+    const moved = changed(runSha, head)
     const texts = {}
-    for (const p of changed(runSha, head)) {
+    for (const p of named) {
+      if (!moved.has(p)) continue
       const from = utf8(blob(runSha, p)), to = utf8(blob(head, p))
-      if (typeof from === 'string' || typeof to === 'string') texts[p] = { from: from ?? '', to: to ?? '' }
+      if (typeof from === 'string' || typeof to === 'string') texts[p] = { from: from ?? null, to: to ?? null }
     }
-    const prov = remapProvenance(JSON.parse(fs.readFileSync(provFile, 'utf8')), texts)
+    const prov = remapProvenance(record, texts)
     fs.writeFileSync(provFile, JSON.stringify({ ...prov, caughtUp: { run: runSha, head } }, null, 2) + '\n')
   } catch (e) { process.stderr.write(`catchup: provenance not remapped — ${e.message}\n`) }
 }

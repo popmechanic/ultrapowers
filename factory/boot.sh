@@ -354,8 +354,9 @@ refold_onto() { # $1 = the base the run's work stood on, $2 = the moved tip
     return 1
   fi
   log "merge: re-folded onto $onto and pushed $BRANCH"
-  # the catch-up remapped provenance.json to the pushed commit's lines: copy the record again
-  collect_evidence
+  # the catch-up remapped provenance.json to the pushed commit's lines: copy that file alone,
+  # since the evidence events.jsonl holds boot rows (publish:pr, merge) the engine's copy lacks
+  [ -f "$RUN_DIR/provenance.json" ] && cp "$RUN_DIR/provenance.json" "$EVIDENCE_DIR/$EVIDENCE_REL/provenance.json" || true
   event_row "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" refold ok=true || true
   return 0
 }

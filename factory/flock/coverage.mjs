@@ -187,22 +187,26 @@ function linesRunAsync ({ argv, cwd, env = process.env }, timeoutMs) {
   })
 }
 
-// A Python word followed by an option cluster holding I or S (-I, -S, -Is ...): such a Python loads
-// no sitecustomize, so coverage cannot see it.
-const PY_NO_SITE = /(^|[\s;&|()`'"/])python(3(\.\d+)?)?\s+(-[A-Za-z]+\s+)*-[A-Za-z]*[IS]/
-function blindPython (argv) {
+// A Python word followed by an option cluster holding I, S or E (-I, -S, -E, -Is ...): such a Python
+// loads no sitecustomize (-E ignores PYTHONPATH), so coverage cannot see it. Bun ignores
+// NODE_V8_COVERAGE, so a command running `bun`/`bunx` is blind too.
+const PY_NO_SITE = /(^|[\s;&|()`'"/])python(3(\.\d+)?)?\s+(-[A-Za-z]+\s+)*-[A-Za-z]*[ISE]/
+const BUN_WORD = /(^|[\s;&|()`'"/])bunx?($|[\s;&|()`'"])/
+function blindArgv (argv) {
   const [cmd, ...args] = argv
   const base = path.basename(String(cmd || ''))
+  if (/^bunx?$/.test(base)) return true
   if (/^python(3(\.\d+)?)?$/.test(base)) {
     for (const a of args) {
       if (!/^-[A-Za-z]+$/.test(a)) break
-      if (/[IS]/.test(a)) return true
+      if (/[ISE]/.test(a)) return true
     }
     return false
   }
   if (/^(ba)?sh$/.test(base)) {
     const i = args.findIndex((a) => /^-[A-Za-z]*c[A-Za-z]*$/.test(a))
-    return i >= 0 && typeof args[i + 1] === 'string' && PY_NO_SITE.test(args[i + 1])
+    const str = i >= 0 ? args[i + 1] : undefined
+    return typeof str === 'string' && (PY_NO_SITE.test(str) || BUN_WORD.test(str))
   }
   return false
 }
@@ -223,9 +227,9 @@ export function coverageCounts (answers) {
 // linesRunAll(jobs, { parallel, timeoutMs, budgetMs }): every job as linesRun runs it, at most
 // `parallel` at once, each killed with its process group at timeoutMs (exit 124); a job not started
 // within budgetMs of the call answers { exit: null, lines: {}, skipped: true } and never runs. A job
-// running Python with -I or -S (argv, or a `bash -lc`/`sh -c` command string) is never run and
-// answers { exit: null, lines: {}, skipped: false, unmeasured: true }; every other answer carries
-// unmeasured: false. Answers keep the jobs' order.
+// coverage is partly blind to (Python with -I, -S or -E, or Bun, in argv or a `bash -lc`/`sh -c`
+// command string) still runs and answers its own exit and the lines coverage did see, flagged
+// unmeasured: true; every other answer carries unmeasured: false. Answers keep the jobs' order.
 export async function linesRunAll (jobs, { parallel = 4, timeoutMs = 60000, budgetMs = 300000 } = {}) {
   const start = Date.now()
   const out = new Array(jobs.length)
@@ -233,12 +237,12 @@ export async function linesRunAll (jobs, { parallel = 4, timeoutMs = 60000, budg
   const worker = async () => {
     while (next < jobs.length) {
       const i = next++
-      if (blindPython(jobs[i].argv || [])) { out[i] = { exit: null, lines: {}, skipped: false, unmeasured: true }; continue }
-      if (Date.now() - start >= budgetMs) { out[i] = { exit: null, lines: {}, skipped: true, unmeasured: false }; continue }
+      const unmeasured = blindArgv(jobs[i].argv || [])
+      if (Date.now() - start >= budgetMs) { out[i] = { exit: null, lines: {}, skipped: true, unmeasured }; continue }
       try {
-        out[i] = { ...(await linesRunAsync(jobs[i], timeoutMs)), skipped: false, unmeasured: false }
+        out[i] = { ...(await linesRunAsync(jobs[i], timeoutMs)), skipped: false, unmeasured }
       } catch {
-        out[i] = { exit: 1, lines: {}, skipped: false, unmeasured: false }
+        out[i] = { exit: 1, lines: {}, skipped: false, unmeasured }
       }
     }
   }
