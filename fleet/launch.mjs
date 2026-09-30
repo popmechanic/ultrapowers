@@ -14,9 +14,8 @@
  *      target's and the evidence repository's GitHub objects must exist),
  *      `billing plan --json` (one run must fit the plan's pool), the target's
  *      live branches and tags in the operator's evidence repository (the run
- *      number is one past the highest N they carry) and the engine tip, and asks
- *      `help <verb>` for every verb of the verb record — a drift there
- *      is a line on the launch, never a refusal. Its check and its parse run
+ *      number is one past the highest N they carry) and the engine tip (the
+ *      verb record's drift is the doctor's row, never a launch's). Its check and its parse run
  *      `plan_check.py` and `plan_parse.py` FETCHED AT `engine=` (`git show`
  *      from this checkout, else `gh api`, into a temp directory), so the
  *      laptop reads the plan with the sandbox's own parser; files it cannot
@@ -64,8 +63,6 @@ import {
   FLEET_DEFAULTS,
   FLEET_TAG,
   LobbyError,
-  VERBS_PATH,
-  VERBS_RECORD,
   Refusal,
   buildComment,
   defaultExec,
@@ -97,7 +94,7 @@ import {
   runFolderFor,
   vmNameFor
 } from './lobby.mjs'
-import { fleetConfigAccount, verbDrift } from './doctor.mjs'
+import { fleetConfigAccount } from './doctor.mjs'
 import { ACCOUNT_RE } from './claude-token.mjs'
 import { janitor } from './janitor.mjs'
 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
@@ -524,7 +521,7 @@ export async function launch (params) {
 
 async function launchBody ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
-  refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage, verbsPath = VERBS_PATH,
+  refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
   kata, kataEnvPath = defaultKataEnvPath(), held
 }) {
   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
@@ -804,28 +801,6 @@ async function launchBody ({
       await hub.ping()
     } catch (error) {
       throw new Refusal(`launch: the kata hub at ${kataUrl} did not answer its ping — ${error?.message ?? error}; nothing was pushed and no VM was created (${KATA_HUB_FIX} rebuilds it)`)
-    }
-  }
-
-  // ── The verb-drift preflight. `help <verb>` for every verb of the record,
-  //    diffed against the flags recorded there. Every read, and every one of
-  //    them a `help` line: `exec.mutating()` is untouched by it. A drift, a
-  //    `help` that answers non-zero and a record that cannot be read at all
-  //    are findings on the launch line and nothing more — the lobby's flags
-  //    are exe.dev's to change, and a launch that still works is not a launch
-  //    to refuse. So even a `help` seam that throws leaves the outcome alone.
-  let drift
-  try {
-    drift = await verbDrift({
-      help: (verb) => exec('ssh', [EXE_HOST, `help ${verb}`]),
-      recordPath: verbsPath
-    })
-  } catch (error) {
-    drift = {
-      readable: false,
-      capturedAt: null,
-      findings: [],
-      detail: `${VERBS_RECORD} could not be compared against the lobby: ${error?.message ?? error}`
     }
   }
 
@@ -1131,7 +1106,6 @@ async function launchBody ({
     // object the plan commit carries as `.ultrapowers/kata.json` — or null for
     // a launch that reached no hub.
     kata: plan.kata,
-    verbDrift: drift,
     github: githubName,
     cpu,
     memory,
@@ -1335,7 +1309,7 @@ const engineLine = (result) =>
 /**
  * The lines a launched run prints: its id, its VM, where to watch, what it was
  * told, one line per VM this launch's reap removed, which keychain entry it
- * signed in with, what the verb-drift preflight found — and, when nobody
+ * signed in with — and, when nobody
  * pinned one, which engine it happens to have caught, then the `compiler=<sha>`
  * the two compiles were run from. A launch that reaped nothing prints no reap
  * line at all.
@@ -1367,7 +1341,6 @@ export const renderLaunch = (result) => [
   result.usage === undefined ? null : result.usage,
   result.token === undefined ? null : result.token,
   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
-  result.verbDrift === undefined ? null : `verb-drift: ${result.verbDrift.detail}`,
   engineLine(result),
   result.compiler === undefined || result.compiler === null ? null : `compiler=${result.compiler}`,
   ...(result.baseFacts ?? [])
