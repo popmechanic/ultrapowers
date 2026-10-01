@@ -247,3 +247,20 @@ offers you a choice of accounts, the GitHub integration has to stay personal.
 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
 and [`skills/ultrapowers/references/`](skills/ultrapowers/references/).
+
+## The intent tray
+
+When Claude has a screen ready for you to look at, it opens the intent tray beside the chat (its
+tool for that is `show_screen`). The tray is where you tell Claude what you want from that screen:
+pick a version, add notes, and send them all back with one press.
+
+A band above the prompt carries three buttons: **Add note** (`1`), **Send** (`2`) and **Clear**
+(`3`). Inside the tray pane, a digit picks a version, `s` sends and `c` clears. `/tray` opens the
+tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands everything —
+your pick first, then each note in the order you added it — to Claude as one message.
+
+A preview page can leave picks and notes for the tray too: it writes them, one JSON object per
+line, to `.ultrapowers/feedback.jsonl` in the session's working directory, and the tray takes them
+in as if you had made them.
+
+The tray needs Claude Code `2.1.287` or later.
