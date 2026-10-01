@@ -11,11 +11,11 @@
 // on the hub, so two repositories at the same run number never share a key. A post is `ok` only
 // when the hub answered with the comment's uid: the record then holds the hub's receipt.
 //
-// It wraps post as well: a belief `about` the engine held at `surfaceAt` or more (default 0.8) is
-// commented on its task's issue, or on the run issue `runUid` when it names no task with one, so a
-// builder sure the engine itself is wrong is seen on the board mid-run. Other beliefs post nothing.
+// It wraps post as well: every belief `about` the engine is commented on its task's issue, or on
+// the run issue `runUid` when it names no task with one, so a builder who finds the engine itself
+// wrong is seen on the board mid-run. Other beliefs post nothing.
 
-export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track, runUid, surfaceAt = 0.8 } = {}) {
+export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track, runUid } = {}) {
   const orig = { claim: board.claim, release: board.release, park: board.park, reopen: board.reopen, done: board.done, post: board.post }
   const reopening = new Set()
   const tails = new Map()   // uid -> the last queued post for that issue
@@ -75,8 +75,8 @@ export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track
   }
   board.post = async function (b, ...rest) {
     const r = await orig.post.call(this, b, ...rest)
-    if (b && b.about === 'engine' && typeof b.confidence === 'number' && b.confidence >= surfaceAt) {
-      post({ id: b.task }, `engine belief (${b.confidence}) from ${b.by}: ${String(b.claim ?? '').slice(0, 300)}`, runUid)
+    if (b && b.about === 'engine') {
+      post({ id: b.task }, `engine belief from ${b.by}: ${String(b.claim ?? '').slice(0, 300)}`, runUid)
     }
     return r
   }

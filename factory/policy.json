@@ -77,14 +77,14 @@
       "rollback": "minutes = 0",
       "unread": "stall:no-progress rows per run and the wall a stalled run no longer spends (#1334)"
     },
-    "surface": {
-      "min_confidence": 0.8,
-      "n": 4,
-      "window": "4 builder beliefs over 5 Flock runs 247, 252, 257 and radio-station run-1 and run-2 (2026-09-26..28)",
-      "basis": "all 4 builder beliefs were at 0.85 or more and correct; run-252's named the cause #1330 fixed",
+    "loose_ends": {
+      "mode": "work",
+      "n": 0,
+      "window": "none",
+      "basis": "#1419: 21 builder beliefs over n=15 runs (run-277..291), almost all loose ends; 10 of 21 reached no later session",
       "experiment": true,
-      "rollback": "min_confidence = 2",
-      "unread": "engine beliefs surfaced per run and how many named a real engine fault"
+      "rollback": "mode = record",
+      "unread": "loose ends per run, the share resolved in the run, and the drafts or wall the L:loose task adds"
     }
   }
 }

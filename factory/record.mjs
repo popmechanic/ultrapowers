@@ -266,10 +266,27 @@ function provenanceLines (provenancePath) {
     `${changed} changed lines from ${tasks} tasks; exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
 }
 
+/** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
+ *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
+ *  gets none. No row, or a row with no items, adds nothing. */
+function looseEndsLines (events) {
+  const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
+  const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
+  if (!items.length) return []
+  const resolved = items.filter((i) => i.state === 'resolved').length
+  const out = ['### Loose ends', '', `${items.length} reported by builders, ${resolved} resolved in the run.`]
+  for (const i of items) {
+    const who = i.task === undefined || i.task === null || i.task === '' ? `(${i.by})` : `(${i.by}, task ${i.task})`
+    if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
+    else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
+  }
+  return out
+}
+
 /** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
  *  empty line, the receipt, an empty line, the closes; every line, including
- *  the two empty ones, ends in a newline. The provenance section follows the receipt,
- *  a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
+ *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
+ *  ends follow that, a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -284,6 +301,9 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const provenance = provenanceLines(provenancePath)
   for (const line of provenance) out += line + '\n'
   if (provenance.length) out += '\n'
+  const looseEnds = looseEndsLines(events)
+  for (const line of looseEnds) out += line + '\n'
+  if (looseEnds.length) out += '\n'
   const draft = draftReasonLines(events)
   for (const line of draft) out += line + '\n'
   if (draft.length) out += '\n'

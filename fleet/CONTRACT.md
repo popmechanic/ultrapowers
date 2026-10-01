@@ -387,14 +387,20 @@ evidence repository.
   2026-09-28, n=1 run) the Flock posted nothing and the board showed only the launcher's filing
   and the boot's closes.
 - **Beliefs (Flock, the `belief` row):** a builder's belief is the tuple
-  `{by, claim, confidence, about, task}` — `about` is one of `task`, `app` or `engine` (whom the
-  belief is for: the task's builders, the app's operator, or the engine's maintainers), and the
-  claim is at most 300 characters. Every belief posted is kept as one `belief` row in
-  `events.jsonl`, whatever its confidence or `about`. An `engine` belief whose confidence is at or
-  over `flock.surface.min_confidence` (policy, 0.8) is also posted to Kata, while the run is still
-  going, as the comment `engine belief (<confidence>) from <builder>: <claim>` on its task's issue,
-  or on the run issue when the belief names no task the record knows; it goes out as the mirror's
-  posts do (fire-and-forget, a `kata:mirror` row) and shows in `--follow`.
+  `{by, claim, about, task, path, stale}` — `about` is one of `task`, `app` or `engine` (whom the
+  belief is for: the task's builders, the app's operator, or the engine's maintainers), the claim
+  is at most 300 characters, and `path` (a repo-relative file) and `stale` (exact text still wrong
+  there) are optional. A belief carries no confidence: the author's own number (0.85–0.95 over
+  run-277..291, never revised) ranked a wrong belief over its correction. Every belief posted is
+  kept as one `belief` row in `events.jsonl`, whatever its `about`. Every `engine` belief is also
+  posted to Kata, while the run is still going, as the comment
+  `engine belief from <builder>: <claim>` on its task's issue, or on the run issue when the belief
+  names no task the record knows; it goes out as the mirror's posts do (fire-and-forget, a
+  `kata:mirror` row) and shows in `--follow`. A belief naming a `path` is a loose end: with
+  `flock.loose_ends.mode` `work` (policy; rollback `record`) the engine adds one `L:loose` task
+  before settling when a loose end is open or not checked. One `loose-ends` row per run marks each
+  loose end open, resolved or unchecked against the final snapshot, and the PR body lists the open
+  and unchecked ones under `### Loose ends`.
 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot

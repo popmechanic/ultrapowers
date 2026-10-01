@@ -32,6 +32,7 @@ import { pullScope } from './pulls.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 import { readTrial, claimOf } from './trial_reading.mjs'
 import { mirrorBoard } from './kata_mirror.mjs'
+import { looseEnds } from './loose_ends.mjs'
 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
@@ -100,6 +101,12 @@ const JEV_PEER = PEER_MODE !== 'off' && TYPESAFE
 // the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
 // builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
 const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
+// loose ends (#1419, loose_ends.mjs): a builder's belief naming a path outside its task. `work`: when
+// the edge first goes green with one still open or unchecked, the engine adds the task `L:loose` (at
+// most once a run) instead of settling; `record` only writes the run's `loose-ends` row. `--loose-ends`,
+// else the policy cell flock.loose_ends.mode, else record.
+const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
+if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -299,7 +306,7 @@ if (kataRecord) {
   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
   // the record's project.id is the hub's own project id: posts go straight to the hub
-  mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid, surfaceAt: POLICY_FLOCK?.surface?.min_confidence ?? 0.8 })
+  mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid })
 }
 
 // ── facts ─────────────────────────────────────────────────────────────────────
@@ -386,7 +393,7 @@ async function openConflict (p, info) {
   ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party })
   lastChange = now()
   ev('conflict:open', { path: p, region: reg, between: info.between })
-  await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict`, confidence: 1 })
+  await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict` })
 }
 const openConflicts = () => [...new Set([...ledger.values()].filter((e) => e.open).map((e) => e.path))]
 const openEntries = (p) => [...ledger.values()].filter((e) => e.open && e.path === p)
@@ -442,7 +449,7 @@ const live = new Set()      // agents with a session open right now
 const stops = new Map()     // agent -> interrupt() of its live session (the no-progress stop calls each)
 const stalls = []           // stall beliefs the host posted (attached to a draft PR)
 async function stall (kind, evidence) {
-  const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}`, confidence: 1 })
+  const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}` })
   stalls.push({ kind, evidence, t: now() }); ev('stall:' + kind, { evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
   return b
 }
@@ -467,6 +474,11 @@ function scopeAt (m, snap) {
   for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
   return SCOPE_MODE === 'enforce' ? outside : []
+}
+// a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there
+function textAt (snap) {
+  const s = snapshots.find((x) => x.snap === snap)
+  return (p) => s && p in s.files ? (s.exists[p] ? s.files[p] : null) : (BASE_FILES[p] ?? null)
 }
 function edge (reason) {
   const asked = now()
@@ -529,7 +541,7 @@ Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
 - Never run git.
 - Run your task's facts with run_proof: they are the tests that decide whether your task is done.
-- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, with how sure you are, and what it is about: \`task\` your task, \`app\` the app being built, \`engine\` the engine running this run, such as copies, checks or the board), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
+- Use the flock tools: board_read (tasks and beliefs), post_belief (tell the others something true and useful, and what it is about: \`task\` your task, \`app\` the app being built, \`engine\` the engine running this run, such as copies, checks or the board; when the belief is a loose end, something outside your task's files that your change left stale or broken, name the file as \`path\` and, when you can, the exact text still wrong there as \`stale\`), run_proof (your task's facts, on your copy), publish (share your copy's changes), wait_for (wait for a peer's work: a task done, a text in a file, a proof green), release (give the task back if you are blocked), done (your task is finished).
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 - Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
@@ -568,7 +580,7 @@ async function sameSpot (p, flags, between, agent) {
     if (spots.has(key)) continue
     spots.set(key, { p, f, t: now() })
     ev('same-anchor', { path: p, flag: f.kind, anchor: f.anchor, lines: f.lines, authors: f.authors, between })
-    await board.post({ by: 'host', claim: text, confidence: 1 })
+    await board.post({ by: 'host', claim: text })
   }
 }
 
@@ -578,7 +590,7 @@ function brief (task) {
   const mine = new Set(task.files || [])
   const bel = (board.beliefs || []).filter((b) => b.task === task.id || [...mine].some((f) => String(b.claim).includes(f)))
   return `\nBoard digest: ${deps.length ? 'the tasks you depend on: ' + deps.join(', ') + '.' : 'your task depends on no other task.'} ` +
-    (bel.length ? 'Beliefs about your task or files:\n- ' + bel.slice(-5).map((b) => `${b.by} (${b.confidence}): ${b.claim}`).join('\n- ') : 'No beliefs concern your task or files.') +
+    (bel.length ? 'Beliefs about your task or files:\n- ' + bel.slice(-5).map((b) => `${b.by}: ${b.claim}`).join('\n- ') : 'No beliefs concern your task or files.') +
     ' board_read shows the whole board if you need it.' +
     (PAST ? `\nThe previous run on this repository, run-${PAST.run}, did not finish green. What it recorded:\n` + PAST.items.map((i) => i.text).join('\n') : '')
 }
@@ -598,9 +610,9 @@ async function giveBack (agent, task, why) {
 }
 
 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
-// it is for (task, app or engine); kata_mirror surfaces a sure engine belief on the run's issue.
+// it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text.
 async function postBelief (agent, a) {
-  const b = await board.post({ by: agent, claim: a.claim, confidence: a.confidence, task: a.task, about: a.about })
+  const b = await board.post({ by: agent, claim: a.claim, task: a.task, about: a.about, path: a.path, stale: a.stale })
   ev('belief', b)
   return b
 }
@@ -666,8 +678,8 @@ async function session (agent, task) {
   const say = (text) => ({ content: [{ type: 'text', text }] })
   const tools = [
     tool('board_read', 'Read the board: every task with its state and owner, and the latest beliefs.', {}, async () => say(JSON.stringify(await board.read(), null, 1))),
-    tool('post_belief', 'Post a belief for the other agents: something you believe is true, how sure you are (0 to 1), which task it concerns, and what it is about: "task" (your task), "app" (the app being built) or "engine" (the engine running this run, such as copies, checks or the board).',
-      { claim: z.string().max(300), confidence: z.number(), task: z.string().optional(), about: z.enum(['task', 'app', 'engine']) },
+    tool('post_belief', 'Post a belief for the other agents: something you believe is true, which task it concerns, and what it is about: "task" (your task), "app" (the app being built) or "engine" (the engine running this run, such as copies, checks or the board). When the belief is a loose end (something outside your task\'s files that your change left stale or broken), name the file as `path` and, when you can, the exact text still wrong there as `stale`.',
+      { claim: z.string().max(300), task: z.string().optional(), about: z.enum(['task', 'app', 'engine']), path: z.string().optional(), stale: z.string().optional() },
       async (a) => { const b = await postBelief(agent, a); return say('posted belief ' + b.id) }),
     tool('run_proof', "Run a task's facts on your copy (default: your own task). Each fact is a command; exit 0 means it holds.",
       { task: z.string().optional() },
@@ -829,7 +841,7 @@ async function session (agent, task) {
         const outside = own ? !own.includes(rel) : false
         edited(agent, rel)
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, outside })
-        if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, confidence: 1, task: task.id })
+        if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, task: task.id })
       } else if (name === 'Read' && ti.file_path) {
         // warn first: before a builder edits a peer's lines, it is told whose they are
         const fp = path.resolve(cwd, ti.file_path)
@@ -948,6 +960,18 @@ async function settle () {
     const tested = lastEdge && lastEdge.green && lastEdge.t >= lastPublish
     if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
     const r = await edge('settle check')
+    if (r.green && LOOSE_MODE === 'work' && !board.tasks.has('L:loose')) {
+      const loose = looseEnds(board.beliefs, textAt(r.snap)).filter((x) => x.state !== 'resolved')
+      if (loose.length) {
+        const paths = [...new Set(loose.map((x) => x.path))]
+        await board.addTask({ id: 'L:loose', title: 'Close the loose ends builders reported', depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths,
+          body: `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
+            loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
+            `\n\nFix each that is still wrong. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.` })
+        ev('loose-task', { snap: r.snap, paths }); log('loose-ends task for', paths.join(','))
+        continue
+      }
+    }
     if (r.green) { settled = { t: now(), snap: r.snap }; ev('settled', settled); log('SETTLED on', r.snap); terminal('ready', 'settled green', r); break }
     let acted = false
     for (const t of all) {
@@ -957,7 +981,7 @@ async function settle () {
       acted = true
       t.reopen += 1
       await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}`)
-      await board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, confidence: 1, task: t.id })
+      await board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, task: t.id })
       ev('reopen', { task: t.id, snap: r.snap, n: t.reopen }); log('reopen task', t.id, 'at', r.snap)
     }
     for (const p of r.blocking || []) {
@@ -1066,10 +1090,14 @@ await Promise.all(loops)
 await edgeChain
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
+// the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
+const looseItems = looseEnds(board.beliefs, textAt(lastEdge && lastEdge.snap))
+ev('loose-ends', { snap: lastEdge ? lastEdge.snap : null, items: looseItems })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefs.length,
+  loose_ends: { reported: looseItems.length, resolved: looseItems.filter((x) => x.state === 'resolved').length },
   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
   outcome, debounce_ms: debounceMs(),
