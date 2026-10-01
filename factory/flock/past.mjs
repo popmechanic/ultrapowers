@@ -18,8 +18,7 @@ export function pastItems ({ status, events = [], redChecks = null } = {}) {
     items.push({ kind: 'red-check', task: r.task, text: cut(`${r.cmd} exited ${r.exit}: ${r.tail}`) })
   }
   for (const b of rows.filter((e) => e.kind === 'belief' && e.by !== 'host')) {
-    const head = `${b.by} (${b.confidence})`
-    const text = b.about ? `${head} about the ${b.about}: ${b.claim}` : `${head}: ${b.claim}`
+    const text = b.about ? `${b.by} about the ${b.about}: ${b.claim}` : `${b.by}: ${b.claim}`
     items.push({ kind: 'belief', about: b.about, text: cut(text) })
   }
   for (const s of rows.filter((e) => typeof e.kind === 'string' && e.kind.startsWith('stall:'))) {
