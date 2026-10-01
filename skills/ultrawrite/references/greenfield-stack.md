@@ -91,12 +91,16 @@ it. The parcelling follows the plan's: one task owns one module, so two tasks
 never write one store, and the client's `WsSynchronizer` dials `/sync/<module>`
 for the module it reads.
 
-A Durable Object **Facet** is not that shape, and does not become it until celld
-carries a facet's WebSocket: on celld 0.5.0 the 101 a facet accepts does not
-cross back to its root — the `webSocket` is null and the upgrade headers are
-absent, on macOS and on Linux alike — while a named Durable Object's socket
-works in the same fleet (denoland/celld#210, 2026-09-17). A plan that wants
-facets keeps them behind a flag, and only for verbs that are not sockets.
+A Durable Object **Facet** is not that shape while celld cannot carry a facet's
+WebSocket. celld runs facets (`ctx.facets`, since 0.5.0; each with its own SQLite
+file since 0.6.0), and a facet answers a plain request. But on celld 0.6.1 the
+`101` a facet returns still reaches the client without its upgrade (`Missing
+upgrade header`), both for a facet started from a loaded Worker and for one
+started from the app's own class through `ctx.exports`, while a named Durable
+Object's socket echoes and closes cleanly on the same build (macOS arm64,
+2026-10-01, n=1 run each; denoland/celld#210 was closed as not planned on
+2026-09-17). A plan that wants facets keeps them behind a flag, and only for
+verbs that are not sockets.
 
 A **stories-v1** plan does not scaffold with the generator: its launch base is
 `skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.ts`
