@@ -354,9 +354,9 @@ fi
 exit "$code"
 `
 
-function claudeStub (mode) {
+function claudeStub (mode, version = '2.1.287') {
   const text = mode === 'api_key' ? 'authMethod: api_key' : 'authMethod: oauth_token'
-  return `#!/bin/sh\necho '${text}'\n`
+  return `#!/bin/sh\n[ "$1" = --version ] && { echo '${version} (Claude Code)'; exit 0; }\necho '${text}'\n`
 }
 
 // The `/pulls/7` GET names as `head.sha` the origin's tip of the run's integration
@@ -364,11 +364,13 @@ function claudeStub (mode) {
 // forty zeros first, and every `/pulls/7/merge` PUT answers 405 until a GET has named
 // the pushed tip (the live catch-up of runs 264/265).
 
-/** Writes the base stub set (`claude`, `curl`, `systemd-run`, `systemctl`)
+/** Writes the base stub set (`claude`, `sudo`, `curl`, `systemd-run`, `systemctl`)
  *  into `binDir`, plus every `[name, content]` of `extraStubs` — additional
  *  executables a case's plan needs (`bun`/`bunx` for the publish probe). */
-function writeStubs (binDir, { claudeAuth, extraStubs = {} } = {}) {
-  writeStub(binDir, 'claude', claudeStub(claudeAuth))
+function writeStubs (binDir, { claudeAuth, claudeVersion, extraStubs = {} } = {}) {
+  writeStub(binDir, 'claude', claudeStub(claudeAuth, claudeVersion))
+  // The boot's `sudo -n exeuntu update claude`: a no-op, so the stub's release stands.
+  writeStub(binDir, 'sudo', '#!/bin/sh\nexit 0\n')
   writeStub(binDir, 'curl', CURL_STUB)
   writeStub(binDir, 'systemd-run', SYSTEMD_RUN_STUB)
   writeStub(binDir, 'systemctl', '#!/bin/sh\nexit 0\n')

@@ -43,6 +43,7 @@ fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
 fleet_journalctl()  { journalctl "$@"; }
+fleet_sudo()        { sudo -n "$@"; }
 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
 stamp_ms() {
@@ -262,6 +263,22 @@ engine_deps() {
   else log "deps: npm install"; ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
   log "deps: npm returned"
 }
+# Claude Code: the image bakes whatever release was current when it was built (2.1.258 and
+# 2.1.267 measured on 2026-10-01), so the boot takes the newest release before the preflight, then
+# holds it to a floor — 2.1.287 is the first with mods — and pins it for the run. `exeuntu update`
+# fetches from Anthropic's public release site with no credential and swaps the binary only after
+# its checksum agrees, so a failed update leaves the old one in place (Shelley, fleet-counsel,
+# 2026-10-01); the floor is what then refuses the run.
+CLAUDE_FLOOR="2.1.287"
+claude_current() {
+  log "claude: updating to the newest release"
+  fleet_sudo exeuntu update claude || log "claude: the update failed; checking the installed release"
+  local v; v="$(claude --version 2>/dev/null | cut -d' ' -f1)"
+  log "claude: $v"
+  [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
+    || fail "claude ${v:-unknown} is below the floor $CLAUDE_FLOOR"
+  export DISABLE_AUTOUPDATER=1
+}
 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
 run_engine() {
   local pid board_args=() past_args=() engine_entry="factory/flock/engine.mjs" kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
@@ -349,7 +366,7 @@ boot() {
   parse_assignment "$comment"
   VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare; find_past
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
-  engine_deps; preflight; kata_record; run_engine
+  engine_deps; claude_current; preflight; kata_record; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
