@@ -165,6 +165,39 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
 }
 
+// ── (a2) a Claude Code release below the floor refuses the run ───────────
+
+{
+  const runN = '521'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a2-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: '2.1.258' })
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  assert.notEqual(res.code, 0, `(a2) the boot exits non-zero on claude 2.1.258 — got 0, stdout: ${res.stdout}`)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'failed', '(a2) status.json records state "failed"')
+  assert.equal(
+    status.error, 'claude 2.1.258 is below the floor 2.1.287',
+    `(a2) status.json's error names the release and the floor — got ${JSON.stringify(status.error)}`
+  )
+}
+
 // ── (b) [M1, M5] a clean run: land, open, merge, close, probe alive ──────
 
 {
