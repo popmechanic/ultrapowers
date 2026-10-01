@@ -62,7 +62,8 @@ the engine's exit code is the merge decision.
 - `hooks/` — wired by `hooks/hooks.json`. `session_start.sh` injects the plan-routing rule
   (the rule lives there, not here). `keep_working.sh` is the Stop hook ultrawrite and
   ultrapowers declare in frontmatter: once either skill is invoked it blocks a turn's first
-  stop while background work is running, and allows the second.
+  stop while background work is running, and allows the second. `register.js` is the intent
+  tray's hooks module, listed under the `modules` key of `hooks/hooks.json`.
 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; the
   version lives in both.
 - `docs/superpowers/{specs,plans}/` — design docs, `YYYY-MM-DD-<topic>.md`. **Untracked**
