@@ -1,0 +1,1925 @@
+/* ============================================================================
+ * POUF — the theme file. Tokens as Tailwind v4 @theme, the clay recipe as
+ * custom properties, shared cushion machinery as @utility recipes.
+ *
+ * Visual language adapted from novusgfx/retro-design-system (MIT),
+ * styles/39-claymorphism. One deliberate deviation, kept from the fork:
+ * ink on pastel, never white — the reference's white-on-pastel .btn fails
+ * WCAG AA (1.25:1–1.99:1 measured); its own -pink/-mint/-yellow variants
+ * use ink (6.10:1–9.75:1). We follow the better instinct uniformly.
+ * ========================================================================= */
+@import 'tailwindcss';
+/* Scan the registry itself: this file ships next to the components, and
+ * consumers' builds (and the gallery, whose Vite root is elsewhere) must find
+ * the utility classes used in these sources. */
+@source './';
+
+@theme {
+  /* -- Palette: verbatim from the reference ------------------------------ */
+  --color-bg: #f0e9ff;
+  --color-ink: #3a2e5c;
+  --color-muted: #71609b;
+  --color-pink: #ffb3d1;
+  --color-purple: #c9a8ff;
+  --color-blue: #9ec8ff;
+  --color-mint: #a8f0d0;
+  --color-yellow: #ffe58a;
+  --color-orange: #ffb38a;
+  --color-surface: #ffffff;
+
+  /* 'Nunito Variable' FIRST, and it is not interchangeable with 'Nunito':
+   * @fontsource-variable/nunito — the package the install docs tell you to
+   * import — registers its @font-face under the family name 'Nunito Variable'.
+   * A stack that only says 'Nunito' therefore matches nothing, silently falls
+   * through to SF Pro Rounded / Helvetica Neue on macOS and DejaVu Sans on
+   * Linux, and 1st-Pouf renders in a system face on every machine. Confirmed with
+   * Chrome's CSS.getPlatformFontsForNode: the nav was drawing in Helvetica Neue
+   * while document.fonts.check('Nunito Variable') returned false.
+   * 'Nunito' is kept behind it for anyone on the static @fontsource/nunito
+   * package, which does register that name. */
+  --font-pouf: 'Nunito Variable', 'Nunito', 'SF Pro Rounded', 'Helvetica Neue', system-ui, sans-serif;
+
+  /* -- Radii: verbatim (card 32, control 20, blob 24) -------------------- */
+  --radius-card: 32px;
+  --radius-control: 20px;
+  --radius-blob: 24px;
+  --radius-pill: 999px;
+}
+
+:root {
+  /* -- Legacy token aliases. Components and the recipes below speak these
+   *    names; @theme above is the Tailwind-facing vocabulary. Both resolve
+   *    to the same values. -------------------------------------------- */
+  --bg: var(--color-bg);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --pink: var(--color-pink);
+  --purple: var(--color-purple);
+  --blue: var(--color-blue);
+  --mint: var(--color-mint);
+  --yellow: var(--color-yellow);
+  --orange: var(--color-orange);
+  --surface: var(--color-surface);
+  --font: var(--font-pouf);
+  --r-card: var(--radius-card);
+  --r-control: var(--radius-control);
+  --r-blob: var(--radius-blob);
+  --r-pill: var(--radius-pill);
+
+  /* -- Ink that sits ON a pastel accent fill (a solid Button, a Badge, a Blob,
+   *    an active NavLink) rather than on the page.
+   *
+   *    It is a separate token ONLY because of dark mode. The accents stay
+   *    pastel in both themes — they are the brand — so text on them must stay
+   *    dark, while --ink flips to near-white for the page. Collapsing the two
+   *    puts #efe9ff on #c9a8ff, which is unreadable. In light mode this
+   *    resolves to exactly --ink, so every computed colour is unchanged. --- */
+  --on-accent: var(--ink);
+  /* Secondary copy on a pastel fill. Fixed dark ink rather than `--muted`,
+   * because `--muted` follows the page theme and becomes lavender in dark
+   * mode. #493b64 clears 5.03:1 on the lowest-contrast brand accent. */
+  --on-accent-muted: #493b64;
+  /* Inverse and code surfaces intentionally diverge in dark mode. Simply
+   * swapping page ink/background makes command bars and inverse pills turn
+   * into large white slabs, which overwhelms an otherwise dark interface. */
+  --inverse-surface: var(--ink);
+  --inverse-ink: var(--bg);
+  --code-surface: var(--ink);
+  --code-ink: var(--bg);
+
+  /* -- Semantic aliases. Screens speak intent ("this is a loss"), never
+   *    colour ("this is pink"), so a re-theme is a change here alone. ---- */
+  --up: var(--mint);
+  --down: var(--pink);
+  --warn: var(--yellow);
+  --info: var(--blue);
+  --idle: var(--purple);
+
+  /* -- Spacing scale. The reference uses 6/8/10/12/14/16/20/24/26/32/40. -- */
+  --s1: 6px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s7: 32px;
+  --s8: 40px;
+
+  /* -- The clay recipe. Three shadows encoding one physical claim:
+   *    light from above (inner top highlight), the surface's own thickness
+   *    (inner floor shadow), and the cast onto the page (outer drop). ---- */
+  /* -- Floor thickness as tokens, because the floor inset paints INSIDE the
+   *    box: symmetric padding therefore reads bottom-heavy — the lip eats
+   *    that much of the lower whitespace. White containers below bias their
+   *    vertical padding by half their lip (same total height, optically
+   *    centred content). The blob solves the same problem with a
+   *    translateY(-2px) on its glyph. ---------------------------------- */
+  --lip: 10px;
+  --lip-row: 6px;
+  --pouf-card:
+    inset 0 calc(-1 * var(--lip)) 0 rgba(201, 168, 255, 0.35),
+    inset 0 6px 0 rgba(255, 255, 255, 0.9),
+    0 20px 40px rgba(58, 46, 92, 0.15);
+  --pouf-control:
+    inset 0 -6px 0 rgba(0, 0, 0, 0.15), inset 0 4px 0 rgba(255, 255, 255, 0.35),
+    0 8px 16px rgba(58, 46, 92, 0.2);
+  --pouf-control-active:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.15), inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    0 4px 10px rgba(58, 46, 92, 0.15);
+  --pouf-blob:
+    inset 0 -8px 0 rgba(0, 0, 0, 0.12), inset 0 4px 0 rgba(255, 255, 255, 0.4),
+    0 10px 20px rgba(58, 46, 92, 0.15);
+  --pouf-field:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.06), inset 0 4px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 0 2px rgba(201, 168, 255, 0.2);
+  --pouf-field-focus:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.06), inset 0 4px 0 rgba(255, 255, 255, 0.7),
+    inset 0 0 0 3px var(--purple);
+
+  /* -- Cushion rows. "Every row a cushion" at 32px padding makes a 50-row
+   *    log unnavigable, so rows get their own tighter scale. The shadow
+   *    recipe is kept whole -- only the padding tightens. ---------------- */
+  --pouf-row:
+    inset 0 calc(-1 * var(--lip-row)) 0 rgba(201, 168, 255, 0.3),
+    inset 0 4px 0 rgba(255, 255, 255, 0.9),
+    0 8px 18px rgba(58, 46, 92, 0.1);
+  --pouf-row-hover:
+    inset 0 calc(-1 * var(--lip-row)) 0 rgba(201, 168, 255, 0.45),
+    inset 0 4px 0 rgba(255, 255, 255, 0.95),
+    0 12px 24px rgba(58, 46, 92, 0.16);
+}
+
+/* ============================================================================
+ * DARK
+ *
+ * Opt-in via <html data-theme="dark"> or <html class="dark">. Nothing here
+ * touches the light values,
+ * so the snapshot goldens (which capture the default theme) cannot move.
+ *
+ * The palette is the easy half. The hard half is that a cushion is a claim
+ * about light: an inner top highlight (light from above), an inner floor
+ * shadow (the slab's own thickness), and an outer drop (its cast on the page).
+ * Those cannot simply be recoloured, because the surfaces they describe do not
+ * all change:
+ *
+ *   - CARD / ROW / FIELD wrap a --surface that goes from white to near-black.
+ *     A 0.9-alpha white top highlight there reads as a blown-out chrome rim,
+ *     so it drops to ~0.06 and the floor does the work instead.
+ *   - CONTROL / BLOB sit on a PASTEL accent that is identical in both themes.
+ *     Their inner highlight and floor are therefore left almost untouched —
+ *     changing them would flatten a button that never changed colour. Only the
+ *     outer drop deepens, because that is the part cast onto the dark page.
+ *
+ * Get that distinction wrong and everything reads flat, which is the usual way
+ * a claymorphism dark mode fails.
+ * ========================================================================= */
+[data-theme='dark'],
+.dark {
+  /* Neutral plum-black foundations keep the pastel accents colourful instead
+   * of tinting every square inch purple. Surfaces are separated by luminance,
+   * not by a second saturated hue. */
+  --color-bg: #12111a;
+  --color-surface: #211f2b;
+  --color-ink: #f7f3ff;
+  --color-muted: #b8afcb;
+  /* Accents deliberately unchanged: they are the brand, they carry
+   * --on-accent text, and re-tinting them would be a different product. */
+
+  --bg: var(--color-bg);
+  --surface: var(--color-surface);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+
+  /* Pinned, not inherited: --ink is light here, and this must stay dark. */
+  --on-accent: #2a2145;
+  --inverse-surface: #0d0c13;
+  --inverse-ink: #f7f3ff;
+  --code-surface: #0d0c13;
+  --code-ink: #eee8fa;
+
+  /* Surface cushions — re-derived, per the note above. */
+  --pouf-card:
+    inset 0 calc(-1 * var(--lip)) 0 rgba(156, 124, 220, 0.16),
+    inset 0 6px 0 rgba(255, 255, 255, 0.07),
+    0 20px 40px rgba(0, 0, 0, 0.38);
+  --pouf-row:
+    inset 0 calc(-1 * var(--lip-row)) 0 rgba(156, 124, 220, 0.14),
+    inset 0 4px 0 rgba(255, 255, 255, 0.06),
+    0 8px 18px rgba(0, 0, 0, 0.3);
+  --pouf-row-hover:
+    inset 0 calc(-1 * var(--lip-row)) 0 rgba(180, 146, 238, 0.22),
+    inset 0 4px 0 rgba(255, 255, 255, 0.09),
+    0 12px 24px rgba(0, 0, 0, 0.38);
+  --pouf-field:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.25), inset 0 4px 0 rgba(255, 255, 255, 0.05),
+    inset 0 0 0 2px rgba(201, 168, 255, 0.22);
+  --pouf-field-focus:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.25), inset 0 4px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 3px var(--purple);
+
+  /* Accent cushions — inner recipe kept, outer drop deepened only. */
+  --pouf-control:
+    inset 0 -6px 0 rgba(0, 0, 0, 0.18), inset 0 4px 0 rgba(255, 255, 255, 0.35),
+    0 8px 16px rgba(0, 0, 0, 0.34);
+  --pouf-control-active:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.35),
+    0 4px 10px rgba(0, 0, 0, 0.3);
+  --pouf-blob:
+    inset 0 -8px 0 rgba(0, 0, 0, 0.15), inset 0 4px 0 rgba(255, 255, 255, 0.4),
+    0 10px 20px rgba(0, 0, 0, 0.34);
+}
+
+/* Dark is opt-in via an attribute or the conventional shadcn `dark` class —
+ * there is deliberately no `@media (prefers-color-scheme: dark)` rule here.
+ *
+ * Reading the OS preference in CSS would make the theme a property of the
+ * visitor's machine rather than of the document, which (a) makes every
+ * screenshot test environment-dependent, including this repo's own 168-demo
+ * gate, and (b) takes the choice away from the host app, which usually already
+ * owns a theme toggle. Deciding from the OS is a one-line job for whoever
+ * mounts the app — see the inline script in the site's Site.astro for the
+ * standard no-flash version:
+ *
+ *   <html data-theme={prefersDark ? 'dark' : 'light'}>
+ *   <html className={prefersDark ? 'dark' : 'light'}>
+ */
+[data-theme='dark'],
+.dark { color-scheme: dark; }
+[data-theme='light'],
+.light { color-scheme: light; }
+
+/* ============================================================================
+ * Base. Tailwind preflight supplies box-sizing/margin/padding resets; what
+ * remains here is pouf's own base voice, kept identical to the fork.
+ * ========================================================================= */
+@layer base {
+  /* -- Preflight compensations. Tailwind's preflight unstyles headings, makes
+   *    buttons/form controls inherit line-height, and re-aligns svg. 1st-Pouf's
+   *    fork-fidelity contract is the UA behavior the original design was
+   *    measured against, so restore exactly that. Verified property-by-
+   *    property against the golden snapshots. --------------------------- */
+  h1 { font-size: 2em; }
+  h2 { font-size: 1.5em; }
+  h3 { font-size: 1.17em; }
+  h4 { font-size: 1em; }
+  h5 { font-size: 0.83em; }
+  h6 { font-size: 0.67em; }
+  button, input, textarea, select {
+    line-height: normal;
+    appearance: auto;
+  }
+  img, svg, video, canvas, audio, iframe, embed, object {
+    display: inline;
+    vertical-align: baseline;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font);
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 1.5;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* The reference ships `:focus` only. A keyboard user needs a visible
+   * ring that does not fire on mouse click. */
+  :focus-visible {
+    outline: 3px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+/* ============================================================================
+ * Cushion recipes. Deliberately @utility with a raw box-shadow rather than
+ * Tailwind's shadow-* utilities: those compose through the --tw-shadow/ring
+ * var stack, which changes the COMPUTED box-shadow string and would trip the
+ * snapshot gate (and subtly alter how rings and cushions interact). Same
+ * reasoning applies migration-wide: transforms, transitions, and animations
+ * are written as arbitrary properties or utilities here, never through
+ * Tailwind's composite var systems.
+ * ========================================================================= */
+@utility cushion-control {
+  box-shadow: var(--pouf-control);
+}
+@utility cushion-control-active {
+  box-shadow: var(--pouf-control-active);
+}
+@utility cushion-card {
+  box-shadow: var(--pouf-card);
+}
+@utility cushion-blob {
+  box-shadow: var(--pouf-blob);
+}
+@utility cushion-field {
+  box-shadow: var(--pouf-field);
+}
+@utility cushion-field-focus {
+  box-shadow: var(--pouf-field-focus);
+}
+@utility cushion-row {
+  box-shadow: var(--pouf-row);
+}
+@utility cushion-row-hover {
+  box-shadow: var(--pouf-row-hover);
+}
+
+/* Keyframes migrate here alongside their components. */
+@keyframes pouf-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Checkbox check pop-in (reduced-motion falls back to a fade). */
+@keyframes pouf-check-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.65);
+  }
+}
+@keyframes pouf-check-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ============================================================================
+ * Overlay components (dialog, side sheet, popovers, menus, tooltip, scroll
+ * area). Multi-rule chrome with data-state animations and media-query
+ * reshaping — the honest Tailwind idiom here is @layer components, not
+ * 40-utility class strings. Moved verbatim from the fork; behaviour and
+ * every computed value are unchanged (the snapshot gate enforces it).
+ * ========================================================================= */
+@layer components {
+/* ============================================================================
+ * OVERLAYS — radix-driven (Select, Tooltip, AlertDialog).
+ * ========================================================================= */
+.pouf-overlay {
+  position: fixed;
+  inset: 0;
+  /* Compact portal scale: page chrome tops out at 45, then backdrop 50 →
+   * modal 60 → floating content 70 → toast 80. */
+  z-index: 50;
+  background: rgba(58, 46, 92, 0.35);
+  backdrop-filter: blur(2px);
+}
+/* Enter AND exit are CSS animations keyed off Radix's data-state. Radix's own
+ * Presence keeps the node mounted until the [data-state='closed'] animation
+ * ends, so the CLOSE animates too — no framer, and no inline transform to fight
+ * the centring translate below. (prefers-reduced-motion is neutralised globally.) */
+.pouf-overlay[data-state='open'] {
+  animation: pouf-fade 160ms ease;
+}
+.pouf-overlay[data-state='closed'] {
+  animation: pouf-fade-out 160ms ease forwards;
+}
+.pouf-dialog {
+  position: fixed;
+  z-index: 60;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(440px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-radius: var(--r-card);
+  padding: var(--s7);
+  padding-block: calc(var(--s7) - var(--lip) / 2) calc(var(--s7) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+  overscroll-behavior: contain;
+}
+.pouf-dialog[data-state='open'] {
+  animation: pouf-pop 180ms cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+.pouf-dialog[data-state='closed'] {
+  animation: pouf-pop-out 140ms ease forwards;
+}
+.pouf-dialog--lg {
+  width: min(720px, calc(100vw - 32px));
+}
+
+/* On a phone a centred modal is the wrong shape: it wastes the edges, and its
+ * content (a 37-row list, a credential form) wants the full height. So
+ * dialogs become full-screen sheets that rise from the bottom edge — where the
+ * thumb is, and where the platform convention already points. The top corners
+ * stay round so it still reads as a surface sliding over the page rather than a
+ * navigation to a new one. */
+@media (max-width: 900px) {
+  .pouf-dialog,
+  .pouf-dialog--lg {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    padding: var(--s5);
+    padding-bottom: calc(var(--s5) + env(safe-area-inset-bottom, 0px));
+  }
+  /* On a phone the centred pop is wrong — it rises from and sinks to the bottom
+   * edge instead. Overrides the desktop pop for both states. */
+  .pouf-dialog[data-state='open'] {
+    animation: pouf-slide-up 240ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  }
+  .pouf-dialog[data-state='closed'] {
+    animation: pouf-slide-down 200ms ease forwards;
+  }
+}
+/* The body scrolls, not the page behind it. A 37-row list has to live
+ * somewhere; making the dialog itself grow would just move the 4000px problem.
+ *
+ * The whole chain from .pouf-dialog down to the scroll container must be allowed
+ * to shrink, or none of it works: a flex item's default min-height is `auto`,
+ * meaning "never shrink below my content". The Stack between the dialog and this
+ * body inherited that default, grew to its content height, and pushed the list
+ * straight out of the dialog — max-height was set, and silently powerless. */
+.pouf-dialog > .pouf-stack {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* Header: the close button anchors to the title LINE, not the centre of the
+ * title+description block — centred there, a two-line description dragged the
+ * X halfway down the card. Top-aligned, then nudged so the 38px quiet button
+ * optically centres on the ~23px title line: (38 − 23) / 2 ≈ 8. */
+.pouf-dialog__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+.pouf-dialog__head > .pouf-btn {
+  flex: none;
+  margin-top: -8px;
+}
+.pouf-dialog__body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  overscroll-behavior: contain;
+  /* Room for the cushions' outer drop shadow, which the scroll container would
+   * otherwise clip. Sized to --pouf-row's drop (0 8px 18px): 18px of blur
+   * sideways, 8+18 below, 18-8 above. 4px looked like enough until the clipped
+   * remainder rendered as a hard grey slab behind the rows — the gutter must
+   * reach where the shadow's alpha actually dies, not merely exist. */
+  padding: 12px 20px 28px;
+  margin: -12px -20px -28px;
+}
+/* Same reason: the picker's own Stack sits between the body and the rows. */
+.pouf-dialog__body > .pouf-stack {
+  min-height: 0;
+}
+
+/* ---- SIDE SHEET (the Sheet component) ------------------------------------
+ * Distinct from a centred Dialog: it lives on the right edge and slides in from
+ * it (from the bottom on a phone), so "Open sheet" no longer produces something
+ * indistinguishable from a modal. framer animates the slide + its exit; this is
+ * only the resting frame. */
+.pouf-sheet-dialog {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 100vw);
+  display: flex;
+  z-index: 60;
+}
+.pouf-sheet-panel {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  background: var(--surface);
+  border-radius: var(--r-card) 0 0 var(--r-card);
+  padding: var(--s6);
+  /* Edge-pinned like .pouf-sheet: keep the full s6 clearance above the floor
+     lip rather than re-centring (docs/pouf-optical-centering-research.md). */
+  padding-bottom: calc(var(--s6) + var(--lip));
+  box-shadow: var(--pouf-card);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Slides in from the right edge and back out to it (Radix data-state), so the
+ * close animates too. No centring transform here — it lives at right:0 — so a
+ * plain translateX is free to move it. */
+.pouf-sheet-dialog[data-state='open'] {
+  animation: pouf-sheet-in 280ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+}
+.pouf-sheet-dialog[data-state='closed'] {
+  animation: pouf-sheet-out 220ms ease forwards;
+}
+@media (max-width: 900px) {
+  .pouf-sheet-dialog {
+    top: auto;
+    left: 0;
+    width: 100vw;
+    max-height: 88vh;
+  }
+  .pouf-sheet-panel {
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    padding-bottom: calc(var(--s6) + var(--lip) + env(safe-area-inset-bottom, 0px));
+  }
+  /* From the bottom edge on a phone. */
+  .pouf-sheet-dialog[data-state='open'] {
+    animation: pouf-slide-up 280ms cubic-bezier(0.2, 0.9, 0.3, 1.05);
+  }
+  .pouf-sheet-dialog[data-state='closed'] {
+    animation: pouf-slide-down 220ms ease forwards;
+  }
+}
+@keyframes pouf-sheet-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+@keyframes pouf-sheet-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+@keyframes pouf-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes pouf-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes pouf-pop {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.96);
+  }
+}
+/* Exit mirrors the pop but keeps the centring translate throughout, so the card
+ * shrinks toward its own centre rather than drifting. */
+@keyframes pouf-pop-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.96);
+  }
+}
+.pouf-popover {
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s2);
+  padding-block: calc(var(--s2) - var(--lip) / 2) calc(var(--s2) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+  z-index: 70;
+  /* Scale from the trigger, not the centre — Radix sets this to the corner the
+   * popper opened from, so a menu below its field grows downward out of it. */
+  transform-origin: var(--radix-popper-transform-origin);
+}
+/* A small spring pop on open, a quick shrink on close (Radix data-state defers
+ * unmount until the close animation ends). Same family as the dialog's pop. */
+.pouf-popover[data-state='open'] {
+  animation: pouf-overlay-pop 150ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+.pouf-popover[data-state='closed'] {
+  animation: pouf-overlay-pop-out 110ms ease forwards;
+}
+/* Match the trigger exactly. Radix sizes popper content to its own contents by
+ * default, so the menu came out narrower than the field it belongs to and read
+ * as an unrelated floating card. These two custom properties are set by Radix on
+ * the content element when position="popper"; --available-height also keeps a
+ * long list inside the viewport instead of running off the bottom. */
+.pouf-popover--select {
+  width: var(--radix-select-trigger-width);
+  max-height: var(--radix-select-content-available-height);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* A search field stacked on a scrolling list, so it needs a width tied to its
+   trigger and a height that can't run off-screen — same reasoning as
+   .pouf-popover--select above, but Radix namespaces these custom properties per
+   primitive, so the popover build gets --radix-popover-*, not --radix-select-*.
+   No padding here: .pouf-popover already sets it.
+
+   The OPTION rows reuse .pouf-option verbatim — controls.tsx :: Combobox sets
+   data-highlighted / data-state by hand so the existing skin applies unchanged. */
+.pouf-popover--combobox {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  width: var(--radix-popover-trigger-width);
+  max-height: var(--radix-popover-content-available-height);
+}
+
+.pouf-combobox__list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A reason, not an option: "Loading models…", "Check the API key." Matches
+   .pouf-hint rather than .pouf-option, because it must never look clickable. */
+.pouf-combobox__note {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  padding: var(--s2) var(--s3);
+}
+
+.pouf-combobox__placeholder {
+  color: var(--muted);
+}
+
+
+/* The element Tooltip hangs its trigger on. It exists because pouf primitives
+ * take a closed prop list, so Radix's asChild has no DOM node to reach; and
+ * because a disabled control fires no pointer events, so the hover has to be
+ * carried by something around it.
+ *
+ * inline-flex, NOT display:contents — contents erases the box, and the box is
+ * the whole point: it is what stays hoverable when the child is disabled. */
+.pouf-tip-anchor {
+  display: inline-flex;
+}
+.pouf-tooltip {
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 13px;
+  font-weight: 800;
+  border-radius: 12px;
+  padding: var(--s2) var(--s3);
+  box-shadow: 0 10px 20px rgba(58, 46, 92, 0.25);
+  z-index: 70;
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+.pouf-tooltip[data-state='delayed-open'] {
+  animation: pouf-overlay-pop 140ms cubic-bezier(0.2, 0.9, 0.3, 1.25);
+}
+.pouf-tooltip[data-state='closed'] {
+  animation: pouf-overlay-pop-out 100ms ease forwards;
+}
+@keyframes pouf-overlay-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+@keyframes pouf-overlay-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+.pouf-option {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: 15px;
+  color: var(--ink);
+  border-radius: 14px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  text-align: left;
+  /* Reset the button UA chrome. The Combobox rows are real <button>s (the Select
+   * uses Radix <div> items), so without this they kept the browser's grey bevel
+   * border + button-face background — read as an ugly black outline on each row. */
+  border: none;
+  background: none;
+  width: 100%;
+}
+.pouf-option[data-highlighted] {
+  background: var(--bg);
+  box-shadow: var(--pouf-field);
+}
+.pouf-option[data-state='checked'] {
+  background: var(--purple);
+  color: var(--on-accent);
+}
+
+/* Switch */
+
+/* ============================================================================
+ * DROPDOWN MENU
+ * ========================================================================= */
+.pouf-menu__anchor {
+  display: inline-flex;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pouf-menu {
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s2);
+  padding-block: calc(var(--s2) - var(--lip) / 2) calc(var(--s2) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+  z-index: 70;
+  min-width: 160px;
+  animation: pouf-fade 140ms ease;
+  overscroll-behavior: contain;
+}
+.pouf-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  font-family: var(--font);
+  font-weight: 800;
+  font-size: 14px;
+  color: var(--ink);
+  border-radius: 12px;
+  padding: var(--s2) var(--s3);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.pouf-menu__item[data-highlighted] {
+  background: var(--bg);
+  box-shadow: var(--pouf-field);
+}
+.pouf-menu__item[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pouf-menu__item--down {
+  color: var(--down);
+}
+.pouf-menu__sep {
+  height: 1px;
+  background: rgba(201, 168, 255, 0.3);
+  margin: var(--s1) var(--s2);
+}
+.pouf-menubar__trigger:focus-visible {
+  outline: 3px solid var(--purple);
+  outline-offset: 2px;
+}
+
+/* ============================================================================
+ * HOVER CARD
+ * ========================================================================= */
+.pouf-hover__anchor {
+  display: inline-flex;
+}
+.pouf-hover {
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s4);
+  padding-block: calc(var(--s4) - var(--lip) / 2) calc(var(--s4) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+  z-index: 70;
+  max-width: 280px;
+  animation: pouf-fade 140ms ease;
+}
+
+/* ============================================================================
+ * SCROLL AREA
+ * ========================================================================= */
+.pouf-scroll {
+  overflow: hidden;
+  position: relative;
+}
+.pouf-scroll__viewport {
+  width: 100%;
+  /* max-height comes inline (from the component); overflow-y:auto turns that cap
+   * into a scroll. No height:100% — it can't resolve against a max-height-only
+   * parent and left the area clipping instead of scrolling. */
+  overflow-y: auto;
+  padding-right: 12px;
+}
+.pouf-scroll__bar {
+  display: flex;
+  user-select: none;
+  touch-action: none;
+  padding: 2px;
+  width: 10px;
+  position: absolute;
+  right: 0;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 999px;
+  background: rgba(201, 168, 255, 0.15);
+}
+.pouf-scroll__thumb {
+  flex: 1;
+  border-radius: 999px;
+  background: rgba(201, 168, 255, 0.45);
+  position: relative;
+}
+
+}
+
+/* ============================================================================
+ * Component chrome carried over from the fork as UNLAYERED rules — the same
+ * (unlayered, highest-priority) status they held in the original single
+ * stylesheet. Kept unlayered rather than moved to @layer components because
+ * several of these share elements with utility-migrated neighbours (a Tabs
+ * trigger is buttonClasses() + .pouf-tabs__trigger; tonal primitives set
+ * --tone via .tone-*), and unlayered preserves that exact cascade. The
+ * recharts theme MUST stay unlayered — it styles third-party DOM. Every
+ * computed value is unchanged; the snapshot gate enforces it.
+ * ========================================================================= */
+/* ============================================================================
+ * TONES — one class per palette entry. Every tonal primitive composes these,
+ * so a colour lives in exactly one place.
+ * ========================================================================= */
+.tone-pink {
+  --tone: var(--pink);
+}
+.tone-purple {
+  --tone: var(--purple);
+}
+.tone-blue {
+  --tone: var(--blue);
+}
+.tone-mint {
+  --tone: var(--mint);
+}
+.tone-yellow {
+  --tone: var(--yellow);
+}
+.tone-orange {
+  --tone: var(--orange);
+}
+.tone-up {
+  --tone: var(--up);
+}
+.tone-down {
+  --tone: var(--down);
+}
+.tone-warn {
+  --tone: var(--warn);
+}
+.tone-info {
+  --tone: var(--info);
+}
+.tone-idle {
+  --tone: var(--idle);
+}
+
+/* Child Text primitives normally own their page/surface colours. A selected
+ * RowCard changes the physical surface to a pastel, so that ownership must
+ * change with it; inheritance cannot override Text's explicit utilities. */
+.pouf-rowcard[data-selected='true'] .pouf-text {
+  color: var(--on-accent);
+}
+.pouf-rowcard[data-selected='true'] .text-muted {
+  color: var(--on-accent-muted);
+}
+
+/* PAGE-level alert (the ErrorNote component): a puffy orange cushion with a
+ * raised white warning blob — the toast's V2 language, not a flat pill. */
+.pouf-error-note {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--on-accent);
+  background: var(--orange);
+  border-radius: 20px;
+  padding: 14px var(--s4);
+    /* Bias the vertical padding by half the lip: the floor inset paints INSIDE
+     * the box, so symmetric padding reads bottom-heavy. Same total height,
+     * optically centred content — the convention stated at the top of this
+     * file, and what .pouf-bell__button already did. */
+  padding-block: calc(14px - 4px) calc(14px + 4px);
+  box-shadow:
+    inset 0 -8px 0 rgba(0, 0, 0, 0.05), inset 0 5px 0 rgba(255, 255, 255, 0.45),
+    0 12px 26px rgba(58, 46, 92, 0.15);
+  align-self: start;
+  max-width: 100%;
+}
+.pouf-error-note__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: #fff;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.08), inset 0 2px 0 #fff, 0 3px 6px rgba(58, 46, 92, 0.22);
+}
+.pouf-error-note__text {
+  min-width: 0;
+}
+
+/* ============================================================================
+ * APP SHELL
+ * ========================================================================= */
+.pouf-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s5);
+}
+/* Links inside a group sit tight; the gap on .pouf-nav separates the groups.
+ * Proximity alone does the grouping — no headings, which read as clutter beside
+ * nine short labels. */
+.pouf-navgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+/* The SIDEBAR's link list is desktop-only; on mobile the bottom bar owns
+ * navigation. The brand card and ModeBanner above it stay — a mode indicator is
+ * exactly the thing you must not lose sight of just because you're on a phone.
+ *
+ * Scoped to .pouf-sidebar, and that is load-bearing. Unscoped, this hid EVERY
+ * .pouf-nav below 900px — including the copy BottomNav renders inside the "All
+ * screens" sheet, which only ever exists below 900px. So the sheet opened onto
+ * its title and a Close button with every link display:none: the one route to
+ * the secondary pages on a phone, silently empty. The e2e guarding it passed
+ * because toHaveCount() counts DOM nodes and never asks whether they can be
+ * seen. */
+@media (max-width: 900px) {
+  .pouf-sidebar .pouf-nav {
+    display: none;
+  }
+}
+
+/* ============================================================================
+ * BOTTOM NAV (mobile)
+ * ========================================================================= */
+.pouf-bottomnav {
+  position: fixed;
+  left: var(--s3);
+  right: var(--s3);
+  bottom: calc(var(--s3) + env(safe-area-inset-bottom, 0px));
+  z-index: 40;
+  display: none;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: var(--s1);
+  background: var(--surface);
+  border-radius: var(--r-card);
+  padding: var(--s2);
+  padding-block: calc(var(--s2) - var(--lip) / 2) calc(var(--s2) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+}
+@media (max-width: 900px) {
+  .pouf-bottomnav {
+    display: grid;
+  }
+}
+.pouf-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  /* 44px is the documented minimum touch target; the bar is thumb-reachable by
+   * being at the bottom, which is the point of it existing at all. */
+  min-height: 54px;
+  border: none;
+  background: transparent;
+  border-radius: 18px;
+  font-family: var(--font);
+  /* Was 10px/900. At 10px a 900 weight fills in its own counters and reads as a
+   * smudge rather than as bold, so the label got heavier AND less legible at the
+   * same time. 11px/700 is lighter ink and easier to read. */
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.1px;
+  /* Inactive tabs recede. --muted is only safe on white (4.64:1, AA at this
+   * size) and the bar's background IS --surface — see the contrast note at the
+   * top of this file. It must not be used if this bar ever sits on --bg. */
+  color: var(--muted);
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+.pouf-tab:active {
+  transform: translateY(2px);
+}
+/* One colour, always — NOT var(--tone). Every tab used to light up its own
+ * pastel, so the bar flashed yellow/mint/blue/purple as you moved and two tabs
+ * shared a blue, which meant the colour identified nothing. Worse, it spent the
+ * semantic palette (--up/--down/--warn) on chrome, so "yellow" meant profit on
+ * one screen and "you are here" on another. The active tab answers one question
+ * — where am I — and one colour answers it. */
+.pouf-tab--active {
+  background: var(--purple);
+  color: var(--on-accent);
+  font-weight: 800;
+  /* The lighter of the two clay recipes: the heavy one turned the active tab
+   * into a lozenge that dominated the bar it was supposed to sit inside. */
+  box-shadow: var(--pouf-control-active);
+}
+.pouf-tab__label {
+  line-height: 1;
+}
+
+/* ============================================================================
+ * SHEET — the mobile "Menu" surface
+ * ========================================================================= */
+.pouf-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 60;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  background: var(--surface);
+  border-radius: var(--r-card) var(--r-card) 0 0;
+  padding: var(--s6);
+  /* Pinned to the screen edge, so no re-centring here: instead keep the full
+     s6 clearance between the last content and the lip. */
+  padding-bottom: calc(var(--s6) + var(--lip) + env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--pouf-card);
+  animation: pouf-slide-up 220ms cubic-bezier(0.2, 0.9, 0.3, 1.1);
+  overscroll-behavior: contain;
+}
+@keyframes pouf-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+@keyframes pouf-slide-down {
+  to {
+    transform: translateY(100%);
+  }
+}
+.pouf-sheet__body {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  padding: 4px;
+  margin: -4px;
+}
+/* The grab handle. Purely a signifier that this thing came from the bottom edge
+ * and goes back there. */
+.pouf-sheet__handle {
+  width: 44px;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(58, 46, 92, 0.2);
+  margin: 0 auto;
+  flex: none;
+}
+.pouf-navlink {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--ink);
+  text-decoration: none;
+  background: transparent;
+  border-radius: var(--r-control);
+  padding: 12px 16px;
+  /* Constant bias, not per-state: hover's white cushion wants 3px (--pouf-row
+     floor, top highlight invisible on white), active's pastel wants 1px
+     (--pouf-control, both bevels visible). 2px splits them, and because it
+     never changes between states the content cannot jump on hover. At rest
+     there is no visible box, so nothing reads as off-centre. */
+  padding-block: 10px 14px;
+  min-height: 48px;
+  transition:
+    box-shadow 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
+}
+.pouf-navlink:hover {
+  background: var(--surface);
+  box-shadow: var(--pouf-row);
+}
+.pouf-navlink--active {
+  background: var(--tone, var(--purple));
+  box-shadow: var(--pouf-control);
+  /* The base rule is --ink on a transparent row; once filled with an accent
+   * the label has to follow the accent's ink instead. */
+  color: var(--on-accent);
+}
+.pouf-navlink--active:hover {
+  background: var(--tone, var(--purple));
+  box-shadow: var(--pouf-control);
+}
+.pouf-navlink:active {
+  transform: translateY(2px);
+}
+
+/* ============================================================================
+ * MODE BANNER — "is this the real one?"
+ *
+ * Persistent and unmissable by construction, not by discipline: it is part of
+ * the shell, so no screen can forget to render it and no scroll position can
+ * hide it. The safe mode is quiet; the live one is loud.
+ * ========================================================================= */
+.pouf-mode {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  border-radius: var(--r-control);
+  padding: var(--s3) var(--s4);
+    /* Bias the vertical padding by half the lip: the floor inset paints INSIDE
+     * the box, so symmetric padding reads bottom-heavy. Same total height,
+     * optically centred content — the convention stated at the top of this
+     * file, and what .pouf-bell__button already did. */
+  padding-block: calc(var(--s3) - 3px) calc(var(--s3) + 3px);
+  background: var(--tone, var(--blue));
+  color: var(--on-accent);
+  box-shadow: var(--pouf-control);
+}
+.pouf-mode--live {
+  animation: pouf-live-pulse 2.4s ease-in-out infinite;
+}
+@keyframes pouf-live-pulse {
+  50% {
+    box-shadow:
+      var(--pouf-control),
+      0 0 0 6px rgba(255, 179, 138, 0.35);
+  }
+}
+
+/* ============================================================================
+ * FEEDBACK
+ * ========================================================================= */
+.pouf-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s8) var(--s5);
+  text-align: center;
+}
+.pouf-skeleton {
+  background: linear-gradient(90deg, var(--bg) 25%, rgba(201, 168, 255, 0.35) 50%, var(--bg) 75%);
+  background-size: 200% 100%;
+  animation: pouf-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--r-control);
+  box-shadow: var(--pouf-field);
+  height: 64px;
+}
+.pouf-skeleton--text {
+  height: 18px;
+  border-radius: 10px;
+}
+.pouf-skeleton--row {
+  height: 64px;
+}
+.pouf-skeleton--card {
+  height: 132px;
+  border-radius: var(--r-card);
+}
+@keyframes pouf-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ============================================================================
+   Toasts — pushed alerts
+   ============================================================================
+   Fixed to the viewport, so the shell mounts these, never a screen.
+
+   Top-right, not bottom: the bottom belongs to BottomNav on mobile (z-index 40),
+   and a toast that covers the nav trades one problem for another. Above it in
+   stacking order because an alert that renders *behind* the nav is not an alert. */
+.pouf-toasts {
+  position: fixed;
+  top: calc(var(--s4) + env(safe-area-inset-top, 0px));
+  right: var(--s4);
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  /* Width is capped, not stretched: an alert line is prose, and prose past ~40em
+   * is hard to scan. */
+  width: min(380px, calc(100vw - var(--s4) * 2));
+  /* The stack must not eat clicks in the gaps between toasts — someone is
+   * trying to work underneath it. Each toast re-enables pointers for itself. */
+  pointer-events: none;
+}
+@media (max-width: 900px) {
+  .pouf-toasts {
+    left: var(--s3);
+    right: var(--s3);
+    width: auto;
+  }
+}
+/* A full pastel cushion, tone-filled — this is the claymorphism the whole app
+ * speaks (bold, bright, kid-shaped), and it is deliberately NOT the neutral,
+ * semantic-colour-free snackbar that Material 3 and general best-practice would
+ * steer you toward. That guidance (docs/pouf-components-research.md) fits a
+ * restrained system; here the brief's colourful fill wins, so the tone stays on
+ * the whole surface. The icon rides a translucent-white halo — a clay highlight,
+ * not a foreign tile — and dark ink on the pastel clears contrast. */
+.pouf-toast {
+  pointer-events: auto;
+  display: flex;
+  /* Centre, not top: a single-line toast (the common case) had its icon pinned
+   * to the top edge while the taller close button sat centred, so the icon read
+   * as floating high. Centring lines it up with both the text and the button. */
+  align-items: center;
+  gap: var(--s3);
+  padding: 15px var(--s4);
+  border-radius: 22px;
+  background: var(--tone);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 700;
+  /* A real clay cushion, not a flat sticker: its own inset top light + floor
+   * shadow give the fill depth (the "puffy fill" the mockup settled on). */
+  box-shadow:
+    inset 0 -9px 0 rgba(0, 0, 0, 0.05), inset 0 6px 0 rgba(255, 255, 255, 0.5),
+    0 14px 30px rgba(58, 46, 92, 0.18);
+  /* Entrance/exit are owned by framer-motion (a 3D swing-in from the side); the
+   * old CSS keyframe was removed so the two don't fight over `transform`. */
+}
+.pouf-toast--default {
+  background: var(--purple);
+}
+.pouf-toast--success {
+  background: var(--up);
+}
+.pouf-toast--error {
+  background: var(--down);
+}
+.pouf-toast--warning {
+  background: var(--warn);
+}
+.pouf-toast--info {
+  background: var(--info);
+}
+/* A RAISED white clay disc, not a flat halo: its own inset light/floor + a small
+ * drop make the glyph sit proud of the fill, echoing the cushion it lives on. */
+.pouf-toast__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--on-accent);
+  background: #fff;
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.08), inset 0 2px 0 #fff, 0 3px 6px rgba(58, 46, 92, 0.25);
+}
+.pouf-toast__body {
+  flex: 1;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+.pouf-toast__title {
+  font-weight: 800;
+  line-height: 1.3;
+}
+.pouf-toast__desc {
+  margin-top: 2px;
+  font-weight: 700;
+  font-size: 13px;
+  opacity: 0.82;
+}
+/* White-translucent, so both read as recessed highlights on the pastel fill. */
+.pouf-toast__action {
+  display: inline-flex;
+  margin-top: var(--s2);
+  font-family: var(--font);
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--on-accent);
+  background: rgba(255, 255, 255, 0.45);
+  border: none;
+  border-radius: 10px;
+  padding: var(--s1) var(--s3);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.pouf-toast__action:hover {
+  background: rgba(255, 255, 255, 0.7);
+}
+.pouf-toast__close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.55);
+  color: var(--on-accent);
+  cursor: pointer;
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.06);
+  transition: background 140ms ease;
+}
+.pouf-toast__close:hover {
+  background: rgba(255, 255, 255, 0.85);
+}
+@keyframes pouf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes pouf-toast-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: translateX(20px) scale(0.96);
+  }
+}
+
+/* ============================================================================
+   Alert bell + panel — the record behind the toasts
+   ============================================================================ */
+.pouf-bell {
+  position: relative;
+}
+.pouf-bell__button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  padding: var(--s3) var(--s4);
+  /* --pouf-control on white: the 6px floor is visible chrome, the white top
+     highlight is not — full half-lip bias, same trick as the cards. */
+  padding-block: calc(var(--s3) - 3px) calc(var(--s3) + 3px);
+  border: 0;
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: var(--pouf-control);
+}
+.pouf-bell__button:active {
+  box-shadow: var(--pouf-control-active);
+}
+.pouf-bell__label {
+  flex: 1;
+  text-align: left;
+}
+.pouf-bell__badge {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--s1);
+  border-radius: var(--r-pill);
+  background: var(--down);
+  color: var(--on-accent);
+  font-size: 12px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pouf-bell__panel {
+  position: absolute;
+  top: calc(100% + var(--s2));
+  left: auto;
+  right: 0;
+  width: min(320px, calc(100vw - var(--s3) * 2));
+  z-index: 70;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: var(--s3);
+  padding-block: calc(var(--s3) - var(--lip) / 2) calc(var(--s3) + var(--lip) / 2);
+  border-radius: var(--r-card);
+  background: var(--surface);
+  box-shadow: var(--pouf-card);
+}
+/* The sidebar is narrow; on a phone the panel would be a slot barely wider than
+ * the bell. Break it out to something readable. */
+@media (max-width: 900px) {
+  .pouf-bell__panel {
+    position: fixed;
+    left: var(--s3);
+    right: var(--s3);
+    width: auto;
+    top: auto;
+  }
+}
+
+/* Navbar responsiveness belongs to the bar itself, not to the browser
+ * viewport. A navbar can live in a narrow dashboard column or docs preview on
+ * a wide screen; viewport media queries left its actions outside that box. */
+.pouf-navbar {
+  container-type: inline-size;
+}
+.pouf-navbar__mobile {
+  display: none;
+}
+@container (max-width: 760px) {
+  .pouf-navbar__links {
+    display: none;
+  }
+  .pouf-navbar__mobile {
+    display: block;
+  }
+  .pouf-navbar__actions {
+    margin-left: 0;
+  }
+}
+.pouf-bell__offline {
+  padding: var(--s2) var(--s3);
+  margin-bottom: var(--s2);
+  border-radius: 12px;
+  background: var(--warn);
+  color: var(--on-accent);
+}
+.pouf-bell__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pouf-bell__item {
+  display: flex;
+  align-items: start;
+  gap: var(--s3);
+  padding: var(--s3);
+  border-radius: 12px;
+  /* Routine alerts stay quiet; a critical one keeps its tone in the list, so
+   * scanning the history surfaces the one that mattered without reading every
+   * line. */
+  background: var(--tone, rgba(201, 168, 255, 0.15));
+}
+.pouf-bell__itembody {
+  flex: 1;
+  min-width: 0;
+  /* Column, not the default inline flow: the message and its timestamp are separate
+   * facts and ran together as "Backup finished2:59:00 PM" without this. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+/* ============================================================================
+ * TABS
+ * ========================================================================= */
+/* NOT the browser-tab idiom (underline rail, square bottom corners). That
+ * pattern belongs to flat systems where an underline is the selection signal;
+ * here the signal is depth, and an active tab with a drop shadow bleeding over
+ * a 3px rail read as a glitch. Tabs are a row of small clay buttons
+ * (composed in disclosure.tsx) and
+ * the active one is held down — identical vocabulary to Segmented, which is
+ * the same control at a different altitude. */
+.pouf-tabs__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+.pouf-tabs__trigger[data-state='active'] {
+  transform: translateY(2px);
+  box-shadow: var(--pouf-control-active);
+}
+.pouf-tabs__content {
+  padding: var(--s4) 0 0;
+}
+
+/* ============================================================================
+ * ACCORDION
+ * ========================================================================= */
+.pouf-accordion {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+/* No overflow:hidden here — the item is a cushion, and clipping its outer
+ * drop shadow flattened every accordion's underside. The CONTENT clips itself;
+ * the item must not.
+ *
+ * The ITEM is the surface, not the trigger: with the cushion on the trigger
+ * alone, an open item's content sat bare on the page background and the whole
+ * section washed out into it. One cushion that grows keeps the answer on the
+ * same clay as its question. Hover/press are expressed on the item (via :has)
+ * because the cushion is what visibly reacts, but only the trigger initiates. */
+.pouf-accordion__item {
+  border-radius: var(--r-control);
+  background: var(--surface);
+  box-shadow: var(--pouf-row);
+  transition:
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+.pouf-accordion__item:has(.pouf-accordion__trigger:hover) {
+  box-shadow: var(--pouf-row-hover);
+  transform: translateY(-1px);
+}
+.pouf-accordion__item:has(.pouf-accordion__trigger:active) {
+  transform: translateY(1px);
+  box-shadow: var(--pouf-control-active);
+}
+.pouf-accordion__trigger {
+  font-family: var(--font);
+  font-weight: 900;
+  font-size: 15px;
+  color: var(--ink);
+  background: transparent;
+  border: none;
+  border-radius: var(--r-control);
+  padding: var(--s4);
+  /* Constant across open/closed so the label never jumps on toggle; closed,
+     the item's lip sits directly under this box and the bias centres it. */
+  padding-block: calc(var(--s4) - var(--lip-row) / 2) calc(var(--s4) + var(--lip-row) / 2);
+  width: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+/* The chevron sits in its own span (Icon renders the svg one level down, so a
+ * `> svg` selector never matched and the chevron sat frozen). */
+.pouf-accordion__chevron {
+  display: flex;
+  flex: none;
+  transition: transform 200ms ease;
+}
+.pouf-accordion__trigger[data-state='open'] .pouf-accordion__chevron {
+  transform: rotate(180deg);
+}
+.pouf-accordion__content {
+  overflow: hidden;
+}
+.pouf-accordion__content[data-state='open'] {
+  animation: pouf-accordion-down 200ms ease;
+}
+.pouf-accordion__content[data-state='closed'] {
+  animation: pouf-accordion-up 200ms ease;
+}
+@keyframes pouf-accordion-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+}
+@keyframes pouf-accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+.pouf-accordion__body {
+  /* On the item's own cushion now: no top padding (the trigger provides the
+     gap), and the bottom keeps its clearance above the item's lip. */
+  padding: 0 var(--s4) calc(var(--s4) + var(--lip-row));
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* ============================================================================
+ * COLLAPSIBLE
+ * ========================================================================= */
+.pouf-collapsible__trigger {
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  /* Was padding:0, which left a 23px-tall target — one pixel under WCAG 2.2 AA
+   * (2.5.8). The negative margin keeps the disclosure flush where it was. */
+  min-height: 24px;
+  padding: 3px 4px;
+  margin: -3px -4px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pouf-collapsible__content {
+  overflow: hidden;
+}
+.pouf-collapsible__content[data-state='open'] {
+  animation: pouf-collapse-down 200ms ease;
+}
+.pouf-collapsible__content[data-state='closed'] {
+  animation: pouf-collapse-up 200ms ease;
+}
+@keyframes pouf-collapse-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+}
+@keyframes pouf-collapse-up {
+  from {
+    height: var(--radix-collapsible-content-height);
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+.pouf-collapsible__body {
+  padding-top: var(--s4);
+}
+
+/* ============================================================================
+ * PROGRESS
+ * ========================================================================= */
+.pouf-progress {
+  position: relative;
+  width: 100%;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--bg);
+  box-shadow: var(--pouf-field);
+  overflow: hidden;
+}
+.pouf-progress__fill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left center;
+  border-radius: 999px;
+  background: var(--tone, var(--purple));
+  /* The same floor shadow as .pouf-dot: the fill is a bead of clay lying in a
+   * recessed channel, not a flat paint bar. */
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.12);
+}
+
+/* ============================================================================
+ * TABLE
+ * ========================================================================= */
+.pouf-table__wrap {
+  width: 100%;
+  overflow-x: auto;
+}
+.pouf-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.pouf-table th {
+  padding: var(--s2) var(--s3);
+  border-bottom: 2px solid rgba(201, 168, 255, 0.3);
+  text-align: left;
+  font-weight: 800;
+}
+.pouf-table__h--right {
+  text-align: right;
+}
+.pouf-table td {
+  padding: var(--s3);
+}
+.pouf-table__row td {
+  border-bottom: 1px solid rgba(201, 168, 255, 0.15);
+}
+.pouf-table__cell--right {
+  text-align: right;
+}
+.pouf-table__empty td {
+  padding: var(--s7) var(--s3);
+  text-align: center;
+}
+/* Clickable rows (Table onRowClick): pointer users can click the whole row;
+ * keyboard users get a real button in the first cell. */
+.pouf-table__row--click {
+  cursor: pointer;
+}
+.pouf-table__row--click:hover td {
+  background: rgba(201, 168, 255, 0.12);
+}
+.pouf-table__rowaction {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.pouf-table__rowaction:focus-visible {
+  outline: 3px solid var(--focus, rgba(155, 106, 255, 0.55));
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Sortable headers (Table column `sort`). A bare button rather than a cushion:
+ * the header row is chrome, and five pressable pills across the top would
+ * outweigh the data underneath. The caret is the whole affordance. */
+.pouf-table__sort {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  background: none;
+  border: none;
+  /* Vertical padding, not just the text's own height: the header text is 13px,
+   * which left a ~20px tap target — under the 24px WCAG 2.2 AA minimum. The
+   * <th> already carries its own padding, so this grows the hit area without
+   * moving anything visually. */
+  padding: var(--s1) 0;
+  margin: calc(-1 * var(--s1)) 0;
+  min-height: 24px;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.pouf-table__h--right .pouf-table__sort {
+  flex-direction: row-reverse;
+}
+.pouf-table__sort:hover .pouf-table__caret,
+.pouf-table__sort:focus-visible .pouf-table__caret {
+  opacity: 1;
+}
+.pouf-table__sort:focus-visible {
+  outline: 3px solid var(--focus, rgba(155, 106, 255, 0.55));
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+/* Reserved width so toggling ⇅ → ▴ → ▾ never reflows the header. */
+.pouf-table__caret {
+  width: 1ch;
+  flex: none;
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0.55;
+  color: var(--muted);
+}
+th[aria-sort='ascending'] .pouf-table__caret,
+th[aria-sort='descending'] .pouf-table__caret {
+  opacity: 1;
+  color: var(--ink);
+}
+
+/* ============================================================================
+ * BREADCRUMB
+ * ========================================================================= */
+/* Links are ink with a lavender underline that darkens on hover — the old
+ * build used a low-emphasis text token and a hover rule that never fired
+ * because the colour lived on a child span. The current page is
+ * heavier and bare: weight + underline carry the distinction, not hue alone. */
+.pouf-breadcrumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s2);
+  list-style: none;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.pouf-breadcrumb__item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+.pouf-breadcrumb__sep {
+  color: var(--muted);
+}
+.pouf-breadcrumb__link {
+  color: var(--ink);
+  /* 20px tall as bare inline text, under the WCAG 2.2 AA target minimum. These
+   * are standalone navigation links, not links inside a sentence, so the SC's
+   * "inline" exemption does not apply. Padding grows the target; the matching
+   * negative margin keeps the crumb row visually unchanged. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 4px;
+  margin: -2px -4px;
+  text-decoration: underline;
+  text-decoration-color: rgba(201, 168, 255, 0.7);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color 140ms ease;
+}
+.pouf-breadcrumb__link:hover {
+  text-decoration-color: var(--purple);
+}
+.pouf-breadcrumb__current {
+  font-weight: 900;
+}
+
+/* ============================================================================
+ * CHARTS — Recharts theme
+ * ========================================================================= */
+.pouf-chart {
+  width: 100%;
+}
+/* Ensure the chart SVG takes its container rather than its own computed size.
+ * Recharts outputs width/height on the root <svg>; the container sets the
+ * responsive width and the SVG inherits it via the class. */
+.pouf-chart .recharts-surface {
+  overflow: visible;
+}
+.pouf-chart__tooltip {
+  background: var(--surface);
+  border-radius: var(--r-control);
+  padding: var(--s3) var(--s4);
+  padding-block: calc(var(--s3) - var(--lip) / 2) calc(var(--s3) + var(--lip) / 2);
+  box-shadow: var(--pouf-card);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.pouf-chart__tooltip__label {
+  font-weight: 900;
+  margin-bottom: var(--s1);
+}
+.pouf-chart__tooltip__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--muted);
+}
+.pouf-chart__tooltip__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex: none;
+}
+.pouf-chart__grid line {
+  stroke: rgba(201, 168, 255, 0.25);
+}
+.pouf-chart__grid path {
+  stroke: none;
+}
+.pouf-chart .recharts-text {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--muted);
+}
+.pouf-chart .recharts-cartesian-axis-tick-value {
+  fill: var(--muted);
+}
+.pouf-chart .recharts-tooltip-cursor {
+  stroke: rgba(201, 168, 255, 0.3);
+}
+/* Pie labels */
+.pouf-chart .recharts-pie-label-text {
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 800;
+  fill: var(--ink);
+}
+/* Remove the default Recharts tooltip white background + border — the
+ * pouf-chart__tooltip class replaces it via the custom `content` render. */
+.pouf-chart .recharts-default-tooltip {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+}
+
+/* The right-click surface for ContextMenu — a plain block wrapper. */
+.pouf-context-anchor { display: block; }

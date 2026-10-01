@@ -31,13 +31,13 @@ def test_plan_parse_dispatches_a_stories_plan(tmp_path):
     t = got["tasks"][0]
     assert t["piece"] == "todo" and t["actions"] == ["addTodo", "completeTodo", "deleteTodo"]
     assert len(t["probes"]) == 4 and t["proofRuns"] == []
-    assert t["files"] == ["client/src/pieces/todo.ts"]
+    assert t["files"] == ["client/src/pieces/todo.json"]
     assert got["launch_waves"][0][0]["id"] == "1" and got["bootstrapCmd"] == "bun install"
 
 
 def test_depends_on_pieces_becomes_edges(tmp_path):
     text = plan_text() + ("\n### Task 2: The tag piece\n\n**Piece:** tag\n**Depends-on-pieces:** todo\n"
-                          "**Files:**\n- Create: `client/src/pieces/tag.tsx`\n**Purpose:** x\n"
+                          "**Files:**\n- Create: `client/src/pieces/tag.json`\n**Purpose:** x\n"
                           "**Actions:**\n**Stories:**\n**Proof:**\n")
     got = json.loads(parse(tmp_path, text).stdout)
     assert got["dag_edges"] == [{"from": "1", "to": "2", "why": "piece tag depends on todo"}]

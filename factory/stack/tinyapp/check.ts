@@ -89,7 +89,10 @@ async function build(): Promise<string> {
   const out = mkdtempSync(join(tmpdir(), 'tinyapp-page-'));
   cleanups.push(async () => rmSync(out, {recursive: true, force: true}));
   // Spawned, not spawnSync: a synchronous build would hold the budget timer.
-  const proc = Bun.spawn([process.execPath, 'build', './client/index.html', '--outdir', out],
+  const cmd = existsSync(join(COPY, 'scripts', 'build-client.ts'))
+    ? [process.execPath, 'scripts/build-client.ts', out]
+    : [process.execPath, 'build', './client/index.html', '--outdir', out];
+  const proc = Bun.spawn(cmd,
     {cwd: COPY, stdout: 'pipe', stderr: 'pipe'});
   cleanups.push(async () => { proc.kill('SIGKILL'); await proc.exited; });
   const [stdout, stderr, code] = await Promise.all([

@@ -13,10 +13,9 @@
  * Nothing the page asks for leaves the machine. `openUrl` serves the page from
  * a loopback origin, and a blanket block would refuse the page's own document,
  * so every request is paused through the `Fetch` domain and judged one at a
- * time: continued when it is to that origin, failed in the browser otherwise. `client/index.html` links Google
- * Fonts; with those requests refused the page falls back to the platform
- * sans-serif, and that fallback — identical on every machine, dialling nothing —
- * is the deterministic choice, not a loss.
+ * time: continued when it is to that origin, failed in the browser otherwise.
+ * The page bundles its own font, so it draws its real face from that origin
+ * and dials nothing else.
  */
 
 import {existsSync, mkdtempSync, rmSync} from 'node:fs';
