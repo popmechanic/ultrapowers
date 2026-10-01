@@ -30,6 +30,7 @@ bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --d
 bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
 bun skills/ultrawrite/stories/product.ts check|render|record <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
+bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
@@ -51,7 +52,9 @@ the engine's exit code is the merge decision.
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
   `stories/` (story planning for TinyApps in TypeScript: bundle loader, code and Jev
-  checks, the compiler to `stories-v1`, the scaffold, the operator notebook), `catalog/`
+  checks, the compiler to `stories-v1`, the scaffold, the operator notebook, and the
+  TinyApp template: React, json-render screens over 1st-Pouf vendored at
+  `tinyapp-template/client/src/pouf/`, never patched, like `vendor/manyana.py`), `catalog/`
   (ready pieces; `todo` first). The sandbox-facing half is
   `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check}.py`.
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are

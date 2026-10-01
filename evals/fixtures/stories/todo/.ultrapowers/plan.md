@@ -3,6 +3,7 @@
 **Grammar:** stories-v1
 **Stack:** tinyapp
 **Plan-id:** p1
+**Product:** sp1
 **Kind:** behaviour
 **Summary:** A list of things you mean to do. It exists so nothing you meant to do gets forgotten. You add a thing, tick it when it is done, and delete it when it no longer matters.
 **Store:** `client/src/store.js` sha256:30d52f6d7cffdb93b01519f76d2cdd559bb3154e1ec2d928497b5b7a55d1bc02
@@ -19,8 +20,9 @@
 **Piece:** todo
 **Depends-on-pieces:** none
 **Files:**
-- Create: `client/src/pieces/todo.ts`
+- Create: `client/src/pieces/todo.json`
 **Purpose:** Remember the things you mean to do until you have done them.
+**Screen:** `client/src/pieces/todo.json` is a json-render spec over the catalog in `client/src/screens/catalog.ts`: each action below runs from an element's `action` prop, and `$bindState` writes only under `/draft/`.
 **Actions:**
 - `addTodo` — Add a todo with this text; it starts not done.; refuses: blank text
 - `completeTodo` — Mark this todo as done.; refuses: a todo that does not exist

@@ -1,0 +1,276 @@
+import { useEffect, useRef, useState } from 'react'
+import { Select, Switch, Tooltip, TooltipProvider, Confirm, Dialog, Combobox } from '../controls'
+import { Field } from '../Input'
+import { Button } from '../Button'
+import { Row, Stack } from '../layout'
+import { RowCard } from '../surface'
+import { Text } from '../text'
+import { simulateOpen } from './interact'
+import type { Demo } from './types'
+
+/* ---------------------------------------------------------------- Select */
+
+const fruitOptions = [
+  { value: 'apple', label: 'Apple' },
+  { value: 'banana', label: 'Banana' },
+  { value: 'cherry', label: 'Cherry' },
+]
+
+function InteractiveSelect({
+  initial,
+  subject = false,
+}: {
+  initial: string
+  subject?: boolean
+}) {
+  const [value, setValue] = useState(initial)
+  const field = (
+    <Field label="Fruit">
+      {(id, d) => (
+        <Select
+          id={id}
+          describedBy={d}
+          value={value}
+          onChange={setValue}
+          options={fruitOptions}
+          placeholder="Choose a fruit…"
+        />
+      )}
+    </Field>
+  )
+  return subject ? <span data-subject>{field}</span> : field
+}
+
+function SelectOpen() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+  return (
+    <div ref={ref}>
+      <Field label="Fruit">
+        {(id, d) => <Select id={id} describedBy={d} value="apple" onChange={() => {}} options={fruitOptions} />}
+      </Field>
+    </div>
+  )
+}
+
+export const selectDemos: Demo[] = [
+  { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveSelect initial="apple" subject /> },
+  { id: 'placeholder', render: () => <InteractiveSelect initial="" /> },
+  { id: 'disabled', render: () => (
+      <Field label="Fruit">
+        {(id, d) => <Select id={id} describedBy={d} value="apple" onChange={() => {}} options={fruitOptions} disabled />}
+      </Field>
+    ) },
+  { id: 'open', render: () => <SelectOpen /> },
+]
+
+/* ---------------------------------------------------------------- Switch */
+
+function InteractiveSwitch({
+  initial,
+  subject = false,
+}: {
+  initial: boolean
+  subject?: boolean
+}) {
+  const [checked, setChecked] = useState(initial)
+  const control = (
+    <Row gap={2} wrap={false}>
+      <Switch checked={checked} onChange={setChecked} label="Notifications" />
+      <Text size="sm">Notifications</Text>
+    </Row>
+  )
+  return subject ? <span data-subject>{control}</span> : control
+}
+
+export const switchDemos: Demo[] = [
+  { id: 'on', states: ['hover', 'focus'], render: () => <InteractiveSwitch initial subject /> },
+  { id: 'off', render: () => <InteractiveSwitch initial={false} /> },
+  { id: 'disabled', render: () => (
+      <Row gap={2} wrap={false}>
+        <Switch checked={false} onChange={() => {}} disabled label="Busy switch" />
+        <Text size="sm" muted>Busy switch</Text>
+      </Row>
+    ) },
+]
+
+/* --------------------------------------------------------------- Tooltip */
+
+// Radix's Tooltip.Root requires an ancestor Tooltip.Provider (it does not
+// fall back to a default one) — the real app mounts one at the shell root,
+// so each demo below supplies its own.
+export const tooltipDemos: Demo[] = [
+  { id: 'trigger', states: ['hover', 'focus'], render: () => (
+      <span data-subject>
+        <TooltipProvider>
+          <Tooltip tip="Cushions compress when pressed.">
+            <Button tone="blue" size="sm">Hover me</Button>
+          </Tooltip>
+        </TooltipProvider>
+      </span>
+    ) },
+  // The anchor-owns-the-hover design's pinning case: a disabled control fires
+  // no pointer events at all, so only the element around it can carry it.
+  { id: 'disabled-child', render: () => (
+      <TooltipProvider>
+        <Tooltip tip="Paused while a write is in flight.">
+          <Switch checked={false} onChange={() => {}} disabled label="Busy switch" />
+        </Tooltip>
+      </TooltipProvider>
+    ) },
+]
+
+/* --------------------------------------------------------------- Confirm */
+
+const confirmDetails = (
+  <Stack gap={2}>
+    <RowCard>
+      <Row justify="between" wrap={false}>
+        <Text size="sm">Apple · 0.4</Text>
+        <Text size="sm" num>+$31.20</Text>
+      </Row>
+    </RowCard>
+    <RowCard>
+      <Row justify="between" wrap={false}>
+        <Text size="sm">Banana · 2.1</Text>
+        <Text size="sm" num>−$8.05</Text>
+      </Row>
+    </RowCard>
+  </Stack>
+)
+
+function ConfirmOpen() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+  return (
+    <div ref={ref}>
+      <Confirm
+        title="Remove 2 items?"
+        body="Both items are removed immediately. This cannot be undone."
+        confirmLabel="Remove 2 items"
+        cancelLabel="Keep items"
+        onConfirm={() => {}}
+        details={confirmDetails}
+      >
+        <Button tone="orange" size="sm">Confirm dialog</Button>
+      </Confirm>
+    </div>
+  )
+}
+
+export const confirmDemos: Demo[] = [
+  { id: 'trigger', states: ['hover', 'focus'], render: () => (
+      <span data-subject>
+        <Confirm
+          title="Remove 2 items?"
+          body="Both items are removed immediately. This cannot be undone."
+          confirmLabel="Remove 2 items"
+          cancelLabel="Keep items"
+          onConfirm={() => {}}
+          details={confirmDetails}
+        >
+          <Button tone="orange" size="sm">Confirm dialog</Button>
+        </Confirm>
+      </span>
+    ) },
+  { id: 'open', render: () => <ConfirmOpen /> },
+]
+
+/* ---------------------------------------------------------------- Dialog */
+
+export const dialogDemos: Demo[] = [
+  { id: 'trigger', states: ['hover', 'focus'], render: () => (
+      <span data-subject>
+        <Dialog
+          trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+          title="Pick a fruit"
+          description="Dismisses on outside click — nothing here is destructive."
+        >
+          <Stack gap={2}>
+            <RowCard onClick={() => {}}><Text>Apple</Text></RowCard>
+            <RowCard onClick={() => {}}><Text>Banana</Text></RowCard>
+          </Stack>
+        </Dialog>
+      </span>
+    ) },
+  { id: 'open', render: () => (
+      <Dialog
+        open
+        onOpenChange={() => {}}
+        trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+        title="Pick a fruit"
+        description="Dismisses on outside click — nothing here is destructive."
+      >
+        <Stack gap={2}>
+          <RowCard onClick={() => {}}><Text>Apple</Text></RowCard>
+          <RowCard onClick={() => {}}><Text>Banana</Text></RowCard>
+        </Stack>
+      </Dialog>
+    ) },
+  { id: 'large', render: () => (
+      <Dialog
+        open
+        onOpenChange={() => {}}
+        size="lg"
+        trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+        title="A larger dialog"
+      >
+        <Text size="sm" muted>The size=&quot;lg&quot; variant.</Text>
+      </Dialog>
+    ) },
+]
+
+/* -------------------------------------------------------------- Combobox */
+
+const timezoneOptions = ['America/New_York', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney']
+
+function InteractiveCombobox({
+  initial,
+  options = timezoneOptions,
+  subject = false,
+}: {
+  initial: string
+  options?: string[]
+  subject?: boolean
+}) {
+  const [value, setValue] = useState(initial)
+  const field = (
+    <Field label={options.length ? 'Timezone' : 'Custom zone (no list offered)'}>
+      {(id, d) => (
+        <Combobox
+          id={id}
+          describedBy={d}
+          value={value}
+          onChange={setValue}
+          options={options}
+          error={options.length ? undefined : 'No presets — type an IANA name.'}
+          mono
+          placeholder={options.length ? 'Search a timezone…' : 'e.g. Europe/Paris…'}
+        />
+      )}
+    </Field>
+  )
+  return subject ? <span data-subject>{field}</span> : field
+}
+
+function ComboboxOpen() {
+  const ref = useRef<HTMLDivElement>(null)
+  useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+  return (
+    <div ref={ref}>
+      <Field label="Timezone">
+        {(id, d) => (
+          <Combobox id={id} describedBy={d} value="America/New_York" onChange={() => {}} options={timezoneOptions} mono placeholder="Search a timezone…" />
+        )}
+      </Field>
+    </div>
+  )
+}
+
+export const comboboxDemos: Demo[] = [
+  { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveCombobox initial="America/New_York" subject /> },
+  // The empty-list case is the contract, not a degradation: a field that offers
+  // no preset list must still let you type a value.
+  { id: 'no-options', render: () => <InteractiveCombobox initial="" options={[]} /> },
+  { id: 'open', render: () => <ComboboxOpen /> },
+]

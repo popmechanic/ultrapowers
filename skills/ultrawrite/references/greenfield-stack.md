@@ -104,9 +104,9 @@ verbs that are not sockets.
 
 A **stories-v1** plan does not scaffold with the generator: its launch base is
 `skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.ts`
-(plain DOM, `bun build`, one `AppStore` Durable Object with the SQLite
-persister). It is still a TinyApp; builders write one screen per piece and
-nothing else (state-probe runner spec, 2026-09-27).
+(a React 19 page, one `AppStore` Durable Object with the SQLite persister). It
+is still a TinyApp; builders write each piece's screen as a json-render spec and
+no page code, as `## Screens` says (operator, 2026-10-01).
 
 **Who is signed in** comes from Cloudflare Access, never from the app: the
 template's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
@@ -127,8 +127,8 @@ the store (operator, 2026-09-29). The template's `scripts/pack-client.ts`
 `wrangler deploy`, so there is no second host for the page. The Worker answers
 these routes and no others:
 
-- `/` — the page, public and read-only: it mounts only the `PUBLIC` pieces and
-  re-reads `/public.json` every 5 s instead of syncing.
+- `/` — the page, public and read-only: it mounts only the pieces whose spec
+  says `"public": true` and re-reads `/public.json` every 5 s instead of syncing.
 - `/public.json` — the saved snapshot of the store, read-only.
 - `/health` — `200` when the Worker is up; what a plan's Verify line reads.
 - `/staff` — the same page with every piece, its WebMCP tools and the sync.
@@ -139,11 +139,11 @@ these routes and no others:
 `/public.json` and `/health` public. The operator sets that Access application
 in the Cloudflare dashboard; no plan does, and no task writes Access config.
 
-A plan names the pieces a visitor may see in `PUBLIC`, exported from
-`client/src/pieces/index.ts` beside `PIECES`; a piece not in it is mounted only
-under `/staff`. A public piece renders on both, and hides its staff controls
-whenever `session.staff` is false — so the public page is the same screens with
-the write controls gone, not a second app.
+A plan marks a piece a visitor may see with `"public": true` in its spec,
+`client/src/pieces/<piece>.json`; a piece without it is mounted only under
+`/staff`. A public piece renders on both, and hides its staff controls with
+`visible` on `/session/staff` — so the public page is the same screens with the
+write controls gone, not a second app.
 
 A plan that publishes carries two header lines, verbatim:
 
@@ -159,36 +159,33 @@ it starts from, and the story checker runs every step under celld (radio-station
 workers_dev`). The Publish line runs once the plan's tasks have merged; the Verify
 line exits 0 only when the deployed Worker answers `/health`.
 
-## Styling (experiment, 2026-09-16)
+## Screens
 
-A TinyApp's styling is **Tailwind v4 + shadcn/ui installed by its CLI + `@shadcn/lint`**,
-signed by the operator on 2026-09-16 as an *experiment* on popmechanic/tinyapp-fixture
-(spec `2026-09-16-linted-design-system-experiment.md`, on the laptop), read over the next
-five fixture runs after the re-platform merges — no default until `n = 5 runs`. The trade
-is stated: more specificity in the stack, bought for a sensor nothing else in the fleet
-carries — presentation checked mechanically, with diagnostics the fix round converges on
-(shadcn-ui/lint's evals: zero findings in one round across 150+ agent task runs).
+A TinyApp's screens are built from **1st-Pouf**, not hand-written page code
+(operator, 2026-10-01; this replaces the 2026-09-16 Tailwind + shadcn styling
+experiment).
 
-- **The system.** `bunx --bun shadcn@latest init -d --yes` on the Vite client, then `add`
-  only the components the app uses; tokens in the client's `index.css` `@theme inline`
-  block; Tailwind v4 through `@tailwindcss/vite`. No hand-written CSS files. The tsconfig
-  alias is `paths: {"@/*": ["./src/*"]}` with **no `baseUrl`** (TypeScript 6 refuses it).
-- **The lint.** A root `lint:ui` script runs ESLint 9 with the six `@shadcn/lint` rules
-  (`no-restyle` allowing `layout`, `no-raw-colors`, `no-arbitrary-values`,
-  `no-inline-styles`, `no-unknown-classes`, `require-static-classes`) over the client's
-  source, with `components/ui/**` excluded from every rule — shadcn's own generated files
-  carry arbitrary values by design (8 of the probe's 15 baseline findings). Every TinyApp
-  plan carries `- Check: bun run lint:ui` in its Global Constraints, blocking; `(minor)`
-  on that line is the rollback inside the experiment.
-- **The exams.** Interactions select by role and accessible name
-  (`{click: {role, name}}`), never by a class: `no-unknown-classes` flags a semantic class
-  on a plain element too (7 of the 15). Views use tags and shadcn's `data-slot`
-  attributes. Every control has an accessible name; one the tree cannot name is a red exam.
-- **The reading.** Per task: `lint:ui` findings on the first `driver:check-run` (drift), and
-  whether the fix round reached exit 0 (correction). Keep when drift is non-zero on at
-  least one task per run and every task reaches zero in its one round; flat drift over the
-  window retires the section. **Rollback:** the fixture's CSS files as they stand at
-  `062aebf63e8f21290e7bd7348fa60ed7d76d6332`.
+- **The spec.** Each piece's screen is `client/src/pieces/<piece>.json`, a
+  json-render spec — `{root, elements}`, plus `"public": true` for a piece a
+  signed-out visitor sees on `/` — over the catalog in
+  `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
+  store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
+  React 19; a builder writes specs, not components.
+- **The writes.** Saved data changes only through card actions, run from an
+  element's `action` prop. `$bindState` and json-render's built-in state
+  actions write only under `/draft/`.
+- **The look.** 1st-Pouf (moji2002/1st-pouf, MIT, Copyright (c) 2026 Mojtaba
+  Beheshti) is vendored byte-identical at `client/src/pouf/` from commit
+  `1993b1ec9f2d93b6753929d1f70c89f8ef89b13e`, pinned by
+  `client/src/pouf.vendor.json`, and never patched. Tailwind v4 compiles its
+  theme at build through `bun-plugin-tailwind` in `scripts/build-client.ts`,
+  which `bun run pack` and the story checker both run. The font is
+  `@fontsource-variable/nunito`, bundled, so no font host is dialled.
+- **The check.** `bun factory/stack/tinyapp/screens.ts (--plan <plan.md> |
+  --bundle <dir>) [--copy <app>] [--piece <piece>]` checks every spec without a
+  browser (exit 0 pass, 1 finding, 2 could not run); the engine runs it as one
+  more fact of each piece's task, so a missing or miswired button is caught
+  there.
 
 ## The engine boundary
 

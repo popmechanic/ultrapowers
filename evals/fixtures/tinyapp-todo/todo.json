@@ -1,0 +1,119 @@
+{
+  "root": "todo",
+  "elements": {
+    "todo": {
+      "type": "Stack",
+      "props": {
+        "gap": 3
+      },
+      "children": [
+        "form",
+        "list"
+      ]
+    },
+    "form": {
+      "type": "Row",
+      "props": {
+        "gap": 2,
+        "align": "center"
+      },
+      "children": [
+        "new",
+        "add"
+      ]
+    },
+    "new": {
+      "type": "DraftInput",
+      "props": {
+        "label": "New todo",
+        "value": {
+          "$bindState": "/draft/text"
+        }
+      },
+      "children": []
+    },
+    "add": {
+      "type": "ActionButton",
+      "props": {
+        "label": "Add",
+        "action": "addTodo",
+        "args": {
+          "text": {
+            "$state": "/draft/text"
+          }
+        }
+      },
+      "on": {
+        "press": {
+          "action": "setState",
+          "params": {
+            "statePath": "/draft/text",
+            "value": ""
+          }
+        }
+      },
+      "children": []
+    },
+    "list": {
+      "type": "Stack",
+      "props": {
+        "gap": 2
+      },
+      "repeat": {
+        "statePath": "/tables/todos",
+        "key": "id"
+      },
+      "children": [
+        "row"
+      ]
+    },
+    "row": {
+      "type": "Row",
+      "props": {
+        "gap": 2,
+        "align": "center",
+        "justify": "between"
+      },
+      "children": [
+        "done",
+        "delete"
+      ]
+    },
+    "done": {
+      "type": "ActionCheckbox",
+      "props": {
+        "label": {
+          "$item": "text"
+        },
+        "checked": {
+          "$item": "completed"
+        },
+        "action": "completeTodo",
+        "args": {
+          "id": {
+            "$item": "id"
+          }
+        }
+      },
+      "children": []
+    },
+    "delete": {
+      "type": "ActionButton",
+      "props": {
+        "label": "Delete",
+        "name": {
+          "$template": "Delete ${text}"
+        },
+        "action": "deleteTodo",
+        "args": {
+          "id": {
+            "$item": "id"
+          }
+        },
+        "variant": "quiet",
+        "size": "sm"
+      },
+      "children": []
+    }
+  }
+}

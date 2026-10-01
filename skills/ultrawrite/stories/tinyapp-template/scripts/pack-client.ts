@@ -37,13 +37,13 @@ const walk = (dir: string): string[] =>
 
 const outdir = mkdtempSync(join(tmpdir(), 'tinyapp-pack-'));
 try {
-  const build = Bun.spawnSync(['bun', 'build', './client/index.html', '--outdir', outdir, '--minify'], {
+  const build = Bun.spawnSync(['bun', 'scripts/build-client.ts', outdir, '--minify'], {
     cwd: ROOT,
     stdout: 'inherit',
     stderr: 'inherit',
   });
   if (build.exitCode !== 0) {
-    console.error('PACK FAILED: bun build exited ' + build.exitCode);
+    console.error('PACK FAILED: build-client exited ' + build.exitCode);
     process.exit(1);
   }
 

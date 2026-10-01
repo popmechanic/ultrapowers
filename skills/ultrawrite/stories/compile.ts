@@ -95,7 +95,9 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   return out;
 }
 
-export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[]): string {
+// screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
+// spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
+export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true): string {
   const {page, cards} = b;
   const sentences = new Map(page.stories.map((s) => [s.id, s.sentence]));
   const out = [`# ${page.title}`, '',
@@ -122,8 +124,12 @@ export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: 
     out.push('', `### Task ${i + 1}: The ${c.piece} piece`, '',
       `**Piece:** ${c.piece}`,
       `**Depends-on-pieces:** ${(c.depends_on ?? []).join(', ') || 'none'}`,
-      '**Files:**', `- Create: \`client/src/pieces/${c.piece}.ts\``,
-      `**Purpose:** ${c.purpose}`, '**Actions:**');
+      '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+      `**Purpose:** ${c.purpose}`,
+      ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
+        + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
+        + ' and `$bindState` writes only under `/draft/`.'] : []),
+      '**Actions:**');
     for (const a of c.actions) {
       out.push(`- \`${a.name}\` — ${a.description}${a.refuses?.length ? '; refuses: ' + a.refuses.join('; ') : ''}`);
     }
@@ -169,7 +175,7 @@ async function main(): Promise<number> {
   const guards = older.filter((l) => l.plan !== planId);
   try {
     mine = probesOf(b, (await import(storeDst)) as StoreModule);
-    text = compilePlan(b, planId, mine, guards);
+    text = compilePlan(b, planId, mine, guards, existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')));
   } catch (e) {
     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
     if (kept) writeFileSync(storeDst, kept);

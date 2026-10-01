@@ -16,14 +16,22 @@ const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 export const checkerArgv = (planPath, clause) =>
   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 
+// A task that writes its piece's json-render screen also runs the browser-free screens check,
+// last and with no clause (the engine pairs facts[i] with clauses[i]).
+const SCREENS = join(REPO, 'factory', 'stack', 'tinyapp', 'screens.ts');
+export const screensArgv = (planPath, piece) =>
+  ['bun', SCREENS, '--plan', planPath, '--piece', piece, '--copy', '.'];
+
 function storiesWorkload (parsed, planPath) {
   const abs = resolve(planPath);
   const tasks = parsed.tasks.map((t) => {
     if (!t.probes.length) throw new Error(`plan task ${t.id} (${t.piece}) has no probes: a task with nothing to check cannot finish`);
+    const files = t.files || [];
+    const screens = t.piece && files.includes(`client/src/pieces/${t.piece}.json`) ? [screensArgv(abs, t.piece)] : [];
     return {
-      id: t.id, title: t.title, body: t.body ?? '', files: t.files || [],
+      id: t.id, title: t.title, body: t.body ?? '', files,
       depends_on: t.depends_on || [],
-      facts: t.probes.map((p) => checkerArgv(abs, p.clause)),
+      facts: [...t.probes.map((p) => checkerArgv(abs, p.clause)), ...screens],
       clauses: t.probes.map((p) => p.clause),
     };
   });

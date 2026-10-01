@@ -22,16 +22,16 @@ TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
 
 # (case, screen, server, clause, extra env, plan edit, expected exit, expected stage)
 CASES = [
-    ("good app, S1.1", "todo.ts", None, "S1.1", {}, None, 0, "ok"),
-    ("good app, S2.2", "todo.ts", None, "S2.2", {}, None, 0, "ok"),
-    ("good app, S3.1", "todo.ts", None, "S3.1", {}, None, 0, "ok"),
-    ("good app, S4.2", "todo.ts", None, "S4.2", {}, None, 0, "ok"),
+    ("good app, S1.1", "todo.json", None, "S1.1", {}, None, 0, "ok"),
+    ("good app, S2.2", "todo.json", None, "S2.2", {}, None, 0, "ok"),
+    ("good app, S3.1", "todo.json", None, "S3.1", {}, None, 0, "ok"),
+    ("good app, S4.2", "todo.json", None, "S4.2", {}, None, 0, "ok"),
     ("starting app (nothing built)", None, None, "S1.1", {}, None, 1, "do"),
-    ("Add button does nothing", "todo_add_noop.ts", None, "S1.1", {}, None, 1, "after"),
-    ("wrong text on screen", "todo_wrong_text.ts", None, "S1.1", {}, None, 1, "see"),
-    ("server never saves", "todo.ts", "server_no_persister.ts", "S1.1", {}, None, 1, "saved"),
-    ("hollow step", "todo.ts", None, "S1.1", {}, "hollow", 1, "before"),
-    ("no browser", "todo.ts", None, "S1.1", {"TINYAPP_BROWSER": "/nonexistent"}, None, 2, "env"),
+    ("Add button does nothing", "todo_add_noop.json", None, "S1.1", {}, None, 1, "after"),
+    ("wrong text on screen", "todo_wrong_text.json", None, "S1.1", {}, None, 1, "see"),
+    ("server never saves", "todo.json", "server_no_persister.ts", "S1.1", {}, None, 1, "saved"),
+    ("hollow step", "todo.json", None, "S1.1", {}, "hollow", 1, "before"),
+    ("no browser", "todo.json", None, "S1.1", {"TINYAPP_BROWSER": "/nonexistent"}, None, 2, "env"),
 ]
 
 
@@ -50,7 +50,7 @@ def make_copy(base, dst, screen, server, edit):
     shutil.copytree(base, dst, ignore=shutil.ignore_patterns("node_modules"))
     os.symlink(os.path.join(base, "node_modules"), os.path.join(dst, "node_modules"))
     if screen:
-        shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/pieces/todo.ts"))
+        shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/pieces/todo.json"))
     if server:
         shutil.copyfile(os.path.join(FIX, server), os.path.join(dst, "server/index.ts"))
     if edit == "hollow":

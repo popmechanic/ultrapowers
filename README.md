@@ -162,6 +162,14 @@ leaves behind survives it except the evidence it pushed.
 None of this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
 dependency graphs, clean clones, content merges, disposable sandboxes — each doing one small job well.
 
+## TinyApp screens
+
+A TinyApp's screens come out in the look of [1st-Pouf](https://github.com/moji2002/1st-pouf), a
+small open-source component set by Mojtaba Beheshti, used here under its MIT licence and kept
+exactly as its author published it. Nobody writes page code for a screen: each one is a short
+description of which pieces it shows and which action each button runs. The run checks every
+screen itself and catches a button that is missing or wired to the wrong action before you see it.
+
 ## Get started
 
 Four steps, once each. All of it happens inside Claude Code: the agent does the work and asks you to
