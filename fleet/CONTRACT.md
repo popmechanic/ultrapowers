@@ -265,7 +265,7 @@ evidence repository.
      up);
   2. install the toolchain: node 24.20.0, bun 1.4.2 — and no kata: a sandbox runs none, the engine
      writing the hub directly (#1390) —
-     celld 0.5.0 (the one `.gz` asset from
+     celld 0.6.1 (the one `.gz` asset from
      `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records
      beside bun's version — `CELLD_SHA256` in `fleet/setup-script.mjs`, since the release carries no
      sums file and `gh attestation verify` needs a token the sandbox does not hold — then decompressed

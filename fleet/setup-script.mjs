@@ -30,16 +30,17 @@ export const SETUP_SCRIPT_MAX_BYTES = 10240
 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
 export const NODE_VERSION = '24.20.0'
 export const BUN_VERSION = '1.4.2'
-export const CELLD_VERSION = '0.5.0'
+export const CELLD_VERSION = '0.6.1'
 /**
  * The digest of celld's one x86_64 Linux asset, read on the laptop at the bump
- * (`shasum -a 256`, 2026-09-17) and measured again on an exe VM the same day.
+ * (`shasum -a 256`, 2026-10-01, equal to the digest the release page lists);
+ * the VM's own `sha256sum -c` at first boot is what refuses a mismatch.
  * A literal and not a sums file because the release carries neither: it ships
  * the three `.gz` assets and nothing else, and the attestation check needs a
  * token this sandbox deliberately does not hold — so the record is here, beside
  * bun's version, and it moves only when a human bumps CELLD_VERSION.
  */
-export const CELLD_SHA256 = '1039eee3737bb432ca0cd399fc55cc0aab4e653b2beae26009e455fea4e5334c'
+export const CELLD_SHA256 = '79a8253cff5d4e8a4a9f7a2611e393390f7fe9025f00e88467875b007c44866b'
 
 const NODE_TARBALL = `node-v${NODE_VERSION}-linux-x64.tar.xz`
 const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}`
