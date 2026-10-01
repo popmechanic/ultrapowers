@@ -70,7 +70,7 @@ export function checkProduct(p: unknown): string[] {
   const i = o.intent ?? {};
   for (const k of extra(i, ['name', 'kind', 'audience', 'summary', 'success'])) errs.push(`intent: unknown field ${k}`);
   if (!isStr(i.name)) errs.push('intent: name must be the product\'s name');
-  if (!KINDS.includes(i.kind)) errs.push('intent: kind must be behaviour, preserve or look');
+  if (!KINDS.includes(i.kind)) errs.push('intent: kind must be behaviour or preserve');
   if (!strs(i.audience) || !i.audience.length) errs.push('intent: audience must name who uses it');
   if (!strs(i.summary) || i.summary.length !== 3) errs.push('intent: summary must be three sentences');
   if (!strs(i.success) || !i.success.length) errs.push('intent: success must say what would make it a success');

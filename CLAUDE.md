@@ -29,6 +29,8 @@ python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a
 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
 bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
 bun skills/ultrawrite/stories/product.ts check|render|record <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks
+bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <p>] [--pick <V> | --reshape --note <text>…]   # Jev arranges each piece's screen (versions A–C into <bundle>/screens/), a pick, or a reshape from notes
+bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]   # the real screen for the Browser pane, redrawn as specs change; Comment mode notes go to .ultrapowers/feedback.jsonl
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
@@ -52,7 +54,9 @@ the engine's exit code is the merge decision.
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
   `stories/` (story planning for TinyApps in TypeScript: bundle loader, code and Jev
-  checks, the compiler to `stories-v1`, the scaffold, the operator notebook, and the
+  checks, the compiler to `stories-v1`, the scaffold, the operator notebook, the screen
+  arranger and the preview, json-render's composer vendored at `stories/vendor/json-render/`
+  (Apache-2.0, never patched), and the
   TinyApp template: React, json-render screens over 1st-Pouf vendored at
   `tinyapp-template/client/src/pouf/`, never patched, like `vendor/manyana.py`), `catalog/`
   (ready pieces; `todo` first). The sandbox-facing half is
@@ -192,8 +196,9 @@ the engine's exit code is the merge decision.
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
   same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
-  (`skills/ultrawrite/stories/jev_checks.ts`, key in `~/.ultrapowers/typesafe.env`) — for
-  judgments over prose, never generation or facts.
+  (`skills/ultrawrite/stories/jev_checks.ts` and `skills/ultrawrite/stories/arrange.ts`, key
+  in `~/.ultrapowers/typesafe.env`) — for judgments over prose, never generation or facts
+  (Jev choosing and placing a screen's pieces is a judgment, never generation).
 - **Never force-rotate the Claude token while a run is live.** A refresh revokes the old
   access token at once and every in-flight run dies with `401 OAuth access token has been
   revoked`. While `ssh exe.dev ls` lists a `fleet-r*` VM the token is `not rotated` — by a

@@ -95,6 +95,10 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   return out;
 }
 
+// The screen the operator approved for a piece while planning, committed with the bundle.
+const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
+const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
+
 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true): string {
@@ -128,7 +132,8 @@ export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: 
       `**Purpose:** ${c.purpose}`,
       ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
         + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
-        + ' and `$bindState` writes only under `/draft/`.'] : []),
+        + ' and `$bindState` writes only under `/draft/`.'
+        + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')] : []),
       '**Actions:**');
     for (const a of c.actions) {
       out.push(`- \`${a.name}\` — ${a.description}${a.refuses?.length ? '; refuses: ' + a.refuses.join('; ') : ''}`);
@@ -185,6 +190,13 @@ async function main(): Promise<number> {
   }
   mkdirSync(dirname(resolve(v.out)), {recursive: true});
   writeFileSync(v.out, text);
+  // Each approved screen becomes the builder's starting spec for its piece.
+  for (const c of b.cards) {
+    if (!approved(b, c.piece)) continue;
+    const dst = join(app, 'client', 'src', 'pieces', `${c.piece}.json`);
+    mkdirSync(dirname(dst), {recursive: true});
+    copyFileSync(approvedPath(b, c.piece), dst);
+  }
   const sentences = new Map(b.page.stories.map((s) => [s.id, s.sentence]));
   const lines: Line[] = [...guards, ...mine.map((m) => ({
     plan: planId, signed: v.date!, story: `${planId}/${m.story}`, step: m.step,

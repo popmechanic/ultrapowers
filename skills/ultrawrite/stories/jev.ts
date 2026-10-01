@@ -51,3 +51,32 @@ export function noul(answers: Record<string, unknown> | null, k: string): number
   const v = typeof a === 'number' ? a : (a as {noul?: unknown} | undefined)?.noul;
   return typeof v === 'number' ? v : null;
 }
+
+// A Choice question's answer as {choice, confidence?}, or null when it carries no string choice.
+export function choice(answers: Record<string, unknown> | null, k: string): {choice: string; confidence?: number} | null {
+  const a = answers?.[k] as {choice?: unknown; confidence?: unknown} | undefined;
+  if (!a || typeof a !== 'object' || typeof a.choice !== 'string') return null;
+  return typeof a.confidence === 'number' ? {choice: a.choice, confidence: a.confidence} : {choice: a.choice};
+}
+
+type ComposeRequest = {
+  state: Record<string, unknown>;
+  questions: Record<string, {type: 'choice'; instructions: string; criteria: Record<string, string>}>;
+  signal: AbortSignal;
+};
+
+// json-render's composer evaluator: one ask, every question mapped to {choice, confidence?}. A null
+// reply or a question left without a choice throws, so the composer stops; nothing is retried.
+export function composeEvaluator(ask: Ask = defaultAsk) {
+  return async (request: ComposeRequest): Promise<{answers: Record<string, {choice: string; confidence?: number}>}> => {
+    const reply = await ask(request.state, request.questions);
+    if (!reply) throw new Error('jev: no answer');
+    const answers: Record<string, {choice: string; confidence?: number}> = {};
+    for (const k of Object.keys(request.questions)) {
+      const c = choice(reply, k);
+      if (!c) throw new Error(`jev: no choice for ${k}`);
+      answers[k] = c;
+    }
+    return {answers};
+  };
+}

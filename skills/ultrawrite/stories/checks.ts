@@ -12,7 +12,7 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
   const {page, cards} = b;
   const refusals: string[] = [];
   const facts: string[] = [];
-  if (!KINDS.includes(page.kind)) refusals.push('page: kind must be behaviour, preserve or look');
+  if (!KINDS.includes(page.kind)) refusals.push('page: kind must be behaviour or preserve');
   if (!(Array.isArray(page.summary) && page.summary.length === 3
         && page.summary.every((s) => typeof s === 'string' && s.trim() !== ''))) {
     refusals.push('page: summary must be three sentences');

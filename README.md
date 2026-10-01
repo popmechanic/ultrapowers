@@ -170,6 +170,14 @@ exactly as its author published it. Nobody writes page code for a screen: each o
 description of which pieces it shows and which action each button runs. The run checks every
 screen itself and catches a button that is missing or wired to the wrong action before you see it.
 
+## See it before you sign
+
+While a TinyApp is being planned, you see its real screen in Claude's Browser pane, not a
+mock-up. Jev offers two or three arrangements of it, built only from what the app can actually
+do, and you pick the one you like. Then you pin notes on any part of it in Comment mode — click
+a button or drag a box around an area and say what should change — and watch each story play
+out on it. What you sign is the screen the fleet starts building from.
+
 ## Get started
 
 Four steps, once each. All of it happens inside Claude Code: the agent does the work and asks you to
