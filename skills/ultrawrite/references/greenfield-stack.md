@@ -92,8 +92,8 @@ never write one store, and the client's `WsSynchronizer` dials `/sync/<module>`
 for the module it reads.
 
 A Durable Object **Facet** is not that shape while celld cannot carry a facet's
-WebSocket. celld runs facets (`ctx.facets`, since 0.5.0; each with its own SQLite
-file since 0.6.0), and a facet answers a plain request. But on celld 0.6.1 the
+WebSocket. celld runs facets (`ctx.facets`, on 0.5.0 and later; each with its own
+SQLite file since 0.6.0), and a facet answers a plain request. But on celld 0.6.1 the
 `101` a facet returns still reaches the client without its upgrade (`Missing
 upgrade header`), both for a facet started from a loaded Worker and for one
 started from the app's own class through `ctx.exports`, while a named Durable

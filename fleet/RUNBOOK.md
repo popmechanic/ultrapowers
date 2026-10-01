@@ -783,6 +783,10 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 **The sandbox's runtime.** (celld 0.5.0, measured on fleet-counsel, 2026-09-17,
 an exe VM with 2 vCPU / 4 GB)
 
+Installed since #1492: celld 0.6.1 (2026-10-01). The readings below are 0.5.0's and
+are not re-read on 0.6.1; re-measure them on the first 0.6.1 VM, teardown first,
+since `factory/stack/tinyapp/celld.ts` waits on it.
+
 - celld's memory thresholds read root cgroup paths an exe VM does not have:
   `/sys/fs/cgroup/memory.max`, `/sys/fs/cgroup/memory.current` and the v1 path,
   none of which exist in the initial cgroup namespace, so it falls back to
