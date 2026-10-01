@@ -11,11 +11,13 @@ import {basename, dirname, join, resolve} from 'node:path';
 import {launchBrowser, type Browser, type Page} from './browser';
 import {startCelld, EnvError, type Celld} from './celld';
 import {Aliases, failing, hollow, probeFromPlan, type Content, type Probe, type ToolCall, type UiStep} from './probe';
+import {stepDiff, type DiffEntry} from './diff';
 
 type Stage = 'ok' | 'build' | 'load' | 'given' | 'before' | 'do' | 'after' | 'see' | 'saved' | 'env';
 type Result = {
   clause: string; exit: 0 | 1 | 2; stage: Stage; message: string; did: unknown[];
   before?: Content; after?: Content; saved?: Content; screen_text?: string;
+  diff?: DiffEntry[];
 };
 
 class Finding extends Error {
@@ -189,6 +191,7 @@ async function run(probe: Probe): Promise<Result> {
   };
   const after = await settle(page, 3000);
   ctx.after = after.now;
+  ctx.diff = stepDiff(ctx.before, ctx.after);
   if (after.bad.length) throw new Finding('after', 'after the step: ' + after.bad.join('; '));
 
   for (const s of probe.see ?? []) {

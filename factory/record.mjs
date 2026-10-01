@@ -283,6 +283,27 @@ function looseEndsLines (events) {
   return out
 }
 
+/** The `### What each step changed` section over the `step:receipt` rows: the heading, an empty
+ *  line, then one line per row in file order naming each diff entry, `no change` for an empty
+ *  diff and a trailing `; and more not shown` when truncated. No such row adds nothing. */
+function stepReceiptLines (events) {
+  const receipts = events.filter((r) => r && r.kind === 'step:receipt')
+  if (!receipts.length) return []
+  const out = ['### What each step changed', '']
+  for (const r of receipts) {
+    const parts = (Array.isArray(r.diff) ? r.diff : []).filter((d) => d && typeof d === 'object').map((d) => {
+      const path = d.tbl === '$values' ? `values.${d.cell}` : `${d.tbl}/${d.row}/${d.cell}`
+      if (d.diff_type === 'added') return `added ${path} = ${d.to}`
+      if (d.diff_type === 'removed') return `removed ${path} (was ${d.from})`
+      return `changed ${path} ${d.from} \u2192 ${d.to}`
+    })
+    let changes = parts.length ? parts.join('; ') : 'no change'
+    if (r.truncated === true) changes += '; and more not shown'
+    out.push(`- ${r.clause} (exit ${r.exit}): ${changes}`)
+  }
+  return out
+}
+
 /** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
  *  empty line, the receipt, an empty line, the closes; every line, including
  *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
@@ -310,6 +331,9 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const readings = jevStepLines(events)
   for (const line of readings) out += line + '\n'
   if (readings.length) out += '\n'
+  const changes = stepReceiptLines(events)
+  for (const line of changes) out += line + '\n'
+  if (changes.length) out += '\n'
   for (const line of closes) out += line + '\n'
   return out
 }

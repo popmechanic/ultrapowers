@@ -37,6 +37,7 @@ import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, ka
 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
+import { stepReceipts } from './step_receipts.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
 
@@ -1088,6 +1089,8 @@ async function spawner () {
 await Promise.all([spawner(), settle()])
 await Promise.all(loops)
 await edgeChain
+// every step's receipt, green or red: what its latest checker result says it changed
+for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
