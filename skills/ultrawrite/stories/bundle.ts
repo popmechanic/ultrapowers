@@ -6,8 +6,8 @@ import {join, resolve} from 'node:path';
 import type {See, UiStep} from '../../../factory/stack/tinyapp/probe';
 import type {Product} from './product';
 
-// preserve and look are the declared shape for the Numbers checker still owed; nothing reads them yet.
-export const KINDS = ['behaviour', 'preserve', 'look'];
+// preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
+export const KINDS = ['behaviour', 'preserve'];
 export type Step = {
   tool: string;
   args?: Record<string, unknown>;

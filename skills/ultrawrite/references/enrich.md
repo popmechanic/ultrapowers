@@ -82,10 +82,19 @@ question: "We build X first, then Y, then Z, because …; start with X?" Mark th
 chosen one `next`, the rest `planned`. `bun skills/ultrawrite/stories/product.ts
 check <bundle>/product.json` must print `PRODUCT OK`.
 
+## How it looks
+
+"How it looks", the third of the operator's three decisions, is never asked in
+words during enrichment. It is answered on the real screen: Jev arranges each
+piece's screen into versions (`bun skills/ultrawrite/stories/arrange.ts`), the
+operator picks one in the Browser pane and pins notes on it in Comment mode
+(SKILL.md, Story planning, the See it step).
+
 ## Then
 
-Draft the bundle for the `next` plan only (SKILL.md, Story planning, steps 5–8):
+Draft the bundle for the `next` plan only (SKILL.md, Story planning, steps 4–8):
 cards carry `concept`, `page.json` carries `subproject`, and the coverage rule
-decides which stories must exist. What the operator signs is
+decides which stories must exist. The operator sees the real screen before the
+sign question. What the operator signs is
 `bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`,
-shown in the sign question.
+shown in the sign question with the approved screen.

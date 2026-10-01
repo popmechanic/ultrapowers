@@ -1,0 +1,19 @@
+{
+  "repo": "https://github.com/vercel-labs/json-render",
+  "sha": "3709614de0b694ef280ef258b77c1e75fe152c50",
+  "path": "packages/core/src",
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2025 Vercel Inc.",
+  "files": {
+    "LICENSE": "014bb31e83d5c2e76aea1cc6e82217346ab41362f32cb355ad0f5c10aa0aeaff",
+    "actions.ts": "f16366660a1700c56ca3ecdf859581d8186381a9a5aec44c0afff67e5c10a1c5",
+    "directives.ts": "1709d38449811be1c3a471e3f0842a335131f528a8fe4bc03ee6491b0359a94b",
+    "experimental-compose.ts": "222fa15c4e1f9525c6ae3a803d8fcfe055f6b3aaf02217a463f1cd2daec2a1ed",
+    "experimental-composition-batch.ts": "95e5f18608985e3a62d981f35418d2dd2026dd435437cd7131dc53a4b7048070",
+    "experimental-composition-tree.ts": "769dde1aef61424faf4d9b8195a498bfcd38b90f60b954e05763fd280eef2f80",
+    "props.ts": "fa2b83993cab4a53971c0237de0fddb83571c7d3e7c757855e25e3c3caba8ecf",
+    "spec-validator.ts": "22fe8d3426848893ba67085fd40770c1b304239390aeb184a6167fc944c52c9c",
+    "types.ts": "1e8917034e15b0d10ec6db7cafb1eb42aafe3f50247e56e9534d72fb9cdf45e0",
+    "visibility.ts": "26dd54a3a6f6878fbe6d355c07cbb7ddd0bd18e2e3c3b6708e13c7ad9e78bf7e"
+  }
+}

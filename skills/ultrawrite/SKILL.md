@@ -77,9 +77,10 @@ well as tickets, which is why scraping it was rejected.
 A TinyApp plan is not written; it is compiled from a bundle the author drafts
 after enriching the ask with the operator, who then signs it in one question. Specs:
 `docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md` and
-`docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`. There is no
-preview and no UI to build: the operator agrees to sentences before the run and
-judges the real app after it.
+`docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`. Before signing,
+the operator sees each piece's real screen, picks one of Jev's versions of it,
+pins notes on it, and watches each story play on it; the real app is judged
+again at the PR smoke.
 
 1. **Read the notebook first:** `bun skills/ultrawrite/stories/notebook.ts show`.
    Use its words; avoid its failed ones.
@@ -115,17 +116,50 @@ judges the real app after it.
    - Fix every code refusal.
    - Act on every `JEV flag` yourself.
    - `DOUBT:` lines (at most three, highest first) go into the sign question.
-7. **Touch 1, sign:** render `product.md`
+7. **See it — the real screen, before signing:**
+   1. Scaffold into a scratch app and `bun install` there:
+      `bun skills/ultrawrite/stories/scaffold.ts <bundle> <scratch>/app`.
+   2. `bun skills/ultrawrite/stories/arrange.ts <bundle> --app <scratch>/app` has
+      Jev arrange each piece's screen into versions A, B and C at
+      `<bundle>/screens/<piece>.<V>.json`. Jev only chooses and places the
+      bundle's own controls and text (under a second per run on the todo bundle,
+      n=5 runs, 2026-10-01).
+   3. Start `bun skills/ultrawrite/stories/preview.ts <bundle> --app <scratch>/app`
+      in the background from the session's working directory and open the URL its
+      first line prints in the Browser pane. Its `/compare` page shows the
+      versions side by side, each with a Choose button.
+   4. When the intent tray is installed, call its `show_screen` tool
+      (`mcp__ultrapowers__show_screen`, `name` the app's title, `versions` the
+      letters) so the operator picks and sends notes from the tray; otherwise ask
+      the pick as one AskUserQuestion with a screenshot of `/compare`.
+   5. Record the pick with `arrange.ts <bundle> --app <scratch>/app --piece <p> --pick <V>`:
+      it writes the approved screen, `<bundle>/screens/<piece>.json`, and the
+      page redraws in place.
+   6. The operator pins notes in Comment mode: a floating Comment button; click
+      one element or drag a box, type a note, and a numbered pin stays (About
+      this view covers the whole screen). Notes reach
+      `.ultrapowers/feedback.jsonl` and the tray. Apply them with
+      `arrange.ts <bundle> --app <scratch>/app --piece <p> --reshape --note '<target>: <note>' …`.
+      A note the composer cannot satisfy is yours to apply by hand to the spec;
+      then `bun factory/stack/tinyapp/screens.ts --bundle <bundle> --copy <scratch>/app`
+      re-checks it.
+   7. Play each story on the approved screen while the operator watches:
+      `curl -s 'http://127.0.0.1:<port>/play?story=<id>'` answers
+      `{"story","ok","misses"}`. Fix a miss before signing.
+
+   Compile later copies each approved screen into the app as the builder's
+   starting spec.
+8. **Touch 1, sign:** render `product.md`
    (`bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`)
    and ask one AskUserQuestion call:
    - The first question is this plan's stories as numbered sentences, with the
-     product's first line and the build order. Its options are *Sign (Recommended)*,
-     *Fix a line* and *Please explain*.
+     product's first line, the build order and the approved screen. Its options
+     are *Sign (Recommended)*, *Fix a line* and *Please explain*.
    - Up to three more questions come from the `DOUBT:` lines, each a concrete
      product choice.
 
    A fixed line is the new sentence. Re-ask only if a check changed.
-8. **Make the target app:**
+9. **Make the target app:**
    1. `bun skills/ultrawrite/stories/scaffold.ts <bundle> <checkout>`
    2. `bun install` in the checkout
    3. Compile: `bun skills/ultrawrite/stories/compile.ts <bundle> --app <checkout>
@@ -133,10 +167,10 @@ judges the real app after it.
       Compile also writes `stories/product.json` and `.ultrapowers/product.md`.
    4. `python3 skills/ultrapowers/scripts/plan_check.py --base <sha>
       <checkout>/.ultrapowers/plan.md` to `PLAN OK`
-9. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
-   and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
-   same product".
-10. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
+10. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
+    and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
+    same product".
+11. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
     `notebook.ts log <plan-id> --rounds … --explains … --fixes …`.
 
 ## Task shape — pinned to what the parser actually reads

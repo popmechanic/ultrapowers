@@ -1,0 +1,137 @@
+@import '../../client/src/app.css';
+
+/* The preview's own chrome: plain CSS, not Tailwind classes. */
+.preview-compare {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+  padding: 16px;
+}
+.preview-compare > section[data-version] {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 12px;
+  border: 1px dashed rgba(58, 46, 92, 0.35);
+  border-radius: 12px;
+}
+.preview-version-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  font-weight: 700;
+}
+.preview-choose {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(58, 46, 92, 0.5);
+  background: #fff;
+  cursor: pointer;
+}
+.preview-single > section[data-piece] {
+  padding: 16px;
+}
+
+/* Comment mode: the floating bar, hover outline and label, drag box, note form and pins. */
+.preview-comment-bar {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(58, 46, 92, 0.2);
+}
+.preview-comment-button {
+  font: inherit;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(58, 46, 92, 0.5);
+  background: #fff;
+  cursor: pointer;
+}
+.preview-comment-button[aria-pressed='true'] {
+  background: #3a2e5c;
+  color: #fff;
+}
+.preview-commenting #app {
+  cursor: crosshair;
+}
+.preview-comment-outline,
+.preview-comment-drag {
+  position: fixed;
+  z-index: 999;
+  pointer-events: none;
+  border: 2px solid #e0567a;
+  border-radius: 4px;
+  box-sizing: border-box;
+}
+.preview-comment-drag {
+  border-style: dashed;
+  background: rgba(224, 86, 122, 0.08);
+}
+.preview-comment-tip {
+  position: fixed;
+  z-index: 1000;
+  pointer-events: none;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #3a2e5c;
+  color: #fff;
+  font: 12px/1.6 ui-monospace, monospace;
+  white-space: nowrap;
+}
+.preview-comment-outline[hidden],
+.preview-comment-tip[hidden],
+.preview-comment-drag[hidden] {
+  display: none;
+}
+.preview-comment-form {
+  position: fixed;
+  z-index: 1001;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 16px rgba(58, 46, 92, 0.25);
+}
+.preview-comment-form-view {
+  right: 16px;
+  bottom: 64px;
+}
+.preview-comment-form-target {
+  font: 12px/1.4 ui-monospace, monospace;
+  color: rgba(58, 46, 92, 0.8);
+}
+.preview-comment-note {
+  font: inherit;
+  resize: vertical;
+  padding: 6px;
+  border: 1px solid rgba(58, 46, 92, 0.4);
+  border-radius: 6px;
+}
+.preview-comment-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.preview-comment-pin {
+  position: absolute;
+  z-index: 998;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e0567a;
+  color: #fff;
+  font: 700 12px/22px sans-serif;
+  text-align: center;
+}

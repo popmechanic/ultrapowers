@@ -13,8 +13,8 @@ class StoriesRefusal(Exception):
     pass
 
 
-# preserve and look are the declared shape for the Numbers checker still owed; nothing reads them yet.
-KINDS = ("behaviour", "preserve", "look")
+# preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
+KINDS = ("behaviour", "preserve")
 STACKS = ("tinyapp",)
 HEADER_RE = re.compile(r'^\*\*([A-Za-z-]+):\*\*\s*(.*)$')
 TASK_RE = re.compile(r'^### Task (\d+):\s*(.+)$')
@@ -124,7 +124,7 @@ def parse_stories_text(text):
     if head.get("stack") not in STACKS:
         raise StoriesRefusal("grammar: Stack %s is not one this plugin knows" % head.get("stack"))
     if head.get("kind") not in KINDS:
-        raise StoriesRefusal("grammar: Kind must be behaviour, preserve or look")
+        raise StoriesRefusal("grammar: Kind must be behaviour or preserve")
     if not head.get("plan-id"):
         raise StoriesRefusal("grammar: **Plan-id:** is missing")
     sm = STORE_RE.match(head.get("store", ""))

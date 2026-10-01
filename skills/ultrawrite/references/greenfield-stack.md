@@ -171,6 +171,9 @@ experiment).
   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
   React 19; a builder writes specs, not components.
+- **Where a spec starts.** A piece's spec starts as the screen the operator
+  approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
+  in), else the scaffold's empty column; the builder edits it from there.
 - **The writes.** Saved data changes only through card actions, run from an
   element's `action` prop. `$bindState` and json-render's built-in state
   actions write only under `/draft/`.

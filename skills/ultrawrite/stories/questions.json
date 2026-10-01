@@ -365,6 +365,26 @@
           }
         }
       }
+    },
+    "authoring_arrange": {
+      "when": "At arrange.ts, once per card and version while a plan is drafted, and once per reshape from the notes pinned on an approved screen",
+      "reader": "skills/ultrawrite/stories/arrange.ts",
+      "rollback": "flag off: the builder writes each screen from the stories alone",
+      "state": [
+        "user_request",
+        "context",
+        "capabilities",
+        "already_built",
+        "selected_elements"
+      ],
+      "provenance": "operator decisions 2026-10-01",
+      "calibrated": false,
+      "guidance": "Use only the controls and text offered; every control the stories name belongs on the screen.",
+      "versions": {
+        "A": "A single calm column: what it is at the top, then the controls, then any list.",
+        "B": "Everything grouped in one card, each text box side by side with its button.",
+        "C": "Lists first and largest, the controls that add to them below."
+      }
     }
   }
 }
