@@ -211,21 +211,18 @@ export function register(on) {
       notes = Array.isArray(saved.notes) ? saved.notes : [];
       taken = Number(saved.taken) || 0;
     }
-    await $.command.register({
-      name: "tray",
-      description: "Open the intent tray",
-      run: () => openTray($),
-    });
+    await $.command.register({ name: "tray", description: "Open the intent tray", immediate: true });
     await $.command.register({
       name: "note",
       description: "Add a note to the intent tray: /note <element>: <note>, or /note <note>",
-      run: (args) => addNote($, typeof args === "string" ? args : args && (args.args ?? args.text)),
+      argumentHint: "[element: note]",
+      immediate: true,
     });
     await $.tool.register({
       name: "show_screen",
       description:
         "Show the operator a screen in the intent tray so they can pick a version and add notes; then wait for their feedback.",
-      input: {
+      inputSchema: {
         type: "object",
         properties: {
           name: { type: "string", description: "Name of the screen" },
@@ -237,6 +234,20 @@ export function register(on) {
     });
     $.clock.every(1000, () => readFeedback($));
     return next(e);
+  });
+
+  // A registered command is answered by a command.run hook; CommandSpec has no callback field.
+  on("command.run", { command: "tray" }, async ($) => {
+    await openTray($);
+    return {};
+  });
+
+  on("command.run", { command: "note" }, async ($, e) => {
+    const before = notes.length;
+    await addNote($, e.args);
+    return notes.length > before
+      ? { text: `Added to the intent tray (${notes.length} ${notes.length === 1 ? "note" : "notes"})` }
+      : { text: "Usage: /note <element>: <note>, or /note <note> for the whole view" };
   });
 
   on("tool.call", { tool: "mcp__ultrapowers__show_screen" }, async ($, e, next) => {
