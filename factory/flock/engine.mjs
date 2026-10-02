@@ -337,7 +337,7 @@ function runFacts (cwd, task) {
 }
 const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
 const redText = (task, red) => red.map((r) =>
-  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
+  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i] ?? 'screens'})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 
 // peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
 // the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by

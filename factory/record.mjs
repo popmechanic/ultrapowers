@@ -147,7 +147,7 @@ function cellText (value) {
 }
 
 /** The plan's probes, per task in plan order, off the run's one parse (or the
- *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}]}`. A
+ *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}], extra}`. A
  *  stories-v1 task's probes are its checker calls. A plan the parser refuses
  *  gives `null`, and the receipt then shows exits without probe text. */
 function planProbes (planPath, planJson) {
@@ -158,6 +158,7 @@ function planProbes (planPath, planJson) {
     probes: parsed.grammar === 'stories-v1'
       ? (t.probes || []).map((p) => ({ cmd: 'story checker', proves: p.clause }))
       : (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
+    extra: parsed.grammar === 'stories-v1' ? 'screens check' : null,
   }))
 }
 
@@ -199,6 +200,7 @@ function receiptLines (planPath, planJson, rows, evidenceUrl) {
         const exit = typeof exits[i] === 'number' ? String(exits[i]) : '—'
         out.push(`| ${t.id} | ${p.cmd === '—' ? '—' : probeCell(p.cmd)} | ${receiptCell(p.proves || '—')} | ${exit} |`)
       })
+      if (t.extra) for (const x of exits.slice(t.probes.length)) out.push(`| ${t.id} | ${probeCell(t.extra)} | — | ${typeof x === 'number' ? x : '—'} |`)
     }
     out.push('', `Run-wide checks: exit ${edge.check ?? '—'}`)
   }

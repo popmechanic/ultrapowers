@@ -88,19 +88,40 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
   if (isObj(spec) && 'public' in spec && typeof spec.public !== 'boolean') found.push(`public cannot be ${JSON.stringify(spec.public)}`);
   const run = new Set<string>();
   const elements = isObj(spec) && isObj(spec.elements) ? spec.elements : {};
+  const kids = (el: Record<string, unknown>): unknown[] =>
+    [...(Array.isArray(el.children) ? el.children : []), ...Object.values(isObj(el.slots) ? el.slots : {}).flat()];
+  const reached = new Set<string>();
+  const root = isObj(spec) ? spec.root : undefined;
+  if (typeof root !== 'string' || !isObj(elements[root])) found.push(`root ${JSON.stringify(root)} is no element`);
+  else {
+    const stack = [root];
+    while (stack.length) {
+      const key = stack.pop()!;
+      const el = elements[key];
+      if (reached.has(key) || !isObj(el) || el.visible === false) continue;
+      reached.add(key);
+      for (const ch of kids(el)) if (typeof ch === 'string') stack.push(ch);
+    }
+  }
   for (const [key, el] of Object.entries(elements)) {
     if (!isObj(el)) continue;
+    for (const ch of kids(el)) if (typeof ch !== 'string' || !isObj(elements[ch])) found.push(`${key}: child ${JSON.stringify(ch)} is no element`);
     const type = String(el.type);
     const props = isObj(el.props) ? el.props : {};
-    const shape = c.components[type]?.props?.shape as Record<string, any> | undefined;
-    for (const [prop, value] of Object.entries(props)) {
-      if (shape) {
-        if (!(prop in shape)) { found.push(`${key}: ${type} has no prop ${prop}`); continue; }
-        if (!isExpression(value) && !shape[prop].safeParse(value).success) found.push(`${key}: ${type}.${prop} cannot be ${JSON.stringify(value)}`);
+    const schema = c.components[type]?.props;
+    const shape = schema?.shape as Record<string, any> | undefined;
+    if (shape) {
+      for (const prop of Object.keys(props)) if (!(prop in shape)) found.push(`${key}: ${type} has no prop ${prop}`);
+      const seen = new Set<string>();
+      for (const i of schema.safeParse(props).error?.issues ?? []) {
+        const prop = String(i.path[0]);
+        if (seen.has(prop) || isExpression(props[prop])) continue;
+        seen.add(prop);
+        found.push(prop in props ? `${key}: ${type}.${prop} cannot be ${JSON.stringify(props[prop])}` : `${key}: ${type} needs prop ${prop}`);
       }
     }
     if (typeof props.action === 'string') {
-      run.add(props.action);
+      if (reached.has(key)) run.add(props.action);
       if (!c.actionNames.includes(props.action)) found.push(`${key}: ${props.action} is no action of the store`);
     }
     for (const binding of Object.values(isObj(el.on) ? el.on : {})) {
