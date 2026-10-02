@@ -588,6 +588,12 @@ on the next one, ask her before editing a script.
   2026-09-11; run-178, 2026-09-17). While `ssh exe.dev ls` shows a `fleet-r*` VM running, the
   token is `not rotated` — by a launch, a hand `refresh --force`, or a `usage` read — and a
   launch starts on the current sign-in if `ninety minutes` or more remain, or refuses.
+- A hand `refresh --force` with no `--account` reads the account `ultrapowers`, not the one
+  `fleet.json` names, and fails with `no refresh token in the keychain`. Pass the account
+  the doctor's `accounts` row says the edge carries:
+  `node fleet/claude-token.mjs refresh --force --account <acct>` (2026-10-01). A dead run's
+  VM still counts as live and holds the token, `--force` or not: read its `fleet-boot.log`,
+  keep anything owed from `~/run/`, then `ssh exe.dev rm <vm>` before the refresh.
 - `claude-token.mjs login --account <x>` rewrites `claude-max`'s bearer at once: every
   in-flight run switches to that account mid-run (run-96, 2026-09-11). Enrol a new account
   before a drain, not during one.
