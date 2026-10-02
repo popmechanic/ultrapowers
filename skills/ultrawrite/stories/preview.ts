@@ -115,10 +115,14 @@ async function main(argv: string[]): Promise<number> {
   const indexHtml = join(dist, 'index.html');
   // Story plays awaiting a page's report, by story id.
   const plays = new Map<string, ((r: Rec) => void)[]>();
+  // Open single-screen pages (said hello as 'single'): only they play stories.
+  const singles = new Set<unknown>();
 
   const server = Bun.serve({
     hostname: '127.0.0.1',
     port,
+    // Seconds; longer than PLAY_WAIT so a slow play ends in its JSON answer.
+    idleTimeout: Math.ceil(PLAY_WAIT / 1000) + 10,
     async fetch(req, srv) {
       const url = new URL(req.url);
       const path = url.pathname;
@@ -131,6 +135,10 @@ async function main(argv: string[]): Promise<number> {
       if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens, pieces));
       if (path === '/play' && req.method === 'GET') {
         const story = url.searchParams.get('story') ?? '';
+        if (!singles.size) {
+          const miss = `open http://127.0.0.1:${server.port}/ first: /play plays on that page, not on /compare`;
+          return Response.json({story, ok: false, misses: [miss]});
+        }
         const report = new Promise<Rec>((done) => {
           const waiting = plays.get(story) ?? [];
           plays.set(story, waiting);
@@ -176,8 +184,12 @@ async function main(argv: string[]): Promise<number> {
     },
     websocket: {
       open(ws) { ws.subscribe('specs'); },
-      message() {},
-      close(ws) { ws.unsubscribe('specs'); },
+      message(ws, raw) {
+        let msg: Rec;
+        try { msg = JSON.parse(String(raw)); } catch { return; }
+        if (msg?.type === 'hello') { if (msg.page === 'single') singles.add(ws); else singles.delete(ws); }
+      },
+      close(ws) { ws.unsubscribe('specs'); singles.delete(ws); },
     },
   });
 

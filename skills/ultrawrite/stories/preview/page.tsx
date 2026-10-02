@@ -26,9 +26,11 @@ declare global {
   }
 }
 
-const store = createMergeableStore().setTablesSchema(JSON.parse(makeStore().getTablesSchemaJson()));
 const list = TOOLS as unknown as Tool[];
-const tools = Object.fromEntries(list.map((t) => [t.name, (args: Record<string, unknown>) => t.run(store, args, null)]));
+const schema = JSON.parse(makeStore().getTablesSchemaJson());
+const bind = (s: unknown) => Object.fromEntries(list.map((t) => [t.name, (args: Record<string, unknown>) => t.run(s, args, null)]));
+const store = createMergeableStore().setTablesSchema(schema);
+const tools = bind(store);
 window.__PREVIEW__ = {store, tools, playing: false};
 
 const takesRow = (t: Tool | undefined) =>
@@ -41,16 +43,34 @@ const [bundle, initial] = await Promise.all([
 document.title = `${bundle.title} — preview`;
 
 // Sample data: every step whose tool takes no row, once each, in story order.
-const seen = new Set<string>();
-for (const story of bundle.stories ?? []) {
-  for (const step of story.steps ?? []) {
-    const tool = list.find((t) => t.name === step.tool);
-    if (!tool || takesRow(tool)) continue;
-    const key = JSON.stringify([step.tool, step.args ?? {}]);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    try { tool.run(store, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
+function fill(s: unknown) {
+  const seen = new Set<string>();
+  for (const story of bundle.stories ?? []) {
+    for (const step of story.steps ?? []) {
+      const tool = list.find((t) => t.name === step.tool);
+      if (!tool || takesRow(tool)) continue;
+      const key = JSON.stringify([step.tool, step.args ?? {}]);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try { tool.run(s, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
+    }
   }
+}
+fill(store);
+
+// On /compare each version gets its own store, filled the same way, so
+// acting in one version leaves the others' rows alone.
+const viewer = () => ({staff: true, who: null});
+const sandboxes = new Map<string, {state: ReturnType<typeof tinybaseState>; tools: ReturnType<typeof bind>}>();
+function sandbox(key: string) {
+  let box = sandboxes.get(key);
+  if (!box) {
+    const s = createMergeableStore().setTablesSchema(schema);
+    fill(s);
+    box = {state: tinybaseState(s, viewer), tools: bind(s)};
+    sandboxes.set(key, box);
+  }
+  return box;
 }
 
 const compare = location.pathname.replace(/\/+$/, '') === '/compare';
@@ -82,6 +102,7 @@ function Page() {
     let stopped = false;
     const open = () => {
       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+      ws.onopen = () => ws?.send(JSON.stringify({type: 'hello', page: compare ? 'compare' : 'single'}));
       ws.onmessage = (e) => {
         const msg = JSON.parse(String(e.data));
         if (msg?.type === 'specs' && msg.pieces) setPieces(msg.pieces);
@@ -100,6 +121,7 @@ function Page() {
           <div key={name} className="preview-compare" data-compare={name}>
             {letters(p).map((v) => {
               const chosen = (picked[name] ?? recorded(p)) === v;
+              const box = sandbox(`${name}\u0000${v}`);
               return (
                 <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
                   <div className="preview-version-head">
@@ -111,7 +133,9 @@ function Page() {
                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
                   </div>
-                  <Renderer spec={p.versions[v]} registry={registry} />
+                  <JSONUIProvider registry={registry} store={box.state} handlers={box.tools}>
+                    <Renderer spec={p.versions[v]} registry={registry} />
+                  </JSONUIProvider>
                 </section>
               );
             })}
@@ -133,7 +157,7 @@ function Page() {
 }
 
 createRoot(document.getElementById('app')!).render(
-  <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff: true, who: null}))} handlers={tools}>
+  <JSONUIProvider registry={registry} store={tinybaseState(store, viewer)} handlers={tools}>
     <Page />
   </JSONUIProvider>,
 );

@@ -131,11 +131,16 @@ again at the PR smoke.
       n=5 runs, 2026-10-01).
    3. Start `bun skills/ultrawrite/stories/preview.ts <bundle> --app <scratch>/app`
       in the background from the session's working directory and open the URL its
-      first line prints in the Browser pane. Its `/compare` page shows the
+      first line prints in the Browser pane (the Desktop Code tab). Elsewhere, in
+      a terminal, open the `/compare` address in the default browser:
+      `open <url>compare` on macOS or `xdg-open <url>compare` on Linux, where
+      `<url>` is the printed address ending in `/`. Its `/compare` page shows the
       versions side by side, each with a Choose button.
    4. When the intent tray is installed, call its `show_screen` tool
       (`mcp__ultrapowers__show_screen`, `name` the app's title, `versions` the
-      letters) so the operator picks and sends notes from the tray; otherwise ask
+      letters, `url` the preview's `/compare` address) so the tray's **Open
+      screen** button runs the same open command and the operator picks and
+      sends notes from the tray; otherwise ask
       the pick as one AskUserQuestion with a screenshot of `/compare`.
    5. Record the pick with `arrange.ts <bundle> --app <scratch>/app --piece <p> --pick <V>`:
       it writes the approved screen, `<bundle>/screens/<piece>.json`, and the
@@ -150,7 +155,9 @@ again at the PR smoke.
       re-checks it.
    7. Play each story on the approved screen while the operator watches:
       `curl -s 'http://127.0.0.1:<port>/play?story=<id>'` answers
-      `{"story","ok","misses"}`. Fix a miss before signing.
+      `{"story","ok","misses"}`. Fix a miss before signing. `/play` needs the preview's `/` page
+      open (the single screen): the `/compare` page never plays a story, and
+      the server then answers at once with the page to open.
 
    Compile later copies each approved screen into the app as the builder's
    starting spec.

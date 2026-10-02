@@ -7,7 +7,7 @@ const PANE = { id: "intent-tray", title: "Intent tray", rows: 10 };
 const FEEDBACK = ".ultrapowers/feedback.jsonl";
 const FENCE = "`".repeat(3);
 
-let screen = null; // { name, stage, versions }
+let screen = null; // { name, stage, versions, url }
 let pick = null;
 let notes = []; // { kind, target?, note }
 let taken = 0; // feedback lines already taken into the tray
@@ -119,6 +119,26 @@ async function readFeedback($) {
   await save($);
 }
 
+// Run one command to its end; true when it exits 0, false when it fails or cannot start.
+async function run($, argv) {
+  try {
+    const stream = $.process.spawn({ argv });
+    for await (const _ of stream);
+    const { code } = await stream.result;
+    return code === 0;
+  } catch {
+    return false;
+  }
+}
+
+// macOS has `open`; elsewhere (Debian's `open` is openvt) fall back to xdg-open.
+async function openScreen($) {
+  const url = screen && screen.url;
+  if (!url) return;
+  if (await run($, ["open", url])) return;
+  await run($, ["xdg-open", url]);
+}
+
 function noteLabel(n) {
   return n.kind === "view" ? `[view] ${n.note}` : `[${n.kind}] ${n.target}: ${n.note}`;
 }
@@ -139,6 +159,9 @@ function drawPane($, e) {
         children: [pick === v ? `[${v}]` : v],
       })
     ),
+    ...(screen && screen.url
+      ? [Button({ key: "open-screen", onPress: () => openScreen($), children: ["Open screen"] })]
+      : []),
   ];
   const rows = notes.map((n, i) =>
     Box({
@@ -197,6 +220,9 @@ function drawBand($, e) {
       Button({ key: "band-note", hotkey: "1", onPress: () => openTray($), children: ["Add note"] }),
       Button({ key: "band-send", hotkey: "2", onPress: () => send($), children: ["Send"] }),
       Button({ key: "band-clear", hotkey: "3", onPress: () => clear($), children: ["Clear"] }),
+      ...(screen && screen.url
+        ? [Button({ key: "band-open", onPress: () => openScreen($), children: ["Open screen"] })]
+        : []),
     ],
   });
 }
@@ -228,6 +254,7 @@ export function register(on) {
           name: { type: "string", description: "Name of the screen" },
           stage: { type: "string", description: "What this round is about" },
           versions: { type: "array", items: { type: "string" }, description: "Version labels to pick from" },
+          url: { type: "string", description: "Address of the preview page, opened by the tray's Open screen button" },
         },
         required: ["name"],
       },
@@ -255,7 +282,8 @@ export function register(on) {
     const name = String(input.name || e.name || "Screen");
     const stage = input.stage != null ? String(input.stage) : e.stage != null ? String(e.stage) : "";
     const raw = Array.isArray(input.versions) ? input.versions : Array.isArray(e.versions) ? e.versions : [];
-    screen = { name, stage, versions: raw.map(String) };
+    const url = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
+    screen = { name, stage, versions: raw.map(String), url };
     empty();
     await save($);
     await $.ui.open(PANE);
