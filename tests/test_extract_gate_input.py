@@ -44,7 +44,7 @@ def _git(repo, *args):
 
 
 def _plan_text(md_path, py_path, mjs_path, absent_path, dir_path,
-               proof_extra, run_path):
+               proof_extra, run_path, verb="Modify"):
     return f"""# A plan for the exam
 
 **Grammar:** claims-v1
@@ -69,10 +69,10 @@ def _plan_text(md_path, py_path, mjs_path, absent_path, dir_path,
 **Type:** implementation
 
 **Files:**
-- Modify: `{md_path}`
-- Modify: `{py_path}`
+- {verb}: `{md_path}`
+- {verb}: `{py_path}`
 - Create: `{absent_path}`
-- Modify: `{mjs_path}`
+- {verb}: `{mjs_path}`
 - Create: `{dir_path}`
 
 **Claim:** The thing holds `{LONG_LIT}` and `{SHORT_LIT}`. (derived)
@@ -222,7 +222,7 @@ def test_d_m4_caps(tmp_path):
     # big, small, fill0, fill1, fill2, fill3 — the total cap lands inside fill1.
     plan.write_text(_plan_text("t/big.py", "t/small.py", "t/fill0.py",
                                "t/nothing.py", "t/fill1.py", "t/fill2.py",
-                               "t/fill3.py"))
+                               "t/fill3.py", verb="Create"))
     _git(r, "add", "-A")
     _git(r, "commit", "-qm", "caps")
     head = _git(r, "rev-parse", "HEAD").strip()
@@ -252,6 +252,41 @@ def test_d_m4_caps(tmp_path):
     for f in present[last + 1:]:
         assert f["excerpt"] == "" and f["truncated"] is True, f["path"]
         assert "lines" in f and "headings" in f, f["path"]
+
+
+def test_h_own_entries_spend_the_budget_after_their_siblings(tmp_path):
+    """(#1528) an own entry spends the excerpt budget last, so a sibling the
+    task's Proof names is never starved by the files the task rewrites."""
+    r = tmp_path / "repo3"
+    r.mkdir()
+    _git(r, "init", "-q", ".")
+    _git(r, "config", "user.email", "exam@example.invalid")
+    _git(r, "config", "user.name", "exam")
+    (r / "t").mkdir()
+    big = "\n".join(f"line {i} {LONG_LIT} " + "x" * 60 for i in range(200)) + "\n"
+    for i in range(3):
+        (r / f"t/own{i}.py").write_text(big)
+    (r / "t/sib_test.py").write_text(
+        "\n".join(f"s{i} = '{LONG_LIT}'" for i in range(40)) + "\n")
+    plan = r / "plan.md"
+    plan.write_text(_plan_text("t/own0.py", "t/own1.py", "t/own2.py",
+                               "t/nothing.py", "t/none.py", "t/sib_test.py",
+                               "t/runme.sh"))
+    _git(r, "add", "-A")
+    _git(r, "commit", "-qm", "own")
+    head = _git(r, "rev-parse", "HEAD").strip()
+    d = load(run(plan, "--task", "1", "--base", head))
+    files = d["base"]["files"]
+    by = {f["path"]: f for f in files}
+    s = by["t/sib_test.py"]
+    assert [f["path"] for f in files if f["status"] == "present"] == [
+        "t/own0.py", "t/own1.py", "t/own2.py", "t/sib_test.py"]
+    assert "own" not in s and s["truncated"] is False
+    assert s["excerpt"].splitlines()[0] == f"1: s0 = '{LONG_LIT}'"
+    assert len(s["excerpt"].splitlines()) == 40
+    assert [by[f"t/own{i}.py"]["own"] for i in range(3)] == ["modify"] * 3
+    total = sum(len(f["excerpt"].encode()) for f in files if f["status"] == "present")
+    assert total <= 24000 and by["t/own2.py"]["truncated"] is True
 
 
 def test_e_m5_refusals(repo):

@@ -15,7 +15,7 @@ TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 # The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
-# The hub's reaper: a merged run whose tag verified asks it, once, to remove this VM (#1470).
+# The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
 REAPER_URL="https://reaper.int.exe.xyz"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
@@ -43,7 +43,8 @@ fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
 fleet_journalctl()  { journalctl "$@"; }
-fleet_sudo()        { sudo -n "$@"; }
+fleet_timeout()     { timeout "$@"; }
+fleet_claude()      { claude "$@"; }
 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
 stamp_ms() {
@@ -272,10 +273,10 @@ engine_deps() {
 CLAUDE_FLOOR="2.1.287"
 claude_current() {
   log "claude: updating to the newest release"
-  fleet_sudo exeuntu update claude || log "claude: the update failed; checking the installed release"
-  local v; v="$(claude --version 2>/dev/null | cut -d' ' -f1)"
+  fleet_timeout 120 sudo -n exeuntu update claude || log "claude: the update failed; checking the installed release"
+  local v; v="$(fleet_claude --version 2>/dev/null | cut -d' ' -f1 || true)"
   log "claude: $v"
-  [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
+  [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
     || fail "claude ${v:-unknown} is below the floor $CLAUDE_FLOOR"
   export DISABLE_AUTOUPDATER=1
 }
@@ -289,7 +290,7 @@ run_engine() {
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-        "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
+        "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
         --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
         ${board_args[@]+"${board_args[@]}"} ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
@@ -312,7 +313,7 @@ plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 
 # (catching the run up to a moved main), and runs the deploy the merge earned. It prints the run's
 # state, phase, PR url, PR author and merge sha one per line, or a refusal this fails on.
 publish() { # $1 = the engine's exit code
-  local out rc=0 state phase_text audit_args audit_line
+  local out rc=0 state phase_text
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
   out="$(fleet_node "$ENGINE_REPO_DIR/factory/publish.mjs" --engine-exit "$1" --hold "$HOLD_FLAG" --run-id "$RUN_ID" \
@@ -323,15 +324,20 @@ publish() { # $1 = the engine's exit code
   [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
   state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
-  write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
-  close_run "$state" "$phase_text"
+  finish "$state" "$phase_text"
+}
+# A run's end, in plain sequence: the record, the board's close, the audit row, the tag, the reap request.
+finish() { # $1 = state, $2 = phase
+  local audit_args audit_line
+  write_status "$1" "$2"; evidence_commit "$RUN_ID: $1"
+  close_run "$1" "$2"
   audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)
-  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
+  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$1" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   evidence_commit "$RUN_ID: audit"
   record_tags
   # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
-  if [ "$state" = done ] && [ -n "$MERGED_SHA" ] && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
+  if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
     fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
     log "reap: asked the hub to remove this VM"
   fi
@@ -357,6 +363,7 @@ close_run() { # $1 = the run's final state (done|parked), $2 = its phase
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
+  [ -z "$PR_URL" ] && args+=(--base "$BASE_SHA")
   fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
 }
 # The one entry point: nothing ahead of base is done (a failure if the engine wasn't green), anything ahead is a publish.
@@ -373,9 +380,7 @@ boot() {
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
     # exit 0 at the base: the engine settled green on a snapshot equal to the base, so every proof
     # already held there; nothing to publish, and the run is done, closed with the base as evidence
-    MERGED_SHA="$BASE_SHA"; write_status done "nothing to build: every proof already passes at the base"
-    close_run done "nothing to build"; evidence_commit "$RUN_ID: done, nothing to build"
-    record_tags; exit 0; fi
+    finish done "nothing to build: every proof already passes at the base"; exit 0; fi
   publish "$code"; exit 0
 }
 # systemd's `ExecStopPost=` of the run unit: a boot that was killed (or died) before its record ended

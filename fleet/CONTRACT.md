@@ -37,7 +37,7 @@ and the default branch moved underneath it, catches the run up to the target's t
 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
 opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
 failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
-`git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, and
+`git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
 whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
 removes the calling VM only when the run issue is closed `done` (#1470); the janitor still reaps what
 never asks. The PR is the human gate: the target's
@@ -333,7 +333,7 @@ evidence repository.
   (`https://$GITHUB_INT_HOST/<evidence repo>.git`), parses the plan once with `plan_parse.py`
   into `$FLEET_HOME/plans/<run>.plan.json` (a refusal fails the run; the engine, the catch-up, the
   PR body and the publish probe all read that parse, #1449), extracts the previous run's folder for the
-  engine's `--past-dir`, updates Claude Code to the newest release (`sudo -n exeuntu update claude`,
+  engine's `--past-dir`, updates Claude Code to the newest release (`timeout 120 sudo -n exeuntu update claude`,
   unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
   the release it runs (`claude: <version>` in `fleet-boot.log`) and setting `DISABLE_AUTOUPDATER=1`
   for the run, runs the engine as one transient unit, commits the record to the live
@@ -408,6 +408,9 @@ evidence repository.
   before settling when a loose end is open or not checked. One `loose-ends` row per run marks each
   loose end open, resolved or unchecked against the final snapshot, and the PR body lists the open
   and unchecked ones under `### Loose ends`.
+  A draft after `L:loose` is added lands the pre-cleanup green snapshot as ready, recorded as a
+  `loose:fallback` row and a second `settled` row, and the PR's Loose ends section says the cleanup
+  was dropped; a losing peer-rewrite read on that pre-cleanup snapshot still ends draft.
 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot

@@ -220,16 +220,20 @@ approved plan, **is** the authorization to execute — no further approval pause
    Integrations page). A ready PR merges itself on the run's own evidence: the
    sandbox asks GitHub for no check runs, it merges once its own gate is green
    and main has not moved off the tip it folded onto —
-   `status.json`'s `merged` cell is the squash commit — and `--hold`
+   `status.json`'s `merged` cell is the squash commit (null when no PR opened) — and `--hold`
    on the launch line keeps it open for the operator; a draft PR is the
    operator's to merge or close. That self-merge sentence is a gate-green
    run's only: after a park the sandbox has exited and merges nothing, so a
    parked run is acknowledged by the operator, by hand — mark the draft ready,
    `gh pr update-branch <N>` when it is behind main (GitHub's strict rule
    refuses a behind merge; this is a GitHub merge, not the kernel's fold),
-   then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A parked
-   run with nothing to publish opens no PR; its record is still pushed and
-   still tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
+   then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A run
+   that builds nothing opens no PR. A stories-v1 run whose every proof already
+   passes at the base ends `done` (phase `nothing to build: every proof already
+   passes at the base`, `merged` null, tasks closed as already true at the
+   base). Anything else ends `failed: engine exit <code>`, because a claims-v1
+   probe already green at the base proves nothing. Either way the record is
+   pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
    branch.
 
 5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs

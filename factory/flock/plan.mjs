@@ -37,6 +37,7 @@ function storiesWorkload (parsed, planPath) {
   });
   const guards = (parsed.guards || []).map((g) => checkerArgv(abs, g.clause).map(sq).join(' '));
   return {
+    grammar: 'stories-v1',
     tasks,
     check: bash(['bun run typecheck', ...guards].join(' && ')),
     // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
@@ -79,5 +80,5 @@ export function workloadFromPlan(planPath, planJson) {
   const check = cmds.length ? bash(cmds.join(' && ')) : null;
   const setup = parsed.bootstrapCmd ? bash(parsed.bootstrapCmd) : null;
 
-  return { tasks, check, setup };
+  return { grammar: 'claims-v1', tasks, check, setup };
 }

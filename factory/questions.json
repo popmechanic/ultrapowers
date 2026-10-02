@@ -50,7 +50,7 @@
           "type": "choice",
           "instructions": {
             "question": "Does `after` still carry the change the peer made when it turned `before` into `peer`?",
-            "context": "`path` is the file. `before` is what the peer's lines replaced (empty when the peer only added them), and `peer` is what the peer wrote. `after` is what a second agent then wrote over the peer's lines (empty when it deleted them). `tasks` are the two sides, the second agent's first, each with its `title` and its `claim`, what that side meant."
+            "context": "`path` is the file. `before` is what the peer's lines replaced (empty when the peer only added them), and `peer` is what the peer wrote. `after` is what a second agent then wrote over the peer's lines (empty when it deleted them). `tasks` are the two sides, the second agent's first, each with its `title` and its `claim`, what that side meant. The loose-ends side has no claim: it was asked to fix the problem in its `asked_to_fix`, when one was reported for this file, and anything else it changed in `after` was not asked for."
           },
           "criteria": {
             "keeps": "What the peer changed is still there in `after`, beside the second agent's own change",

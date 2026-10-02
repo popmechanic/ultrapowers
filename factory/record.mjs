@@ -147,7 +147,7 @@ function cellText (value) {
 }
 
 /** The plan's probes, per task in plan order, off the run's one parse (or the
- *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}]}`. A
+ *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}], extra}`. A
  *  stories-v1 task's probes are its checker calls. A plan the parser refuses
  *  gives `null`, and the receipt then shows exits without probe text. */
 function planProbes (planPath, planJson) {
@@ -158,6 +158,7 @@ function planProbes (planPath, planJson) {
     probes: parsed.grammar === 'stories-v1'
       ? (t.probes || []).map((p) => ({ cmd: 'story checker', proves: p.clause }))
       : (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
+    extra: parsed.grammar === 'stories-v1' ? 'screens check' : null,
   }))
 }
 
@@ -199,6 +200,7 @@ function receiptLines (planPath, planJson, rows, evidenceUrl) {
         const exit = typeof exits[i] === 'number' ? String(exits[i]) : '—'
         out.push(`| ${t.id} | ${p.cmd === '—' ? '—' : probeCell(p.cmd)} | ${receiptCell(p.proves || '—')} | ${exit} |`)
       })
+      if (t.extra) for (const x of exits.slice(t.probes.length)) out.push(`| ${t.id} | ${probeCell(t.extra)} | — | ${typeof x === 'number' ? x : '—'} |`)
     }
     out.push('', `Run-wide checks: exit ${edge.check ?? '—'}`)
   }
@@ -268,17 +270,25 @@ function provenanceLines (provenancePath) {
 
 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
- *  gets none. No row, or a row with no items, adds nothing. */
+ *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
+ *  closing line saying the cleanup was dropped and which snapshot landed. */
 function looseEndsLines (events) {
   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
-  if (!items.length) return []
+  const fb = events.filter((r) => r && r.kind === 'loose:fallback').at(-1)
+  if (!items.length && !fb) return []
   const resolved = items.filter((i) => i.state === 'resolved').length
   const out = ['### Loose ends', '', `${items.length} reported by builders, ${resolved} resolved in the run.`]
   for (const i of items) {
     const who = i.task === undefined || i.task === null || i.task === '' ? `(${i.by})` : `(${i.by}, task ${i.task})`
     if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
     else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
+  }
+  if (fb) {
+    const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
+    out.push('', end && end.pr === 'ready' && end.snap === fb.snap
+      ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+      : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
   }
   return out
 }

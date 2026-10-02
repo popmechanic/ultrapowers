@@ -20,7 +20,7 @@ type Element = {type: string; props: Json; children?: string[]; on?: Json; visib
 export type Spec = {root: string; elements: Record<string, Element>; state?: Json};
 export type Evaluator = (request: {state: Json; questions: Record<string, {criteria: Record<string, string>}>; signal: AbortSignal}) => Promise<{answers: Record<string, {choice: string; confidence?: number}>}>;
 type Candidate = {id: string; description: string; element: Pick<Element, 'type' | 'props' | 'visible'>; root?: boolean; maxUses?: number};
-type RowControl = {type: 'ActionCheckbox' | 'ActionButton'; name: string; action: string; arg: string; label: unknown; checked?: unknown; description: string};
+type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; description: string};
 type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | null; steps: {description: string}[]}>; catalog: unknown; TOOLS: Tool[]; makeStore: () => any};
 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>};
@@ -64,39 +64,79 @@ function rowArg(tool: Tool | undefined): {arg: string; table: string} | null {
   return null;
 }
 
-/** A row control's name with the row's string cell put back as an expression. */
+/** A row control's name with the row's string cells put back as expressions: the
+ *  one cell it equals, or every cell it holds, longest first. */
 function fromRow(name: string, row: Json): unknown {
   const cells = Object.entries(row).filter(([, v]) => typeof v === 'string' && v !== '') as [string, string][];
   const exact = cells.find(([, v]) => v === name);
   if (exact) return {$item: exact[0]};
-  const inside = cells.filter(([, v]) => name.includes(v)).sort(([, a], [, b]) => b.length - a.length)[0];
-  return inside ? {$template: name.replace(inside[1], '${' + inside[0] + '}')} : name;
+  // Text and inserted expressions alternate; only text is searched, so no cell lands inside a ${...}.
+  let parts: {text: string; cell?: string}[] = [{text: name}];
+  for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length))
+    parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', cell: k}, {text: t}] : [{text: t}]))));
+  if (!parts.some((p) => p.cell !== undefined)) return name;
+  return {$template: parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('')};
 }
 
-/** Every candidate for one card, walking each story on a fresh store. */
+/** Every candidate for one card, walking each story on a fresh store. A text box typed
+ *  for a row action sits in that row; after the walk, each control a story sees but never
+ *  uses, and each card action still without one, gets a control of its own. */
 function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
   const mine = new Set(card.actions.map((a) => a.name));
   const describe = (name: string) => tools.get(name)?.description ?? card.actions.find((a) => a.name === name)?.description ?? '';
   const drafts = new Map<string, {k: string; name: string; example?: string}[]>();
+  const rowDrafts = new Map<string, string[]>();
   const buttons: {name: string; action: string}[] = [];
   const lists = new Map<string, {table: string; controls: RowControl[]}>();
+  const named = new Set<string>();
+  const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json}[] = [];
+  let schema: Record<string, Record<string, {type?: string}>> = {};
+  const listOf = (table: string) => {
+    const l = lists.get(table) ?? {table, controls: []};
+    lists.set(table, l);
+    return l;
+  };
+  const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string): RowControl => {
+    const control: RowControl = {type, name, action, arg, label: fromRow(name, cells), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
+    if (type === 'ActionCheckbox') {
+      const flag = Object.keys(schema[table] ?? {}).find((c) => schema[table][c]?.type === 'boolean');
+      if (flag) control.checked = {$item: flag};
+    }
+    return control;
+  };
   for (const story of b.page.stories) {
     const store = kit.makeStore();
+    schema = JSON.parse(store.getTablesSchemaJson?.() ?? '{}');
     for (const step of story.steps) {
       const tool = tools.get(step.tool);
       const args = (step.args ?? {}) as Json;
+      for (const u of step.ui ?? []) named.add('type' in u ? u.type.name : u.click.name);
       if (mine.has(step.tool)) {
         const row = rowArg(tool);
+        const cells = (row ? store.getRow(row.table, String(args[row.arg])) ?? {} : {}) as Json;
         for (const u of step.ui ?? []) {
           if ('type' in u && u.type.role === 'textbox') {
             const k = Object.keys(args).find((x) => args[x] === u.type.text);
             if (!k) continue;
-            const list = drafts.get(step.tool) ?? [];
             const text = typeof u.type.text === 'string' && u.type.text !== '' ? u.type.text : undefined;
-            const seen = list.find((d) => d.k === k);
-            if (!seen) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
-            else if (seen.example === undefined && text !== undefined) seen.example = text;
+            if (row) {
+              const l = listOf(row.table);
+              const had = l.controls.find((c) => c.type === 'DraftInput' && c.action === step.tool && c.draft === k);
+              if (had) {
+                if (had.example === undefined && text !== undefined) had.example = text;
+                continue;
+              }
+              const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
+              const button = l.controls.findIndex((c) => c.type === 'ActionButton' && c.action === step.tool);
+              l.controls.splice(button < 0 ? l.controls.length : button, 0, control);
+              rowDrafts.set(step.tool, [...(rowDrafts.get(step.tool) ?? []), k]);
+              continue;
+            }
+            const list = drafts.get(step.tool) ?? [];
+            const had = list.find((d) => d.k === k);
+            if (!had) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
+            else if (had.example === undefined && text !== undefined) had.example = text;
             drafts.set(step.tool, list);
           } else if ('click' in u && (u.click.role === 'button' || u.click.role === 'checkbox')) {
             const name = u.click.name;
@@ -104,24 +144,48 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
               if (u.click.role === 'button' && !buttons.some((x) => x.name === name && x.action === step.tool)) buttons.push({name, action: step.tool});
               continue;
             }
-            const cells = (store.getRow(row.table, String(args[row.arg])) ?? {}) as Json;
-            const l = lists.get(row.table) ?? {table: row.table, controls: []};
-            lists.set(row.table, l);
+            const l = listOf(row.table);
             const type = u.click.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
             if (l.controls.some((c) => c.type === type && c.action === step.tool)) continue;
-            const control: RowControl = {type, name, action: step.tool, arg: row.arg, label: fromRow(name, cells), description: `${u.click.role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(step.tool)})`};
-            if (type === 'ActionCheckbox') {
-              const schema = JSON.parse(store.getTablesSchemaJson?.() ?? '{}')[row.table] ?? {};
-              const flag = Object.keys(schema).find((c) => schema[c]?.type === 'boolean');
-              if (flag) control.checked = {$item: flag};
-            }
-            l.controls.push(control);
+            l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role));
           }
         }
       }
       tool?.run(store, args, step.as ?? null);
+      for (const see of step.see ?? []) {
+        if ((see.role !== 'button' && see.role !== 'checkbox') || !((see.count ?? 0) > 0) || seen.some((x) => x.name === see.name)) continue;
+        let best: {table: string; cells: Json; length: number} | undefined;
+        for (const [table, rows] of Object.entries(store.getTables() as Record<string, Record<string, Json>>))
+          for (const cells of Object.values(rows))
+            for (const v of Object.values(cells))
+              if (typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
+        if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells});
+      }
     }
   }
+  const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.type !== 'DraftInput' && c.action === action));
+  for (const t of seen) {
+    if (named.has(t.name)) continue;
+    const action = card.actions.find((a) => {
+      const row = rowArg(tools.get(a.name));
+      return row?.table === t.table && Object.keys(tools.get(a.name)?.inputSchema?.properties ?? {}).length === 1 && !controlled(a.name);
+    });
+    if (!action) continue;
+    const row = rowArg(tools.get(action.name))!;
+    listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role));
+  }
+  for (const a of card.actions) {
+    if (controlled(a.name)) continue;
+    const row = rowArg(tools.get(a.name));
+    if (row) listOf(row.table).controls.push(rowControl('ActionButton', a.description, a.name, row.arg, row.table, {}, 'button'));
+    else buttons.push({name: a.description, action: a.name});
+  }
+  for (const l of lists.values())
+    for (const c of l.controls) {
+      if (c.type === 'DraftInput') continue;
+      c.args = {[c.arg]: {$item: 'id'}};
+      if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${k}`};
+    }
   const required: Candidate[] = [];
   for (const [action, ds] of drafts)
     for (const d of ds)
@@ -172,9 +236,14 @@ function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Piec
       spec.elements[id] = {type: 'Stack', props: {gap: 2}, repeat: {statePath: LIST(list.table), key: 'id'}, children: [row]};
       spec.elements[row] = {type: 'Row', props: {justify: 'between', align: 'center'}, children: kids};
       list.controls.forEach((c, i) => {
-        const props: Json = {label: c.label, ...(c.checked === undefined ? {} : {checked: c.checked}), action: c.action, args: {[c.arg]: {$item: 'id'}}};
+        if (c.type === 'DraftInput') {
+          spec.elements[kids[i]] = {type: 'DraftInput', props: {label: c.label, ...(c.example === undefined ? {} : {placeholder: c.example}), value: {$bindState: `/draft/${c.draft}`}}, children: []};
+          return;
+        }
+        const props: Json = {label: c.label, ...(c.checked === undefined ? {} : {checked: c.checked}), action: c.action, args: c.args};
         if (c.type === 'ActionButton') Object.assign(props, {variant: 'quiet', size: 'sm'});
-        spec.elements[kids[i]] = {type: c.type, props, children: []};
+        const clear = Object.values(c.args ?? {}).flatMap((v) => (isObj(v) && typeof v.$state === 'string' ? [{action: 'setState', params: {statePath: v.$state, value: ''}}] : []));
+        spec.elements[kids[i]] = {type: c.type, props, children: [], ...(c.type === 'ActionButton' && clear.length ? {on: {press: clear.length === 1 ? clear[0] : clear}} : {})};
       });
       continue;
     }

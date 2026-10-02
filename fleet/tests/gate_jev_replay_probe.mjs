@@ -6,16 +6,18 @@
 //                                                              key in $ULTRAPOWERS_HOME/typesafe.env)
 //
 // For each `<stem>.gate-verdicts.json` with its `<stem>.md` beside it, each round where agent and jev
-// both read, differ and `right` is set: the diet is rebuilt by extract_gate_input.py (with the tally's
-// base when the round was asked `pinned`) and skipped when its hash moved; gate_jev.ts reads it `reps`
-// times, never `--record`. Spends reps × (rounds + 2) calls. Exit 0 when both controls read `fail` in a
-// majority and at least two thirds of the wrong fails now pass; 2 no key, or no wrong fail replayable;
-// 1 otherwise.
+// both read and either differ with `right` set (jev failed it) or both read `fail` (an agreed fail, #1528):
+// the diet is rebuilt by extract_gate_input.py (with the tally's base when the round was asked `pinned`)
+// and skipped when its hash moved; gate_jev.ts reads it `reps` times, never `--record`. Spends
+// reps × (rounds + 2) calls. Exit 0 when both controls read `fail` in a majority, no agreed fail now
+// passes and at least two thirds of the wrong fails now pass; 2 no key, or no wrong or agreed fail
+// replayable; 1 otherwise. The scoring is _gate_replay_helpers.mjs.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { exitCode, majority, replayRounds, score, summary } from './_gate_replay_helpers.mjs'
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const home = process.env.ULTRAPOWERS_HOME || path.join(os.homedir(), '.ultrapowers')
@@ -42,10 +44,9 @@ function readings(diet) {
   }
   return out
 }
-const majority = (vs) => ['fail', 'pass'].find((v) => vs.filter((x) => x === v).length * 2 > vs.length) ?? null
 
-let wrong = 0, wrongPass = 0, right = 0, rightFail = 0
 const stems = []
+const total = { wrong: 0, wrongPass: 0, right: 0, rightFail: 0, agreed: 0, agreedPass: 0 }
 for (const f of (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((x) => x.endsWith('.gate-verdicts.json')).sort()) {
   const stem = f.slice(0, -'.gate-verdicts.json'.length)
   const plan = path.join(dir, `${stem}.md`)
@@ -53,26 +54,21 @@ for (const f of (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((x) => x.
   let rec
   try { rec = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) } catch { continue }
   const base = rec?.tally?.base
-  for (const [id, t] of Object.entries(rec?.tasks ?? {})) {
-    const rounds = Array.isArray(t?.gate_rounds) ? t.gate_rounds : []
-    rounds.forEach((r, i) => {
-      if (!r || r.agent == null || r.jev == null || r.agent === r.jev || !r.right) return
-      const args = ['skills/ultrawrite/scripts/extract_gate_input.py', plan, '--task', id]
-      if (typeof r.pinned === 'number' && base) args.push('--base', String(base))
-      const x = spawnSync('python3', args, { cwd: REPO, encoding: 'utf8' })
-      if (x.status !== 0) return
-      let diet
-      try { diet = JSON.parse(x.stdout) } catch { return }
-      if (diet.hash !== r.hash) return
-      const now = readings(diet)
-      const m = majority(now)
-      if (!stems.includes(stem)) stems.push(stem)
-      console.log(`${stem} task ${id} round ${i + 1} right=${r.right} was=${r.jev} now=${now.join(',')}`)
-      if (r.jev !== 'fail') return
-      if (r.right === 'agent') { wrong++; if (m === 'pass') wrongPass++ }
-      else if (r.right === 'jev') { right++; if (m === 'fail') rightFail++ }
-    })
-  }
+  const items = replayRounds(rec).filter((item) => {
+    const args = ['skills/ultrawrite/scripts/extract_gate_input.py', plan, '--task', item.task]
+    if (typeof item.r.pinned === 'number' && base) args.push('--base', String(base))
+    const x = spawnSync('python3', args, { cwd: REPO, encoding: 'utf8' })
+    if (x.status !== 0) return false
+    try { item.diet = JSON.parse(x.stdout) } catch { return false }
+    return item.diet.hash === item.r.hash
+  })
+  if (items.length) stems.push(stem)
+  const s = score(items, (item) => {
+    const now = readings(item.diet)
+    console.log(`${stem} task ${item.task} round ${item.round} ${item.side} was=${item.r.jev} now=${now.join(',')}`)
+    return now
+  })
+  for (const k of Object.keys(total)) total[k] += s[k]
 }
 
 const CONTROLS = {
@@ -101,6 +97,5 @@ for (const [name, diet] of Object.entries(CONTROLS)) {
 fs.rmSync(tmp, { recursive: true, force: true })
 
 const dates = stems.length ? `${stems[0].slice(0, 10)}..${stems[stems.length - 1].slice(0, 10)}` : '-'
-console.log(`gate-jev replay: n=${wrong + right} rounds (${dates}), wrong fails now pass ${wrongPass} of ${wrong}, `
-  + `right fails now fail ${rightFail} of ${right}, controls ${controlsOk ? 'ok' : 'NOT OK'}`)
-process.exit(wrong === 0 ? 2 : controlsOk && wrongPass * 3 >= wrong * 2 ? 0 : 1)
+console.log(summary(total, dates, controlsOk))
+process.exit(exitCode(total, controlsOk))

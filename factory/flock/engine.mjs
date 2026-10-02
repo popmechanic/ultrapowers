@@ -170,7 +170,8 @@ const taskOf = {}   // agent -> the task its current session holds
 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
 const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
 const peerReads = []
-// the loose ends the `L:loose` task was opened for ({path, claim}), the claim its side carries to Jev
+// the loose ends the `L:loose` task was opened for ({path, claim}); a path's reasons reach Jev as the
+// problem the builder was asked to fix there (`asked_to_fix`)
 let looseWhy = []
 const LOOSE_TITLE = 'Close the loose ends builders reported'
 function peerRewrites (agent, rel, rewrites) {
@@ -182,11 +183,13 @@ function peerRewrites (agent, rel, rewrites) {
     const side = (a) => {
       const i = a.indexOf('.'); const id = i < 0 ? null : a.slice(i + 1)
       // the loose-ends task is added at run time, so it is not among the plan's tasks: its side is
-      // its board title and the reasons builders posted for this path (run-296 parked on a bare
-      // `E.L:loose`; given these, Jev read run-296's narrowing as `supersedes`, n=5, 2026-10-01)
+      // its board title plus, only for a path a loose end names, that reason as `asked_to_fix`, the
+      // problem the builder was asked to fix, never a claim; a rewrite in an unflagged file gets the
+      // title alone (#1520). Given the reason, Jev read run-296's narrowing as `supersedes`
+      // (n=5, 2026-10-01, read under the field name `claim`)
       if (id === 'L:loose') {
         const why = looseWhy.filter((x) => x.path === rel).map((x) => x.claim)
-        return { agent: a, title: LOOSE_TITLE, claim: (why.length ? why : looseWhy.map((x) => x.claim)).join(' ') }
+        return why.length ? { agent: a, title: LOOSE_TITLE, asked_to_fix: why.join(' ') } : { agent: a, title: LOOSE_TITLE }
       }
       const t = id == null ? null : W.tasks.find((x) => x.id === id)
       return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a }
@@ -334,7 +337,7 @@ function runFacts (cwd, task) {
 }
 const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
 const redText = (task, red) => red.map((r) =>
-  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i]})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
+  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i] ?? 'screens'})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 
 // peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
 // the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by
@@ -945,7 +948,17 @@ function debounceMs () {
   const p90 = xs.length ? xs[Math.min(xs.length - 1, Math.floor(0.9 * xs.length))] : 500
   return Math.max(1000, 2 * p90)
 }
+let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
+let fellBack = false  // the run already ends on preLoose: a draft after that stands
 function terminal (pr, why, r) {
+  // any draft after the loose-ends task was added lands the green snapshot from before it instead (#1521)
+  if (pr === 'draft' && preLoose && !fellBack) {
+    fellBack = true
+    ev('loose:fallback', { snap: preLoose.snap, from: r && r.snap, why })
+    log('LOOSE FALLBACK to', preLoose.snap, why)
+    settled = { t: now(), snap: preLoose.snap }; ev('settled', settled)
+    pr = 'ready'; why = 'settled green before the loose-ends task; its cleanup was dropped'; r = preLoose
+  }
   outcome = { pr, why, snap: r && r.snap, t: now() }
   ev('terminal', outcome); log('TERMINAL', pr, why)
 }
@@ -981,11 +994,12 @@ async function settle () {
       if (loose.length) {
         const paths = [...new Set(loose.map((x) => x.path))]
         looseWhy = loose.map((x) => ({ path: x.path, claim: x.claim }))
-        await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths,
-          body: `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
-            loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
-            `\n\nFix each that is still wrong. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.` })
-        ev('loose-task', { snap: r.snap, paths }); log('loose-ends task for', paths.join(','))
+        preLoose = r
+        const body = `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
+          loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
+          `\n\nFix each that is still wrong. Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.`
+        await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths, body })
+        ev('loose-task', { snap: r.snap, paths, body }); log('loose-ends task for', paths.join(','))
         continue
       }
     }
@@ -1112,8 +1126,9 @@ try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(chec
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
-const looseItems = looseEnds(board.beliefs, textAt(lastEdge && lastEdge.snap))
-ev('loose-ends', { snap: lastEdge ? lastEdge.snap : null, items: looseItems })
+const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
+const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
+ev('loose-ends', { snap: looseSnap, items: looseItems })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
@@ -1161,8 +1176,10 @@ function peerRewriteDraft () {
     if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
   }
   if (!losing.length) return
+  if (preLoose && outcome.snap === preLoose.snap) fellBack = true   // a verdict on the pre-cleanup snapshot itself has nothing to fall back to
   ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
   terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
+  if (outcome.pr === 'ready') peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
 }
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's
@@ -1190,12 +1207,14 @@ function commitSnapshot (snap, message) {
 async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
-    // settled green and identical to the base: every proof already held there, so there is nothing
+    // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
     // it still offers every checked step to the Jev step reading, as a landed run does (#1509)
     if (!sha) {
-      ev('landing:empty', { snap: outcome.snap })
+      ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
+      // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
+      if (W.grammar !== 'stories-v1') return 1
       await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
       return 0
     }

@@ -255,7 +255,7 @@ const readEventRows = (file) =>
   const base = '078ea0c3385b88e7fc6a3a587eb250d34e88aebe'
   const stub = await startStub(200)
   try {
-    const result = await runCliAsync(['close-run', '--kata-json', kataJson, '--run', 'run-1', '--pr', '', '--merged', base,
+    const result = await runCliAsync(['close-run', '--kata-json', kataJson, '--run', 'run-1', '--pr', '', '--base', base,
       '--admin-url', stub.url, '--events', eventsPath, '--title', 'The shared list'], { timeoutMs: 15000 })
     assert.equal(result.status, 0, '(c2) close-run with no PR exits 0; got ' + JSON.stringify(result.status) + ', stderr ' + JSON.stringify(result.stderr))
     assert.equal(stub.requests.length, 2, '(c2) the task and the run are closed; got ' + stub.requests.length + ' requests')

@@ -78,6 +78,7 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
     });
   }
   for (const l of linkIds) if (!linked.has(l)) refusals.push(`link ${l} has no step`);
+  for (const l of page.links ?? []) for (const p of l.pieces ?? []) if (!pieces.has(p)) refusals.push(`link ${l.id}: names piece ${p}, which is no piece`);
 
   for (const c of cards) {
     if (!storyIds.includes(c.main_story ?? '')) {
