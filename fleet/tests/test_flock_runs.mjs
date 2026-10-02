@@ -263,6 +263,25 @@ test('jev trials loose-fallback', async () => {
   t.done()
 })
 
+// loose-fallback-lost  the pre-cleanup snapshot itself lost a peer's line that Jev read as `loses`: the fallback has nothing
+//                      to fall back to, so the run ends draft (exit 1) and the PR body does not say it lands anything (#1521)
+test('jev trials loose-fallback-lost', async () => {
+  choice = 'loses'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x y z\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const plan = writePlan(t, { claim: 'a.txt says what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'ONE'), word(2, 'TWO')] })
+  const r = await flockRun(t, { plan, script: { ...PEER_SCRIPT, 'L:loose': { 'a.txt': 'x ONE TWO\n' },
+    '@beliefs': [{ task: '2', about: 'app', path: 'a.txt', claim: 'a.txt runs ONE and z together', stale: 'x ONEz TWO' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  assert(r.of('loose-task').length === 1, `expected the loose-ends task to be added, saw ${JSON.stringify(r.of('loose-task'))}`)
+  const fb = r.of('loose:fallback')
+  assert(fb.length === 1, `expected exactly one loose:fallback row, saw ${JSON.stringify(fb)}`)
+  const end = r.of('terminal').at(-1)
+  assert(end?.pr === 'draft', `expected the run to end draft, saw ${JSON.stringify(r.of('terminal'))}`)
+  assert(r.code === 1, `engine exit ${r.code} for a draft run`)
+  const pb = spawnSync('node', [path.join(REPO, 'factory', 'record.mjs'), 'pr-body', plan, '--events', path.join(t.RUN, 'events.jsonl')], { encoding: 'utf8', env: simEnv({ home: t.tmp }) })
+  assert(!pb.stdout.includes('This lands'), `a draft run's PR body says it lands a snapshot: ${pb.stdout}`)
+  t.done()
+})
 // loose-stalled  the script names no files for L:loose, so its builder ends without publishing and the run deadlocks with its last edge the
 //                pre-cleanup snapshot: the draft still lands that snapshot ready, once (#1521)
 test('jev trials loose-stalled', async () => {
@@ -315,6 +334,24 @@ test('empty landing claims-v1', async () => {
   assert(empty.length === 1 && empty[0].grammar === 'claims-v1', `landing:empty rows: ${JSON.stringify(empty)} ${tail}`)
   assert(r.of('landing').length === 0, `landing rows: ${JSON.stringify(r.of('landing'))}`)
   assert(t.git('rev-parse', 'HEAD') === t.base, 'HEAD moved off the base')
+  t.done()
+})
+
+// loose-fallback-empty  every proof already holds at the base and the loose-ends task publishes nothing: the fallback's pre-cleanup
+//                       snapshot is the base, so a claims-v1 run lands nothing and exits 1 with a landing:empty row (#1522)
+test('jev trials loose-fallback-empty', async () => {
+  choice = 'supersedes'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x WIPE z\n', 'b.txt': 'NOTE\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const r = await flockRun(t, { plan, script: { 1: {}, 2: {},
+    '@beliefs': [{ task: '2', about: 'app', path: 'a.txt', claim: 'a.txt wipes every folder', stale: 'x WIPE z' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
+  assert(r.of('loose:fallback').length === 1, `expected one loose:fallback row, saw ${JSON.stringify(r.of('loose:fallback'))} ${tail}`)
+  const empty = r.of('landing:empty')
+  assert(empty.length === 1 && empty[0].grammar === 'claims-v1', `landing:empty rows: ${JSON.stringify(empty)} ${tail}`)
+  assert(r.code === 1, `a claims-v1 run that lands nothing exits 1, got ${r.code} ${tail}`)
   t.done()
 })
 

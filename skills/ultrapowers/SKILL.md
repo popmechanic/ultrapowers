@@ -231,7 +231,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    that builds nothing opens no PR. A stories-v1 run whose every proof already
    passes at the base ends `done` (phase `nothing to build: every proof already
    passes at the base`, `merged` null, tasks closed as already true at the
-   base). Any other plan ends `failed: engine exit 1`, because a claims-v1
+   base). Anything else ends `failed: engine exit <code>`, because a claims-v1
    probe already green at the base proves nothing. Either way the record is
    pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
    branch.

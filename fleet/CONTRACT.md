@@ -408,6 +408,9 @@ evidence repository.
   before settling when a loose end is open or not checked. One `loose-ends` row per run marks each
   loose end open, resolved or unchecked against the final snapshot, and the PR body lists the open
   and unchecked ones under `### Loose ends`.
+  A draft after `L:loose` is added lands the pre-cleanup green snapshot as ready, recorded as a
+  `loose:fallback` row and a second `settled` row, and the PR's Loose ends section says the cleanup
+  was dropped; a losing peer-rewrite read on that pre-cleanup snapshot still ends draft.
 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot

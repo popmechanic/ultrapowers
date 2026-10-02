@@ -439,8 +439,8 @@ after a sleep.
 
 An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch
 zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
-`done` (every proof already passed at the base), any other plan is `failed:
-engine exit 1`, because a claims-v1 probe already green at the base proves nothing. A page already `done`, `parked` or `failed` is final:
+`done` (every proof already passed at the base), anything else is `failed:
+engine exit <code>`, because a claims-v1 probe already green at the base proves nothing. A page already `done`, `parked` or `failed` is final:
 restarting the unit exits 0 and opens nothing twice.
 
 The run unit has a state of its own, readable when the page is not:

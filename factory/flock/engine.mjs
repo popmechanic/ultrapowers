@@ -1126,8 +1126,9 @@ try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(chec
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
-const looseItems = looseEnds(board.beliefs, textAt(outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge && lastEdge.snap))
-ev('loose-ends', { snap: lastEdge ? lastEdge.snap : null, items: looseItems })
+const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
+const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
+ev('loose-ends', { snap: looseSnap, items: looseItems })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
@@ -1206,7 +1207,7 @@ function commitSnapshot (snap, message) {
 async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
-    // settled green and identical to the base: every proof already held there, so there is nothing
+    // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
     // it still offers every checked step to the Jev step reading, as a landed run does (#1509)

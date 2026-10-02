@@ -23,7 +23,7 @@ const POLICY = POLICY_FILE.flag_at;
 // reading of 2026-09-29; each cell reverts alone.
 // An unknown `caught` key falls back to `caught` (#1528), and the record names the key asked.
 const ASKED = String(POLICY_FILE.gate_reading?.caught ?? 'caught');
-const READING = {caught: ASKED in Q ? ASKED : 'caught',
+const READING = {caught: Object.hasOwn(Q, ASKED) ? ASKED : 'caught',
   own_files: POLICY_FILE.gate_reading?.own_files === 'dropped' ? 'dropped' : 'read'};
 
 type Diet = {task: string | number; claim: string; proof: string; hash: string; base?: Record<string, unknown>};

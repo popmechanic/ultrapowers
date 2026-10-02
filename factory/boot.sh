@@ -15,7 +15,7 @@ TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 # The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
-# The hub's reaper: a merged run whose tag verified asks it, once, to remove this VM (#1470).
+# The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
 REAPER_URL="https://reaper.int.exe.xyz"
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and

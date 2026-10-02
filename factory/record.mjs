@@ -284,7 +284,12 @@ function looseEndsLines (events) {
     if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
     else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
   }
-  if (fb) out.push('', `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`)
+  if (fb) {
+    const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
+    out.push('', end && end.pr === 'ready' && end.snap === fb.snap
+      ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+      : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
+  }
   return out
 }
 
