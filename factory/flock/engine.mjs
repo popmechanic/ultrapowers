@@ -38,6 +38,7 @@ import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { stepReceipts } from './step_receipts.mjs'
+import { checkDigest } from './check_digest.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
 
@@ -1106,6 +1107,8 @@ await Promise.all(loops)
 await edgeChain
 // every step's receipt, green or red: what its latest checker result says it changed
 for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
+// checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
+try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
@@ -1190,7 +1193,12 @@ async function land () {
     // settled green and identical to the base: every proof already held there, so there is nothing
     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
-    if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 0 }
+    // it still offers every checked step to the Jev step reading, as a landed run does (#1509)
+    if (!sha) {
+      ev('landing:empty', { snap: outcome.snap })
+      await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
+      return 0
+    }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     writeProvenance(outcome.snap)

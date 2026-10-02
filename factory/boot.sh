@@ -184,7 +184,7 @@ write_status() { # $1 = state, $2 = phase (optional)
   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
 }
 # The engine's own evidence files, named once: collect_evidence copies them and evidence_commit adds them.
-ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json)
+ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json checks-digest.json)
 # The named files the engine left, copied beside the page — never `git add -A`, since the engine's clones live under the run directory and none of them is evidence.
 collect_evidence() {
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
