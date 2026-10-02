@@ -244,6 +244,34 @@ const readEventRows = (file) =>
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// (c2) `close-run` with no PR: a run with nothing to build closes on the base commit alone
+// ══════════════════════════════════════════════════════════════════════════
+
+{
+  const root = mkdir()
+  const kataJson = path.join(root, 'kata.json')
+  fs.writeFileSync(kataJson, JSON.stringify({ project: { id: 31 }, run: { uid: 'r-uid' }, tasks: { 1: { uid: 't1' } } }))
+  const eventsPath = path.join(root, 'events.jsonl')
+  const base = '078ea0c3385b88e7fc6a3a587eb250d34e88aebe'
+  const stub = await startStub(200)
+  try {
+    const result = await runCliAsync(['close-run', '--kata-json', kataJson, '--run', 'run-1', '--pr', '', '--merged', base,
+      '--admin-url', stub.url, '--events', eventsPath, '--title', 'The shared list'], { timeoutMs: 15000 })
+    assert.equal(result.status, 0, '(c2) close-run with no PR exits 0; got ' + JSON.stringify(result.status) + ', stderr ' + JSON.stringify(result.stderr))
+    assert.equal(stub.requests.length, 2, '(c2) the task and the run are closed; got ' + stub.requests.length + ' requests')
+    for (const rec of stub.requests) {
+      const parsed = JSON.parse(rec.body)
+      assert.deepEqual(parsed.evidence, [{ type: 'commit', sha: base }],
+        '(c2) ' + rec.path + '\'s evidence is the base commit alone; got ' + JSON.stringify(parsed.evidence))
+      assert.ok(parsed.message.includes(base) && !parsed.message.includes('undefined') && parsed.message.length >= 40,
+        '(c2) ' + rec.path + '\'s message names the base commit; got ' + JSON.stringify(parsed.message))
+    }
+  } finally {
+    await closeStub(stub)
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // (d) [M4] `close-run` never fails the run
 // ══════════════════════════════════════════════════════════════════════════
 

@@ -51,7 +51,7 @@
  *       a `fleet-boot.log` line names `fleet-evidence-repo`, and neither
  *       repository's refs move.
  *
- *   (h) nothing ahead of base: parked, the hub's mark in the tagged record.
+ *   (h) nothing ahead of base with a green engine: done, nothing to build, closed on the base commit.
  *
  *   (i) [#1445 M1, M2] run 509's boot is SIGKILLed (its whole process group)
  *       once the live branch says `running` and the engine stub hangs;
@@ -578,7 +578,7 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   assert.deepEqual(refsOf(evidenceDir), evidenceBefore, '(g) the evidence repository\'s refs are unchanged')
 }
 
-// ── (h) #1392 nothing ahead of base: parked, and the hub's mark is in the tagged record ──
+// ── (h) nothing ahead of base with a green engine (shopping-list run-1): done, nothing to build ──
 
 {
   const runN = '508'
@@ -602,9 +602,13 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   }
   const res = await runBootAsync({ bin, home, env })
   assert.equal(res.code, 0, `(h) the nothing-ahead run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
-  assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'parked', '(h) status.json at the tag records state "parked"')
-  const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
-  assert.deepEqual(marks.map((r) => r.state), ['parked'], `(h) events.jsonl at the tag holds one board:mark row, state parked — got ${JSON.stringify(marks)}`)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
+  assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
+  assert.equal(status.pr, null, '(h) no pull request is opened')
+  const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  assert.deepEqual(rows.filter((r) => r.kind === 'board:mark'), [], `(h) nothing is marked parked — got ${JSON.stringify(rows.filter((r) => r.kind === 'board:mark'))}`)
+  assert.ok(rows.some((r) => r.kind === 'board:close' && r.what === 'run'), `(h) the run's close is in the tagged record — got ${JSON.stringify(rows.filter((r) => String(r.kind).startsWith('board')))}`)
 }
 
 // ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──
