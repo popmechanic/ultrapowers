@@ -26,6 +26,7 @@ import {
   Text,
 } from '../pouf'
 import { baseCatalog } from './catalog'
+import { asExample } from './example'
 
 const u = <T,>(v: T | null | undefined): T | undefined => v ?? undefined
 
@@ -118,7 +119,7 @@ export const { registry } = defineRegistry(baseCatalog, {
               id={id}
               describedBy={describedBy}
               label={props.label}
-              placeholder={u(props.placeholder)}
+              placeholder={asExample(props.placeholder)}
               value={value ?? ''}
               onChange={setValue}
             />
