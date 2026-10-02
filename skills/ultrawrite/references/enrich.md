@@ -93,8 +93,9 @@ operator picks one in the Browser pane and pins notes on it in Comment mode
 ## Then
 
 Draft the bundle for the `next` plan only (SKILL.md, Story planning, steps 4–8):
-cards carry `concept`, `page.json` carries `subproject`, and the coverage rule
-decides which stories must exist. The operator sees the real screen before the
+cards carry `concept` (or `concepts`, one per map line a screen covers),
+`page.json` carries `subproject`, and the coverage rule decides which stories
+must exist. The operator sees the real screen before the
 sign question. What the operator signs is
 `bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`,
 shown in the sign question with the approved screen.

@@ -45,7 +45,11 @@ export type Card = {
   main_story?: string;
   near_miss?: string;
   concept?: string;
+  // One screen can cover several map lines (#1508): its `concepts`, beside or instead of `concept`.
+  concepts?: string[];
 };
+// Every concept a card names: its `concepts` and its `concept`, without duplicates.
+export const conceptsOf = (c: Card): string[] => [...new Set([...(c.concepts ?? []), ...(c.concept ? [c.concept] : [])])];
 export type Bundle = {dir: string; page: Page; cards: Card[]; storeText: string; storeSha256: string; product: Product | null};
 
 export function loadBundle(dir: string): Bundle {
