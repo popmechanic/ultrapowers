@@ -14,6 +14,10 @@
   border: 1px dashed rgba(58, 46, 92, 0.35);
   border-radius: 12px;
 }
+.preview-compare > section[data-version][data-chosen] {
+  outline: 4px solid #3a2e5c;
+  outline-offset: 2px;
+}
 .preview-version-head {
   display: flex;
   align-items: center;
@@ -28,6 +32,10 @@
   border: 1px solid rgba(58, 46, 92, 0.5);
   background: #fff;
   cursor: pointer;
+}
+.preview-choose[aria-pressed='true'] {
+  background: #3a2e5c;
+  color: #fff;
 }
 .preview-single > section[data-piece] {
   padding: 16px;

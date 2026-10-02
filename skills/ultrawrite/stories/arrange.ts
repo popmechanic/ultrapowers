@@ -78,7 +78,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
   const mine = new Set(card.actions.map((a) => a.name));
   const describe = (name: string) => tools.get(name)?.description ?? card.actions.find((a) => a.name === name)?.description ?? '';
-  const drafts = new Map<string, {k: string; name: string}[]>();
+  const drafts = new Map<string, {k: string; name: string; example?: string}[]>();
   const buttons: {name: string; action: string}[] = [];
   const lists = new Map<string, {table: string; controls: RowControl[]}>();
   for (const story of b.page.stories) {
@@ -93,7 +93,10 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
             const k = Object.keys(args).find((x) => args[x] === u.type.text);
             if (!k) continue;
             const list = drafts.get(step.tool) ?? [];
-            if (!list.some((d) => d.k === k)) list.push({k, name: u.type.name});
+            const text = typeof u.type.text === 'string' && u.type.text !== '' ? u.type.text : undefined;
+            const seen = list.find((d) => d.k === k);
+            if (!seen) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
+            else if (seen.example === undefined && text !== undefined) seen.example = text;
             drafts.set(step.tool, list);
           } else if ('click' in u && (u.click.role === 'button' || u.click.role === 'checkbox')) {
             const name = u.click.name;
@@ -122,7 +125,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
   const required: Candidate[] = [];
   for (const [action, ds] of drafts)
     for (const d of ds)
-      required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, value: {$bindState: `/draft/${d.k}`}}}});
+      required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, ...(d.example === undefined ? {} : {placeholder: d.example}), value: {$bindState: `/draft/${d.k}`}}}});
   for (const [i, x] of buttons.entries()) {
     const ds = drafts.get(x.action) ?? [];
     const props: Json = {label: x.name, action: x.action};
@@ -154,8 +157,9 @@ const missing = (spec: Spec | null, required: Candidate[]) => {
 };
 
 /** The composer's layout made real: each list placeholder a repeat over its table,
- *  each draft-reading button clearing its drafts once it ran, empty containers gone. */
-function expand(input: Spec, lists: Pieces['lists']): Spec {
+ *  each draft-reading button clearing its drafts once it ran, the page title (one,
+ *  added if left out) first under the root, empty containers gone. */
+function expand(input: Spec, lists: Pieces['lists'], title: string): Spec {
   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
   for (const [id, e] of Object.entries(spec.elements)) {
     const path = isObj(e.visible) ? e.visible.$state : undefined;
@@ -178,6 +182,18 @@ function expand(input: Spec, lists: Pieces['lists']): Spec {
       if (clear.length) e.on = {press: clear.length === 1 ? clear[0] : clear};
     }
   }
+  const heading = {type: 'Heading', props: {text: title, level: 1}};
+  const titles = Object.keys(spec.elements).filter((id) => id !== spec.root && recipeKey(atomic(spec.elements[id])) === recipeKey(heading));
+  let keep = titles[0];
+  if (!keep) {
+    keep = 'title';
+    for (let i = 1; spec.elements[keep]; i++) keep = `title_${i}`;
+    spec.elements[keep] = {...heading, children: []};
+  }
+  for (const id of titles.slice(1)) delete spec.elements[id];
+  for (const p of Object.values(spec.elements)) if (p.children?.some((c) => titles.includes(c))) p.children = p.children.filter((c) => !titles.includes(c));
+  const root = spec.elements[spec.root];
+  root.children = [keep, ...(root.children ?? []).filter((c) => c !== keep)];
   const containers = new Set(['Card', 'Stack', 'Row', 'Grid']);
   for (let changed = true; changed; ) {
     changed = false;
@@ -245,7 +261,7 @@ export async function arrange(opts: {bundle: string; app: string; piece?: string
           spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
           left = missing(spec, required);
         }
-        return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists)}] as const;
+        return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title)}] as const;
       }),
     );
     for (const [v, r] of results) {
@@ -276,7 +292,7 @@ export async function reshape(opts: {bundle: string; app: string; piece: string;
     }),
   );
   if (!out.spec) throw new Error('the composer returned no screen');
-  return {spec: expand(out.spec, lists), steps: out.steps.map((s) => s.description)};
+  return {spec: expand(out.spec, lists, b.page.title), steps: out.steps.map((s) => s.description)};
 }
 
 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--piece <piece>] [--pick <V> | --reshape --note <text>...]';

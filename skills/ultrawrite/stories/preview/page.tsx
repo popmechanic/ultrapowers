@@ -1,7 +1,9 @@
 // The preview page: the app's own kit draws each piece's spec over a store
 // filled from the bundle's stories. At / each piece's approved spec (else
 // ?v=<V>, else A); at /compare every version side by side, each with a
-// "Choose <V>" button. Specs arrive over /ws and redraw in place.
+// "Choose <V>" button; the chosen version (clicked here, else the one whose
+// spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
+// arrive over /ws and redraw in place.
 import {createMergeableStore} from 'tinybase';
 import {createRoot} from 'react-dom/client';
 import {useEffect, useState} from 'react';
@@ -67,8 +69,14 @@ function choose(v: string) {
   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', chose: v})});
 }
 
+// The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
+// copy of the chosen version, so equal JSON names it.
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
+
 function Page() {
   const [pieces, setPieces] = useState<Pieces>(initial);
+  const [picked, setPicked] = useState<Record<string, string>>({});
   useEffect(() => {
     let ws: WebSocket | null = null;
     let stopped = false;
@@ -90,15 +98,23 @@ function Page() {
       <>
         {Object.entries(pieces).map(([name, p]) => (
           <div key={name} className="preview-compare" data-compare={name}>
-            {letters(p).map((v) => (
-              <section key={v} data-piece={name} data-version={v}>
-                <div className="preview-version-head">
-                  <span>{v}</span>
-                  <button type="button" className="preview-choose" onClick={() => choose(v)}>{`Choose ${v}`}</button>
-                </div>
-                <Renderer spec={p.versions[v]} registry={registry} />
-              </section>
-            ))}
+            {letters(p).map((v) => {
+              const chosen = (picked[name] ?? recorded(p)) === v;
+              return (
+                <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
+                  <div className="preview-version-head">
+                    <span>{v}</span>
+                    <button
+                      type="button"
+                      className="preview-choose"
+                      aria-pressed={chosen}
+                      onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
+                    >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
+                  </div>
+                  <Renderer spec={p.versions[v]} registry={registry} />
+                </section>
+              );
+            })}
           </div>
         ))}
       </>
