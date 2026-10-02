@@ -37,7 +37,7 @@ and the default branch moved underneath it, catches the run up to the target's t
 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
 opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
 failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
-`git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, and
+`git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
 whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
 removes the calling VM only when the run issue is closed `done` (#1470); the janitor still reaps what
 never asks. The PR is the human gate: the target's

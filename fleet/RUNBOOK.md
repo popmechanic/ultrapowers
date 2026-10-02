@@ -433,13 +433,14 @@ after a sleep.
 | `booting` | the setup script is provisioning, or the bootstrap is cloning the engine and the boot script the target |
 | `running` | `fleet-engine-<N>.service` is active; `phase` says which wave |
 | `publishing` | the engine service is inactive and the branch is ahead of base; evidence committed, pushing and opening the PR |
-| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it; merged is the squash commit's sha, or null when the PR was left open |
-| `parked` | a gate verdict other than PASS that no `approve-receipt.json` approved; `pr` is a draft PR, or `null` when the branch had nothing to publish |
+| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it; merged is the squash commit's sha, or null when the PR was left open; or a stories-v1 run with nothing to build, `pr` and `merged` null |
+| `parked` | a gate verdict other than PASS that no `approve-receipt.json` approved; `pr` is a draft PR |
 | `failed` | a step other than the engine's verdict broke; `error` says which |
 
 An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch
-zero commits ahead of base is `parked` with its evidence committed and no
-push and no PR. A page already `done`, `parked` or `failed` is final:
+zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
+`done` (every proof already passed at the base), any other plan is `failed:
+engine exit 1`, because a claims-v1 probe already green at the base proves nothing. A page already `done`, `parked` or `failed` is final:
 restarting the unit exits 0 and opens nothing twice.
 
 The run unit has a state of its own, readable when the page is not:
@@ -478,8 +479,8 @@ finding.
 integration branch left to the janitor (`node fleet/janitor.mjs --target
 <t>`), which deletes the branch of a pull request that is closed and not merged
 — and its plan re-authored, with the finding folded into the new plan's tasks. A
-park with nothing mergeable, the branch zero commits ahead of base and `pr`
-null, is always this case.
+claims-v1 run that built nothing ends `failed: engine exit 1` with no PR. Its
+probes were green at the base, so it is re-authored with probes that are red there.
 
 Either way the parked branch is a record, never a starting point:
 `fleet/launch.mjs` never takes a run branch as `--base`, and refuses one with

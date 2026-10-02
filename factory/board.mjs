@@ -131,6 +131,7 @@ async function cmdCloseRun (flags) {
   const eventsPath = flags.events
   const title = flags.title
   const merged = flags.merged
+  const base = flags.base
 
   try {
     const doc = readJsonFile(kataJsonPath)
@@ -147,9 +148,9 @@ async function cmdCloseRun (flags) {
     const { projectId, runUid } = ids
 
     // no PR: a run that had nothing to build closes on the base commit alone
-    const evidence = pr ? [{ type: 'pr', url: pr }] : []
+    const evidence = pr ? [{ type: 'pr', url: pr }] : (base ? [{ type: 'commit', sha: base }] : [])
     if (merged) evidence.push({ type: 'commit', sha: merged })
-    const where = pr ? "adopted green in the run's pull request — " + pr : 'already true at the base ' + merged
+    const where = pr ? "adopted green in the run's pull request — " + pr : 'already true at the base ' + base
 
     const tasks = doc.tasks || {}
     const taskIds = Object.keys(tasks)
@@ -175,7 +176,7 @@ async function cmdCloseRun (flags) {
       projectId,
       uid: runUid,
       key: runUid + ':run:close',
-      message: run + ' done: ' + title + ' — ' + (pr || 'nothing to build, every proof passed at the base ' + merged),
+      message: run + ' done: ' + title + ' — ' + (pr || 'nothing to build, every proof passed at the base ' + base),
       evidence,
       run,
     })

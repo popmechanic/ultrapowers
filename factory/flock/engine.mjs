@@ -1211,7 +1211,9 @@ async function land () {
     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
     // it still offers every checked step to the Jev step reading, as a landed run does (#1509)
     if (!sha) {
-      ev('landing:empty', { snap: outcome.snap })
+      ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
+      // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
+      if (W.grammar !== 'stories-v1') return 1
       await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
       return 0
     }

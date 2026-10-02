@@ -609,6 +609,10 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
   assert.deepEqual(rows.filter((r) => r.kind === 'board:mark'), [], `(h) nothing is marked parked — got ${JSON.stringify(rows.filter((r) => r.kind === 'board:mark'))}`)
   assert.ok(rows.some((r) => r.kind === 'board:close' && r.what === 'run'), `(h) the run's close is in the tagged record — got ${JSON.stringify(rows.filter((r) => String(r.kind).startsWith('board')))}`)
+  assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
+  assert.deepEqual(rows.filter((r) => r.kind === 'run:audit').map(({ ts, ...r }) => r), [{ kind: 'run:audit', state: 'done', missing: [] }],
+    `(h) [#1522] the record ends with one run:audit row — got ${JSON.stringify(rows.filter((r) => r.kind === 'run:audit'))}`)
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
 }
 
 // ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──

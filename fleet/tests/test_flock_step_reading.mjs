@@ -86,7 +86,10 @@ for (const [CASE, text] of [['empty', '{}\n'], ['landed', '{"n":1}\n']]) {
     const r = await flockRun(t, { plan, script: { 1: { 'note.json': text } } })
     const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
     assert(r.code === 0, `exit ${r.code} ${tail}`)
-    if (CASE === 'empty') assert(r.of('landing:empty').length === 1 && r.of('landing').length === 0, `landing rows: ${JSON.stringify([...r.of('landing:empty'), ...r.of('landing')])} ${tail}`)
+    if (CASE === 'empty') {
+      assert(r.of('landing:empty').length === 1 && r.of('landing').length === 0, `landing rows: ${JSON.stringify([...r.of('landing:empty'), ...r.of('landing')])} ${tail}`)
+      assert(r.of('landing:empty')[0].grammar === 'stories-v1', `landing:empty row: ${JSON.stringify(r.of('landing:empty'))} ${tail}`)
+    }
     else assert(r.of('landing').length >= 1, `no landing row ${tail}`)
     const js = r.of('jev:step')
     assert(js.length === 1 && js[0].clause === 'S1.1', `jev:step rows: ${JSON.stringify(js)} ${tail}`)

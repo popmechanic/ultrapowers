@@ -312,7 +312,7 @@ plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 
 # (catching the run up to a moved main), and runs the deploy the merge earned. It prints the run's
 # state, phase, PR url, PR author and merge sha one per line, or a refusal this fails on.
 publish() { # $1 = the engine's exit code
-  local out rc=0 state phase_text audit_args audit_line
+  local out rc=0 state phase_text
   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
   out="$(fleet_node "$ENGINE_REPO_DIR/factory/publish.mjs" --engine-exit "$1" --hold "$HOLD_FLAG" --run-id "$RUN_ID" \
@@ -323,15 +323,20 @@ publish() { # $1 = the engine's exit code
   [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
   state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
-  write_status "$state" "$phase_text"; evidence_commit "$RUN_ID: $state"
-  close_run "$state" "$phase_text"
+  finish "$state" "$phase_text"
+}
+# A run's end, in plain sequence: the record, the board's close, the audit row, the tag, the reap request.
+finish() { # $1 = state, $2 = phase
+  local audit_args audit_line
+  write_status "$1" "$2"; evidence_commit "$RUN_ID: $1"
+  close_run "$1" "$2"
   audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)
-  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$state" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
+  audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$1" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
   evidence_commit "$RUN_ID: audit"
   record_tags
   # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
-  if [ "$state" = done ] && [ -n "$MERGED_SHA" ] && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
+  if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
     fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
     log "reap: asked the hub to remove this VM"
   fi
@@ -357,6 +362,7 @@ close_run() { # $1 = the run's final state (done|parked), $2 = its phase
   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
+  [ -z "$PR_URL" ] && args+=(--base "$BASE_SHA")
   fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
 }
 # The one entry point: nothing ahead of base is done (a failure if the engine wasn't green), anything ahead is a publish.
@@ -373,9 +379,7 @@ boot() {
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
     # exit 0 at the base: the engine settled green on a snapshot equal to the base, so every proof
     # already held there; nothing to publish, and the run is done, closed with the base as evidence
-    MERGED_SHA="$BASE_SHA"; write_status done "nothing to build: every proof already passes at the base"
-    close_run done "nothing to build"; evidence_commit "$RUN_ID: done, nothing to build"
-    record_tags; exit 0; fi
+    finish done "nothing to build: every proof already passes at the base"; exit 0; fi
   publish "$code"; exit 0
 }
 # systemd's `ExecStopPost=` of the run unit: a boot that was killed (or died) before its record ended

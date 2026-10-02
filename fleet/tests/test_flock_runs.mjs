@@ -302,6 +302,22 @@ test('jev trials loose-unflagged', async () => {
   t.done()
 })
 
+test('empty landing claims-v1', async () => {
+  const t = flockTarget({ 'a.txt': 'todo\n' })
+  const plan = writePlan(t, {
+    claim: 'a.txt reads DONE.', check: 'test -f a.txt',
+    tasks: [task({ id: 1, title: 'Mark the file', files: ['Modify: `a.txt`'], claim: 'a.txt reads DONE.', stale: 'path-absent: `a.txt`', run: 'test -f a.txt' })],
+  })
+  const r = await flockRun(t, { plan, script: { 1: {} } })   // a builder that writes nothing
+  const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
+  assert(r.code === 1, `a claims-v1 run that lands nothing exits 1, got ${r.code} ${tail}`)
+  const empty = r.of('landing:empty')
+  assert(empty.length === 1 && empty[0].grammar === 'claims-v1', `landing:empty rows: ${JSON.stringify(empty)} ${tail}`)
+  assert(r.of('landing').length === 0, `landing rows: ${JSON.stringify(r.of('landing'))}`)
+  assert(t.git('rev-parse', 'HEAD') === t.base, 'HEAD moved off the base')
+  t.done()
+})
+
 for (const [name, fn] of cases) {
   try { await fn(); console.log(`ok   ${name}`) } catch (e) { fails.push(name); console.log(`FAIL ${name}: ${e.message}`) }
 }
