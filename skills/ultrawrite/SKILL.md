@@ -455,7 +455,9 @@ commit of the plan's repository, or a checkout directory) the diet carries one m
 `base` — for the task's Files and every path its Proof names, whether the path exists
 there, its line count, its headings or test names, and an `excerpt` of the lines that
 carry the diet's own literals, at most `8000` bytes per file and `24000` in total,
-`truncated` flagged when the cap cut. The reader's question gains its second half on that
+`truncated` flagged when the cap cut. An entry for a path the task's own `Modify:` or
+`Delete:` bullet names carries `own` (`modify` or `delete`): its excerpt is the text the
+task is about to replace, never a rival pin (#1497). The reader's question gains its second half on that
 excerpt: *whether a named file already pins the opposite of a clause, and whether every
 section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the task count"
 and "this doc section does not exist" are the reader's to say, not the sandbox's. The
@@ -526,7 +528,12 @@ the leg to strengthen. At the release census, each disagreement between the two 
 labelled with
 `bun $UW/../stories/gate_jev.ts --label <file> --task <id> --round <n> --right agent|jev --because "<run evidence>"`,
 and the notes carry both `--agreement` lines from
-`bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans`.
+`bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans`
+and the `--readings` lines from `bun $UW/../stories/gate_jev.ts --readings docs/superpowers/plans`.
+Since #1497 Jev asks `caught_v2` and never reads a base entry the extractor marks `own`
+(policy.json `gate_reading`, each cell its own rollback); a reworded question is a new
+question, so each reading is counted apart, and a round recorded before then counts as
+`caught/read`.
 
 The bar for Jev taking over (operator, 2026-09-30): Jev leads the reading once, across n=5 plans
 in which Jev saw the base on every round, there is no labelled disagreement with
