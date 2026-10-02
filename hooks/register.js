@@ -10,15 +10,21 @@ const FENCE = "`".repeat(3);
 let screen = null; // { name, stage, versions, url }
 let pick = null;
 let notes = []; // { kind, target?, note }
-let taken = 0; // feedback lines already taken into the tray
+let offset = 0; // bytes of the feedback file already taken (always ends at a newline)
 let cwd = "";
 
+// One tray per working directory: sessions in other repos never see this one.
+function trayKey() {
+  return `tray:${cwd.replace(/\/+$/, "")}`;
+}
+
 async function save($) {
-  await $.store.set("tray", { screen, pick, notes, taken });
+  await $.store.set(trayKey(), { screen, pick, notes, offset });
   $.ui.invalidate();
 }
 
 function empty() {
+  screen = null;
   pick = null;
   notes = [];
 }
@@ -71,9 +77,15 @@ async function send($) {
   const text =
     `Feedback from the intent tray on ${name}:\n\n` +
     `${FENCE}json\n${JSON.stringify(recs)}\n${FENCE}`;
+  let entered;
+  try {
+    entered = await $.prompt.submit({ text });
+  } catch {
+    return; // the tray keeps its notes
+  }
+  if (!entered || entered.drop != null) return;
   empty();
   await save($);
-  await $.prompt.submit({ text });
 }
 
 async function clear($) {
@@ -85,17 +97,34 @@ async function openTray($) {
   await $.ui.open({ ...PANE, focus: true });
 }
 
-async function readFeedback($) {
+// The file's bytes up to and including its last newline, or null when it cannot be read.
+async function wholeLines($) {
   let text;
   try {
     text = await $.fs.read(feedbackPath());
   } catch {
+    return null;
+  }
+  const bytes = new TextEncoder().encode(String(text));
+  return bytes.subarray(0, bytes.lastIndexOf(10) + 1);
+}
+
+async function readFeedback($) {
+  const held = await $.store.get(trayKey());
+  const stored = held && typeof held === "object" ? Number(held.offset) : 0;
+  if (stored > offset) offset = stored; // another session in this repo took them
+  let size;
+  try {
+    size = (await $.fs.stat(feedbackPath())).size;
+  } catch {
     return;
   }
-  const lines = String(text).split("\n").filter((l) => l.trim());
-  if (lines.length < taken) taken = 0; // the file was replaced
-  if (lines.length === taken) return;
-  for (const line of lines.slice(taken)) {
+  if (size < offset) offset = 0; // the file was replaced
+  if (size === offset) return;
+  const bytes = await wholeLines($);
+  if (!bytes || bytes.length <= offset) return;
+  const lines = new TextDecoder().decode(bytes.subarray(offset)).split("\n").filter((l) => l.trim());
+  for (const line of lines) {
     let r;
     try {
       r = JSON.parse(line);
@@ -115,7 +144,7 @@ async function readFeedback($) {
       }
     }
   }
-  taken = lines.length;
+  offset = bytes.length;
   await save($);
 }
 
@@ -217,9 +246,9 @@ function drawBand($, e) {
     flexDirection: "row",
     children: [
       Text({ key: "band-label", children: [label] }),
-      Button({ key: "band-note", hotkey: "1", onPress: () => openTray($), children: ["Add note"] }),
-      Button({ key: "band-send", hotkey: "2", onPress: () => send($), children: ["Send"] }),
-      Button({ key: "band-clear", hotkey: "3", onPress: () => clear($), children: ["Clear"] }),
+      Button({ key: "band-note", hotkey: "n", onPress: () => openTray($), children: ["Add note"] }),
+      Button({ key: "band-send", hotkey: "s", onPress: () => send($), children: ["Send"] }),
+      Button({ key: "band-clear", hotkey: "c", onPress: () => clear($), children: ["Clear"] }),
       ...(screen && screen.url
         ? [Button({ key: "band-open", onPress: () => openScreen($), children: ["Open screen"] })]
         : []),
@@ -230,12 +259,16 @@ function drawBand($, e) {
 export function register(on) {
   on("session.start", async ($, e, next) => {
     cwd = (e && e.cwd) || "";
-    const saved = await $.store.get("tray");
-    if (saved && typeof saved === "object") {
+    const saved = await $.store.get(trayKey());
+    if (!saved || typeof saved !== "object") {
+      // Lines written before this repo's first session are history.
+      offset = (await wholeLines($))?.length ?? 0;
+      await save($);
+    } else {
       screen = saved.screen || null;
       pick = saved.pick != null ? saved.pick : null;
       notes = Array.isArray(saved.notes) ? saved.notes : [];
-      taken = Number(saved.taken) || 0;
+      offset = Number(saved.offset) || 0;
     }
     await $.command.register({ name: "tray", description: "Open the intent tray", immediate: true });
     await $.command.register({
@@ -283,8 +316,8 @@ export function register(on) {
     const stage = input.stage != null ? String(input.stage) : e.stage != null ? String(e.stage) : "";
     const raw = Array.isArray(input.versions) ? input.versions : Array.isArray(e.versions) ? e.versions : [];
     const url = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
-    screen = { name, stage, versions: raw.map(String), url };
     empty();
+    screen = { name, stage, versions: raw.map(String), url };
     await save($);
     await $.ui.open(PANE);
     return {

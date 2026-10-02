@@ -270,8 +270,10 @@ When Claude has a screen ready for you to look at, it opens the intent tray besi
 tool for that is `show_screen`). The tray is where you tell Claude what you want from that screen:
 pick a version, add notes, and send them all back with one press.
 
-A band above the prompt carries three buttons: **Add note** (`1`), **Send** (`2`) and **Clear**
-(`3`). Inside the tray pane, a digit picks a version, `s` sends and `c` clears. `/tray` opens the
+A band above the prompt carries three buttons: **Add note** (`n`), **Send** (`s`) and **Clear**
+(`c`). Click a button, or press its letter once the band has focus (`ctrl+x tab`). The band shows
+only while the tray holds a screen, pick or note, and Send and Clear empty it. In the pane the
+note box takes typing, so click a version, Send or Clear there. `/tray` opens the
 tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands everything —
 your pick first, then each note in the order you added it — to Claude as one message.
 
