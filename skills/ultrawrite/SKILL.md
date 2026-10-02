@@ -108,10 +108,12 @@ again at the PR smoke.
    - one story per refusal, ending in a `ui` step with `"refused": "<the refusal sentence>"`
    - one story per link
 
-   A step's `see` names only text its own piece, or one built before it, draws:
+   A step's `see` names only text its own piece, or a piece it depends on, draws:
    on potluck run-1 (2026-10-01) S3's `see` read the answer piece's text from a
    guest step, and the guest builder drew it too. A link story's check goes to the
-   last-built piece of its link (#1490), so it may read either side.
+   piece of its link, the tool's owner included, that depends on every other one
+   (#1490, #1525), so it may read the text of any piece in the link; with no such
+   piece it goes to the tool's owner and reads only that piece's text.
 
    The only alternative to a refusal story is a waiver
    `{piece, action, refuses, arg, "reason": "unreachable-from-screen"}`, where `arg`

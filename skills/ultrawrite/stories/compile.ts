@@ -45,12 +45,31 @@ function pieceOrder(cards: Card[]): Card[] {
   return order;
 }
 
+// Every piece `piece` depends on, directly or through others; a circle ends the walk.
+function below(cards: Card[], piece: string): Set<string> {
+  const seen = new Set<string>();
+  const walk = (p: string) => {
+    for (const d of cards.find((c) => c.piece === p)?.depends_on ?? []) {
+      if (!seen.has(d)) {
+        seen.add(d);
+        walk(d);
+      }
+    }
+  };
+  walk(piece);
+  return seen;
+}
+
 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
   const owner = new Map(b.cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
-  // A linked step's check goes to the last-built piece of its link, so no builder proves what a later piece draws (#1490).
-  const rank = new Map(pieceOrder(b.cards).map((c, i) => [c.piece, i] as const));
-  const lastOf = new Map((b.page.links ?? []).filter((l) => l.pieces?.length).map((l) => [l.id, l.pieces!.reduce((a, p) => ((rank.get(p) ?? -1) > (rank.get(a) ?? -1) ? p : a))] as const));
+  // A linked step's check goes to the link piece, the tool's owner included, that depends on every other one,
+  // so it is built after everything it reads (#1490, #1525); with none, the owner.
+  const links = new Map((b.page.links ?? []).map((l) => [l.id, l.pieces ?? []] as const));
+  const carrier = (link: string | undefined, own: string): string => {
+    const ps = [...new Set([...(links.get(link ?? '') ?? []), own])];
+    return ps.find((p) => ps.every((q) => q === p || below(b.cards, p).has(q))) ?? own;
+  };
   const out: Derived[] = [];
   for (const s of b.page.stories) {
     const store = mod.makeStore();
@@ -90,7 +109,7 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
           holds_before: Boolean(st.refused),
         };
         if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; end it with "refused": "<the refusal sentence>" if it must refuse`);
-        out.push({story: s.id, step: i + 1, piece: (st.link !== undefined ? lastOf.get(st.link) : undefined) ?? owner.get(st.tool)!, probe});
+        out.push({story: s.id, step: i + 1, piece: carrier(st.link, owner.get(st.tool)!), probe});
       }
       before = after;
     });
