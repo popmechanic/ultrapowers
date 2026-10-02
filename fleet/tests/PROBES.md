@@ -96,17 +96,17 @@ Run it before any change to that question, to `factory/flock/engine.mjs`'s `peer
 
     node fleet/tests/jev_peer_probe.mjs 5
 
-Readings, 2026-10-01, `jev-1.13.0`, n=5 each:
+Readings, 2026-10-02 06:40 UTC (after #1520, field `asked_to_fix`), `jev-1.13.0`, n=5 each:
 
 | Case | Answer |
 |---|---|
-| bare run-296 | loses 5/5 |
-| run-296 with its reason | supersedes 5/5 |
-| run-277 | loses 5/5 |
+| bare run-296 | loses 5/5 (L .51–.57) |
+| run-296 with its reason | supersedes 5/5 (S .55–.60) |
+| run-277 | loses 5/5 (L .65–.72) |
+| unrelated same-file rewrite | loses 5/5 (L .83–.88) |
 
-These readings were taken before #1520, when the loose-ends side carried its reason in a field named
-`claim`; it is now `asked_to_fix`, and the question text changed with it. Re-run
-`node fleet/tests/jev_peer_probe.mjs 5` (needs the TypeSafe key; not in the suite) and replace the table.
+The readings of 2026-10-01 (before #1520, field `claim`) read the same answers: bare loses 5/5, with its
+reason supersedes 5/5, run-277 loses 5/5.
 
 ## Jev's gate reading, live
 
@@ -130,7 +130,7 @@ Run it before any change to the `authoring_gate` questions, to `gate_reading`, o
 When a change moves two things at once, flipping one `gate_reading` cell back measures the other
 change alone.
 
-Readings of the earlier caught_v2 wording (before #1528 narrowed it to wiring; re-run to replace), 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
+Readings of the earlier caught_v2 wording (before #1528 narrowed it to wiring), 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
 majority:
 
 | Reading | Wrong fails still failing |
@@ -142,3 +142,14 @@ majority:
 
 Both controls failed 3 of 3 under every reading. The one round Jev was right on, rebuilt by hand (its
 round-1 diet is not replayable), failed 1 of 3 before and 0 of 3 after: the change gives up that catch.
+
+Readings of the narrowed caught_v2 (#1528) with `own_files: dropped`, 2026-10-02 06:40 UTC, `jev-1.13.0`,
+n=23 wrong fails from the plans dated 2026-09-29..10-01, 1 read each (`gate_jev_replay_probe.mjs` with no
+`reps`), exit 0:
+
+| Reading | Wrong fails still failing | Agreed fails now passing |
+|---|---|---|
+| caught_v2 (narrowed)/dropped | 3 of 23 (all 2026-09-29-fast-boot: task 1 r2, task 3 r5, task 4 r1) | 0 of 0 |
+
+Both controls read `fail`. No labelled agreed-fail round was replayable, so the two-sided check is
+vacuous on this window; it gains a count only once runs record rounds where both readers failed.
