@@ -28,6 +28,8 @@ An entry for a path the task's own `Modify:` or `Delete:` bullet names gains
 `"own": "modify"` or `"own": "delete"` (#1497) — present or absent alike — so
 the text the task is about to replace is never read as a rival pin; it is
 marked, never dropped, since the reader still checks what a leg names exists.
+Own entries spend the excerpt budget last (#1528): the files the task rewrites
+never starve the siblings its Proof names; the output order is unchanged.
 """
 from __future__ import annotations
 
@@ -242,8 +244,7 @@ def base_excerpt(plan_path, task_id, base):
             if ref and ref not in own:
                 own[ref] = label
     files = []
-    spent = 0
-    exhausted = False  # the total cap has cut an entry: nothing later rides
+    readable = []  # (entry, lines) for each present file, in file order
     for path in paths:
         if tree._blob_mode(path) is None:
             files.append({"path": path, "status": "absent"})
@@ -255,6 +256,12 @@ def base_excerpt(plan_path, task_id, base):
         lines = raw.splitlines()
         entry = {"path": path, "status": "present", "lines": len(lines),
                  "headings": _headings(path, lines)}
+        files.append(entry)
+        readable.append((entry, lines))
+    # the budget goes to unmarked entries first, own ones after (stable sort)
+    spent = 0
+    exhausted = False  # the total cap has cut an entry: nothing later rides
+    for entry, lines in sorted(readable, key=lambda el: el[0]["path"] in own):
         if exhausted or spent >= EXCERPT_TOTAL_CAP:
             entry["excerpt"], entry["truncated"] = "", True
         else:
@@ -265,7 +272,6 @@ def base_excerpt(plan_path, task_id, base):
             spent += len(excerpt.encode("utf-8"))
             if cut and budget < EXCERPT_FILE_CAP:
                 exhausted = True  # it was the TOTAL that cut this one
-        files.append(entry)
     for entry in files:
         if entry["path"] in own:
             entry["own"] = own[entry["path"]]

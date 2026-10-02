@@ -56,7 +56,7 @@ four before any change to `skills/ultrawrite/stories/gate_jev.ts`,
 
     for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
     for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done
-    for c in own-files own-only rollback; do node fleet/tests/gate_jev_reading_probe.mjs $c; done
+    for c in own-files own-only rollback typo; do node fleet/tests/gate_jev_reading_probe.mjs $c; done
     for c in bundle map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
 
 - `gate_jev_probe.mjs` — `record`: one request asking the five clause keys,
@@ -70,7 +70,9 @@ four before any change to `skills/ultrawrite/stories/gate_jev.ts`,
   `gate_reading` (#1497): `own-files` sends only the sibling entry, unmarked, and
   asks `caught_v2`; `own-only` sends `files` as `[]` and asks no `pinned`;
   `rollback`, on a copy with both cells set back, sends both entries and asks the
-  old `caught`. The round names its `reading`. Exits 1 only when it could not run.
+  old `caught`; `typo`, on a copy whose `caught` cell names a key no question has
+  (`caught_v9`), asks the old `caught` and records `reading.caught` as `caught`.
+  The round names its `reading`. Exits 1 only when it could not run.
 - `jev_calls_probe.mjs` — the state `jev_checks.ts` sends Jev at each stage.
   Prints `JEV CALLS <case> OK`.
 
@@ -114,8 +116,11 @@ the agent reader and Jev differ and `right` is set, its diet rebuilt by `extract
 tally's `base` when that round saw one) and skipped when the task no longer hashes the same, then read
 by `gate_jev.ts` (never `--record`). Beside them, two known-bad controls (`uncaught-output`,
 `pinned-by-sibling`) must each still read `fail` in a majority. It spends `reps` × (rounds + 2) calls.
-It counts the wrong fails (agent right, Jev failed) that now pass and the right fails (Jev right) that
-still fail; exit 0 when the controls hold and at least two thirds of the wrong fails now pass.
+It counts the wrong fails (agent right, Jev failed) that now pass, the right fails (Jev right) that
+still fail, and the agreed fails (agent and Jev both failed it, #1528) that now pass; the summary reports
+`agreed fails now pass N of M`, so an `of 0` shows the check is vacuous. Exit 0 when the controls hold, no
+agreed fail now passes and at least two thirds of the wrong fails now pass; any agreed fail that now
+passes exits 1. The scoring lives in `_gate_replay_helpers.mjs`, run by `test_gate_jev_replay.mjs` in the suite.
 
 Run it before any change to the `authoring_gate` questions, to `gate_reading`, or to
 `extract_gate_input.py`'s `base`:
@@ -125,7 +130,7 @@ Run it before any change to the `authoring_gate` questions, to `gate_reading`, o
 When a change moves two things at once, flipping one `gate_reading` cell back measures the other
 change alone.
 
-Readings, 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
+Readings of the earlier caught_v2 wording (before #1528 narrowed it to wiring; re-run to replace), 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
 majority:
 
 | Reading | Wrong fails still failing |

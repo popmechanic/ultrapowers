@@ -21,7 +21,9 @@ const POLICY = POLICY_FILE.flag_at;
 // Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
 // entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
 // reading of 2026-09-29; each cell reverts alone.
-const READING = {caught: String(POLICY_FILE.gate_reading?.caught ?? 'caught'),
+// An unknown `caught` key falls back to `caught` (#1528), and the record names the key asked.
+const ASKED = String(POLICY_FILE.gate_reading?.caught ?? 'caught');
+const READING = {caught: ASKED in Q ? ASKED : 'caught',
   own_files: POLICY_FILE.gate_reading?.own_files === 'dropped' ? 'dropped' : 'read'};
 
 type Diet = {task: string | number; claim: string; proof: string; hash: string; base?: Record<string, unknown>};

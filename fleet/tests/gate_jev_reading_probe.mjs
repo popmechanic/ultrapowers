@@ -6,7 +6,9 @@
 // `"own": "modify"`) and SIB (a sibling test, unmarked). The case is argv[2]:
 //   own-files  base files [OWN, SIB], the repository's policy;
 //   own-only   base files [OWN], the repository's policy;
-//   rollback   base files [OWN, SIB], on a copy whose gate_reading is caught "caught", own_files "read".
+//   rollback   base files [OWN, SIB], on a copy whose gate_reading is caught "caught", own_files "read";
+//   typo       base files [OWN, SIB], on a copy whose gate_reading caught is "caught_v9", a key no question has:
+//              the script falls back to `caught` and the round's reading says so.
 // Prints one JSON line {requests, asked, state_base, caught_M1, verdict, pinned, round} and exits 0;
 // exits 1 only when it could not run.
 import { spawn } from 'node:child_process'
@@ -17,7 +19,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CASE = process.argv[2]
-const CASES = ['own-files', 'own-only', 'rollback']
+const CASES = ['own-files', 'own-only', 'rollback', 'typo']
 if (!CASES.includes(CASE)) { console.log(`usage: gate_jev_reading_probe.mjs ${CASES.join('|')}`); process.exit(1) }
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-reading-'))
@@ -28,9 +30,9 @@ fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
 let server
 const fail = (why) => { console.error(`GATE JEV READING ${CASE} COULD NOT RUN: ${why}`); server?.close(); process.exit(1) }
 
-// the root gate_jev.ts runs from: the repository, or for rollback a copy with both cells set back
+// the root gate_jev.ts runs from: the repository, or a copy with the policy cells changed (rollback, typo)
 let root = REPO
-if (CASE === 'rollback') {
+if (CASE === 'rollback' || CASE === 'typo') {
   root = path.join(tmp, 'repo')
   try {
     const stories = path.join(root, 'skills/ultrawrite/stories')
@@ -42,7 +44,9 @@ if (CASE === 'rollback') {
     fs.copyFileSync(path.join(REPO, 'factory/jev-client.mjs'), path.join(root, 'factory/jev-client.mjs'))
     const pf = path.join(stories, 'policy.json')
     const policy = JSON.parse(fs.readFileSync(pf, 'utf8'))
-    policy.gate_reading = { ...(policy.gate_reading ?? {}), caught: 'caught', own_files: 'read' }
+    policy.gate_reading = CASE === 'typo'
+      ? { ...(policy.gate_reading ?? {}), caught: 'caught_v9' }
+      : { ...(policy.gate_reading ?? {}), caught: 'caught', own_files: 'read' }
     fs.writeFileSync(pf, JSON.stringify(policy, null, 2) + '\n')
   } catch (e) { fail(`could not build the copy: ${e}`) }
 }

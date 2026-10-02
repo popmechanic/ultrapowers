@@ -222,7 +222,7 @@
         "legs",
         "base"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29; caught_v2 added 2026-10-01 for #1497",
+      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29; caught_v2 added 2026-10-01 for #1497, narrowed the same day to exempt wiring only (#1528)",
       "calibrated": false,
       "questions": {
         "fact": {
@@ -250,12 +250,12 @@
         "caught_v2": {
           "type": "noul",
           "instructions": {
-            "question": "Is `clauses[i].text` either caught by a probe, so that at least one command in `probes` would fail if it were false, or a clause that only says how the code is shaped, which needs no probe?",
-            "context": "`clauses` are a task's machine clauses; `probes` are the commands that prove them, each with the clause ids it claims to prove (`proves`). A clause only about code shape says how the code is written or wired: which function calls which, what a function is passed, the order of steps inside the code, or that the code logs a line. A reader of the change judges such a clause later, so it needs no probe. A clause about an observable result — an exit code, printed output, a file's content, a count — or saying something is gone, unchanged or exactly so many, needs a probe."
+            "question": "Is `clauses[i].text` either caught by a probe, so that at least one command in `probes` would fail if it were false, or a clause that only says how the code is wired, which needs no probe?",
+            "context": "`clauses` are a task's machine clauses; `probes` are the commands that prove them, each with the clause ids it claims to prove (`proves`). A clause only about wiring says which function calls which, or what a function is passed, and nothing more; a reader of the change judges such a clause later, so it needs no probe. Every other clause needs a probe: one about an exit code, a recorded argv, a byte-exact string, a count, an ordering of events, a line the code prints or logs, a file's content, or that something is gone, unchanged or exactly so many."
           },
           "criteria": {
-            "true": "Some probe would fail if the clause were false, or the clause only says how the code is shaped or wired",
-            "false": "The clause states an observable result and every probe could still pass if it were false"
+            "true": "Some probe would fail if the clause were false, or the clause only says which function calls which or what a function is passed",
+            "false": "The clause says more than which function calls which or what a function is passed, and every probe could still pass if it were false"
           }
         },
         "contradiction": {
