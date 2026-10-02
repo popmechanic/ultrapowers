@@ -69,3 +69,26 @@ three before any change to `skills/ultrawrite/stories/gate_jev.ts`,
 
 Everything else the Flock's scripted runs used to probe by hand (catch-up,
 deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
+
+## Jev's peer-rewrite read, live
+
+`jev_peer_probe.mjs` asks the real Jev (key in `~/.ultrapowers/typesafe.env`; it spends a few calls)
+the `flock_peer_rewrite` question three ways, with five replays each:
+- run-296's L:loose rewrite of `preview.ts` exactly as the engine sent it, as a bare agent name
+  (reported, not judged);
+- the same rewrite with the loose-ends side's title and reason, which must read `supersedes` or
+  `keeps` in a majority;
+- run-277's run-together words, which must still read `loses`.
+
+Run it before any change to that question, to `factory/flock/engine.mjs`'s `peerRewrites`, or to the
+`flock.jev_peer_rewrite` policy:
+
+    node fleet/tests/jev_peer_probe.mjs 5
+
+Readings, 2026-10-01, `jev-1.13.0`, n=5 each:
+
+| Case | Answer |
+|---|---|
+| bare run-296 | loses 5/5 |
+| run-296 with its reason | supersedes 5/5 |
+| run-277 | loses 5/5 |

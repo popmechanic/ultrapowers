@@ -142,6 +142,7 @@ for (const [CASE, [record, want]] of Object.entries(PROV_PR)) test(`provenance p
 //                   survival row lists the line lost, and the run ends ready
 //   reuse    task 2 consumes task 1's interface, so builder A does both: one peer:rewrite row (peers A.1)
 let choice = null, requests = 0
+const bodies = []   // every request's parsed body, for a case that checks what Jev was shown
 const server = http.createServer((req, res) => {
   let body = ''
   req.on('data', (c) => { body += c })
@@ -149,7 +150,7 @@ const server = http.createServer((req, res) => {
     if (req.method !== 'POST' || req.url !== '/v1/systemone') { res.writeHead(404); res.end(); return }
     requests += 1
     let keys = []
-    try { keys = Object.keys(JSON.parse(body).questions || {}) } catch {}
+    try { const j = JSON.parse(body); bodies.push(j); keys = Object.keys(j.questions || {}) } catch {}
     res.writeHead(200, { 'content-type': 'application/json' })
     res.end(JSON.stringify({ answers: Object.fromEntries(keys.map((k) => [k, { choice, confidence: 0.9 }])) }))
   })
@@ -208,6 +209,27 @@ for (const [CASE, s] of Object.entries(TRIALS)) test(`jev trials ${CASE}`, async
     }
     endsAs(s.choice === 'loses' ? 'draft' : 'ready')
   }
+  t.done()
+})
+
+// loose  task 2 posts a loose end on a.txt (the line task 1 wrote); the L:loose task narrows that line,
+//        and the Jev read of that rewrite carries the loose-ends side's title and the posted reason, not
+//        a bare agent name (run-296 parked on `E.L:loose` with no claim)
+test('jev trials loose', async () => {
+  choice = 'supersedes'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const why = 'a.txt wipes every folder; it should wipe only the page folder'
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': 'NOTE\n' }, 'L:loose': { 'a.txt': 'x WIPE page z\n' },
+    '@beliefs': [{ task: '2', about: 'app', path: 'a.txt', claim: why, stale: 'x WIPE z' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const pr = r.of('peer:rewrite').filter((x) => x.task === 'L:loose')
+  assert(pr.length === 1 && pr[0].path === 'a.txt', `expected one peer:rewrite row by L:loose on a.txt, saw ${JSON.stringify(r.of('peer:rewrite'))}`)
+  const asked = bodies.map((b) => b.state).filter((st) => st && st.path === 'a.txt' && Array.isArray(st.tasks))
+  const side = asked.length === 1 ? asked[0].tasks[0] : null
+  assert(side && /L:loose$/.test(side.agent) && side.title === 'Close the loose ends builders reported' && side.claim === why,
+    `expected the loose-ends side to carry its title and the posted reason, Jev was shown ${JSON.stringify(asked)}`)
   t.done()
 })
 
