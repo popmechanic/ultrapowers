@@ -169,13 +169,27 @@ const taskOf = {}   // agent -> the task its current session holds
 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
 const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
 const peerReads = []
+// the loose ends the `L:loose` task was opened for ({path, claim}), the claim its side carries to Jev
+let looseWhy = []
+const LOOSE_TITLE = 'Close the loose ends builders reported'
 function peerRewrites (agent, rel, rewrites) {
   for (const w of rewrites || []) {
     const mine = taskOf[agent]
     const row = { agent, task: mine && mine.id, path: rel, peers: w.peers, before: w.before, peer: w.peer, after: w.after }
     ev('peer:rewrite', row)
     if (!JEV_PEER) continue
-    const side = (a) => { const i = a.indexOf('.'); const t = i < 0 ? null : W.tasks.find((x) => x.id === a.slice(i + 1)); return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a } }
+    const side = (a) => {
+      const i = a.indexOf('.'); const id = i < 0 ? null : a.slice(i + 1)
+      // the loose-ends task is added at run time, so it is not among the plan's tasks: its side is
+      // its board title and the reasons builders posted for this path (run-296 parked on a bare
+      // `E.L:loose`; given these, Jev read run-296's narrowing as `supersedes`, n=5, 2026-10-01)
+      if (id === 'L:loose') {
+        const why = looseWhy.filter((x) => x.path === rel).map((x) => x.claim)
+        return { agent: a, title: LOOSE_TITLE, claim: (why.length ? why : looseWhy.map((x) => x.claim)).join(' ') }
+      }
+      const t = id == null ? null : W.tasks.find((x) => x.id === id)
+      return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a }
+    }
     trial('kept', PEER_QUESTION, { path: rel, before: w.before, peer: w.peer, after: w.after, tasks: [side(labelOf(agent)), ...w.peers.map(side)] },
       'jev:peer-rewrite', row, (o) => peerReads.push(o))
   }
@@ -965,7 +979,8 @@ async function settle () {
       const loose = looseEnds(board.beliefs, textAt(r.snap)).filter((x) => x.state !== 'resolved')
       if (loose.length) {
         const paths = [...new Set(loose.map((x) => x.path))]
-        await board.addTask({ id: 'L:loose', title: 'Close the loose ends builders reported', depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths,
+        looseWhy = loose.map((x) => ({ path: x.path, claim: x.claim }))
+        await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths,
           body: `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
             loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
             `\n\nFix each that is still wrong. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.` })
