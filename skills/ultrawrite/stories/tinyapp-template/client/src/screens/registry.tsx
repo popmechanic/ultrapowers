@@ -16,6 +16,7 @@ import {
   Checkbox,
   Empty,
   Eyebrow,
+  Field,
   Grid,
   Heading,
   Input,
@@ -111,12 +112,18 @@ export const { registry } = defineRegistry(baseCatalog, {
     DraftInput: ({ props, bindings }) => {
       const [value, setValue] = useBoundProp<string>(u(props.value), bindings?.value)
       return (
-        <Input
-          label={props.label}
-          placeholder={u(props.placeholder)}
-          value={value ?? ''}
-          onChange={setValue}
-        />
+        <Field label={props.label}>
+          {(id, describedBy) => (
+            <Input
+              id={id}
+              describedBy={describedBy}
+              label={props.label}
+              placeholder={u(props.placeholder)}
+              value={value ?? ''}
+              onChange={setValue}
+            />
+          )}
+        </Field>
       )
     },
   },
