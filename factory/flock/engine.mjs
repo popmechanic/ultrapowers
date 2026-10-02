@@ -948,7 +948,15 @@ function debounceMs () {
   const p90 = xs.length ? xs[Math.min(xs.length - 1, Math.floor(0.9 * xs.length))] : 500
   return Math.max(1000, 2 * p90)
 }
+let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
 function terminal (pr, why, r) {
+  // a draft after the loose-ends cleanup lands the green snapshot from before it instead (#1521)
+  if (pr === 'draft' && preLoose && !(r && r.snap === preLoose.snap)) {
+    ev('loose:fallback', { snap: preLoose.snap, from: r && r.snap, why })
+    log('LOOSE FALLBACK to', preLoose.snap, why)
+    settled = { t: now(), snap: preLoose.snap }; ev('settled', settled)
+    pr = 'ready'; why = 'settled green before the loose-ends task; its cleanup was dropped'; r = preLoose
+  }
   outcome = { pr, why, snap: r && r.snap, t: now() }
   ev('terminal', outcome); log('TERMINAL', pr, why)
 }
@@ -984,11 +992,12 @@ async function settle () {
       if (loose.length) {
         const paths = [...new Set(loose.map((x) => x.path))]
         looseWhy = loose.map((x) => ({ path: x.path, claim: x.claim }))
-        await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths,
-          body: `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
-            loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
-            `\n\nFix each that is still wrong. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.` })
-        ev('loose-task', { snap: r.snap, paths }); log('loose-ends task for', paths.join(','))
+        preLoose = r
+        const body = `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
+          loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
+          `\n\nFix each that is still wrong. Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.`
+        await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths, body })
+        ev('loose-task', { snap: r.snap, paths, body }); log('loose-ends task for', paths.join(','))
         continue
       }
     }
@@ -1115,7 +1124,7 @@ try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(chec
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
-const looseItems = looseEnds(board.beliefs, textAt(lastEdge && lastEdge.snap))
+const looseItems = looseEnds(board.beliefs, textAt(outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge && lastEdge.snap))
 ev('loose-ends', { snap: lastEdge ? lastEdge.snap : null, items: looseItems })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
@@ -1166,6 +1175,7 @@ function peerRewriteDraft () {
   if (!losing.length) return
   ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
   terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
+  if (outcome.pr === 'ready') peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
 }
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's

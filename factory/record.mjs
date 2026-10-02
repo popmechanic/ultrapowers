@@ -268,11 +268,13 @@ function provenanceLines (provenancePath) {
 
 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
- *  gets none. No row, or a row with no items, adds nothing. */
+ *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
+ *  closing line saying the cleanup was dropped and which snapshot landed. */
 function looseEndsLines (events) {
   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
-  if (!items.length) return []
+  const fb = events.filter((r) => r && r.kind === 'loose:fallback').at(-1)
+  if (!items.length && !fb) return []
   const resolved = items.filter((i) => i.state === 'resolved').length
   const out = ['### Loose ends', '', `${items.length} reported by builders, ${resolved} resolved in the run.`]
   for (const i of items) {
@@ -280,6 +282,7 @@ function looseEndsLines (events) {
     if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
     else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
   }
+  if (fb) out.push('', `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`)
   return out
 }
 

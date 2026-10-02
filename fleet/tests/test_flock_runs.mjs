@@ -233,6 +233,36 @@ test('jev trials loose', async () => {
   t.done()
 })
 
+// loose-fallback  the same run answered `loses`: the cleanup's peer rewrite would draft the run (#1521), so
+//                 the engine lands the green snapshot the L:loose task was opened on; the PR body says so
+test('jev trials loose-fallback', async () => {
+  choice = 'loses'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const why = 'a.txt wipes every folder; it should wipe only the page folder'
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': 'NOTE\n' }, 'L:loose': { 'a.txt': 'x WIPE page z\n' },
+    '@beliefs': [{ task: '2', about: 'app', path: 'a.txt', claim: why, stale: 'x WIPE z' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  assert(r.of('jev:peer-rewrite').some((x) => x.task === 'L:loose' && x.answer === 'loses'), `expected a loses read on the L:loose rewrite, saw ${JSON.stringify(r.of('jev:peer-rewrite'))}`)
+  const pre = r.of('loose-task')[0]?.snap
+  const end = r.of('terminal').at(-1)
+  assert(end?.pr === 'ready' && end.snap === pre, `expected the run to end ready on the pre-cleanup snapshot ${pre}, saw ${JSON.stringify(end)}`)
+  assert(r.code === 0, `engine exit ${r.code} for a ready run`)
+  const fb = r.of('loose:fallback')
+  assert(fb.length === 1 && fb[0].snap === pre && /peer rewrite/.test(fb[0].why), `expected one loose:fallback row to ${pre}, saw ${JSON.stringify(fb)}`)
+  assert(r.of('settled').at(-1)?.snap === pre, `expected the last settled row on ${pre}, saw ${JSON.stringify(r.of('settled'))}`)
+  assert(t.git('show', 'HEAD:a.txt') === 'x WIPE z', `the landed a.txt reads ${JSON.stringify(t.git('show', 'HEAD:a.txt'))}`)
+  const body = r.of('loose-task')[0]?.body || ''
+  assert(body.includes("Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing."), `the L:loose body reads ${JSON.stringify(body)}`)
+  const pb = spawnSync('node', [path.join(REPO, 'factory', 'record.mjs'), 'pr-body', plan, '--events', path.join(t.RUN, 'events.jsonl')], { encoding: 'utf8', env: simEnv({ home: t.tmp }) })
+  const lines = pb.stdout.split('\n'), at = lines.indexOf('### Loose ends')
+  const want = `The cleanup was dropped: ${fb[0].why}. This lands ${pre}, the snapshot that was green before it.`
+  assert(at >= 0 && lines.slice(at).some((l) => l.startsWith('- open: a.txt still contains "x WIPE z"')), `expected the Loose ends section read against the landed snapshot, it reads ${JSON.stringify(lines.slice(at, at + 6))}`)
+  assert(at >= 0 && lines.slice(at).includes(want), `expected the Loose ends section to carry ${JSON.stringify(want)}, it reads ${JSON.stringify(lines.slice(at, at + 6))}`)
+  t.done()
+})
+
 // loose-unflagged  the loose end is posted on c.txt; the L:loose builder also rewrites task 1's line in a.txt, a file no loose end names: Jev's read carries the title only, never another file's reason (#1520)
 test('jev trials loose-unflagged', async () => {
   choice = 'supersedes'; requests = 0; bodies.length = 0
