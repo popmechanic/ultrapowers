@@ -23,7 +23,7 @@ type Candidate = {id: string; description: string; element: Pick<Element, 'type'
 type RowControl = {type: 'ActionCheckbox' | 'ActionButton'; name: string; action: string; arg: string; label: unknown; checked?: unknown; description: string};
 type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | null; steps: {description: string}[]}>; catalog: unknown; TOOLS: Tool[]; makeStore: () => any};
 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
-type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>};
+type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>};
 
 export class CouldNotRun extends Error {}
 
@@ -142,7 +142,8 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
     {id: 'purpose', root: false, description: `What it is for, in muted text: "${card.purpose}"`, element: {type: 'Text', props: {text: card.purpose, muted: true}}},
     ...required,
   ];
-  return {candidates, required, lists};
+  const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => d.k)]));
+  return {candidates, required, lists, fields};
 }
 
 /** Element id -> its candidate's description, by recipe. */
@@ -158,8 +159,9 @@ const missing = (spec: Spec | null, required: Candidate[]) => {
 
 /** The composer's layout made real: each list placeholder a repeat over its table,
  *  each draft-reading button clearing its drafts once it ran, the page title (one,
- *  added if left out) first under the root, empty containers gone. */
-function expand(input: Spec, lists: Pieces['lists'], title: string): Spec {
+ *  added if left out) first under the root, the controls in the order of use, empty
+ *  containers gone. */
+function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Pieces['fields']): Spec {
   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
   for (const [id, e] of Object.entries(spec.elements)) {
     const path = isObj(e.visible) ? e.visible.$state : undefined;
@@ -194,6 +196,7 @@ function expand(input: Spec, lists: Pieces['lists'], title: string): Spec {
   for (const p of Object.values(spec.elements)) if (p.children?.some((c) => titles.includes(c))) p.children = p.children.filter((c) => !titles.includes(c));
   const root = spec.elements[spec.root];
   root.children = [keep, ...(root.children ?? []).filter((c) => c !== keep)];
+  inUseOrder(spec, fields);
   const containers = new Set(['Card', 'Stack', 'Row', 'Grid']);
   for (let changed = true; changed; ) {
     changed = false;
@@ -205,6 +208,51 @@ function expand(input: Spec, lists: Pieces['lists'], title: string): Spec {
     }
   }
   return spec;
+}
+
+/** The order a person uses the screen, by code (#1510). An action's text boxes, in the
+ *  order the stories type into them, sit directly before its button, gathered where the
+ *  first box sits. A whole-list button (no args) sits just below its list, unless it, or
+ *  the wrapper holding only it, is already right beside the list. Anything already in
+ *  order is left as composed, so the versions keep their own containers. */
+function inUseOrder(spec: Spec, fields: Pieces['fields']) {
+  const parentOf = (id: string) => Object.keys(spec.elements).find((p) => spec.elements[p].children?.includes(id));
+  const take = (id: string) => {
+    const p = parentOf(id);
+    if (p) spec.elements[p].children = spec.elements[p].children!.filter((c) => c !== id);
+  };
+  const draftOf = (e: Element) => {
+    const path = isObj(e.props.value) ? e.props.value.$bindState : undefined;
+    return typeof path === 'string' && path.startsWith('/draft/') ? path.slice('/draft/'.length) : undefined;
+  };
+  const els = () => Object.entries(spec.elements);
+  for (const [action, keys] of fields) {
+    const boxes = keys.map((k) => els().find(([, e]) => e.type === 'DraftInput' && draftOf(e) === k)?.[0]).filter((id): id is string => !!id);
+    const button = els().find(([, e]) => e.type === 'ActionButton' && e.props.action === action && isObj(e.props.args))?.[0];
+    const group = button ? [...boxes, button] : boxes;
+    const home = group.length > 1 ? parentOf(group[0]) : undefined;
+    if (!home) continue;
+    const kids = spec.elements[home].children!;
+    const at = kids.indexOf(group[0]);
+    if (recipeKey(kids.slice(at, at + group.length)) === recipeKey(group)) continue;
+    const before = kids.slice(0, at).filter((c) => !group.includes(c)).length;
+    for (const id of group) take(id);
+    spec.elements[home].children!.splice(before, 0, ...group);
+  }
+  const list = els().find(([, e]) => e.repeat?.statePath?.startsWith('/tables/'))?.[0];
+  const listParent = list && parentOf(list);
+  if (!list || !listParent) return;
+  for (const [id, e] of els()) {
+    if (e.type !== 'ActionButton' || e.props.args !== undefined) continue;
+    let mover = id;
+    for (let p = parentOf(mover); p && p !== spec.root && spec.elements[p].children!.length === 1; p = parentOf(p)) mover = p;
+    const kids = spec.elements[listParent].children!;
+    const i = kids.indexOf(list);
+    if (kids[i - 1] === mover || kids[i + 1] === mover) continue;
+    take(mover);
+    const now = spec.elements[listParent].children!;
+    now.splice(now.indexOf(list) + 1, 0, mover);
+  }
 }
 
 /** An expanded spec folded back to what the composer may read: lists as placeholders, no `on`. */
@@ -250,7 +298,7 @@ export async function arrange(opts: {bundle: string; app: string; piece?: string
   const versions: Record<string, Record<string, Spec>> = {};
   const dropped: Record<string, Record<string, string>> = {};
   for (const card of cardsOf(b, opts.piece)) {
-    const {candidates, required, lists} = candidatesFor(b, card, kit);
+    const {candidates, required, lists, fields} = candidatesFor(b, card, kit);
     const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
     const results = await Promise.all(
       Object.entries(set.versions).map(async ([v, sentence]) => {
@@ -261,7 +309,7 @@ export async function arrange(opts: {bundle: string; app: string; piece?: string
           spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
           left = missing(spec, required);
         }
-        return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title)}] as const;
+        return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields)}] as const;
       }),
     );
     for (const [v, r] of results) {
@@ -277,7 +325,7 @@ export async function reshape(opts: {bundle: string; app: string; piece: string;
   const kit = await loadKit(opts.app);
   const set = arrangeSet();
   const [card] = cardsOf(b, opts.piece);
-  const {candidates, lists} = candidatesFor(b, card, kit);
+  const {candidates, lists, fields} = candidatesFor(b, card, kit);
   const initialSpec = collapse(opts.spec);
   const out = await lastSpec(
     kit.compose({
@@ -292,7 +340,7 @@ export async function reshape(opts: {bundle: string; app: string; piece: string;
     }),
   );
   if (!out.spec) throw new Error('the composer returned no screen');
-  return {spec: expand(out.spec, lists, b.page.title), steps: out.steps.map((s) => s.description)};
+  return {spec: expand(out.spec, lists, b.page.title, fields), steps: out.steps.map((s) => s.description)};
 }
 
 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--piece <piece>] [--pick <V> | --reshape --note <text>...]';

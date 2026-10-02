@@ -1,0 +1,449 @@
+{
+ "title": "Shopping list",
+ "kind": "behaviour",
+ "summary": [
+  "A shopping list one household shares.",
+  "It exists so whoever goes to the shop buys what the household needs, without a phone call to check.",
+  "Anyone adds what is running out, the shopper ticks items off in the shop, and the ticked ones are cleared afterwards."
+ ],
+ "store": "client/src/store.js",
+ "subproject": "sp1",
+ "stories": [
+  {
+   "id": "S1",
+   "sentence": "You type \"eggs\" and 6 and press Add; \"6 eggs\" appears on the list, not ticked.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "6"
+     },
+     "layer": "ui",
+     "ui": [
+      {
+       "type": {
+        "role": "textbox",
+        "name": "Item",
+        "text": "eggs"
+       }
+      },
+      {
+       "type": {
+        "role": "textbox",
+        "name": "How many",
+        "text": "6"
+       }
+      },
+      {
+       "click": {
+        "role": "button",
+        "name": "Add"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      },
+      {
+       "role": "checkbox",
+       "name": "6 eggs",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Remove 6 eggs",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S2",
+   "sentence": "In the shop you tick \"6 eggs\"; it shows as ticked and stays on the list.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "6"
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "tickItem",
+     "args": {
+      "id": "0"
+     },
+     "layer": "ui",
+     "ui": [
+      {
+       "click": {
+        "role": "checkbox",
+        "name": "6 eggs"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      },
+      {
+       "role": "checkbox",
+       "name": "6 eggs",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Remove 6 eggs",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S3",
+   "sentence": "With \"6 eggs\" ticked and \"bread\" not, you press Clear ticked; the eggs are gone and the bread stays.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "6"
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "bread",
+      "qty": ""
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "tickItem",
+     "args": {
+      "id": "0"
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "clearTicked",
+     "args": {},
+     "layer": "ui",
+     "ui": [
+      {
+       "click": {
+        "role": "button",
+        "name": "Clear ticked"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      },
+      {
+       "role": "checkbox",
+       "name": "bread",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Remove bread",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S4",
+   "sentence": "You remove \"6 eggs\", added by mistake; it is gone from the list.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "6"
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "removeItem",
+     "args": {
+      "id": "0"
+     },
+     "layer": "ui",
+     "ui": [
+      {
+       "click": {
+        "role": "button",
+        "name": "Remove 6 eggs"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S5",
+   "sentence": "You press Add with no item typed; nothing is added.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "",
+      "qty": ""
+     },
+     "layer": "ui",
+     "refused": "blank name",
+     "ui": [
+      {
+       "click": {
+        "role": "button",
+        "name": "Add"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S6",
+   "sentence": "You type \"eggs\" and 0 and press Add; nothing is added.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "0"
+     },
+     "layer": "ui",
+     "refused": "a quantity that is not a whole number from 1 to 99",
+     "ui": [
+      {
+       "type": {
+        "role": "textbox",
+        "name": "Item",
+        "text": "eggs"
+       }
+      },
+      {
+       "type": {
+        "role": "textbox",
+        "name": "How many",
+        "text": "0"
+       }
+      },
+      {
+       "click": {
+        "role": "button",
+        "name": "Add"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "S7",
+   "sentence": "You press Clear ticked with nothing ticked; nothing changes.",
+   "steps": [
+    {
+     "tool": "addItem",
+     "args": {
+      "name": "eggs",
+      "qty": "6"
+     },
+     "layer": "store"
+    },
+    {
+     "tool": "clearTicked",
+     "args": {},
+     "layer": "ui",
+     "refused": "nothing ticked",
+     "ui": [
+      {
+       "click": {
+        "role": "button",
+        "name": "Clear ticked"
+       }
+      }
+     ],
+     "see": [
+      {
+       "role": "button",
+       "name": "Add",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "Item",
+       "count": 1
+      },
+      {
+       "role": "textbox",
+       "name": "How many",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Clear ticked",
+       "count": 1
+      },
+      {
+       "role": "checkbox",
+       "name": "6 eggs",
+       "count": 1
+      },
+      {
+       "role": "button",
+       "name": "Remove 6 eggs",
+       "count": 1
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "links": [],
+ "numbers": [],
+ "waivers": [
+  {
+   "piece": "list",
+   "action": "tickItem",
+   "refuses": "an item that does not exist",
+   "arg": "id",
+   "reason": "unreachable-from-screen"
+  },
+  {
+   "piece": "list",
+   "action": "removeItem",
+   "refuses": "an item that does not exist",
+   "arg": "id",
+   "reason": "unreachable-from-screen"
+  }
+ ]
+}

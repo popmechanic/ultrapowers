@@ -1,0 +1,97 @@
+[
+ {
+  "piece": "list",
+  "concept": "list",
+  "purpose": "Keep one shopping list the household shares, so whoever shops buys what is needed.",
+  "depends_on": [],
+  "state": {
+   "tables": {
+    "items": [
+     "name",
+     "qty",
+     "line",
+     "bought"
+    ]
+   },
+   "values": []
+  },
+  "actions": [
+   {
+    "name": "addItem",
+    "description": "Add an item to buy, with how many (one when left blank).",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string"
+      },
+      "qty": {
+       "type": "string"
+      }
+     },
+     "required": [
+      "name"
+     ]
+    },
+    "refuses": [
+     "blank name",
+     "a quantity that is not a whole number from 1 to 99"
+    ]
+   },
+   {
+    "name": "tickItem",
+    "description": "Tick this item off, or untick it if it is already ticked.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string",
+       "x-row-of": "items"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    },
+    "refuses": [
+     "an item that does not exist"
+    ]
+   },
+   {
+    "name": "removeItem",
+    "description": "Remove this item from the list.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "id": {
+       "type": "string",
+       "x-row-of": "items"
+      }
+     },
+     "required": [
+      "id"
+     ]
+    },
+    "refuses": [
+     "an item that does not exist"
+    ]
+   },
+   {
+    "name": "clearTicked",
+    "description": "Remove every ticked item from the list.",
+    "inputSchema": {
+     "type": "object",
+     "properties": {}
+    },
+    "refuses": [
+     "nothing ticked"
+    ]
+   }
+  ],
+  "main_story": "S2",
+  "near_miss": "a list where ticking an item deletes it, so a shopper who ticks by mistake loses it",
+  "misfits": [
+   "a list each person keeps alone, so the shopper never sees what others added"
+  ]
+ }
+]

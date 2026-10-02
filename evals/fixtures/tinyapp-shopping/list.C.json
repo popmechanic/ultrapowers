@@ -1,0 +1,189 @@
+{
+  "root": "node_0",
+  "elements": {
+    "node_0": {
+      "type": "Stack",
+      "props": {
+        "gap": 3
+      },
+      "children": [
+        "node_4",
+        "node_1",
+        "node_10",
+        "node_2",
+        "node_5",
+        "node_3"
+      ]
+    },
+    "node_1": {
+      "type": "Row",
+      "props": {
+        "gap": 2,
+        "align": "center"
+      },
+      "children": [
+        "node_6"
+      ]
+    },
+    "node_2": {
+      "type": "Row",
+      "props": {
+        "gap": 2,
+        "align": "center"
+      },
+      "children": [
+        "node_7",
+        "node_8"
+      ]
+    },
+    "node_3": {
+      "type": "Row",
+      "props": {
+        "gap": 2,
+        "align": "center"
+      },
+      "children": [
+        "node_9"
+      ]
+    },
+    "node_4": {
+      "type": "Heading",
+      "props": {
+        "text": "Shopping list",
+        "level": 1
+      },
+      "children": []
+    },
+    "node_5": {
+      "type": "Text",
+      "props": {
+        "text": "Keep one shopping list the household shares, so whoever shops buys what is needed.",
+        "muted": true
+      },
+      "children": []
+    },
+    "node_6": {
+      "type": "DraftInput",
+      "props": {
+        "label": "Item",
+        "placeholder": "eggs",
+        "value": {
+          "$bindState": "/draft/name"
+        }
+      },
+      "children": []
+    },
+    "node_7": {
+      "type": "DraftInput",
+      "props": {
+        "label": "How many",
+        "placeholder": "6",
+        "value": {
+          "$bindState": "/draft/qty"
+        }
+      },
+      "children": []
+    },
+    "node_8": {
+      "type": "ActionButton",
+      "props": {
+        "label": "Add",
+        "action": "addItem",
+        "args": {
+          "name": {
+            "$state": "/draft/name"
+          },
+          "qty": {
+            "$state": "/draft/qty"
+          }
+        }
+      },
+      "children": [],
+      "on": {
+        "press": [
+          {
+            "action": "setState",
+            "params": {
+              "statePath": "/draft/name",
+              "value": ""
+            }
+          },
+          {
+            "action": "setState",
+            "params": {
+              "statePath": "/draft/qty",
+              "value": ""
+            }
+          }
+        ]
+      }
+    },
+    "node_9": {
+      "type": "ActionButton",
+      "props": {
+        "label": "Clear ticked",
+        "action": "clearTicked"
+      },
+      "children": []
+    },
+    "node_10": {
+      "type": "Stack",
+      "props": {
+        "gap": 2
+      },
+      "repeat": {
+        "statePath": "/tables/items",
+        "key": "id"
+      },
+      "children": [
+        "node_10_row"
+      ]
+    },
+    "node_10_row": {
+      "type": "Row",
+      "props": {
+        "justify": "between",
+        "align": "center"
+      },
+      "children": [
+        "node_10_0",
+        "node_10_1"
+      ]
+    },
+    "node_10_0": {
+      "type": "ActionCheckbox",
+      "props": {
+        "label": {
+          "$item": "line"
+        },
+        "checked": {
+          "$item": "bought"
+        },
+        "action": "tickItem",
+        "args": {
+          "id": {
+            "$item": "id"
+          }
+        }
+      },
+      "children": []
+    },
+    "node_10_1": {
+      "type": "ActionButton",
+      "props": {
+        "label": {
+          "$template": "Remove ${line}"
+        },
+        "action": "removeItem",
+        "args": {
+          "id": {
+            "$item": "id"
+          }
+        },
+        "variant": "quiet",
+        "size": "sm"
+      },
+      "children": []
+    }
+  }
+}
