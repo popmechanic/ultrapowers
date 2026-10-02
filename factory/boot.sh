@@ -359,7 +359,7 @@ close_run() { # $1 = the run's final state (done|parked), $2 = its phase
   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
   fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
 }
-# The one entry point: nothing ahead of base is a park (a failure if the engine wasn't green), anything ahead is a publish.
+# The one entry point: nothing ahead of base is done (a failure if the engine wasn't green), anything ahead is a publish.
 boot() {
   local comment code head; comment="$(read_assignment)"
   [ -n "$comment" ] || fail "assignment: no comment in FLEET_ASSIGNMENT or at $REFLECTION_URL/comment"
@@ -371,7 +371,10 @@ boot() {
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
-    write_status parked "nothing ahead of base"; mark_run parked "nothing ahead of base"; evidence_commit "$RUN_ID: parked"
+    # exit 0 at the base: the engine settled green on a snapshot equal to the base, so every proof
+    # already held there; nothing to publish, and the run is done, closed with the base as evidence
+    MERGED_SHA="$BASE_SHA"; write_status done "nothing to build: every proof already passes at the base"
+    close_run done "nothing to build"; evidence_commit "$RUN_ID: done, nothing to build"
     record_tags; exit 0; fi
   publish "$code"; exit 0
 }

@@ -146,8 +146,10 @@ async function cmdCloseRun (flags) {
     }
     const { projectId, runUid } = ids
 
-    const evidence = [{ type: 'pr', url: pr }]
+    // no PR: a run that had nothing to build closes on the base commit alone
+    const evidence = pr ? [{ type: 'pr', url: pr }] : []
     if (merged) evidence.push({ type: 'commit', sha: merged })
+    const where = pr ? "adopted green in the run's pull request — " + pr : 'already true at the base ' + merged
 
     const tasks = doc.tasks || {}
     const taskIds = Object.keys(tasks)
@@ -161,7 +163,7 @@ async function cmdCloseRun (flags) {
         projectId,
         uid,
         key: runUid + ':task:' + id + ':close',
-        message: run + ' task ' + id + " done: adopted green in the run's pull request — " + pr,
+        message: run + ' task ' + id + ' done: ' + where,
         evidence,
         run,
       })
@@ -173,7 +175,7 @@ async function cmdCloseRun (flags) {
       projectId,
       uid: runUid,
       key: runUid + ':run:close',
-      message: run + ' done: ' + title + ' — ' + pr,
+      message: run + ' done: ' + title + ' — ' + (pr || 'nothing to build, every proof passed at the base ' + merged),
       evidence,
       run,
     })

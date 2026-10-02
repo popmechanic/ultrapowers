@@ -167,6 +167,14 @@ again at the PR smoke.
       Compile also writes `stories/product.json` and `.ultrapowers/product.md`.
    4. `python3 skills/ultrapowers/scripts/plan_check.py --base <sha>
       <checkout>/.ultrapowers/plan.md` to `PLAN OK`
+   5. Before launching, play every story's last step on the checkout with the
+      fleet's own checker:
+      `bun factory/stack/tinyapp/check.ts --plan <checkout>/.ultrapowers/plan.md --clause <S#.#> --copy <checkout>`
+      (about 10 s each). When every one exits 0, the approved screens and the
+      bundle's store already make the app: commit the checkout as the result,
+      launch nothing, and go to touch 2. Shopping-list run-1 (2026-10-01) is the
+      case: the fleet built nothing, and the engine now ends such a run as done,
+      with nothing to build. When any exits 1, launch the plan.
 10. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
     and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
     same product".

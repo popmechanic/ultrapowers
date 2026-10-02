@@ -1187,7 +1187,10 @@ function commitSnapshot (snap, message) {
 async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
-    if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 1 }
+    // settled green and identical to the base: every proof already held there, so there is nothing
+    // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
+    // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
+    if (!sha) { ev('landing:empty', { snap: outcome.snap }); return 0 }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     writeProvenance(outcome.snap)
