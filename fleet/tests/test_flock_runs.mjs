@@ -228,8 +228,28 @@ test('jev trials loose', async () => {
   assert(pr.length === 1 && pr[0].path === 'a.txt', `expected one peer:rewrite row by L:loose on a.txt, saw ${JSON.stringify(r.of('peer:rewrite'))}`)
   const asked = bodies.map((b) => b.state).filter((st) => st && st.path === 'a.txt' && Array.isArray(st.tasks))
   const side = asked.length === 1 ? asked[0].tasks[0] : null
-  assert(side && /L:loose$/.test(side.agent) && side.title === 'Close the loose ends builders reported' && side.claim === why,
+  assert(side && /L:loose$/.test(side.agent) && side.title === 'Close the loose ends builders reported' && !('claim' in side) && side.asked_to_fix === why,
     `expected the loose-ends side to carry its title and the posted reason, Jev was shown ${JSON.stringify(asked)}`)
+  t.done()
+})
+
+// loose-unflagged  the loose end is posted on c.txt; the L:loose builder also rewrites task 1's line in a.txt, a file no loose end names: Jev's read carries the title only, never another file's reason (#1520)
+test('jev trials loose-unflagged', async () => {
+  choice = 'supersedes'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n', 'c.txt': 'old\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const why = 'c.txt still says old; it should say new'
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': 'NOTE\n' }, 'L:loose': { 'a.txt': 'x WIPE page z\n', 'c.txt': 'new\n' },
+    '@beliefs': [{ task: '2', about: 'app', path: 'c.txt', claim: why, stale: 'old' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const pr = r.of('peer:rewrite').filter((x) => x.task === 'L:loose' && x.path === 'a.txt')
+  assert(pr.length === 1, `expected one peer:rewrite row by L:loose on a.txt, saw ${JSON.stringify(r.of('peer:rewrite'))}`)
+  const asked = bodies.map((b) => b.state).filter((st) => st && st.path === 'a.txt' && Array.isArray(st.tasks))
+  const side = asked.length === 1 ? asked[0].tasks[0] : null
+  assert(side && /L:loose$/.test(side.agent) && side.title === 'Close the loose ends builders reported' && !('claim' in side) && !('asked_to_fix' in side),
+    `expected the loose-ends side on a.txt to carry its title and no claim or problem, Jev was shown ${JSON.stringify(asked)}`)
+  assert(!JSON.stringify(asked).includes(why), `Jev's a.txt read carries c.txt's reason: ${JSON.stringify(asked)}`)
   t.done()
 })
 

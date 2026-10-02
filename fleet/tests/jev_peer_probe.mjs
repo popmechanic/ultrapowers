@@ -34,14 +34,20 @@ const run296 = (side) => ({
 const CASES = {
   'run-296 bare': { state: run296({ agent: 'E.L:loose' }), want: null },
   'run-296 with reason': {
-    state: run296({ agent: 'E.L:loose', title: LOOSE, claim: 'arrange.ts stages the composer at <app>/.preview/json-render/ (imported from there). preview.ts rmSyncs all of <app>/.preview at start, so a preview started mid-arrange can delete the staged composer; consider removing only .preview/page and .preview/dist.' }),
+    state: run296({ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'arrange.ts stages the composer at <app>/.preview/json-render/ (imported from there). preview.ts rmSyncs all of <app>/.preview at start, so a preview started mid-arrange can delete the staged composer; consider removing only .preview/page and .preview/dist.' }),
     want: ['supersedes', 'keeps'],
   },
   'run-277 run-together with reason': {
     state: { path: 'README.md', before: [], peer: ['Commit the plan, then launch the fleet from this checkout.'],
       after: ['Commit the plan, then launch the fleetfrom this checkout, never the plugin cache.'],
-      tasks: [{ agent: 'E.L:loose', title: LOOSE, claim: 'README.md should say to launch from this checkout, never the plugin cache.' },
+      tasks: [{ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'README.md should say to launch from this checkout, never the plugin cache.' },
         { agent: 'C.4', title: 'README names the launch step', claim: '**Claim:** The README tells the operator how to launch.' }] },
+    want: ['loses'],
+  },
+  'unrelated same-file rewrite': {
+    state: { path: 'README.md', before: ['Run the fleet.'], peer: ['Run the fleet from this checkout.'], after: ['Run the fleet.', 'Never from the plugin cache.'],
+      tasks: [{ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'README.md should mention the plugin cache.' },
+        { agent: 'C.4', title: 'README names the launch step', claim: '**Claim:** The README says to launch from this checkout.' }] },
     want: ['loses'],
   },
 }

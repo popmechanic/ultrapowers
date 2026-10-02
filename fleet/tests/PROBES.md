@@ -80,12 +80,14 @@ deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
 ## Jev's peer-rewrite read, live
 
 `jev_peer_probe.mjs` asks the real Jev (key in `~/.ultrapowers/typesafe.env`; it spends a few calls)
-the `flock_peer_rewrite` question three ways, with five replays each:
+the `flock_peer_rewrite` question four ways, with five replays each:
 - run-296's L:loose rewrite of `preview.ts` exactly as the engine sent it, as a bare agent name
   (reported, not judged);
 - the same rewrite with the loose-ends side's title and reason, which must read `supersedes` or
   `keeps` in a majority;
-- run-277's run-together words, which must still read `loses`.
+- run-277's run-together words, which must still read `loses`;
+- an unrelated same-file rewrite (the loose-ends builder adds a line the reported problem never asked
+  for), which must read `loses`.
 
 Run it before any change to that question, to `factory/flock/engine.mjs`'s `peerRewrites`, or to the
 `flock.jev_peer_rewrite` policy:
@@ -99,6 +101,10 @@ Readings, 2026-10-01, `jev-1.13.0`, n=5 each:
 | bare run-296 | loses 5/5 |
 | run-296 with its reason | supersedes 5/5 |
 | run-277 | loses 5/5 |
+
+These readings were taken before #1520, when the loose-ends side carried its reason in a field named
+`claim`; it is now `asked_to_fix`, and the question text changed with it. Re-run
+`node fleet/tests/jev_peer_probe.mjs 5` (needs the TypeSafe key; not in the suite) and replace the table.
 
 ## Jev's gate reading, live
 

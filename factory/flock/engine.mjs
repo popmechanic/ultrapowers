@@ -170,7 +170,8 @@ const taskOf = {}   // agent -> the task its current session holds
 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
 const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
 const peerReads = []
-// the loose ends the `L:loose` task was opened for ({path, claim}), the claim its side carries to Jev
+// the loose ends the `L:loose` task was opened for ({path, claim}); a path's reasons reach Jev as the
+// problem the builder was asked to fix there (`asked_to_fix`)
 let looseWhy = []
 const LOOSE_TITLE = 'Close the loose ends builders reported'
 function peerRewrites (agent, rel, rewrites) {
@@ -182,11 +183,13 @@ function peerRewrites (agent, rel, rewrites) {
     const side = (a) => {
       const i = a.indexOf('.'); const id = i < 0 ? null : a.slice(i + 1)
       // the loose-ends task is added at run time, so it is not among the plan's tasks: its side is
-      // its board title and the reasons builders posted for this path (run-296 parked on a bare
-      // `E.L:loose`; given these, Jev read run-296's narrowing as `supersedes`, n=5, 2026-10-01)
+      // its board title plus, only for a path a loose end names, that reason as `asked_to_fix`, the
+      // problem the builder was asked to fix, never a claim; a rewrite in an unflagged file gets the
+      // title alone (#1520). Given the reason, Jev read run-296's narrowing as `supersedes`
+      // (n=5, 2026-10-01, read under the field name `claim`)
       if (id === 'L:loose') {
         const why = looseWhy.filter((x) => x.path === rel).map((x) => x.claim)
-        return { agent: a, title: LOOSE_TITLE, claim: (why.length ? why : looseWhy.map((x) => x.claim)).join(' ') }
+        return why.length ? { agent: a, title: LOOSE_TITLE, asked_to_fix: why.join(' ') } : { agent: a, title: LOOSE_TITLE }
       }
       const t = id == null ? null : W.tasks.find((x) => x.id === id)
       return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a }
