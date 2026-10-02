@@ -163,7 +163,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
       }
     }
   }
-  const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.action === action));
+  const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.type !== 'DraftInput' && c.action === action));
   for (const t of seen) {
     if (named.has(t.name)) continue;
     const action = card.actions.find((a) => {

@@ -149,3 +149,22 @@ def test_todo_and_shopping_output_unchanged(bun, tmp_path_factory, bundle, want)
                bundle=bundle, app=a)
     assert r["dropped"] == {}
     assert hashlib.sha256(r["versions"].encode()).hexdigest() == want
+
+
+def test_a_typed_row_action_with_no_click_still_gets_a_button(app, tmp_path):
+    b = str(tmp_path / "b")
+    shutil.copytree(TAGS, b)
+    with open(os.path.join(b, "page.json")) as f:
+        page = json.load(f)
+    for story in page["stories"]:
+        for step in story["steps"]:
+            if step["tool"] == "addTag" and "ui" in step:
+                step["ui"] = [u for u in step["ui"] if "click" not in u]
+    with open(os.path.join(b, "page.json"), "w") as f:
+        json.dump(page, f)
+    got = run_js(
+        "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+        "console.log(JSON.stringify(Object.entries(r.versions.tag ?? {}).map(([v, s]) => [v, inRepeat(s, 'todos', (e) => "
+        "e.type === 'ActionButton' && e.props.action === 'addTag' && canon(e.props.args?.name) === canon({$state: '/draft/name'}))])));",
+        bundle=b, app=app)
+    assert got and all(ok for _, ok in got), "no addTag button reading the typed name: %s" % got
