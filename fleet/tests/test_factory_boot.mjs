@@ -198,6 +198,39 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   )
 }
 
+// ── (a3) a missing or non-numeric claude fails the floor, not a shell error ─
+
+for (const [runN, version, error] of [
+  ['522', null, 'claude unknown is below the floor 2.1.287'],
+  ['523', 'v2.1.300', 'claude v2.1.300 is below the floor 2.1.287']
+]) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a3-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: version ?? undefined })
+  if (version === null) fs.rmSync(path.join(bin, 'claude'))
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  assert.equal(res.code, 1, `(a3) the boot exits 1 on claude ${version} — got ${res.code}, stdout: ${res.stdout}`)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'failed', `(a3) status.json records state "failed" on claude ${version}`)
+  assert.equal(status.error, error, `(a3) status.json's error — got ${JSON.stringify(status.error)}`)
+}
+
 // ── (b) [M1, M5] a clean run: land, open, merge, close, probe alive ──────
 
 {
@@ -320,6 +353,9 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   const argv = engineArgv(home)
   assert.ok(argv.includes('--plan'), `(b) [M4] the systemd-run stub recorded the engine's argv — got ${JSON.stringify(argv)}`)
   assert.ok(!argv.includes('--past-dir'), `(b) [M4] with no earlier tag the engine gets no --past-dir — got ${JSON.stringify(argv)}`)
+  const unitEnv = fs.readFileSync(path.join(home, 'engine-env'), 'utf8').split('\n').filter((l) => l !== '')
+  assert.ok(unitEnv.includes('DISABLE_AUTOUPDATER=1'), `(b) the engine unit's env carries DISABLE_AUTOUPDATER=1 — got ${JSON.stringify(unitEnv)}`)
+  assert.equal(fs.readFileSync(path.join(home, 'timeout-argv'), 'utf8'), '120\nsudo\n-n\nexeuntu\nupdate\nclaude\n')
 
   const integrationTree = git(originDir, ['ls-tree', '-r', '--name-only', `ultra/integration-run-${runN}`])
     .split('\n').filter(Boolean)

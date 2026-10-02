@@ -335,6 +335,22 @@ done
 [ "$is_engine" = "1" ] || exit 0
 printf '%s\\n' "$@" > "$FLEET_HOME/engine-argv"
 
+# The unit's environment is what the \`env\` words set, never this stub's inherited environment:
+# \`systemd-run --user\` does not inherit the boot's exports.
+: > "$FLEET_HOME/engine-env"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+shift
+if [ "$1" = "env" ]; then
+  shift
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -u) shift; shift ;;
+      *=*) printf '%s\\n' "$1" >> "$FLEET_HOME/engine-env"; shift ;;
+      *) break ;;
+    esac
+  done
+fi
+
 # A case that writes \`<home>/engine-hangs\` gets an engine that never lands, so the sim can kill the boot while it runs.
 if [ -f "$FLEET_HOME/engine-hangs" ]; then sleep 60; exit 0; fi
 
@@ -371,6 +387,8 @@ function writeStubs (binDir, { claudeAuth, claudeVersion, extraStubs = {} } = {}
   writeStub(binDir, 'claude', claudeStub(claudeAuth, claudeVersion))
   // The boot's `sudo -n exeuntu update claude`: a no-op, so the stub's release stands.
   writeStub(binDir, 'sudo', '#!/bin/sh\nexit 0\n')
+  // macOS has no `timeout`: record its argv, then run the rest.
+  writeStub(binDir, 'timeout', '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$FLEET_HOME/timeout-argv"\nshift\nexec "$@"\n')
   writeStub(binDir, 'curl', CURL_STUB)
   writeStub(binDir, 'systemd-run', SYSTEMD_RUN_STUB)
   writeStub(binDir, 'systemctl', '#!/bin/sh\nexit 0\n')

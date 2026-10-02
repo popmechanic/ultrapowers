@@ -333,7 +333,7 @@ evidence repository.
   (`https://$GITHUB_INT_HOST/<evidence repo>.git`), parses the plan once with `plan_parse.py`
   into `$FLEET_HOME/plans/<run>.plan.json` (a refusal fails the run; the engine, the catch-up, the
   PR body and the publish probe all read that parse, #1449), extracts the previous run's folder for the
-  engine's `--past-dir`, updates Claude Code to the newest release (`sudo -n exeuntu update claude`,
+  engine's `--past-dir`, updates Claude Code to the newest release (`timeout 120 sudo -n exeuntu update claude`,
   unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
   the release it runs (`claude: <version>` in `fleet-boot.log`) and setting `DISABLE_AUTOUPDATER=1`
   for the run, runs the engine as one transient unit, commits the record to the live

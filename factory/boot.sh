@@ -43,7 +43,8 @@ fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
 fleet_journalctl()  { journalctl "$@"; }
-fleet_sudo()        { sudo -n "$@"; }
+fleet_timeout()     { timeout "$@"; }
+fleet_claude()      { claude "$@"; }
 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
 stamp_ms() {
@@ -272,10 +273,10 @@ engine_deps() {
 CLAUDE_FLOOR="2.1.287"
 claude_current() {
   log "claude: updating to the newest release"
-  fleet_sudo exeuntu update claude || log "claude: the update failed; checking the installed release"
-  local v; v="$(claude --version 2>/dev/null | cut -d' ' -f1)"
+  fleet_timeout 120 sudo -n exeuntu update claude || log "claude: the update failed; checking the installed release"
+  local v; v="$(fleet_claude --version 2>/dev/null | cut -d' ' -f1 || true)"
   log "claude: $v"
-  [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
+  [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
     || fail "claude ${v:-unknown} is below the floor $CLAUDE_FLOOR"
   export DISABLE_AUTOUPDATER=1
 }
@@ -289,7 +290,7 @@ run_engine() {
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-        "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder \
+        "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
         --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
         ${board_args[@]+"${board_args[@]}"} ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
