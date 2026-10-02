@@ -24,6 +24,10 @@ literals — so the reader can say "a test already pins the opposite" or "the
 section this leg names does not exist" instead of judging shape alone. The
 hash does not change: it is over the Claim and Proof only, so a moved base
 never stales a verdict (the base a verdict was read against is the tally's).
+An entry for a path the task's own `Modify:` or `Delete:` bullet names gains
+`"own": "modify"` or `"own": "delete"` (#1497) — present or absent alike — so
+the text the task is about to replace is never read as a rival pin; it is
+marked, never dropped, since the reader still checks what a leg names exists.
 """
 from __future__ import annotations
 
@@ -230,6 +234,13 @@ def base_excerpt(plan_path, task_id, base):
     for p in _proof_paths(task):
         if p not in paths:
             paths.append(p)
+    # the task's own Modify:/Delete: paths (#1497): marked, never dropped
+    own = {}
+    for label, listed in (("modify", task["modifies"]), ("delete", task["deletes"])):
+        for tok in listed:
+            ref = _path_referent(tok)
+            if ref and ref not in own:
+                own[ref] = label
     files = []
     spent = 0
     exhausted = False  # the total cap has cut an entry: nothing later rides
@@ -255,6 +266,9 @@ def base_excerpt(plan_path, task_id, base):
             if cut and budget < EXCERPT_FILE_CAP:
                 exhausted = True  # it was the TOTAL that cut this one
         files.append(entry)
+    for entry in files:
+        if entry["path"] in own:
+            entry["own"] = own[entry["path"]]
     return {"rev": str(base), "files": files}
 
 

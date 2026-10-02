@@ -48,14 +48,15 @@ The current probes:
 
 ## Hand-run: the Jev authoring probes (need `bun`)
 
-The bridge's `sim_env()` PATH holds node, python3, git, bash and sh only, so three
+The bridge's `sim_env()` PATH holds node, python3, git, bash and sh only, so four
 probes of the Bun authoring tools stay outside the suite (operator pick, #1447).
 Each runs against a local stand-in Jev on 127.0.0.1 and spends nothing. Run all
-three before any change to `skills/ultrawrite/stories/gate_jev.ts`,
+four before any change to `skills/ultrawrite/stories/gate_jev.ts`,
 `jev_checks.ts`, `jev.ts` or `skills/ultrawrite/stories/questions.json`:
 
     for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
     for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done
+    for c in own-files own-only rollback; do node fleet/tests/gate_jev_reading_probe.mjs $c; done
     for c in bundle map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
 
 - `gate_jev_probe.mjs` — `record`: one request asking the five clause keys,
@@ -64,6 +65,12 @@ three before any change to `skills/ultrawrite/stories/gate_jev.ts`,
 - `gate_jev_base_probe.mjs` — prints one JSON line (`verdict`, `pinned`,
   `asked_pinned`, `state_base`); `pinned` is asked only when the diet has a
   `base`. Exits 1 only when it could not run; read the line.
+- `gate_jev_reading_probe.mjs` — prints one JSON line (`requests`, `asked`,
+  `state_base`, `caught_M1`, `verdict`, `pinned`, `round`) for policy.json's
+  `gate_reading` (#1497): `own-files` sends only the sibling entry, unmarked, and
+  asks `caught_v2`; `own-only` sends `files` as `[]` and asks no `pinned`;
+  `rollback`, on a copy with both cells set back, sends both entries and asks the
+  old `caught`. The round names its `reading`. Exits 1 only when it could not run.
 - `jev_calls_probe.mjs` — the state `jev_checks.ts` sends Jev at each stage.
   Prints `JEV CALLS <case> OK`.
 
@@ -92,3 +99,35 @@ Readings, 2026-10-01, `jev-1.13.0`, n=5 each:
 | bare run-296 | loses 5/5 |
 | run-296 with its reason | supersedes 5/5 |
 | run-277 | loses 5/5 |
+
+## Jev's gate reading, live
+
+`gate_jev_replay_probe.mjs` replays every labelled gate disagreement in the operator's untracked
+`docs/superpowers/plans/` through the real Jev (key in `~/.ultrapowers/typesafe.env`): each round where
+the agent reader and Jev differ and `right` is set, its diet rebuilt by `extract_gate_input.py` (with the
+tally's `base` when that round saw one) and skipped when the task no longer hashes the same, then read
+by `gate_jev.ts` (never `--record`). Beside them, two known-bad controls (`uncaught-output`,
+`pinned-by-sibling`) must each still read `fail` in a majority. It spends `reps` × (rounds + 2) calls.
+It counts the wrong fails (agent right, Jev failed) that now pass and the right fails (Jev right) that
+still fail; exit 0 when the controls hold and at least two thirds of the wrong fails now pass.
+
+Run it before any change to the `authoring_gate` questions, to `gate_reading`, or to
+`extract_gate_input.py`'s `base`:
+
+    node fleet/tests/gate_jev_replay_probe.mjs docs/superpowers/plans 3
+
+When a change moves two things at once, flipping one `gate_reading` cell back measures the other
+change alone.
+
+Readings, 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
+majority:
+
+| Reading | Wrong fails still failing |
+|---|---|
+| caught/read (before) | 14 of 15 |
+| caught/dropped | 6 of 15 |
+| caught_v2/read | 9 of 15 |
+| caught_v2/dropped | 2 of 15 |
+
+Both controls failed 3 of 3 under every reading. The one round Jev was right on, rebuilt by hand (its
+round-1 diet is not replayable), failed 1 of 3 before and 0 of 3 after: the change gives up that catch.

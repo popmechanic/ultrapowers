@@ -8,6 +8,7 @@
 //
 //   bun skills/ultrawrite/stories/gate_jev.ts <diet.json> [--record <gate-verdicts.json> --agent pass|fail --reason <sentence>]
 //   bun skills/ultrawrite/stories/gate_jev.ts --agreement <dir>
+//   bun skills/ultrawrite/stories/gate_jev.ts --readings <dir>
 //   bun skills/ultrawrite/stories/gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"
 import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -15,12 +16,19 @@ import {parseArgs} from 'node:util';
 import {at, defaultAsk, loadQuestions, noul} from './jev';
 
 const Q = loadQuestions().authoring_gate.questions as Record<string, any>;
-const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
+const POLICY_FILE = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8'));
+const POLICY = POLICY_FILE.flag_at;
+// Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
+// entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
+// reading of 2026-09-29; each cell reverts alone.
+const READING = {caught: String(POLICY_FILE.gate_reading?.caught ?? 'caught'),
+  own_files: POLICY_FILE.gate_reading?.own_files === 'dropped' ? 'dropped' : 'read'};
 
 type Diet = {task: string | number; claim: string; proof: string; hash: string; base?: Record<string, unknown>};
 type Verdict = 'pass' | 'fail' | null;
+type Reading = {caught: string; own_files: string};
 type Round = {hash: string; agent: string; jev: Verdict; clauses?: unknown; contradiction?: number | null; pinned?: number | null;
-  right?: 'agent' | 'jev'; because?: string};
+  reading?: Reading; right?: 'agent' | 'jev'; because?: string};
 
 const ids = (tag: string | undefined) => (tag ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -45,7 +53,22 @@ export function gateState(d: Diet) {
       }
     }
   }
-  return d.base && typeof d.base === 'object' ? {claim, clauses, probes, legs, base: d.base} : {claim, clauses, probes, legs};
+  if (!d.base || typeof d.base !== 'object') return {claim, clauses, probes, legs};
+  return {claim, clauses, probes, legs, base: baseFor(d.base)};
+}
+
+// A base with a `files` array loses the entries marked `own` when own_files is "dropped"; either
+// way no entry keeps the `own` key. Any other base reaches Jev unchanged.
+function baseFor(base: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(base.files)) return base;
+  const files = (base.files as unknown[])
+    .filter((f) => READING.own_files === 'read' || !(f && typeof f === 'object' && 'own' in f))
+    .map((f) => {
+      if (!f || typeof f !== 'object') return f;
+      const {own: _own, ...rest} = f as Record<string, unknown>;
+      return rest;
+    });
+  return {...base, files};
 }
 
 async function read(d: Diet) {
@@ -53,14 +76,15 @@ async function read(d: Diet) {
   const questions: Record<string, unknown> = {};
   state.clauses.forEach((c, i) => {
     questions[`fact:${c.id}`] = at(Q.fact, {i});
-    questions[`caught:${c.id}`] = at(Q.caught, {i});
+    questions[`caught:${c.id}`] = at(Q[READING.caught], {i});
   });
   questions.contradiction = Q.contradiction;
-  if ('base' in state) questions.pinned = Q.pinned;
+  const askPinned = 'base' in state && !(Array.isArray(state.base.files) && state.base.files.length === 0);
+  if (askPinned) questions.pinned = Q.pinned;
   const answers = await defaultAsk(state, questions);
   const clauses = state.clauses.map((c) => ({id: c.id, fact: noul(answers, `fact:${c.id}`), caught: noul(answers, `caught:${c.id}`)}));
   const contradiction = noul(answers, 'contradiction');
-  const pinned = 'base' in state ? noul(answers, 'pinned') : null;
+  const pinned = askPinned ? noul(answers, 'pinned') : null;
   let verdict: Verdict = null;
   if (answers !== null) {
     const uncaught = clauses.some((c) => c.fact !== null && c.caught !== null && c.fact >= POLICY.gate_fact && c.caught < POLICY.gate_caught_below);
@@ -122,11 +146,44 @@ function agreement(dir: string): string[] {
     `gate-jev outcomes: disagreements ${disagreements}, agent right ${agentRight}, jev right ${jevRight}, unlabelled ${unlabelled}`];
 }
 
+// The census per reading: a reworded question is a different question, so each reading
+// (caught question / own files) is counted apart; a round recorded without one is caught/read.
+export function readings(dir: string): string[] {
+  const by = new Map<string, {plans: number; rounds: number; agree: number; disagreements: number; agentRight: number;
+    jevRight: number; unlabelled: number}>();
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.gate-verdicts.json')).sort()) {
+    const rec = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    const rs: Round[] = Object.values(rec.tasks ?? {}).flatMap((t: any) => (Array.isArray(t?.gate_rounds) ? t.gate_rounds : []))
+      .filter((r: Round) => r && r.jev != null);
+    const seen = new Set<string>();
+    for (const r of rs) {
+      const name = `${r.reading?.caught ?? 'caught'}/${r.reading?.own_files ?? 'read'}`;
+      let c = by.get(name);
+      if (!c) by.set(name, c = {plans: 0, rounds: 0, agree: 0, disagreements: 0, agentRight: 0, jevRight: 0, unlabelled: 0});
+      if (!seen.has(name)) { seen.add(name); c.plans += 1; }
+      c.rounds += 1;
+      if (r.agent === r.jev) c.agree += 1;
+      if (!disagrees(r)) continue;
+      c.disagreements += 1;
+      if (r.right === 'agent') c.agentRight += 1;
+      else if (r.right === 'jev') c.jevRight += 1;
+      else c.unlabelled += 1;
+    }
+  }
+  return [...by.keys()].sort().map((name) => {
+    const c = by.get(name)!;
+    return `gate-jev reading ${name}: n=${c.plans} plans, ${c.rounds} rounds, agree ${c.agree}, disagreements ${c.disagreements}, `
+      + `agent right ${c.agentRight}, jev right ${c.jevRight}, unlabelled ${c.unlabelled}`;
+  });
+}
+
 async function main(): Promise<number> {
   const usage = 'usage: gate_jev.ts <diet.json> [--record <gate-verdicts.json> --agent pass|fail --reason <sentence>] | gate_jev.ts --agreement <dir>'
-    + ' | gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"';
+    + ' | gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"'
+    + ' | gate_jev.ts --readings <dir>';
   const {values, positionals} = parseArgs({allowPositionals: true,
     options: {record: {type: 'string'}, agent: {type: 'string'}, reason: {type: 'string'}, agreement: {type: 'string'},
+      readings: {type: 'string'},
       label: {type: 'string'}, task: {type: 'string'}, round: {type: 'string'}, right: {type: 'string'}, because: {type: 'string'}}});
   if (values.label !== undefined) {
     const {task, round, right, because} = values;
@@ -143,6 +200,11 @@ async function main(): Promise<number> {
     for (const line of agreement(values.agreement)) console.log(line);
     return 0;
   }
+  if (values.readings !== undefined) {
+    if (positionals.length) { console.error(usage); return 2; }
+    for (const line of readings(values.readings)) console.log(line);
+    return 0;
+  }
   const given = [values.record, values.agent, values.reason].filter((v) => v !== undefined).length;
   if (positionals.length !== 1 || (given !== 0 && given !== 3) || (values.reason !== undefined && !values.reason.trim())
     || (values.agent !== undefined && !['pass', 'fail'].includes(values.agent))) {
@@ -153,7 +215,7 @@ async function main(): Promise<number> {
   const out = await read(diet);
   console.log(JSON.stringify(out));
   if (values.record !== undefined) record(values.record, String(diet.task), values.reason!, {hash: diet.hash, agent: values.agent!,
-    jev: out.verdict, clauses: out.clauses, contradiction: out.contradiction, pinned: out.pinned});
+    jev: out.verdict, clauses: out.clauses, contradiction: out.contradiction, pinned: out.pinned, reading: {...READING}});
   return 0;
 }
 
