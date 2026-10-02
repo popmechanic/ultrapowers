@@ -48,6 +48,9 @@ function pieceOrder(cards: Card[]): Card[] {
 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
   const owner = new Map(b.cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
+  // A linked step's check goes to the last-built piece of its link, so no builder proves what a later piece draws (#1490).
+  const rank = new Map(pieceOrder(b.cards).map((c, i) => [c.piece, i] as const));
+  const lastOf = new Map((b.page.links ?? []).filter((l) => l.pieces?.length).map((l) => [l.id, l.pieces!.reduce((a, p) => ((rank.get(p) ?? -1) > (rank.get(a) ?? -1) ? p : a))] as const));
   const out: Derived[] = [];
   for (const s of b.page.stories) {
     const store = mod.makeStore();
@@ -87,7 +90,7 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
           holds_before: Boolean(st.refused),
         };
         if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; end it with "refused": "<the refusal sentence>" if it must refuse`);
-        out.push({story: s.id, step: i + 1, piece: owner.get(st.tool)!, probe});
+        out.push({story: s.id, step: i + 1, piece: (st.link !== undefined ? lastOf.get(st.link) : undefined) ?? owner.get(st.tool)!, probe});
       }
       before = after;
     });
