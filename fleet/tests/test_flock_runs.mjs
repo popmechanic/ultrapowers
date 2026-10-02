@@ -263,6 +263,25 @@ test('jev trials loose-fallback', async () => {
   t.done()
 })
 
+// loose-stalled  the script names no files for L:loose, so its builder ends without publishing and the run deadlocks with its last edge the
+//                pre-cleanup snapshot: the draft still lands that snapshot ready, once (#1521)
+test('jev trials loose-stalled', async () => {
+  choice = 'supersedes'; requests = 0; bodies.length = 0
+  const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+  const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': 'NOTE\n' },
+    '@beliefs': [{ task: '2', about: 'app', path: 'a.txt', claim: 'a.txt wipes every folder', stale: 'x WIPE z' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const pre = r.of('loose-task')[0]?.snap
+  const end = r.of('terminal').at(-1)
+  assert(end?.pr === 'ready' && end.snap === pre, `expected the run to end ready on the pre-cleanup snapshot ${pre}, saw ${JSON.stringify(r.of('terminal'))}`)
+  assert(r.code === 0, `engine exit ${r.code} for a ready run`)
+  const fb = r.of('loose:fallback')
+  assert(fb.length === 1 && fb[0].snap === pre && /deadlock|no progress/.test(fb[0].why), `expected one loose:fallback row to ${pre} for the draft, saw ${JSON.stringify(fb)}`)
+  t.done()
+})
+
 // loose-unflagged  the loose end is posted on c.txt; the L:loose builder also rewrites task 1's line in a.txt, a file no loose end names: Jev's read carries the title only, never another file's reason (#1520)
 test('jev trials loose-unflagged', async () => {
   choice = 'supersedes'; requests = 0; bodies.length = 0

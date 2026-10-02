@@ -949,9 +949,11 @@ function debounceMs () {
   return Math.max(1000, 2 * p90)
 }
 let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
+let fellBack = false  // the run already ends on preLoose: a draft after that stands
 function terminal (pr, why, r) {
-  // a draft after the loose-ends cleanup lands the green snapshot from before it instead (#1521)
-  if (pr === 'draft' && preLoose && !(r && r.snap === preLoose.snap)) {
+  // any draft after the loose-ends task was added lands the green snapshot from before it instead (#1521)
+  if (pr === 'draft' && preLoose && !fellBack) {
+    fellBack = true
     ev('loose:fallback', { snap: preLoose.snap, from: r && r.snap, why })
     log('LOOSE FALLBACK to', preLoose.snap, why)
     settled = { t: now(), snap: preLoose.snap }; ev('settled', settled)
@@ -1173,6 +1175,7 @@ function peerRewriteDraft () {
     if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
   }
   if (!losing.length) return
+  if (preLoose && outcome.snap === preLoose.snap) fellBack = true   // a verdict on the pre-cleanup snapshot itself has nothing to fall back to
   ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
   terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
   if (outcome.pr === 'ready') peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
