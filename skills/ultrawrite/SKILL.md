@@ -100,7 +100,8 @@ again at the PR smoke.
      The accessible names you choose are the builder's contract. A step's
      `"as": "<email>"` (or `null`) sets who is signed in from that step on.
    - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (`server/wrangler.jsonc` names the Worker; the account is a `CLOUDFLARE_ACCOUNT_ID=` prefix in the app's `deploy` script, since celld refuses `account_id` in the config; see `references/greenfield-stack.md`).
-   - `cards.json`, each card with its `concept`.
+   - `cards.json`, each card with its `concept`, or several with `concepts`: one per
+     map line its screen covers.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:
    - every card's main story
