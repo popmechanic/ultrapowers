@@ -44,13 +44,13 @@ exists only after the agent-run form has already failed.
 The first command, run from the plugin cache:
 
 ```bash
-node <plugin-root>/fleet/doctor.mjs --json
+node ${CLAUDE_PLUGIN_ROOT}/fleet/doctor.mjs --json
 ```
 
-`<plugin-root>` is two directories above this skill's base directory. The
-harness prints `Base directory for this skill:` when it loads this file; the
-cache path itself differs by version and by host, so derive it rather than
-naming it.
+`${CLAUDE_PLUGIN_ROOT}` is the installed plugin's directory; Claude Code
+writes the real path into this file when it loads it, so the cache path, which
+differs by version and by host, never has to be derived by hand. The reference files,
+which Claude Code does not rewrite, write the same directory as `<plugin-root>`.
 
 The doctor answers with one row per piece, and its row ids are `exe-dev`,
 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, in that
@@ -83,7 +83,7 @@ itself; on the second the human upgrades the plan in the browser and the agent
 re-runs the doctor after them.
 
 `claude` — the token. The agent runs
-`node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard` in the
+`node ${CLAUDE_PLUGIN_ROOT}/fleet/claude-token.mjs login --code-from-clipboard` in the
 background; it opens claude.ai and waits for the code to land on the clipboard.
 The human approves there and copies the code — the third consent, and the only
 secret that ever moves by hand.
@@ -101,7 +101,7 @@ integrations, so a team account's PRs are authored by the installation bot
 rather than by the user.
 
 `integrations` — every object a run needs, attached to `tag:fleet`. The agent runs
-`node <plugin-root>/fleet/target.mjs <owner>/<repo>` for the repository being
+`node ${CLAUDE_PLUGIN_ROOT}/fleet/target.mjs <owner>/<repo>` for the repository being
 built, which creates the one object that repository needs attached to
 `tag:fleet`; the command is idempotent, so an object already there is left
 alone and attached only when it is not on `tag:fleet`. When the doctor reports
@@ -116,7 +116,7 @@ record live (never on the target, so a run on someone else's repository works
 too). It is set up once, in three steps the row checks in order: the key
 `"evidence": "<owner>/<repo>"` in `~/.ultrapowers/fleet.json`, the private
 repository itself (`gh repo create <owner>/<repo> --private`), and its
-integration (`node <plugin-root>/fleet/target.mjs <owner>/<repo>`). The detail
+integration (`node ${CLAUDE_PLUGIN_ROOT}/fleet/target.mjs <owner>/<repo>`). The detail
 of each step is the `evidence` section of `references/first-run.md`
 (`references/first-run.md#evidence`).
 
@@ -149,7 +149,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    `.gate-verdicts.json` into the clone (an untracked `docs/superpowers/plans/`
    there is fine) and name that relative path.
 
-   Then run `node <plugin-root>/fleet/doctor.mjs --target <repo>` once. A
+   Then run `node ${CLAUDE_PLUGIN_ROOT}/fleet/doctor.mjs --target <repo>` once. A
    verdict of `ready` goes straight to step 2. Any other verdict is repaired
    here: run the `## Setup` path inline, in this same turn, and launch when the
    doctor comes back `ready`.
@@ -157,7 +157,7 @@ approved plan, **is** the authorization to execute — no further approval pause
 2. **Launch.** One line:
 
    ```bash
-   node <plugin-root>/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
+   node ${CLAUDE_PLUGIN_ROOT}/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
    ```
 
    It prints the run id and the VM name — `run-<N>` and `fleet-r<N>-…` — along
@@ -177,7 +177,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    While the run is in flight, read it off the board:
 
    ```bash
-   node <plugin-root>/fleet/board-read.mjs --run <N> --target <repo>
+   node ${CLAUDE_PLUGIN_ROOT}/fleet/board-read.mjs --run <N> --target <repo>
    ```
 
    It prints `== now` — one line per issue of the run (the run issue and each
@@ -236,7 +236,7 @@ approved plan, **is** the authorization to execute — no further approval pause
    pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
    branch.
 
-5. **Reap.** `node <plugin-root>/fleet/janitor.mjs` removes the VMs of runs
+5. **Reap.** `node ${CLAUDE_PLUGIN_ROOT}/fleet/janitor.mjs` removes the VMs of runs
    that finished over an hour ago, and reports the stale ones rather than
    removing them. The launcher runs it before every launch; nothing schedules it,
    and the agent runs it by hand when this machine has been asleep. No

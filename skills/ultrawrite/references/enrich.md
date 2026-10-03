@@ -1,3 +1,5 @@
+<!-- `<plugin-root>` is the plugin directory; the skill's SKILL.md shows its real path. -->
+
 # Enrich the ask
 
 Every TinyApp plan starts here. The operator's words are coarse on purpose; this
@@ -41,7 +43,7 @@ are unsure of. Mark each assumption `about: product` (what it does, who uses it,
 how it looks) or `about: technical`; decide the technical ones yourself
 (`state: decided, by: author`). Run:
 
-    bun skills/ultrawrite/stories/jev_checks.ts <bundle> --stage understanding
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage understanding
 
 Show the operator what they said and the product assumptions only, in one
 question: "Here is what I understood — correct anything, or say yes." Every
@@ -57,7 +59,7 @@ does or sees ("Listeners see what is on air right now"), under a plain heading
 (`part`). Never list plumbing (sync, storage, login mechanics); a product decision
 such as "who may edit a show page" is listed, in those words. Run:
 
-    bun skills/ultrawrite/stories/jev_checks.ts <bundle> --stage map
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage map
 
 Split any concept flagged as two needs. Then
 ask which belong in the **First version**: one multi-select question per heading,
@@ -68,34 +70,34 @@ most First-version recommendations first. Jev's `recommend` lines set
 ("Back office, 1 of 2"). Unticked
 ones become **Later** unless flagged "may not serve what the product is for", which
 you offer as **Not doing**. Record the answer as `status` (keep / defer / cut) and
-run `bun skills/ultrawrite/stories/product.ts record <bundle>/product.json`.
+run `bun <plugin-root>/skills/ultrawrite/stories/product.ts record <bundle>/product.json`.
 
 ## 4. The order we build it in
 
 Group the First version into plans, each usable and judgeable on its own, in the
 order they must be built, each with a plain `reason`. Run:
 
-    bun skills/ultrawrite/stories/jev_checks.ts <bundle> --stage decompose
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage decompose
 
 Regroup any plan flagged "may not be usable on its own". Ask the operator in one
 question: "We build X first, then Y, then Z, because …; start with X?" Mark the
-chosen one `next`, the rest `planned`. `bun skills/ultrawrite/stories/product.ts
+chosen one `next`, the rest `planned`. `bun <plugin-root>/skills/ultrawrite/stories/product.ts
 check <bundle>/product.json` must print `PRODUCT OK`.
 
 ## How it looks
 
 "How it looks", the third of the operator's three decisions, is never asked in
 words during enrichment. It is answered on the real screen: Jev arranges each
-piece's screen into versions (`bun skills/ultrawrite/stories/arrange.ts`), the
+piece's screen into versions (`bun <plugin-root>/skills/ultrawrite/stories/arrange.ts`), the
 operator picks one in the Browser pane and pins notes on it in Comment mode
-(SKILL.md, Story planning, the See it step).
+(`references/stories.md`, the See it step).
 
 ## Then
 
-Draft the bundle for the `next` plan only (SKILL.md, Story planning, steps 4–8):
+Draft the bundle for the `next` plan only (`references/stories.md`, steps 4–8):
 cards carry `concept` (or `concepts`, one per map line a screen covers),
 `page.json` carries `subproject`, and the coverage rule decides which stories
 must exist. The operator sees the real screen before the
 sign question. What the operator signs is
-`bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`,
+`bun <plugin-root>/skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`,
 shown in the sign question with the approved screen.

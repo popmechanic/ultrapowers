@@ -74,127 +74,9 @@ well as tickets, which is why scraping it was rejected.
 
 ## Story planning — TinyApp targets (`stories-v1`)
 
-A TinyApp plan is not written; it is compiled from a bundle the author drafts
-after enriching the ask with the operator, who then signs it in one question. Specs:
-`docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md` and
-`docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`. Before signing,
-the operator sees each piece's real screen, picks one of Jev's versions of it,
-pins notes on it, and watches each story play on it; the real app is judged
-again at the PR smoke.
-
-1. **Read the notebook first:** `bun skills/ultrawrite/stories/notebook.ts show`.
-   Use its words; avoid its failed ones.
-2. **Take the ask as it comes**, in any form. Save it verbatim to `<bundle>/ask.txt`.
-   The ask file holds only the operator's own words for this plan: never notes, earlier picks or the author's lines, because Jev reads every sentence in it.
-3. **Enrich the ask — every plan, never skipped:** follow
-   `skills/ultrawrite/references/enrich.md` (intent, understanding, the whole
-   product's map, the build order) into `<bundle>/product.json`. Draft no story
-   until the operator has confirmed which plan comes first. A small, clear ask
-   passes through quickly; it still gets the understanding and a one-line map.
-4. **Draft the bundle for that plan**, starting from `skills/ultrawrite/catalog/<piece>/`
-   wherever one fits:
-   - `page.json`: its title, kind, three summary sentences, `subproject`, links as
-     sentences (run inside the trigger's `store.transaction`), numbers, and stories,
-     each with its `steps`. A step is `{tool, args, layer}` (`store`, `ui` or
-     `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
-     The accessible names you choose are the builder's contract. A step's
-     `"as": "<email>"` (or `null`) sets who is signed in from that step on.
-   - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (`server/wrangler.jsonc` names the Worker; the account is a `CLOUDFLARE_ACCOUNT_ID=` prefix in the app's `deploy` script, since celld refuses `account_id` in the config; see `references/greenfield-stack.md`).
-   - `cards.json`, each card with its `concept`, or several with `concepts`: one per
-     map line its screen covers.
-   - `store.js` exports `TOOLS` and `makeStore`.
-5. **Write the stories the coverage rule requires**, not ones you invent:
-   - every card's main story
-   - one story per refusal, ending in a `ui` step with `"refused": "<the refusal sentence>"`
-   - one story per link
-
-   A step's `see` names only text its own piece, or a piece it depends on, draws:
-   on potluck run-1 (2026-10-01) S3's `see` read the answer piece's text from a
-   guest step, and the guest builder drew it too. A link story's check goes to the
-   piece of its link, the tool's owner included, that depends on every other one
-   (#1490, #1525), so it may read the text of any piece in the link; with no such
-   piece it goes to the tool's owner and reads only that piece's text.
-
-   The only alternative to a refusal story is a waiver
-   `{piece, action, refuses, arg, "reason": "unreachable-from-screen"}`, where `arg`
-   is a row id the screen can't invent. The operator never sees waivers; they
-   appear on the PR card.
-6. **Run the checks before they see anything:**
-   `bun skills/ultrawrite/stories/jev_checks.ts <bundle>`.
-   - Fix every code refusal.
-   - Act on every `JEV flag` yourself.
-   - `DOUBT:` lines (at most three, highest first) go into the sign question.
-7. **See it — the real screen, before signing:**
-   1. Scaffold into a scratch app and `bun install` there:
-      `bun skills/ultrawrite/stories/scaffold.ts <bundle> <scratch>/app`.
-   2. `bun skills/ultrawrite/stories/arrange.ts <bundle> --app <scratch>/app` has
-      Jev arrange each piece's screen into versions A, B and C at
-      `<bundle>/screens/<piece>.<V>.json`. Jev only chooses and places the
-      bundle's own controls and text (under a second per run on the todo bundle,
-      n=5 runs, 2026-10-01).
-   3. Start `bun skills/ultrawrite/stories/preview.ts <bundle> --app <scratch>/app`
-      in the background from the session's working directory and open the URL its
-      first line prints in the Browser pane (the Desktop Code tab). Elsewhere, in
-      a terminal, open the `/compare` address in the default browser:
-      `open <url>compare` on macOS or `xdg-open <url>compare` on Linux, where
-      `<url>` is the printed address ending in `/`. Its `/compare` page shows the
-      versions side by side, each with a Choose button.
-   4. When the intent tray is installed, call its `show_screen` tool
-      (`mcp__ultrapowers__show_screen`, `name` the app's title, `versions` the
-      letters, `url` the preview's `/compare` address) so the tray's **Open
-      screen** button runs the same open command and the operator picks and
-      sends notes from the tray; otherwise ask
-      the pick as one AskUserQuestion with a screenshot of `/compare`.
-   5. Record the pick with `arrange.ts <bundle> --app <scratch>/app --piece <p> --pick <V>`:
-      it writes the approved screen, `<bundle>/screens/<piece>.json`, and the
-      page redraws in place.
-   6. The operator pins notes in Comment mode: a floating Comment button; click
-      one element or drag a box, type a note, and a numbered pin stays (About
-      this view covers the whole screen). Notes reach
-      `.ultrapowers/feedback.jsonl` and the tray. Apply them with
-      `arrange.ts <bundle> --app <scratch>/app --piece <p> --reshape --note '<target>: <note>' …`.
-      A note the composer cannot satisfy is yours to apply by hand to the spec;
-      then `bun factory/stack/tinyapp/screens.ts --bundle <bundle> --copy <scratch>/app`
-      re-checks it.
-   7. Play each story on the approved screen while the operator watches:
-      `curl -s 'http://127.0.0.1:<port>/play?story=<id>'` answers
-      `{"story","ok","misses"}`. Fix a miss before signing. `/play` needs the preview's `/` page
-      open (the single screen): the `/compare` page never plays a story, and
-      the server then answers at once with the page to open.
-
-   Compile later copies each approved screen into the app as the builder's
-   starting spec.
-8. **Touch 1, sign:** render `product.md`
-   (`bun skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`)
-   and ask one AskUserQuestion call:
-   - The first question is this plan's stories as numbered sentences, with the
-     product's first line, the build order and the approved screen. Its options
-     are *Sign (Recommended)*, *Fix a line* and *Please explain*.
-   - Up to three more questions come from the `DOUBT:` lines, each a concrete
-     product choice.
-
-   A fixed line is the new sentence. Re-ask only if a check changed.
-9. **Make the target app:**
-   1. `bun skills/ultrawrite/stories/scaffold.ts <bundle> <checkout>`
-   2. `bun install` in the checkout
-   3. Compile: `bun skills/ultrawrite/stories/compile.ts <bundle> --app <checkout>
-      --plan-id <id> --date <YYYY-MM-DD> --out <checkout>/.ultrapowers/plan.md`.
-      Compile also writes `stories/product.json` and `.ultrapowers/product.md`.
-   4. `python3 skills/ultrapowers/scripts/plan_check.py --base <sha>
-      <checkout>/.ultrapowers/plan.md` to `PLAN OK`
-   5. Before launching, play every story's last step on the checkout with the
-      fleet's own checker:
-      `bun factory/stack/tinyapp/check.ts --plan <checkout>/.ultrapowers/plan.md --clause <S#.#> --copy <checkout>`
-      (about 10 s each). When every one exits 0, the approved screens and the
-      bundle's store already make the app: commit the checkout as the result,
-      launch nothing, and go to touch 2. Shopping-list run-1 (2026-10-01) is the
-      case: the fleet built nothing, and the engine now ends such a run as done,
-      with nothing to build. When any exits 1, launch the plan.
-10. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
-    and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
-    same product".
-11. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
-    `notebook.ts log <plan-id> --rounds … --explains … --fixes …`.
+A TinyApp plan is compiled from a story bundle, not written. **Before any TinyApp plan,
+read `references/stories.md` in full and follow it step by step**, after the enrichment in
+`references/enrich.md`. Its commands use `<plugin-root>`, which is `${CLAUDE_PLUGIN_ROOT}`.
 
 ## Task shape — pinned to what the parser actually reads
 
@@ -310,37 +192,8 @@ where this plan's Files sets were wrong.
   A free sentence is a `grammar:` refusal from `plan_check.py`; an undecidable staleness
   test is inert prose.
 
-```markdown
-### Task 2: The widget catalog
-
-**Type:** implementation
-
-**Files:**
-- Create: `widgetkit/catalog.py`
-
-**Claim:** An operator lists the sizes they want and gets one widget per size, in the
-order they asked. (quoted from #489)
-Machine: M1. `catalog([1, 3])` returns two `Widget`s whose `size` values are `[1, 3]`.
-M2. `catalog([])` returns an empty list.
-
-**Authorized-by:** #489; spec `docs/superpowers/specs/2026-08-31-owned-authoring-skill.md` §3
-
-**Interfaces:**
-- Consumes: `make_widget(n: int) -> Widget`
-- Produces: `catalog(sizes: list[int]) -> list[Widget]`
-
-**Context:** The catalog is a thin mapping over the constructor — it neither validates
-sizes nor caches, so a bad size surfaces as the constructor's own `ValueError`.
-
-**Proof:**
-- Run: python3 -c "from widgetkit.catalog import catalog; ws = catalog([1, 3]); assert [w.size for w in ws] == [1, 3] and len(ws) == 2" [M1]
-- Run: python3 -c "from widgetkit.catalog import catalog; assert catalog([]) == []" [M2]
-- Legs: (a) `catalog([1, 3])` yields exactly two widgets with sizes `[1, 3]` in that
-  order [M1]; (b) `catalog([])` is exactly `[]` [M2].
-
-**Stale-if:**
-- path-absent: `widgetkit/widget.py`
-```
+A complete task with every slot filled is in `references/example-task.md`; read it before
+drafting your first task.
 
 ## Elicit the claim — drafted, then confirmed
 
@@ -399,28 +252,8 @@ nothing.
 
 ## Authoring a queue
 
-A sitting's queue of well-defined issues drains by partitioning it by files into
-disjoint bundles, and it must partition by `Create:` paths as well as by files: two
-plans that would touch one file go in one bundle, since same-file edits merge inside
-one run and never across two PRs, and two plans that would create one path go in
-one bundle, or the second declares `Consumes:` on the first and launches after it
-(the 2026-09-17 drain serialized #1095 and #1096 by hand after both listed `Create:
-fleet/jev-client.mjs`). Dispatch one author subagent per bundle — each loads this
-skill, pins its own launch base, dispatches its own fresh gate readers per task,
-writing each diet to `<issue>-gate-<t>.json` so the filename carries the plan's
-own issue prefix and two authors' readers never collide on the scratchpad (six
-authors once collided on bare `gate-<t>.json` names, and author-1096's round-2
-readers read a sibling's diet for tasks 2–4, discarding three verdicts), and
-compiles to `PLAN OK`. The issue's desired-state sentence is the plan's Claim,
-quoted rather than drafted, exactly as the elicitation path above has it.
-Grill an issue only when its ticket carries the `wayfinder:grilling` label; an undecided
-choice found mid-authoring comes back as a question, not as a guess.
-
-Hold the operator to one Claim confirmation and one execute choice per plan — an explain
-round is part of the same touch, not a third — each asked with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
-concurrent launches race on the run number (#667). The clock census (n=3 runs, runs
-10–12, 2026-09-05) found authoring throughput, not the sandbox, was the first bound on
-how many runs could be live at once — a queue authored in parallel is what lifts it.
+When the operator hands over several issues at once, read `references/authoring-a-queue.md`
+and follow it.
 
 ## The proof gate — before any compile
 
@@ -613,123 +446,12 @@ lines, so a plan that does not compile at the launch base is refused on the lapt
 The rejection species are listed in `references/authoring-gotchas.md` and read by the
 author before a reader is dispatched — nothing prints them.
 
-## The worktree-pure contract
+## Decomposition, the worktree-pure contract, Global Constraints
 
-Every `implementation` task is a pure diff against the integration branch:
+Read `references/decomposition.md` before splitting the work into tasks and before writing
+the Global Constraints block. It holds the worktree-pure contract, the decomposition
+judgment and the Global Constraints discipline.
 
-1. **Self-contained bodies.** A task agent sees only its own body — every coordination
-   note (port assignments, shared literals) lives in the body of each task it affects,
-   never only in a preamble.
-2. **No branch instructions.** The executor owns branching.
-3. **Concurrency-safe proofs.** Builders run their probes at once on one machine: unique port
-   and temp path per test, no shared on-disk fixtures.
-4. **Name only what exists.** Every path a slot cites must exist at BASE or be created by
-   a task this one derivably follows. `docs/superpowers/` is untracked (#544) and absent
-   from every sandbox, so a spec path is a reference for the reader, never something a
-   worker is asked to open — put what the worker needs from a spec into Context.
-5. **Claims about the live world carry their evidence.** A task asserting what a live
-   system does is unverifiable from a sandbox — paste the commands and their output into
-   Context so the builder and Jev check correspondence to a record, not truth they cannot
-   reach.
-6. **Isolate `CLAUDE_CONFIG_DIR`** in any task that spawns the agent CLI, or it writes
-   false memories into the host project.
-7. **Greenfield targets take the Bun + TypeScript + TinyBase defaults** — `bun install` to
-   bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
-   app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
-   Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
-   restriction stops: `references/greenfield-stack.md`. A TinyApp task is proven like any
-   other, by `Run:` probes and the stack's `Check:` line.
-   the stack's `Check:` line, until state exams return as probes (owed on map #1248).
-
-## Decomposition judgment
-
-Independence is a property of contracts, not of files.
-
-1. **Split by default.** Every piece of work that can carry its own contract — a module
-   with its own exports and its own tests — is its own task. Where a consumer would wait
-   on a producer, put the shared shape (a schema, a signature, a file format) as one
-   literal in the Context of every task that touches it, and give each side a probe that
-   pins the literal, so an implementation that drifts from it goes red. A `Consumes:` of a sibling's `Produces:` orders the two,
-   and a `Create:` a sibling task later `Modify:`s is the same kind of fact; a shared
-   literal orders neither, so prefer the literal wherever the consumer only needs the
-   shape. Workers have no shared memory — a chain of two tasks is two strangers in
-   sequence, not one mind holding a design — so a chain buys no coherence, only the wait.
-   One thing a literal cannot stand in for is the file itself: a probe that imports a sibling's created module
-   (`from tests.trends_fixtures import …`, `import('./lib/a.mjs')`) is a `proof-run` edge
-   the parser derives and the engine keeps hard under live pairs (#1265), so write the
-   probe as it is and list nothing under `Modify:` to force the wait — the wait is derived.
-2. **Write no ordering.** An author writes no ordering: the parser derives the edges, the
-   Flock seeds its board with them, and a task becomes claimable once every task it depends
-   on is done; every other task is claimable at once, and builders merge each other's
-   published work continuously, so a same-file pair meets in the weave, not in a queue.
-   `Consumes:`/`Produces:` bullets are still written exactly, one symbol per bullet,
-   because they are how a pair is found — but the chain they imply is derived, never
-   authored, and there is no width to state and no rationale line to write. An edge an
-   author takes only to keep two same-file edits apart — not because a sibling needs the
-   other's runtime behaviour — is a defect: on run-193 the author chained the engine task
-   behind the hunk-picker task to keep two import inserts from meeting at merge, and the
-   consumer waited on a producer it needed nothing from — about nine minutes of clock lost
-   (n=1 run, 2026-09-18).
-3. **Let same-file edits stand.** Builders merge each other's published work continuously
-   through the weave, so concurrent same-file *text* writes meet there, and a shared hot
-   file is never a reason to reshape a plan — let colliding `Modify` lines collide.
-   Non-text (binary, symlink) same-file pairs are ordered automatically. Blast radius
-   follows the contract, not the file: a task that changes a `Produces:` shape owns every
-   strict-equality pin of it, in any sibling's file — list that file in its own Files
-   block. One shape does not merge cleanly, though: N tasks that each add one line to one
-   list are N **adjacent inserts at one location**, which merge as a conflict a builder
-   must stop and resolve — run-12 (2026-09-05, PR #662) had five tasks each append one
-   registration line to one registry file and spent 3.4 worker-minutes ordering five lines
-   any order would have satisfied. Give each such task its **own region or file**: a
-   registration is a new file discovered by glob, never an appended line.
-   And when two tasks list one file, each of them carries a
-   Run: probe of what that file must keep beyond its own change: run-277's two tasks each removed one name from one
-   line and each probe checked only its own removal, so a line that fused two kept names
-   went green (n=1 run, 2026-09-29). `plan_check.py` prints a `SHARED fact:` line for each
-   such file.
-4. **Prefer several small concurrent plans** landing on one main over one
-   large plan (0.26× batch wall, n=1 drain of 3 runs, #454, 2026-09-01). An effort split
-   across plans gives the **final** plan an integration-spanning acceptance — per-phase
-   green never establishes integrated green — or declares the gap explicitly in the final
-   plan. Never silently.
-
-## Global Constraints discipline
-
-`## Global Constraints` holds the spec's binding, cross-cutting requirements: version
-floors, naming and copy rules, platform requirements. State what must be true **of the
-result**. Process rules — TDD ordering, commit cadence, "write the failing test first" —
-are never Global Constraints: no diff evidences the order work was done in, so nothing
-could ever check them.
-
-The section holds two kinds of bullet, and only one of them reaches the run. A `- Check:`
-bullet is a command that runs across the whole run: the Flock reads the plan's `checks`
-and the run settles green only when every one exits 0 — unless it ends `(minor)`, which is
-never run. A prose bullet is read by people only: nothing runs it and nothing forwards it,
-and no builder sees it, because a builder's task body is its own `### Task` section and
-nothing else. So a constraint a command can decide is written as a Check:, never as
-prose — prose is where the undecidable half goes, and a constraint a builder must honour is
-repeated in the Context of every task it touches. A prose
-bullet naming a byte-identical file or a script's output is one the driver could have run,
-so write it as a `Check:` beside the prose. Such a comparison has a base to compare
-against: a `Check:` or `Run:` that compares the tree against BASE writes `$ULTRA_BASE`,
-which the driver sets, in the environment of every `Check:` and `Run:` it executes, to the
-run's base sha — so `- Check: git diff --quiet $ULTRA_BASE -- fleet/` is writable without
-knowing the sha, where a frozen `git hash-object` literal is the shape for a single file.
-And a `Check:` that runs a sim is paid by every task on every pass, where the same command
-in the owning task's `Run:` is paid once: put it there, and keep this section for what no
-single task owns. That is not only advice: a `Check:` whose command names a file one task's
-Files own is refused by `plan_check.py`, naming the task and the path, because a check a single
-task would turn green was never run-wide. A `Check:` that freezes a pathspec covering any
-task's `Create:`, `Modify:` or `Delete:` path is refused by `plan_check.py` the
-same way, because it goes red the moment that task's own patch lands (run-199, n=1 run,
-2026-09-21) — freeze files, not the directory they sit in.
-
-The Flock, the one engine (the default since 0.3.39, the only one since map #1292 rule 8), selects no existing tests: a Flock run's proof is the
-plan's probes and `Check:` lines and nothing else (operator, 2026-09-27). So a plan whose change
-can break behaviour the repository already tests names those tests itself, as one `Check:` that
-runs them (`- Check: python3 -m pytest -q tests/test_fleet_suite.py -k launch` for a launcher
-change) — no single task owns them, so the check is run-wide, and a run that breaks them does not
-settle green.
 ## Execution handoff — analyze, then recommend
 
 Offer three options, parallel first, and do **not** default to the parallel lane. Read
@@ -768,43 +490,5 @@ task-by-task from contract plus proof.
 
 ## Self-review
 
-The author reads `references/authoring-gotchas.md` — the lessons every claims-v1 sitting
-since run-45 paid for, each a rule with its reason — before the gate readers are
-dispatched, and checks the plan against each of them. They are the author's own to
-check — nothing prints them.
-
-`plan_check.py` refuses two shape slips outright, so this list leaves them out: the six
-slots each once, non-empty and in order, and a fence only in Proof. Three wording rules are
-the author's alone (the checker stopped refusing them, #1440): the `**Summary:**` is exactly
-three sentences; `**Closes:**` sits directly under the `**Goal:**` paragraph; and a dated
-reading in a Context or the Summary carries its `n=`.
-
-- No task carries checkbox steps.
-- The plan carries one `**Claim:**` above the first task, elicited or quoted from an
-  issue. Every task Claim is either the operator's words with a provenance tag or
-  `(derived)` under the plan-level Claim, paired with a machine restatement at the same
-  layer, and its gate verdict is recorded and fresh.
-- The plan's `**Summary:**` is in the operator's register — what this is, why it exists,
-  how it benefits them.
-- Every Stale-if entry is a predicate; every Proof `Run:` prover ends in the tag of a
-  clause the Machine line numbers, and no test-file or guard bullet is written.
-- No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
-  `Run:`.
-- Every Machine clause is numbered and cited by a leg; every computable fact a clause states
-  has the one leg that would catch it false, and no behaviour has a leg per variant.
-- Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
-  or the Files blocks overlap. Nothing rides on prose.
-- No edge is written to keep same-file edits apart; every ordering left standing is a
-  fact the engine can derive — a `Consumes:` matching a sibling's `Produces:`, or a
-  `Create:` a sibling later `Modify:`s — and any probe that quantifies over a directory was
-  checked against BASE for pre-existing violators (#536).
-- Global Constraints state results, not process.
-- The `**Closes:**` line, when present, names only the target repository's issues.
-- No pinned number is a guess: every pinned literal was computed, not assumed — the author
-  ran the command or did the arithmetic at BASE and pasted back what it printed, rather
-  than the figure the sentence wanted to be true.
-- Every reading a plan's Context or Summary cites carries `n=… (window)` — `n=9 merged
-  runs (131–140)`, never a bare count — and a plan whose default flip rests on a reading
-  under the floor says `experiment` in its Summary and names its `rollback` there; the
-  floor is `CLAUDE.md`'s `Test doctrine` bullet (n = 5 runs, 20 tasks for a per-task
-  reading).
+Before the execution handoff, read `references/self-review.md` and run every check in it
+on the plan.

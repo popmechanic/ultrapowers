@@ -877,8 +877,8 @@ laptop:
 1. Write the notes to `docs/superpowers/plans/<date>-release-0-x-y.notes.md`
    (untracked): what changed for someone launching a plan, what was read and
    not flipped, and the authoring census `totals:` line.
-2. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` and
-   `marketplace.json` together and the CLAUDE.md Versioning bullet. The notes
+2. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` (the
+   marketplace entry carries no version) and the CLAUDE.md Versioning bullet. The notes
    are its body, beside the prose sizes (`wc -l factory/boot.sh`, `wc -w factory/roles/*.md`).
    Squash-merge it.
 3. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
