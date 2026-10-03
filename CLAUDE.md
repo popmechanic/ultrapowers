@@ -114,8 +114,8 @@ the engine's exit code is the merge decision.
 - **Handoffs are opt-in.** A session starts from the operator's intention; read
   `.claude/ultrapowers/handoffs/` only when asked to resume. Sort by mtime, never filename, and
   treat each as what was true when written.
-- **Author plans concurrently from the issues:** `skills/ultrawrite/SKILL.md` §Authoring a
-  queue — partition by files, one author per bundle, the issue's sentence as the Claim, two
+- **Author plans concurrently from the issues:** `skills/ultrawrite/references/authoring-a-queue.md`
+  — partition by files, one author per bundle, the issue's sentence as the Claim, two
   operator touches per plan, launches serial.
 - **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
@@ -179,9 +179,9 @@ the engine's exit code is the merge decision.
 
 ## Conventions & gotchas
 
-- **Releasing.** Both `plugin.json` and `marketplace.json` carry the version;
-  `plugin.json` wins silently if they drift. A release is one hand PR titled
-  `chore: version 0.x.y — …` bumping both manifests, squash-merged, then a bare
+- **Releasing.** Only `plugin.json` carries the version (the marketplace entry has none,
+  so they cannot drift). A release is one hand PR titled
+  `chore: version 0.x.y — …` bumping `plugin.json`, squash-merged, then a bare
   tag on that commit: `git tag v0.x.y <sha> && git push origin v0.x.y`. **No GitHub release**
   until the operator calls it production-ready. Notes go to
   `docs/superpowers/plans/<date>-release-0-x-y.notes.md` (untracked) with the census line.
