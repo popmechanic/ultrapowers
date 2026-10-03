@@ -185,14 +185,14 @@ the engine's exit code is the merge decision.
   tag on that commit: `git tag v0.x.y <sha> && git push origin v0.x.y`. **No GitHub release**
   until the operator calls it production-ready. Notes go to
   `docs/superpowers/plans/<date>-release-0-x-y.notes.md` (untracked) with the census line.
-- **The installed plugin is GitHub's `main`, not this checkout (2026-10-03).** The
+- **The installed plugin is the last release on GitHub, not this checkout (2026-10-03).** The
   marketplace is `popmechanic/ultrapowers` (source `github`, `autoUpdate` on), so the cache
   holds tracked files only; a local `directory` source copied untracked `.claude/worktrees/`
-  into every cached version (3.6 GB each). Edits here reach the plugin only once merged to
-  `main`, after the marketplace refreshes at session start (or `claude plugin marketplace
-  update ultrapowers`) **and** a new session starts. Skill text reloads in-session; hooks and
-  manifest need a new session. Never re-add the marketplace from the local path. The fleet is
-  different: the sandbox clones the engine at the launch's `--engine` sha, so `factory/` and
+  into every cached version (3.6 GB each). Because `plugin.json` pins `version`, a merge to
+  `main` changes nothing installed: the plugin updates only when a release bumps the version
+  and the marketplace refreshes (auto-update, or `claude plugin update ultrapowers@ultrapowers`),
+  and the new copy loads in the next session or after `/reload-plugins`. Never re-add the
+  marketplace from the local path. The fleet is different: the sandbox clones the engine at the launch's `--engine` sha, so `factory/` and
   `fleet/` changes never need a plugin release.
 - **No direct Anthropic API calls in repo code.** No `anthropic` SDK, no `ANTHROPIC_API_KEY`;
   LLM work runs inside Claude Code on the user's subscription. On the fleet it arrives as an
