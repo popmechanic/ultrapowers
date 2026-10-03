@@ -192,8 +192,8 @@ the engine's exit code is the merge decision.
   `main` changes nothing installed: the plugin updates only when a release bumps the version
   and the marketplace refreshes (auto-update, or `claude plugin update ultrapowers@ultrapowers`),
   and the new copy loads in the next session or after `/reload-plugins`. Never re-add the
-  marketplace from the local path. The fleet is different: the sandbox clones the engine at the launch's `--engine` sha, so `factory/` and
-  `fleet/` changes never need a plugin release.
+  marketplace from the local path. The fleet is different: the sandbox clones the engine at
+  the launch's `--engine` sha, so `factory/` and `fleet/` changes never need a plugin release.
 - **No direct Anthropic API calls in repo code.** No `anthropic` SDK, no `ANTHROPIC_API_KEY`;
   LLM work runs inside Claude Code on the user's subscription. On the fleet it arrives as an
   edge-injected bearer (`ANTHROPIC_BASE_URL` → `claude-max.int.exe.xyz`,
