@@ -733,6 +733,20 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 - A boot script that re-execs over its own path is a latent corruption bug:
   bash reads by byte offset and kept the old inode. The bootstrap is immutable
   at a root-owned path and the engine directory is content-addressed.
+- exe.dev re-delivers a VM's stored setup script to `/exe.dev/setup` on every
+  restart, not only the first boot: `exe-setup.service` ran kata-hub's whole
+  creation-time script on 2026-10-09 and twice on 2026-10-22, and each run put
+  kata v0.17.2 back over the hand-upgraded v0.18.0, which then refused the
+  migrated database. The script deleting itself does not help, and no verb
+  replaces or clears the stored copy on an existing VM. The docs say "first
+  boot, once", so Shelley calls it a bug to escalate. Until it is fixed, a
+  persistent VM that is upgraded in place gets her drop-in
+  (`exe-setup.service.d/99-disabled.conf`, `ConditionPathExists=!/var/lib/exe-setup.disabled`)
+  and the marker; `mask` fails because the unit file already sits in
+  `/etc/systemd/system` (Shelley, 2026-10-22).
+- `ssh exe.dev restart <vm>` loses writes the guest has not flushed: a drop-in
+  written about a minute before a restart came back as 199 NUL bytes
+  (2026-10-22). Run `sync` on the VM before every restart.
 
 **Asking Shelley.**
 
