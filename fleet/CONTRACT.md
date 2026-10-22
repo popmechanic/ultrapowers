@@ -611,7 +611,12 @@ evidence repository.
   `https://github.com/kenn-io/kata/releases/download/v0.18.0/kata_0.18.0_linux_amd64.tar.gz`
   (`fleet/kata-hub-setup.sh`),
   checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
-  script writes last and the laptop polls for. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
+  script writes last and the laptop polls for. exe.dev re-runs the stored setup script on every
+  restart (RUNBOOK §Traps, systemd on the VM), so the hub also carries
+  `/etc/systemd/system/exe-setup.service.d/99-disabled.conf`
+  (`[Unit] ConditionPathExists=!/var/lib/exe-setup.disabled`) and the empty marker
+  `/var/lib/exe-setup.disabled`, both placed by hand on 2026-10-22 and not by
+  `fleet/kata-hub.mjs`; a rebuilt hub needs them before its first restart. On the laptop: `~/.ultrapowers/kata-hub.env`, mode
   0600, exactly `KATA_URL` and `KATA_TOKEN`, written only after the daemon answers `active`.
 - **Kata facts (measured):** every kata behaviour the fleet leans on, read once and written down
   here rather than restated from memory — the readings `node fleet/tests/probe_kata_facts.mjs`
