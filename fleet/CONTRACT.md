@@ -267,7 +267,7 @@ evidence repository.
   in order:
   1. wait, bounded, for the user bus (`systemctl --user` has no address before `user@.service` is
      up);
-  2. install the toolchain: node 24.20.0, bun 1.4.2 — and no kata: a sandbox runs none, the engine
+  2. install the toolchain: node 24.22.1, bun 1.4.4 — and no kata: a sandbox runs none, the engine
      writing the hub directly (#1390) —
      celld 0.6.1 (the one `.gz` asset from
      `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records

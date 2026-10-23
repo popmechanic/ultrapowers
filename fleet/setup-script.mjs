@@ -28,7 +28,7 @@ export const SETUP_SCRIPT_MAX_BYTES = 10240
  *  platform's ceiling, so a growing bootstrap is noticed on the laptop before
  *  the lobby refuses it. */
 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
-export const NODE_VERSION = '24.20.0'
+export const NODE_VERSION = '24.22.1'
 export const BUN_VERSION = '1.4.4'
 export const CELLD_VERSION = '0.6.1'
 /**
