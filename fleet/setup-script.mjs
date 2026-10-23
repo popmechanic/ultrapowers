@@ -29,7 +29,7 @@ export const SETUP_SCRIPT_MAX_BYTES = 10240
  *  the lobby refuses it. */
 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
 export const NODE_VERSION = '24.20.0'
-export const BUN_VERSION = '1.4.2'
+export const BUN_VERSION = '1.4.4'
 export const CELLD_VERSION = '0.6.1'
 /**
  * The digest of celld's one x86_64 Linux asset, read on the laptop at the bump
