@@ -686,9 +686,12 @@ async function giveBack (agent, task, why) {
 }
 
 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
-// it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text.
+// it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
+// held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
+// answers the loose-end reading's "does the file still contain it".
 async function postBelief (agent, a) {
-  const b = await board.post({ by: agent, claim: a.claim, task: a.task, about: a.about, path: a.path, stale: a.stale })
+  const stale = typeof a.stale === 'string' ? a.stale.slice(0, 300) : a.stale
+  const b = await board.post({ by: agent, claim: a.claim, task: a.task, about: a.about, path: a.path, stale })
   ev('belief', b)
   return b
 }

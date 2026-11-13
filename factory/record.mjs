@@ -219,7 +219,7 @@ function jevStepLines (rows) {
   if (!last.size) return []
   const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
   for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
-    out.push(`| ${clause} | ${r.answer ?? 'no reading'} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
+    out.push(`| ${clause} | ${r.answer == null ? 'no reading' : safeText(r.answer).replace(/\|/g, '\\|')} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
   }
   return out
 }
@@ -268,6 +268,22 @@ function provenanceLines (provenancePath) {
     `${changed} changed lines from ${tasks} tasks; exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
 }
 
+/** The most characters the body holds (#1529): GitHub refuses one over about 65,536, and then
+ *  no pull request opens. One builder value is cut at `VALUE_CAP`. */
+const BODY_CAP = 60000
+const VALUE_CAP = 500
+
+/** Builder text or app data as one harmless run of body text (#1529): any value prints as its
+ *  `cellText`, line breaks become spaces (no injected heading or list), `<` becomes `&lt;` (no
+ *  HTML comment hiding the rest), a `#` before a digit is escaped (no `Fixes #3` closing an
+ *  issue) and the text is cut at `VALUE_CAP` with an ellipsis. Plain text passes unchanged. */
+function safeText (value) {
+  let text = cellText(value).replace(/[^\S ]+/g, ' ')
+  /* every whitespace but a space, so line breaks such as [\r\n  ] */
+  if (text.length > VALUE_CAP) text = text.slice(0, VALUE_CAP - 1) + '…'
+  return text.replace(/</g, '&lt;').replace(/#(?=\d)/g, '\\#')
+}
+
 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
  *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
@@ -280,9 +296,9 @@ function looseEndsLines (events) {
   const resolved = items.filter((i) => i.state === 'resolved').length
   const out = ['### Loose ends', '', `${items.length} reported by builders, ${resolved} resolved in the run.`]
   for (const i of items) {
-    const who = i.task === undefined || i.task === null || i.task === '' ? `(${i.by})` : `(${i.by}, task ${i.task})`
-    if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
-    else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
+    const who = i.task === undefined || i.task === null || i.task === '' ? `(${safeText(i.by)})` : `(${safeText(i.by)}, task ${safeText(i.task)})`
+    if (i.state === 'open') out.push(`- open: ${safeText(i.path)} still contains "${safeText(i.stale)}" \u2014 ${safeText(i.claim)} ${who}`)
+    else if (i.state === 'unchecked') out.push(`- not checked: ${safeText(i.path)} \u2014 ${safeText(i.claim)} ${who}`)
   }
   if (fb) {
     const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
@@ -302,14 +318,14 @@ function stepReceiptLines (events) {
   const out = ['### What each step changed', '']
   for (const r of receipts) {
     const parts = (Array.isArray(r.diff) ? r.diff : []).filter((d) => d && typeof d === 'object').map((d) => {
-      const path = d.tbl === '$values' ? `values.${d.cell}` : `${d.tbl}/${d.row}/${d.cell}`
-      if (d.diff_type === 'added') return `added ${path} = ${d.to}`
-      if (d.diff_type === 'removed') return `removed ${path} (was ${d.from})`
-      return `changed ${path} ${d.from} \u2192 ${d.to}`
+      const path = d.tbl === '$values' ? `values.${safeText(d.cell)}` : `${safeText(d.tbl)}/${safeText(d.row)}/${safeText(d.cell)}`
+      if (d.diff_type === 'added') return `added ${path} = ${safeText(d.to)}`
+      if (d.diff_type === 'removed') return `removed ${path} (was ${safeText(d.from)})`
+      return `changed ${path} ${safeText(d.from)} \u2192 ${safeText(d.to)}`
     })
     let changes = parts.length ? parts.join('; ') : 'no change'
     if (r.truncated === true) changes += '; and more not shown'
-    out.push(`- ${r.clause} (exit ${r.exit}): ${changes}`)
+    out.push(`- ${safeText(r.clause)} (exit ${safeText(r.exit)}): ${changes}`)
   }
   return out
 }
@@ -324,27 +340,60 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const events = eventsPath ? readEventRows(eventsPath) : []
   const rows = receiptLines(planPath, planJson, events, evidenceUrl)
   const closes = planClosesLines(planText)
-  let out = ''
-  for (const line of summary) out += line + '\n'
-  out += '\n'
-  for (const line of rows) out += line + '\n'
-  out += '\n'
   const provenance = provenanceLines(provenancePath)
-  for (const line of provenance) out += line + '\n'
-  if (provenance.length) out += '\n'
-  const looseEnds = looseEndsLines(events)
-  for (const line of looseEnds) out += line + '\n'
-  if (looseEnds.length) out += '\n'
+  let looseEnds = looseEndsLines(events)
   const draft = draftReasonLines(events)
-  for (const line of draft) out += line + '\n'
-  if (draft.length) out += '\n'
   const readings = jevStepLines(events)
-  for (const line of readings) out += line + '\n'
-  if (readings.length) out += '\n'
-  const changes = stepReceiptLines(events)
-  for (const line of changes) out += line + '\n'
-  if (changes.length) out += '\n'
-  for (const line of closes) out += line + '\n'
+  let changes = stepReceiptLines(events)
+  const assemble = () => {
+    let out = ''
+    for (const line of summary) out += line + '\n'
+    out += '\n'
+    for (const line of rows) out += line + '\n'
+    out += '\n'
+    for (const section of [provenance, looseEnds, draft, readings, changes]) {
+      for (const line of section) out += line + '\n'
+      if (section.length) out += '\n'
+    }
+    for (const line of closes) out += line + '\n'
+    return out
+  }
+  const whole = assemble()
+  if (whole.length <= BODY_CAP) return whole
+  // Too long for GitHub (#1529): the builders' lines give way, never the author's summary or closes.
+  const fullLoose = looseEnds
+  const fullChanges = changes
+  looseEnds = looseEnds.filter((l) => !isItem(l))
+  changes = changes.filter((l) => !isItem(l))
+  const room = BODY_CAP - assemble().length
+  const looseRoom = Math.max(Math.floor(room / 2), room - itemsLength(fullChanges))
+  looseEnds = cutItems(fullLoose, looseRoom, evidenceUrl)
+  changes = cutItems(fullChanges, room - itemsLength(looseEnds), evidenceUrl)
+  return assemble()
+}
+
+const isItem = (line) => line.startsWith('- ')
+const itemsLength = (lines) => lines.filter(isItem).reduce((n, l) => n + l.length + 1, 0)
+
+/** `lines` with as many leading `- ` items as fit in `budget` characters, the rest replaced by
+ *  one line counting them and pointing at the evidence; everything else is kept. */
+function cutItems (lines, budget, evidenceUrl) {
+  const total = lines.filter(isItem).length
+  const note = (n) => `- and ${n} more not shown${evidenceUrl ? `; the evidence holds them all: ${evidenceUrl}` : '.'}`
+  let left = budget - (note(total).length + 1)
+  const out = []
+  let dropped = 0
+  let noted = false
+  for (const line of lines) {
+    if (!isItem(line)) {
+      if (dropped && !noted) { out.push(note(dropped)); noted = true }
+      out.push(line)
+    } else if (!dropped && line.length + 1 <= left) {
+      left -= line.length + 1
+      out.push(line)
+    } else dropped++
+  }
+  if (dropped && !noted) out.push(note(dropped))
   return out
 }
 
