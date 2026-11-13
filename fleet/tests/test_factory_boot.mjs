@@ -116,7 +116,7 @@ import { bootRig } from './_boot_helpers.mjs'
 
 const {
   ENGINE_SHA, MERGE_SHA, EXPECTED_STATUS_KEYS, SLUG,
-  git, writeGitConfig, buildOrigin, seedPastRun, wireEvidence, refsOf, buildEngineDir, assignment,
+  git, writeStub, writeGitConfig, buildOrigin, seedPastRun, wireEvidence, refsOf, buildEngineDir, assignment,
   writeStubs, baseEnv, makeProxyServer, runBootAsync, runAsync
 } = bootRig()
 
@@ -216,7 +216,10 @@ for (const [runN, version, error] of [
   git(root, ['clone', originDir, path.join(home, 'target')])
   buildEngineDir(home, ENGINE_SHA)
   writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: version ?? undefined })
-  if (version === null) fs.rmSync(path.join(bin, 'claude'))
+  // A missing claude is shadowed, not removed: the sim PATH carries node's own directory,
+  // and on a box whose /usr/local/bin holds both node and a real claude, removing the stub
+  // would hand the boot that real, current release.
+  if (version === null) writeStub(bin, 'claude', '#!/bin/sh\necho "claude: not found" >&2\nexit 127\n')
 
   const env = {
     ...baseEnv(PROXY_URL),
