@@ -9,12 +9,13 @@ meet on main's stored weave (`flock.main.mode = peer`): a live run takes a moved
 in like a builder's work, and a run that finished before main moved catches up to it
 and merges (flock-baseline runs 16–21, n=6 runs, 2026-11-13: five ready, one draft;
 an experiment on one fixture, whose rollback is cutting the queue by files again).
-Two things still shape the cut:
+Two plans that each create a file at one path may launch apart too: the run that meets
+the other's file opens a conflict and a builder makes one file of the two
+(`flock.main.created = conflict`; flock-baseline run-24, n=1 run, 2026-11-13, merged
+ready; an experiment, whose rollback is putting two such plans in one bundle again, as
+the 2026-09-17 drain did by hand for #1095 and #1096). A run that had already settled
+when the other file reached main ends a draft. One thing still shapes the cut:
 
-- **Two plans that would create one path go in one bundle**, or the second declares
-  `Consumes:` on the first and launches after it. The weave joins two new files of one
-  name end to end, and no run has read that case (the 2026-09-17 drain serialized #1095
-  and #1096 by hand after both listed `Create: fleet/jev-client.mjs`).
 - **Two issues that contradict on the same lines go in one bundle**, so one plan decides.
   A run whose builder must delete a line another plan put on main ends a draft for the
   operator, never a ready pull request (run 17; operator's pick, 2026-11-12).

@@ -118,6 +118,8 @@ if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-e
 // base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a run: a
 // store that cannot be read or written leaves the run frozen, with the reason on its row.
 const MAIN_MODE = mode('main.mode', ['peer', 'memory', 'frozen'], 'frozen')
+// a path main and a builder each created apart: `conflict` (a builder makes them one file) or `union`
+const MAIN_CREATED = mode('main.created', ['conflict', 'union'], 'union')
 // how often a `peer` run looks at the default branch: `--main-poll <seconds>`, else the policy cell
 // flock.main.poll_seconds, else 60
 const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
@@ -173,6 +175,13 @@ const jev = (JEV_STEP || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESA
 // summary.json the engine waits for them at most JEV_TIMEOUT_MS; a late answer is simply absent.
 const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
 const PEER_QUESTION = QSETS.flock_peer_rewrite.questions.kept
+// the second look (flock.jev_peer_rewrite.second_look): before a draft for a line of main's read as
+// lost, Jev reads the lost lines against the whole settled file. `mode` main or off (the rollback);
+// an answer under `min_confidence`, or a file over `max_lines`, excuses nothing
+const SETTLED_QUESTION = QSETS.flock_peer_settled.questions.carried
+const SECOND_MODE = mode('jev_peer_rewrite.second_look.mode', ['main', 'off'], 'off')
+const SECOND_MIN = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.min_confidence ?? 0.6)
+const SECOND_MAX_LINES = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.max_lines ?? 400)
 const trialsPending = new Set()
 const trial = (key, question, state, kind, row, then) => {
   if (!jev) return
@@ -431,11 +440,16 @@ async function openConflict (p, info) {
   const reg = region(info.annotated)
   const e = ledger.get(p + '\u0000' + reg)
   if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
-  if (info.addsOnly) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
-  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party })
+  // a file main and a builder each began apart is two whole files, and no probe of this run speaks
+  // for main's: a builder makes them one (policy flock.main.created; `union` is the rollback)
+  const made = !!info.bothCreated && MAIN_CREATED === 'conflict'
+  if (info.addsOnly && !made) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
+  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party, made })
   lastChange = now()
-  ev('conflict:open', { path: p, region: reg, between: info.between })
-  await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict` })
+  ev('conflict:open', { path: p, region: reg, between: info.between, ...(made ? { created: 'both' } : {}) })
+  await board.post({ by: 'host', claim: made
+    ? `open conflict in ${p}: main and a builder each created it, and the merge put one whole file after the other; whoever next works there should make it one file that says what both meant and call resolve_conflict`
+    : `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict` })
 }
 const openConflicts = () => [...new Set([...ledger.values()].filter((e) => e.open).map((e) => e.path))]
 const openEntries = (p) => [...ledger.values()].filter((e) => e.open && e.path === p)
@@ -532,7 +546,7 @@ function edge (reason) {
       // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
       // answer after 5 of 9 closes on the record, masked each time by a later content change.
-      for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+      for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
       earlyClose(m, snap)
       const blocking = openConflicts()
       const factsGreen = Object.values(lastEdge.perTask).every((xs) => xs.every((x) => x === 0))
@@ -552,7 +566,7 @@ function edge (reason) {
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
     // let a NEW conflict on a once-closed path pass the edge unexamined.
-    for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+    for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     earlyClose(m, snap)
     const blocking = openConflicts()
@@ -616,12 +630,12 @@ async function pullInto (agent, task) {
   for (const c of r.changed) {
     const was = mine.get(c.path)
     // an untold conflict mark is kept until the builder is told, whatever arrives after it
-    mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, annotated: was.annotated }) } : c)
+    mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
   }
   const told = [...mine.values()].filter((c) => !quiet(c.path))
   for (const c of told) mine.delete(c.path)
   for (const c of told.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
-  for (const c of told.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
+  for (const c of told.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, bothCreated: c.bothCreated, annotated: c.annotated, between: [agent, c.from], party: agent })
   for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], quiet(s.path) ? null : agent)
   told.all = r.changed.length
   return told
@@ -1180,8 +1194,9 @@ async function settle () {
       if (prev && prev.reopen >= MAX_REOPEN) continue
       acted = true
       const ann = (openEntries(p)[0] || {}).annotated || (r.annotated || {})[p]
+      const made = openEntries(p).some((e) => e.made)
       await board.addTask({ id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
-        body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
+        body: `${made ? `Main and a builder each created \`${p}\` without seeing the other's, and the merge put one whole file after the other. It must become one file that keeps what main's version does and what the builder's does` : `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict`}. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
     }
     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
@@ -1293,7 +1308,7 @@ for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step
 // checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
 try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
-peerRewriteDraft()
+await peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
@@ -1331,7 +1346,33 @@ process.exit(landed)
 // weave `lost`) that a peer rewrite Jev read as `loses` covers ends a draft. A read covers a lost
 // line when it is on the line's path, names the line's author among its peers and holds the line.
 // A lost line no read answers (Jev off, a null, never asked) is recorded, never drafted.
-function peerRewriteDraft () {
+// The second look. The first read judges one edit alone, and a builder that folds main's line into
+// a line of its own deletes main's in an edit that puts nothing in its place: flock-baseline run-23
+// ended a draft with nothing lost. Only main's lines (stored labels, `@…`) are looked at again: what
+// main wrote is a fixed text, and a builder of this run still answers for its own lines on the board.
+// True when Jev reads every lost line as carried by the settled file.
+async function carriedBySettled (s, e, read) {
+  const labels = String(e.author).split('|')
+  if (SECOND_MODE !== 'main' || !jev || !labels.every((a) => a.startsWith('@'))) return false
+  const row = { snap: s.snap, path: e.path, author: e.author, agent: read.agent, task: read.task, lost: e.lines }
+  const settled = String(s.files[e.path] ?? '').split('\n')
+  if (settled.length > SECOND_MAX_LINES) { ev('jev:peer-settled', { ...row, skipped: 'long', lines: settled.length, excused: false }); return false }
+  const wrote = await weave({ op: 'wrote', path: e.path, authors: labels })
+  // a hand commit says what it meant in its subject; a line another run landed has no sentence here
+  const subjects = labels.filter((a) => a.startsWith('@c:')).map((a) => gitIn(TARGET, ['log', '-1', '--format=%s', a.slice(3)], { ok: true }).stdout.trim()).filter(Boolean)
+  const t = W.tasks.find((x) => x.id === read.task)
+  const sides = {
+    theirs: { title: 'A commit on the main branch, merged while this run was at work', ...(subjects.length ? { claim: subjects.join('; ') } : {}) },
+    ours: t ? { title: t.title, claim: claimOf(t.body) } : { title: board.tasks.get(read.task)?.title ?? 'A task of this run' },
+  }
+  let out = null
+  await readTrial({ ask: jev.ask, key: 'carried', question: SETTLED_QUESTION, row, emit: (o) => { out = o },
+    state: { path: e.path, theirs: (wrote.ok && wrote.lines) || e.lines, lost: e.lines, settled, sides } })
+  const excused = !!out && out.answer === 'carried' && (out.confidence ?? 0) >= SECOND_MIN
+  ev('jev:peer-settled', { ...(out || row), excused })
+  return excused
+}
+async function peerRewriteDraft () {
   if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
   const s = snapshots.findLast((x) => x.snap === outcome.snap)
   if (!s || !s.lost) return
@@ -1343,14 +1384,17 @@ function peerRewriteDraft () {
   for (const e of lost) {
     const covers = (l) => (r) => r.path === e.path && String(e.author).split('|').some((a) => (r.peers || []).includes(a)) && (r.peer || []).includes(l)
     const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
-    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !losing.includes(r)) losing.push(r)
+    const mine = []
+    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !mine.includes(r)) mine.push(r)
     if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
+    if (mine.length && await carriedBySettled(s, e, mine[0])) continue
+    for (const r of mine) if (!losing.includes(r)) losing.push(r)
   }
   if (!losing.length) return
   if (preLoose && outcome.snap === preLoose.snap) fellBack = true   // a verdict on the pre-cleanup snapshot itself has nothing to fall back to
   ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
   terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
-  if (outcome.pr === 'ready') peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
+  if (outcome.pr === 'ready') await peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
 }
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's

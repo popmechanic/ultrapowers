@@ -46,6 +46,9 @@ keeps the name `factory/`. Models never run git.
   the clock, and one before a green settle):
   a moved main is published into the run as the peer `main` (keeper op `main`, row `main:moved`),
   its text reaching every copy through the pulls, a clash with a builder an ordinary conflict, and
+  a path main and a builder each created apart a conflict too (`conflict:open` with `created: both`,
+  policy `flock.main.created`; the kernel marks it adds-only and the union is two whole files one
+  after the other, which two builders of one run still get, their probes both running on the join), and
   the run's base moves to the tip: `ULTRA_BASE`, the scope rule, each copy's git index and the
   landing commit read it, the setup runs again when main changed a manifest or lockfile, and the
   boot reads the moved base from `$RUN_DIR/base`. A move that cannot be taken in ends the following
@@ -66,8 +69,8 @@ keeps the name `factory/`. Models never run git.
 
 ## Judgment and policy
 
-- **Every judgment is a question** in `factory/questions.json` (the engine's two `flock_*`
-  sets; the authoring sets live beside ultrawrite, #1449), sent over
+- **Every judgment is a question** in `factory/questions.json` (the engine's three `flock_*`
+  sets, `flock_peer_settled` the second look before a draft for a line of main's read as lost; the authoring sets live beside ultrawrite, #1449), sent over
   `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
 - **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
   `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.
