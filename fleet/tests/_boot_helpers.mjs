@@ -247,8 +247,26 @@ while [ $# -gt 0 ]; do
 done
 
 case "$url" in
+  */api/v3/repos/o/r/pulls\\?head=*)
+    # the open pull request of a branch: the one a POST recorded, else none
+    printf '%s\\n' "$url" >> "$FLEET_HOME/pr-lookups"
+    if [ -f "$FLEET_HOME/pr-post.json" ]; then
+      body='[{"html_url":"https://github.com/o/r/pull/7","number":7,"user":{"login":"fleet-bot"}}]'
+    else
+      body='[]'
+    fi
+    code=200
+    ;;
   */api/v3/repos/o/r/pulls)
-    if [ "$method" = "POST" ]; then
+    # pr-no-answer (one use): the POST gets no answer, as curl reports it (000). "created"
+    # opens the pull request all the same; "lost" opens nothing.
+    noanswer="$(cat "$FLEET_HOME/pr-no-answer" 2>/dev/null)"
+    if [ "$method" = "POST" ] && [ -n "$noanswer" ]; then
+      rm -f "$FLEET_HOME/pr-no-answer"
+      [ "$noanswer" = "created" ] && printf %s "$data" > "$FLEET_HOME/pr-post.json"
+      body=""
+      code=000
+    elif [ "$method" = "POST" ]; then
       printf %s "$data" > "$FLEET_HOME/pr-post.json"
       body='{"html_url":"https://github.com/o/r/pull/7","number":7,"user":{"login":"fleet-bot"}}'
       code=201

@@ -16,7 +16,8 @@
  * three publish logs beside it, logs to the boot log, and prints five lines for the boot:
  * the run's state, its phase, the PR url, the PR author and the merge sha (either may be
  * empty). A POST the API refused prints the reply's first 2000 characters and exits 1, which
- * the boot fails the run on.
+ * the boot fails the run on; a POST for the pull request that got no answer first looks for the
+ * branch's open pull request, and is made once more when there is none.
  */
 
 import { spawnSync } from 'node:child_process'
@@ -101,12 +102,29 @@ export async function publish (o) {
   const draft = o.engineExit !== 0
   const body = renderPrBody(o.plan, path.join(o.runDir, 'events.jsonl'), o.evidenceUrl,
     path.join(o.runDir, 'provenance.json'), o.planJson).replace(/\n+$/, '')
-  const opened = api('POST', '/pulls', { title: `fleet ${o.runId}: ${title}`, head: o.branch, base, body, draft })
-  if (!/^2\d\d$/.test(opened.code)) {
-    log(`publish: POST /repos/${o.targetRepo}/pulls answered ${opened.code || '<nothing>'}`)
-    return { refusal: opened.reply.slice(0, 2000) }
+  const open = () => api('POST', '/pulls', { title: `fleet ${o.runId}: ${title}`, head: o.branch, base, body, draft })
+  const answered = (r) => log(`publish: POST /repos/${o.targetRepo}/pulls answered ${r.code || '<nothing>'}`)
+  // The open pull request of this run's branch, or null: the branch is the run's alone.
+  const found = () => {
+    const g = api('GET', `/pulls?head=${o.targetRepo.split('/')[0]}:${encodeURIComponent(o.branch)}&state=open`)
+    const list = /^2\d\d$/.test(g.code) ? json(g.reply) : null
+    return Array.isArray(list) && list[0] && typeof list[0] === 'object' ? list[0] : null
   }
-  const pr = json(opened.reply) ?? {}
+  // A request that got no answer may still have opened the pull request (flock-baseline run-22,
+  // 2026-11-13: `answered 000` after 17 s with the pull request created 8 s in, and the run ended
+  // failed beside a ready pull request nobody merged). On anything but a 2xx the branch's open pull
+  // request is taken as this run's; with no answer at all and none open, the request is made once more.
+  let opened = open()
+  let pr = /^2\d\d$/.test(opened.code) ? json(opened.reply) ?? {} : null
+  if (!pr) {
+    answered(opened)
+    pr = found()
+    if (!pr && !/^[1-5]\d\d$/.test(opened.code)) {
+      opened = open()
+      pr = /^2\d\d$/.test(opened.code) ? json(opened.reply) ?? {} : (answered(opened), found())
+    } else if (pr) log(`publish: the pull request is open all the same: ${pr.html_url ?? ''}`)
+    if (!pr) return { refusal: opened.reply.slice(0, 2000) }
+  }
   const prUrl = typeof pr.html_url === 'string' ? pr.html_url : ''
   const prAuthor = typeof pr.user?.login === 'string' ? pr.user.login : ''
   const number = Number.isInteger(pr.number) ? pr.number : null

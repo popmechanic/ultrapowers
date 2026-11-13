@@ -762,6 +762,50 @@ for (const [runN, version, error] of [
   console.log('ok (j) the self-merge catches up to a moved main')
 }
 
+// ── (k) the request to open the pull request gets no answer (flock-baseline run-22) ──
+// `created`: the pull request opened all the same; the publish finds it by the run's branch and
+// merges it. `lost`: nothing opened; the publish asks once more.
+
+for (const [n, how] of [['511', 'created'], ['512', 'lost']]) {
+  const runN = n
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-k-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth' })
+  fs.writeFileSync(path.join(home, 'pr-no-answer'), how)
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+  const res = await runBootAsync({ bin, home, env })
+  assert.equal(res.code, 0, `(k ${how}) the run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-3000)}`)
+
+  const bootLog = atTag(evidenceDir, runN, 'fleet-boot.log')
+  assert.ok(bootLog.includes('POST /repos/o/r/pulls answered 000'), `(k ${how}) the boot log records the request that got no answer — got ${bootLog.slice(-1500)}`)
+  const lookups = fs.readFileSync(path.join(home, 'pr-lookups'), 'utf8').trim().split('\n')
+  assert.ok(lookups.every((u) => u.endsWith(`/pulls?head=o:ultra%2Fintegration-run-${runN}&state=open`)), `(k ${how}) the lookup names the run's branch — got ${JSON.stringify(lookups)}`)
+  assert.equal(lookups.length, 1, `(k ${how}) one lookup — got ${JSON.stringify(lookups)}`)
+  assert.equal(bootLog.includes('the pull request is open all the same: https://github.com/o/r/pull/7'), how === 'created', `(k ${how}) the boot log ${how === 'created' ? 'names' : 'does not name'} a pull request found open`)
+  assert.ok(fs.existsSync(path.join(home, 'pr-post.json')), `(k ${how}) a pull request was opened`)
+
+  const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+  const prRows = rows.filter((r) => r.kind === 'publish:pr')
+  assert.ok(prRows.length === 1 && prRows[0].number === 7 && prRows[0].url === 'https://github.com/o/r/pull/7', `(k ${how}) one publish:pr row for pull request 7 — got ${JSON.stringify(prRows)}`)
+  assert.ok(rows.some((r) => r.kind === 'merge' && r.code === 200), `(k ${how}) the pull request was merged — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
+  assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', `(k ${how}) status.json at the tag records state "done"`)
+  console.log(`ok (k) no answer to the pull request, ${how}`)
+}
+
 proxyServer.close()
 
 console.log('ALL TESTS PASSED')
