@@ -31,7 +31,7 @@ toolchain, an immutable bootstrap and the run's unit, then starts `fleet-run@<N>
 bootstrap reads the assignment from the VM comment once, clones the engine at `engine=` into a
 content-addressed directory, and execs that checkout's `factory/boot.sh`. The boot script clones the
 target at `base=`, fetches only the live branch of the evidence repository, shallow, runs the engine
-as a transient user service with a memory cap, commits the record to the live branch every 60 s and
+as a transient user service with a memory cap, commits the record to the live branch every 10 s and
 at each transition — no status page; git is the record — and, only when there is something to publish
 and the default branch moved underneath it, catches the run up to the target's tip inline
 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
@@ -74,7 +74,7 @@ evidence repository.
     On top of it the sandbox commits the run's record into the same folder: `status.json`,
     `events.jsonl` and `engine.log`, committed at every state transition and, while the engine
     runs, on the first tick that finds `events.jsonl` changed since the last commit, at most
-    `FLEET_COMMIT_SECONDS` seconds apart (default 60) — so the branch is never far behind the
+    `FLEET_COMMIT_SECONDS` seconds apart (default 10) — so the branch is never far behind the
     live run, and a tick that saw no change commits nothing however long it has been.
     **This bullet described the wave engine's own record here in detail through 2026-09-21** —
     `report.json`'s per-run schema, the `driver:wave-adopted`/`driver:wave-blocked`/
@@ -350,7 +350,7 @@ evidence repository.
   unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
   the release it runs (`claude: <version>` in `fleet-boot.log`) and setting `DISABLE_AUTOUPDATER=1`
   for the run, runs the engine as one transient unit, commits the record to the live
-  branch every 60 s and at each transition (see above), cuts and verifies the run tag and deletes
+  branch every 10 s and at each transition (see above), cuts and verifies the run tag and deletes
   the live branch at the end of every run, and — only when there is something to publish — opens the pull request
   and, gated by `factory/policy.json`'s `publish.self_merge`, merges it — the pull request, the
   merge, the catch-up and the publish probe are `factory/publish.mjs`, which the boot calls once
@@ -457,7 +457,7 @@ evidence repository.
   `runs/<owner>-<repo>/<N>/status.json` on `live/<owner>-<repo>/run-<N>` in the evidence repository
   at every transition **and, while
   the engine runs, on the first tick that finds `events.jsonl` changed since the last commit, at
-  most once every `FLEET_COMMIT_SECONDS` seconds (default 60)**. A tick that saw no change is a
+  most once every `FLEET_COMMIT_SECONDS` seconds (default 10)**. A tick that saw no change is a
   heartbeat (`updatedAt` moves) and earns no commit.
   `"tasks":` is the LAST cell on the page — a reader answers the FIRST `"state"` in the file, so a
   task's own `folded` must never sit above the run's — and it is a projection of `events.jsonl` and

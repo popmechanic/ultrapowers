@@ -38,7 +38,7 @@ overwrites itself (run-68).
 ## The record
 
 The record lives in the operator's evidence repository, never on the target. The sandbox
-commits it to `live/<owner>-<repo>/run-<N>` under `runs/<owner>-<repo>/<N>/` every 60 s and at
+commits it to `live/<owner>-<repo>/run-<N>` under `runs/<owner>-<repo>/<N>/` every 10 s and at
 each transition, pushes `ultra/integration-run-<N>` to the target (the only branch the target
 receives; main's memory, `refs/ultrapowers/weave/v1`, is the one other ref, pushed by the publish
 before every merge request) and opens its own PR over REST (`prAuthor` recorded). The PR is the gate. At the end of
@@ -62,7 +62,9 @@ Read a past run at
   `ultra/integration-run-*` branches of the targets its rows name (`--target` adds one no VM
   names).
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
-  `board-read.mjs` (print a run's board), `kata-hub.mjs` + `kata-hub-setup.sh` +
+  `board-read.mjs` (print a run's board from the hub), `run-read.mjs` (print a run from its
+  evidence record: every claim, give-back, objection, conflict, move of main and the pull request;
+  `projectRun` answers plain data for any other reader), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`:
   `~/.ultrapowers/kata-hub.env` names only the host (`KATA_URL`), and the bearer is sourced from
