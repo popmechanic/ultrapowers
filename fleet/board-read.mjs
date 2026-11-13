@@ -233,6 +233,14 @@ async function findBoundary (fetchPage, targetAt) {
  * falls back to `since` when the projection's own is `null` (nothing read).
  */
 export async function readBoard ({ client, projectId, runs, since }) {
+  const rows = await readRows({ client, projectId, runs, since })
+  const projection = projectBoard(rows, { runs })
+  return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
+}
+
+/** The feed rows `readBoard` projects: from the asked runs' creation with `since` `0`, else
+ *  every row after `since`. */
+async function readRows ({ client, projectId, runs, since }) {
   const cache = new Map()
   const fetchPage = pager(client, projectId, cache)
 
@@ -265,8 +273,24 @@ export async function readBoard ({ client, projectId, runs, since }) {
     if (nextAfter === after) break
     after = nextAfter
   }
-  const projection = projectBoard(events, { runs })
-  return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
+  return events
+}
+
+/**
+ * `--follow`'s reader: the first call reads the asked runs from their creation, and each later
+ * call reads only the rows the feed gained since the last row held, projecting over all of them.
+ * The rows are kept because a page read from a cursor cannot tell which run an issue belongs to:
+ * the issues' creation rows, read once, answer that. Re-reading from the start each time cost
+ * some thirty requests a refresh on a project with three hundred runs (2026-11-13, 36 s).
+ */
+export function followReader ({ client, projectId, runs }) {
+  let rows = null
+  return async () => {
+    if (rows === null) rows = await readRows({ client, projectId, runs, since: 0 })
+    else if (rows.length) rows = rows.concat(await readRows({ client, projectId, runs, since: rows[rows.length - 1].event_id }))
+    else rows = await readRows({ client, projectId, runs, since: 0 })
+    return projectBoard(rows, { runs })
+  }
 }
 
 // ── Following a run ──────────────────────────────────────────────────────
@@ -279,9 +303,8 @@ const minutesSince = (fromIso, nowMs) => Math.floor((nowMs - Date.parse(fromIso)
  * `quietMs` ago with no `done` since, or a run with no new row for `quietMs`.
  * Each warning prints once until the thing it names changes. Ends when every
  * asked run's own issue is closed (`== closed` and 0) or at `maxMs` (`== gave
- * up` and 3). `read` answers `projectBoard`'s shape; it re-reads from the start
- * each time, since a page read from a cursor cannot tell which run an issue
- * belongs to. A row whose text begins `engine belief` prints with `!` in
+ * up` and 3). `read` answers `projectBoard`'s shape over every row so far
+ * (`followReader`). A row whose text begins `engine belief` prints with `!` in
  * place of its first space. `now`, `sleep` and `write` are the test's seams.
  */
 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
@@ -387,7 +410,7 @@ export function parseBoardArgs (argv) {
 export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKataEnvPath(), write = (s) => process.stdout.write(s) } = {}) {
   const args = parseBoardArgs(argv)
 
-  const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath })
+  const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath, share: true })
   if (dark !== null) fail(dark)
 
   const projectName = targetSlug(args.target)
@@ -397,7 +420,7 @@ export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKat
   }
 
   if (args.follow) {
-    const read = () => readBoard({ client, projectId: project.id, runs: args.runs, since: 0 })
+    const read = followReader({ client, projectId: project.id, runs: args.runs })
     write('== following (every 10 s; ! lines flag trouble)\n')
     const rc = await follow({ read, write, runs: args.runs, quietMs: args.quietMinutes * 60000 })
     if (rc) process.exitCode = rc

@@ -17,7 +17,8 @@
 //                  injects the bearer, so the sandbox holds no kata token and
 //                  no worker environment can leak one.
 //   sshTransport   the LAPTOP's — the launcher's and the janitor's. One
-//                  `ssh <hub> curl …` per request, the bearer sourced on the hub
+//                  `ssh <hub> curl …` per request (over one shared connection
+//                  when the caller names a `control` path), the bearer sourced on the hub
 //                  from `/etc/kata/kata.env` by the hub's own shell. Shelley's
 //                  review deleted the laptop-side token: no secret is ever an
 //                  argv here, so the remote string carries the literal
@@ -115,8 +116,15 @@ const shQuoteInner = (value) => String(value == null ? '' : value).replace(/(["\
  *
  * `exec` is the caller's own seam (`(cmd, argv, options) -> {code, stdout,
  * stderr}`); the request body rides `options.input` — stdin, never an argv.
+ *
+ * `control`, when given, is an ssh ControlPath: every request then rides one
+ * connection ssh keeps open for a minute after its last use. A fresh ssh hop
+ * to the hub measured about 1 s and a shared one about 0.2 s (2026-11-13,
+ * n=7 hops), and a board read with no cursor makes some thirty requests. A
+ * request that got no status over the shared connection is made once more on
+ * a connection of its own, so a stale socket costs a retry and never a read.
  */
-export const sshTransport = ({ sshHost, exec }) => ({
+export const sshTransport = ({ sshHost, exec, control }) => ({
   async request ({ method, path, headers, body }) {
     const hasBody = body !== undefined
     const parts = [
@@ -131,14 +139,19 @@ export const sshTransport = ({ sshHost, exec }) => ({
     parts.push("-w '\\n%{http_code}'")
     parts.push(HUB_ORIGIN + path)
     const remote = parts.join(' ')
-    const res = await exec('ssh',
-      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', String(sshHost), remote],
+    const shared = control ? ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + String(control), '-o', 'ControlPersist=60'] : []
+    const hop = (extra) => exec('ssh',
+      ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', ...extra, String(sshHost), remote],
       { input: hasBody ? JSON.stringify(body) : '' })
-    const out = String((res && res.stdout) || '')
-    const cut = out.lastIndexOf('\n')
-    const tail = (cut === -1 ? out : out.slice(cut + 1)).trim()
-    const text = cut === -1 ? '' : out.slice(0, cut)
-    const status = /^\d+$/.test(tail) ? Number(tail) : 0
+    const read = (res) => {
+      const out = String((res && res.stdout) || '')
+      const cut = out.lastIndexOf('\n')
+      const tail = (cut === -1 ? out : out.slice(cut + 1)).trim()
+      return { res, out, text: cut === -1 ? '' : out.slice(0, cut), status: /^\d+$/.test(tail) ? Number(tail) : 0 }
+    }
+    let got = read(await hop(shared))
+    if (got.status === 0 && shared.length) got = read(await hop([]))
+    const { res, out, text, status } = got
     // A status that never arrived is an ssh or curl failure, not an API answer:
     // report it as a non-2xx carrying everything the seam printed, so the
     // KataError the client raises names what actually went wrong.

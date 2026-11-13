@@ -253,7 +253,7 @@ export const kataHostOf = (url) => {
  * env: then `client`, `host` and `transport` are null and `dark` is the reason,
  * in the words every caller refuses or reports with.
  */
-export async function hubFromEnv ({ exec, actor, kataEnvPath } = {}) {
+export async function hubFromEnv ({ exec, actor, kataEnvPath, share = false } = {}) {
   const envPath = kataEnvPath ?? defaultKataEnvPath()
   const none = (dark) => ({ client: null, host: null, transport: null, dark })
   let text
@@ -267,7 +267,10 @@ export async function hubFromEnv ({ exec, actor, kataEnvPath } = {}) {
   if (host === null) {
     return none(`${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}`)
   }
-  const transport = sshTransport({ sshHost: host, exec })
+  // `share`: the caller makes many requests (the board reader), so they ride one ssh connection,
+  // its socket beside the env file (`%C` is ssh's own hash of the connection, so the path stays short)
+  const control = share ? path.join(path.dirname(envPath), 'hub-%C') : undefined
+  const transport = sshTransport({ sshHost: host, exec, control })
   return { client: makeKataClient({ transport, actor }), host, transport, dark: null }
 }
 
