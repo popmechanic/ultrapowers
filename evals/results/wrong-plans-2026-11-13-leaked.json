@@ -1,0 +1,195 @@
+{
+ "target": "popmechanic/flock-baseline",
+ "base": "d668b2e720fc3bac33a919b364ec48d89d906e52",
+ "results": [
+  {
+   "run": "25",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 25,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 0,
+   "cost_usd": 0.234,
+   "said": [
+    "A, closing task 1: Added summary(text) to ledger/core.py: loads text, returns \"<count> entries, total <dollars(total)>\". Proof passes.",
+    "A, closing task 2: Added statement(text) = report(text) + \"\\n\" + summary(text) to ledger/core.py; both facts pass.",
+    "the run ended: settled green"
+   ],
+   "id": "control",
+   "expect": "ready",
+   "flaw": null
+  },
+  {
+   "run": "26",
+   "state": "parked",
+   "ended": "draft",
+   "why": "deadlock: work left and nothing claimable",
+   "wall_s": 112,
+   "sessions": 6,
+   "red_proofs": 0,
+   "reopened": 1,
+   "given_back": 4,
+   "parked_tasks": 1,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 2,
+   "cost_usd": 0.81,
+   "said": [
+    "A: Task 2's M1 and M2 contradict task 1's finished output: summary() returns \"2 entries, total 887.50\", but M2 wants the last line (which M1 makes equal to summary) to be \"entries: 2  total: 887.50\". Fixing this means changing task 1's summary format, which needs the operator's decision.",
+    "A: Following the operator's 2026-11-13 decision (task 1's plan was wrong), summary() now returns \"entries: 2  total: 887.50\". Task 1's own proof still checks the old \"2 entries, total 887.50\" format and now fails. That proof needs to be updated to the new format.",
+    "A, closing task 1: Added summary(text) to ledger/core.py: loads text, returns \"<count> entries, total <dollars(total)>\". Proof passes.",
+    "A, closing task 2: Changed summary() to the \"entries: N  total: X\" format, as the operator authorized (task 1's plan was wrong). statement() = report + \"\\n\" + summary. M1 and M2 pass. Task 1's old proof, which expects the previous format, now fails and needs updating.",
+    "the run ended: deadlock: work left and nothing claimable"
+   ],
+   "id": "contradiction",
+   "expect": "stops early, named",
+   "flaw": "Task 1 pins the summary line as `2 entries, total 887.50`. Task 2 says the statement's last line is the summary line and also pins it as `entries: 2  total: 887.50`. No code passes both tasks.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.96
+   }
+  },
+  {
+   "run": "27",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 33,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [
+    "L:loose"
+   ],
+   "outside_plan": [
+    "ledger/__main__.py"
+   ],
+   "beliefs": 2,
+   "cost_usd": 0.223,
+   "said": [
+    "A: Task 1's file list (only ledger/core.py) was not enough: `python3 -m ledger` needs ledger/__main__.py. I added main() to core.py and created ledger/__main__.py, which calls it.",
+    "A: ledger/__main__.py loose end is already closed: it exists, imports main from ledger.core, and `python3 -m ledger` runs (exit 0). No change needed.",
+    "A, closing task 1: Added main() to ledger/core.py, which reads stdin and prints report(text). Also created ledger/__main__.py, since `python3 -m ledger` needs it. Proof passes.",
+    "A, closing task L:loose: Verified the only loose end (ledger/__main__.py) is already fixed: python3 -m ledger runs via core.main(). Checks pass; no edits needed.",
+    "the run ended: settled green"
+   ],
+   "id": "wrong-files",
+   "expect": "ready, amended",
+   "flaw": "The task lists only `ledger/core.py`, and `python3 -m ledger` cannot work without a new file `ledger/__main__.py`.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 1.0
+   }
+  },
+  {
+   "run": "28",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 13,
+   "sessions": 1,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 1,
+   "cost_usd": 0.119,
+   "said": [
+    "A: ledger.core.load returns Entry dataclass objects (fields date, account, amount, memo), not dicts with 'amt'; task 1's Context was wrong. Use e.amount / e.memo.",
+    "A, closing task 1: Added biggest_memo(text) = largest(load(text)).memo in ledger/core.py; proof passes. Note: entries are Entry objects, not dicts.",
+    "the run ended: settled green"
+   ],
+   "id": "stale-premise",
+   "expect": "ready",
+   "flaw": "The Context says `load` answers dicts with a key `amt` and that `largest` compares by distance from zero. `load` answers `Entry` objects with `.amount`, and `largest` compares signed amounts.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.44
+   }
+  },
+  {
+   "run": "29",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 20,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 1,
+   "cost_usd": 0.224,
+   "said": [
+    "B: Task 2 appends convert_text to the end of ledger/rates.py and calls rate_of (expected from task 1) which must raise ValueError('unknown currency: XYZ'); I won't define rate_of myself.",
+    "A, closing task 1: Added rate_of(code) to ledger/rates.py: returns RATES[code], raises ValueError(\"unknown currency: <code>\") for unknown codes. Both facts pass.",
+    "B, closing task 2: Added convert_text to ledger/rates.py: it parses the amount with cents, converts using A's rate_of (which rejects unknown codes), and formats with dollars. Both facts pass.",
+    "the run ended: settled green"
+   ],
+   "id": "missing-edge",
+   "expect": "ready",
+   "flaw": "Task 2 calls `rate_of`, which task 1 writes, but declares that it consumes nothing, so both start at once and task 2's builder does not have `rate_of`.",
+   "said_so": {
+    "answer": "silent",
+    "confidence": 0.77
+   }
+  },
+  {
+   "run": "30",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 28,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [
+    "C:check"
+   ],
+   "outside_plan": [
+    "tests/test_ledger.py"
+   ],
+   "beliefs": 1,
+   "cost_usd": 0.225,
+   "said": [
+    "A: dollars() now writes money going out in brackets ('(3.00)'); tests/test_ledger.py still asserts the old minus-sign form and will fail.",
+    "A, closing task 1: dollars() wraps amounts below zero in brackets with no minus sign, e.g. '(3.00)'; positive amounts are unchanged. Flagged stale assertion in tests/test_ledger.py.",
+    "A, closing task C:check: Updated stale assertion in tests/test_ledger.py to expect the bracket form '(3.00)' introduced by task 1; full suite 11 passed.",
+    "the run ended: settled green"
+   ],
+   "id": "clause-vs-suite",
+   "expect": "ready, amended",
+   "flaw": "The Claim changes `dollars(-300)` to `(3.00)`, and `tests/test_ledger.py`, which the plan's Check runs and the task's files do not list, pins it as `-3.00`.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.52
+   }
+  },
+  {
+   "id": "wrong-literal",
+   "expect": "refused at the gate",
+   "gate": "refused"
+  }
+ ]
+}

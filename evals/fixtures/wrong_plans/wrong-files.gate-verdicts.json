@@ -1,0 +1,37 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "0c41f27583c2441e7c7943424d254f48eb239347f05eed875238904966de5977",
+      "verdict": "pass",
+      "reason": "the last line's beginning and end have one tagged probe that would fail if false and does not contradict the clause",
+      "gate_rounds": [
+        {
+          "hash": "0c41f27583c2441e7c7943424d254f48eb239347f05eed875238904966de5977",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.81,
+              "caught": 0.97
+            }
+          ],
+          "contradiction": 0.03,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 1,
+    "rounds": 2,
+    "base": "d668b2e",
+    "history": [],
+    "note": "round 1 failed the clause for naming an exit code its piped probe cannot see; the clause was narrowed"
+  }
+}

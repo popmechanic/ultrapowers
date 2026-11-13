@@ -1,0 +1,41 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "081617217ee5f8c10cc33783f87827607064e4b66ace2d021a24aa18548d2983",
+      "verdict": "pass",
+      "reason": "both computable facts have a tagged one-command leg that would fail if false, and the literals are satisfiable together",
+      "gate_rounds": [
+        {
+          "hash": "081617217ee5f8c10cc33783f87827607064e4b66ace2d021a24aa18548d2983",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.98,
+              "caught": 0.99
+            },
+            {
+              "id": "M2",
+              "fact": 0.98,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.06,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "d668b2e",
+    "history": []
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "98d09a0c88c05319e23fc10da0d94b504f52fde5ef8493f0f97866d4f1dbb26d",
+      "verdict": "pass",
+      "reason": "the known rate and the refusal's exact message each have a leg that would fail if false",
+      "gate_rounds": [
+        {
+          "hash": "98d09a0c88c05319e23fc10da0d94b504f52fde5ef8493f0f97866d4f1dbb26d",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.96,
+              "caught": 0.99
+            },
+            {
+              "id": "M2",
+              "fact": 0.96,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.03,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    },
+    "2": {
+      "hash": "816885cc171696a03ee5b56ed1787cf4fd9749d79dc36eb34c3da1eba5961b58",
+      "verdict": "pass",
+      "reason": "the converted text and the refusal's exact message each have a leg that would fail if false",
+      "gate_rounds": [
+        {
+          "hash": "816885cc171696a03ee5b56ed1787cf4fd9749d79dc36eb34c3da1eba5961b58",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.98,
+              "caught": 0.99
+            },
+            {
+              "id": "M2",
+              "fact": 0.96,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.06,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "d668b2e",
+    "history": []
+  }
+}

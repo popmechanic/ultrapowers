@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "about": "Judgments made by the readings tools in this folder. Each set names its reader; nothing in a run asks these.",
+  "sets": {
+    "wrong_plan": {
+      "when": "Once per scored run of a flawed plan, by `wrong_plans.py --jev`",
+      "reader": "evals/readings/wrong_plans.py",
+      "rollback": "Run the reading without --jev: the `said so` column prints `-` and the messages are printed for a person to read",
+      "state": ["flaw", "said"],
+      "provenance": "The wrong-plans reading (2026-11-13): whether a swarm that met a planted flaw said what was wrong is a judgment over prose, so it is a question and never a pattern match",
+      "calibrated": false,
+      "questions": {
+        "noticed": {
+          "type": "choice",
+          "instructions": {
+            "question": "Does any message in `said` state the problem that `flaw` describes?",
+            "context": "`flaw` is one thing that is wrong with a plan a group of software agents was given, written by the person who planted it. `said` is everything the agents wrote down while they worked: notes to each other, each agent's closing note, and the reason the run ended. The agents were not told about the flaw."
+          },
+          "criteria": {
+            "named": "A message says what `flaw` says is wrong, in its own words, clearly enough that a reader would know what to fix in the plan",
+            "hinted": "A message reports trouble in the same place but does not say what is wrong with the plan",
+            "silent": "No message mentions the problem"
+          }
+        }
+      }
+    }
+  }
+}

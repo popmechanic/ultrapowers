@@ -1,0 +1,42 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "c735e24a0ddcdfad80c14dfb45ca9edc44f11d98b3b9de873fd1b3bb09d9be4b",
+      "verdict": "fail",
+      "reason": "M2's literal is unsatisfiable under the clauses' own rules: M1 fixes the list at 900 and 225, whose sum is 1125, not the 1135 M2 pins",
+      "gate_rounds": [
+        {
+          "hash": "c735e24a0ddcdfad80c14dfb45ca9edc44f11d98b3b9de873fd1b3bb09d9be4b",
+          "agent": "fail",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.97,
+              "caught": 0.99
+            },
+            {
+              "id": "M2",
+              "fact": 0.98,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.04,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 1,
+    "rejected": 1,
+    "rounds": 1,
+    "base": "d668b2e",
+    "history": [],
+    "note": "the planted flaw is the one the gate is meant to catch; the fail is the result"
+  }
+}
