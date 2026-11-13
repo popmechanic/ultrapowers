@@ -277,9 +277,13 @@ ssh exe.dev "integrations add http-proxy --name=reaper --target=https://kata-hub
 ```
 
 A port other than 8000 rides in the target URL. The reaper removes through
-`lobby-rm`, the hub-only integration holding the `rm`-only key (`hub-reaper`,
-expires 2026-10-30). Renew it by the same pipe the operator used: mint a new
-`rm`-only key, then pipe it on stdin to `integrations edit lobby-rm --bearer=-`.
+`lobby-rm`, the hub-only integration holding the `rm`-only key (`hub-reaper`).
+That key expired 2026-10-30 and nothing said so: on 2026-11-13 the journal read
+`removed=False` for all 8 finished runs of the day, each VM waiting for a janitor
+run. The doctor's `reaper` row now reads the key's expiry. Renew it by the same
+pipe the operator used: mint a new `rm`-only key whose label begins `hub-reaper` (a label is never
+reused, so add the month), then pipe
+it on stdin to `integrations edit lobby-rm --bearer=-` (first-run.md §reaper).
 The journal (`journalctl -u reaper`) has one line per request: the caller, the
 run, the status and, on 202, whether the removal succeeded.
 
