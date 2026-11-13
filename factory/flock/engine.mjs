@@ -531,10 +531,11 @@ function scopeAt (m, snap) {
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
   return SCOPE_MODE === 'enforce' ? outside : []
 }
-// a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there
+// a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there,
+// undefined when no file has that exact path at the base or in the snapshot (the path cannot be read)
 function textAt (snap) {
   const s = snapshots.find((x) => x.snap === snap)
-  return (p) => s && p in s.files ? (s.exists[p] ? s.files[p] : null) : (BASE_FILES[p] ?? null)
+  return (p) => s && p in s.files ? (s.exists[p] ? s.files[p] : null) : p in BASE_FILES ? (BASE_FILES[p] ?? null) : undefined
 }
 function edge (reason) {
   const asked = now()
