@@ -87,13 +87,14 @@
       "unread": "loose ends per run, the share resolved in the run, and the drafts or wall the L:loose task adds"
     },
     "main": {
-      "mode": "memory",
+      "mode": "peer",
+      "poll_seconds": 60,
       "n": 0,
       "window": "none",
-      "basis": "audit 2026-11-12: the weave lived for one run and the catch-up rebuilt it from three texts, so the queue was cut by file; over 65 Flock runs (2026-09-26..10-02) 54 of 783 written files had more than one builder. Probe (n=25 files, 917 commits): a stored weave reloads exactly, and two weaves of one text built by different routes never agree, so a tree's weave is stored once and shared",
+      "basis": "audit 2026-11-12: the weave lived for one run and the catch-up rebuilt it from three texts, so the queue was cut by file; over 65 Flock runs (2026-09-26..10-02) 54 of 783 written files had more than one builder. Probe (n=25 files, 917 commits): a stored weave reloads exactly, and two weaves of one text built by different routes never agree, so a tree's weave is stored once and shared. Stage 2 live: flock-baseline run-10 and run-11 (2026-11-13, n=2 runs) each answered weave:memory true, weave:store stored true and weave:push pushed true, and run-11 started from the entry run-10's sandbox had pushed. `peer` (a moved main arrives mid-run) has run only in a sim",
       "experiment": true,
-      "rollback": "mode = frozen (every weave begun from the base's text; the catch-up joins three texts); deleting the target's ref refs/ultrapowers/weave/v1 forgets the memory",
-      "unread": "weave:memory and weave:store rows per run (memory true, stored true), weave:push rows (pushed, forks), and catch-ups joined from the store against their conflicts, over the first 5 runs; whether the sandbox's credential may push the ref at all"
+      "rollback": "mode = memory (main's memory without following main: a moved main is met at the publish's catch-up), then mode = frozen (every weave begun from the base's text; the catch-up joins three texts); deleting the target's ref refs/ultrapowers/weave/v1 forgets the memory",
+      "unread": "main:moved and main:off rows per run and what each move cost (wall, a setup run again, conflicts opened against main); refolds at publish per run against runs before; weave:memory, weave:store and weave:push rows, over the first 5 runs"
     }
   }
 }

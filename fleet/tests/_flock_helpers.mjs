@@ -71,13 +71,14 @@ ${tasks.join('\n')}`)
   return plan
 }
 
-// The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}.
-export async function flockRun (t, { plan, script }) {
+// The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}. `args` are
+// further engine arguments.
+export async function flockRun (t, { plan, script, args = [] }) {
   const scriptFile = path.join(t.tmp, 'script.json')
   fs.writeFileSync(scriptFile, JSON.stringify(script))
   const { code, out } = await new Promise((resolve) => {
     const p = spawn('node', [path.join(REPO, 'factory', 'flock', 'engine.mjs'), '--plan', plan, '--target', t.T, '--base', t.base,
-      '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', '--stall-minutes', '2'], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
+      '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', '--stall-minutes', '2', ...args], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     p.stdout.on('data', (c) => { out += c }); p.stderr.on('data', (c) => { out += c })
     const kill = setTimeout(() => p.kill('SIGKILL'), 180000)

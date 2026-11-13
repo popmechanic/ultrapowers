@@ -368,13 +368,17 @@ close_run() { # $1 = the run's final state (done|parked), $2 = its phase
 }
 # The one entry point: nothing ahead of base is done (a failure if the engine wasn't green), anything ahead is a publish.
 boot() {
-  local comment code head; comment="$(read_assignment)"
+  local comment code head moved; comment="$(read_assignment)"
   [ -n "$comment" ] || fail "assignment: no comment in FLEET_ASSIGNMENT or at $REFLECTION_URL/comment"
   parse_assignment "$comment"
   VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare; find_past
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
   engine_deps; claude_current; preflight; kata_record; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence
+  # a run that followed main (policy flock.main.mode `peer`) ends on the main it moved to, and says
+  # so in $RUN_DIR/base: "nothing ahead of base" and the publish's catch-up are judged against that
+  moved="$(head -n 1 "$RUN_DIR/base" 2>/dev/null || true)"
+  if is_sha "$moved" && [ "$moved" != "$BASE_SHA" ]; then log "engine: the run's base moved to $moved (was $BASE_SHA)"; BASE_SHA="$moved"; fi
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
   if [ "$head" = "$BASE_SHA" ]; then
     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi

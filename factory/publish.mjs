@@ -46,8 +46,8 @@ export function publishPolicy (policyPath = POLICY) {
   const probe = cell('probe')
   const main = doc && typeof doc === 'object' && doc.flock && typeof doc.flock === 'object' ? doc.flock.main : undefined
   return {
-    // main's memory (flock.main.mode): anything but `memory` pushes no weave entry
-    memory: Boolean(main && typeof main === 'object' && main.mode === 'memory'),
+    // main's memory (flock.main.mode `memory` or `peer`): anything else pushes no weave entry
+    memory: Boolean(main && typeof main === 'object' && (main.mode === 'memory' || main.mode === 'peer')),
     selfMerge: { enabled: Boolean(sm?.enabled), maxRefolds: int(sm?.max_refolds, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
     probe: { enabled: Boolean(probe?.enabled), timeoutSeconds: int(probe?.timeout_seconds, 600) }
   }

@@ -41,14 +41,23 @@ keeps the name `factory/`. Models never run git.
   held changes back starved a builder of a file its task needed, and the run ended a draft). A task
   reopened red is told of each same-spot insertion in its files, since the merge orders two
   insertions at one spot by their text.
-- `flock/weave_store.py` is main's memory (the main-is-a-peer design, stages 1 and 2; policy
-  `flock.main.mode`, `memory` or the rollback `frozen`): one stored weave per tree of the default
+- Under `flock.main.mode = peer` a run follows the target's default branch (`absorbMain` in
+  `flock/engine.mjs`, a look every `flock.main.poll_seconds` and once more before a green settle):
+  a moved main is published into the run as the peer `main` (keeper op `main`, row `main:moved`),
+  its text reaching every copy through the pulls, a clash with a builder an ordinary conflict, and
+  the run's base moves to the tip: `ULTRA_BASE`, the scope rule, each copy's git index and the
+  landing commit read it, the setup runs again when main changed a manifest or lockfile, and the
+  boot reads the moved base from `$RUN_DIR/base`. A move that cannot be taken in ends the following
+  (`main:off`) and never the run; the publish's catch-up still meets a main that moves after the
+  engine exits.
+- `flock/weave_store.py` is main's memory (the main-is-a-peer design; policy
+  `flock.main.mode`: `peer`, `memory`, or the rollback `frozen`): one stored weave per tree of the default
   branch, on the target's ref `refs/ultrapowers/weave/v1`. The engine starts every copy from the
   entry of `--base`'s tree (keeper op `memory`, row `weave:memory`) and stores the landed commit's
   entry (`store`, row `weave:store`), its lines authored `@r<N>:<task>`; `catchup.mjs` joins the
   run's entry with the moved main's (`join`, then `settle`) and falls to the three-text join only
   for a path the store does not hold; `publish.mjs` pushes the ref before every merge request (row
-  `weave:push`). None of it can fail a run. Main does not yet arrive mid-run (stage 3). A tree's
+  `weave:push`). None of it can fail a run. A tree's
   weave is built once and shared, never rebuilt from text where one is stored
   (two weaves of one text built by different routes merged back to it 0 times in 25, n=25 files,
   917 commits, 2026-11-12); a commit with no entry is replayed from the nearest stored ancestor,
