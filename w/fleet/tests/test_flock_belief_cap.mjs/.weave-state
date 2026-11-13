@@ -1,0 +1,43 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // A belief's stale text is held to a length where it is recorded (#1529): a one-task scripted run
+2 < 1 // posts two beliefs through the `@beliefs` seam, one with a 5,000-character `stale` and one with a
+3 < 1 // 20-character `stale`. Checks the `belief` rows in events.jsonl:
+4 < 1 //   - the long one's `stale` is at most 300 characters and is the start of what was posted;
+5 < 1 //   - the short one's `stale` is byte-equal to what was posted.
+6 < 1 // Prints `ALL TESTS PASSED` and exits 0, or `FAIL belief cap: ...` and exits 1.
+7 < 1 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
+8 < 1 
+9 < 1 const LONG = Array.from({ length: 5000 }, (_, i) => 'abcdefghij'[i % 10]).join('')
+10 < 1 const SHORT = 'x y z still wrong!!!'
+11 < 1 
+12 < 1 const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' })
+13 < 1 try {
+14 < 1   const one = task({ id: 1, title: 'Write ONE into a.txt', files: ['Modify: `a.txt`'], claim: 'a.txt carries ONE.', run: 'grep -q ONE a.txt', stale: 'path-absent: `a.txt`' })
+15 < 1   const plan = writePlan(t, { claim: 'a.txt says what the task writes.', check: 'test -f a.txt', tasks: [one] })
+16 < 1   const r = await flockRun(t, {
+17 < 1     plan,
+18 < 1     args: ['--loose-ends', 'record'],
+19 < 1     script: {
+20 < 1       1: { 'a.txt': 'x ONE z\n' },
+21 < 1       '@beliefs': [
+22 < 1         { task: '1', about: 'app', path: 'b.txt', claim: 'b.txt holds a long stale line', stale: LONG },
+23 < 1         { task: '1', about: 'app', path: 'b.txt', claim: 'b.txt holds a short stale line', stale: SHORT },
+24 < 1       ],
+25 < 1     },
+26 < 1   })
+27 < 1   if (!r.rows) throw new Error(`no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+28 < 1   const rows = r.of('belief')
+29 < 1   const long = rows.find((b) => b.claim === 'b.txt holds a long stale line')
+30 < 1   const short = rows.find((b) => b.claim === 'b.txt holds a short stale line')
+31 < 1   if (!long || typeof long.stale !== 'string' || long.stale.length > 300 || long.stale.length === 0 || !LONG.startsWith(long.stale)) {
+32 < 1     throw new Error(`the long belief row's stale is ${long ? `${typeof long.stale} of length ${long.stale?.length}` : 'missing'}; belief rows: ${rows.length}`)
+33 < 1   }
+34 < 1   if (!short || short.stale !== SHORT) throw new Error(`the short belief row reads ${JSON.stringify(short)}`)
+35 < 1   console.log('ALL TESTS PASSED')
+36 < 1 } catch (e) {
+37 < 1   console.log(`FAIL belief cap: ${e.message}`)
+38 < 1   process.exitCode = 1
+39 < 1 } finally {
+40 < 1   t.done()
+41 < 1 }
+42 < 1 

@@ -1,0 +1,817 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_factory_boot.mjs — the exam for "The boot's exam drives the
+2 < 1  * probe to `alive`, and the boot hands its dead and misplaced pieces to their
+3 < 1  * modules" (the boot half).
+4 < 1  *
+5 < 1  * At BASE this file drove three `bash factory/boot.sh boot` runs with
+6 < 1  * `spawnSync` while its proxy stub was an in-process `http.createServer`; a
+7 < 1  * synchronous child blocks the event loop the stub server runs on, so every
+8 < 1  * boot's `preflight.mjs` fetch of `/api/oauth/usage` hung to the probe's
+9 < 1  * abort and classified `inconclusive` — `alive` was never exercised. This
+10 < 1  * file is rewritten whole on the asynchronous rig `test_factory_preflight.mjs`
+11 < 1  * uses: every boot is `spawn`ed and awaited (`runBootAsync`), never
+12 < 1  * `spawnSync`'d; the rig's own fixture `git` calls stay `spawnSync`, since
+13 < 1  * nothing they do waits on the stub server.
+14 < 1  *
+15 < 1  * Legs, each naming the Machine clause(s) it measures:
+16 < 1  *
+17 < 1  *   (a) `claude auth status` answers `api_key` — the boot fails before the
+18 < 1  *       engine ever runs, and `status.json` at the run's tag records
+19 < 1  *       `state: "failed"` with an `error` naming `api_key`.
+20 < 1  *
+21 < 1  *   (b) [M1, M3, M4] the clean run: the engine stub lands one task, the PR is
+22 < 1  *       opened and merged, the run closes — plus the one line ending
+23 < 1  *       ` preflight: alive` in `<home>/fleet-boot.log`; the evidence
+24 < 1  *       repository holding the tag `o-r/run-<N>` whose `runs/o-r/<N>/` is
+25 < 1  *       exactly `engine.log`, `events.jsonl`, `plan.json`, `plan.md` and `status.json`
+26 < 1  *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
+27 < 1  *       exactly `main` and the integration branch (M1); the PR body's
+28 < 1  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
+29 < 1  *       there being no earlier tag (M4); and `<home>/merge-put.json`
+30 < 1  *       byte-equal to the exam's own rendering of the merge payload; and
+31 < 1  *       `<home>/reap-post.json` parsing to `{ run: 502, target: 'o/r' }`
+32 < 1  *       with exactly one `reap: asked the hub` line in the boot log (#1470).
+33 < 1  *
+34 < 1  *   (c) [M2] the engine stub exits 3 — the boot fails with exactly `"engine
+35 < 1  *       exit 3"`, and the run is tagged all the same: `status.json` at
+36 < 1  *       `o-r/run-<N>` says `failed` and the live branch is gone; no
+37 < 1  *       `<home>/reap-post.json` is written (#1470).
+38 < 1  *
+39 < 1  *   (d) `node <engineDir>/factory/flock/engine.mjs` with no arguments,
+40 < 1  *       through the rig's own `buildEngineDir` symlink, exits 2
+41 < 1  *       (`engine: --plan is required`).
+42 < 1  *
+43 < 1  *   (e) the stale head: the merge PUT waits for the pushed head.
+44 < 1  *
+45 < 1  *   (f) [M4] with tags `o-r/run-9`, `-77` and `-900` in the evidence
+46 < 1  *       repository, run 506's engine gets `--past-dir` whose basename is `77`
+47 < 1  *       and whose `status.json` is byte-equal to the tag's.
+48 < 1  *
+49 < 1  *   (g) [M5] with no `<home>/fleet-evidence-repo` the boot exits non-zero,
+50 < 1  *       a `fleet-boot.log` line names `fleet-evidence-repo`, and neither
+51 < 1  *       repository's refs move.
+52 < 1  *
+53 < 1  *   (h) nothing ahead of base with a green engine: done, nothing to build, closed on the base commit.
+54 < 1  *
+55 < 1  *   (i) [#1445 M1, M2] run 509's boot is SIGKILLed (its whole process group)
+56 < 1  *       once the live branch says `running` and the engine stub hangs;
+57 < 1  *       `boot.sh died` with `SERVICE_RESULT=signal EXIT_CODE=killed
+58 < 1  *       EXIT_STATUS=KILL` then leaves the tag `o-r/run-509` whose
+59 < 1  *       `status.json` says `failed` with an `error` naming `unit signal`, and
+60 < 1  *       whose `journal.txt` carries the `journalctl` stub's line. Leg (b) ends
+61 < 1  *       by running `died` on its finished run and finding its tag where it
+62 < 1  *       was (#1445 M3).
+63 < 1  *
+64 < 1  * The rig, once per case: a bare `origin.git` (the target) holding only a
+65 < 1  * `README` commit (`base`) on `main`, and a bare `evidence.git` (the
+66 < 1  * operator's `ops/evidence`, `main` seeded with a hand archive) taking the
+67 < 1  * launcher's parentless plan commit (`plan`, `runs/o-r/<N>/plan.md`) on
+68 < 1  * `refs/heads/live/o-r/run-<N>`. `wireEvidence` writes
+69 < 1  * `<home>/fleet-evidence-repo` as the first-boot setup script would and maps
+70 < 1  * `https://stub.invalid/ops/evidence.git` to that bare in the case HOME's
+71 < 1  * `.gitconfig`; the `systemd-run` stub records the engine's argv to
+72 < 1  * `<home>/engine-argv`. `<FLEET_HOME>/target` is a plain clone of the origin. `<FLEET_HOME>/engines/<sha>/
+73 < 1  * factory` and `.../skills` are symlinks to this checkout's own `factory/`
+74 < 1  * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (d),
+75 < 1  * `factory/flock/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
+76 < 1  * directory stubs `claude` (one `authMethod:` line), `curl` (a small
+77 < 1  * argument-sniffing router answering the GitHub-shaped endpoints `boot.sh`
+78 < 1  * hits, and — new in this task — saving a `PUT …/pulls/7/merge` body to
+79 < 1  * `$FLEET_HOME/merge-put.json` the way it already saves the `POST …/pulls`
+80 < 1  * body to `pr-post.json`), `systemd-run` (stands in for the whole systemd
+81 < 1  * invocation: for the engine unit, either lands one task — writing
+82 < 1  * `widget.mjs` and `tests/test_widget.mjs`, committing them into `$target`
+83 < 1  * and appending one `landing` row — or exits the code recorded in
+84 < 1  * `$FLEET_HOME/engine-exit`) and `systemctl` (a no-op). `node`, `python3`,
+85 < 1  * `git` and `bash` are real. Every spawned process — the fixture's own git
+86 < 1  * calls and the boot itself — gets `env: simEnv({ bin, home, env })` from
+87 < 1  * `./_helpers.mjs`; nothing is ever passed `process.env` directly.
+88 < 1  *
+89 < 1  * What this exam assumes about `factory/boot.sh`, since it is the one piece
+90 < 1  * of context a later reader lacks: that credential-probe failure and engine
+91 < 1  * failure both still route through `fail()` writing `status.json` onto the
+92 < 1  * live branch and cutting the run's tag before exiting non-zero (so (a) and
+93 < 1  * (c) can read it back at the tag); that a plan commit with no `kata.json`
+94 < 1  * blob leaves the board unbound, so `close_run()` takes its early-return
+95 < 1  * path and appends exactly one `board:close` row; that `factory/policy.json`'s
+96 < 1  * `publish.self_merge.enabled: true` (already in this repo) is what makes
+97 < 1  * (b)'s merge actually happen; and that the `publish:pr` event row's own
+98 < 1  * `ts` field is out of this task's own diff — this exam still asserts M1's
+99 < 1  * "every row carries a non-empty string `ts`" exactly as written, since a
+100 < 1  * clause is asserted as it reads, not as it is comfortable to satisfy today.
+101 < 1  * It also assumes that `factory/flock/engine.mjs` reads `process.argv`
+102 < 1  * itself (so leg (d)'s bare module path is the same call `boot.sh` makes)
+103 < 1  * and, with no `--plan` given, exits 2 before
+104 < 1  * touching anything that would need a fuller rig — the same shape the
+105 < 1  * sibling exam `test_factory_preflight.mjs` already assumes of
+106 < 1  * `audit.mjs`/`preflight.mjs`.
+107 < 1  */
+108 < 1 
+109 < 1 import assert from 'node:assert/strict'
+110 < 1 import fs from 'node:fs'
+111 < 1 import os from 'node:os'
+112 < 1 import path from 'node:path'
+113 < 1 
+114 < 1 import { bootRig } from './_boot_helpers.mjs'
+115 < 1 
+116 < 1 const {
+117 < 1   ENGINE_SHA, MERGE_SHA, EXPECTED_STATUS_KEYS, SLUG,
+119 > 1   git, writeStub, writeGitConfig, buildOrigin, seedPastRun, wireEvidence, refsOf, buildEngineDir, assignment,
+118 < 2   git, writeGitConfig, buildOrigin, seedPastRun, wireEvidence, refsOf, buildEngineDir, assignment,
+119 < 1   writeStubs, baseEnv, makeProxyServer, runBootAsync, runAsync
+120 < 1 } = bootRig()
+121 < 1 
+122 < 1 /** A file of run `runN`'s folder at its tag `o-r/run-<runN>` in the evidence bare. */
+123 < 1 const atTag = (evidenceDir, runN, p) => git(evidenceDir, ['show', `${SLUG}/run-${runN}:runs/${SLUG}/${runN}/${p}`])
+124 < 1 const engineArgv = (home) => fs.readFileSync(path.join(home, 'engine-argv'), 'utf8').split('\n').filter((l) => l !== '')
+125 < 1 
+126 < 1 const proxyServer = await makeProxyServer()
+127 < 1 const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
+128 < 1 
+129 < 1 // ── (a) `claude auth status` answers api_key -> the boot fails before the
+130 < 1 //    engine ever runs ───────────────────────────────────────────────────
+131 < 1 
+132 < 1 {
+133 < 1   const runN = '501'
+134 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a-'))
+135 < 1   const home = path.join(root, 'home')
+136 < 1   const bin = path.join(root, 'bin')
+137 < 1   fs.mkdirSync(home, { recursive: true })
+138 < 1   fs.mkdirSync(bin, { recursive: true })
+139 < 1   writeGitConfig(home)
+140 < 1 
+141 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+142 < 1   wireEvidence(home, evidenceDir)
+143 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+144 < 1   buildEngineDir(home, ENGINE_SHA)
+145 < 1   writeStubs(bin, { claudeAuth: 'api_key' })
+146 < 1 
+147 < 1   const env = {
+148 < 1     ...baseEnv(PROXY_URL),
+149 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+150 < 1   }
+151 < 1 
+152 < 1   const res = await runBootAsync({ bin, home, env })
+153 < 1 
+154 < 1   assert.notEqual(
+155 < 1     res.code, 0,
+156 < 1     `(a) the boot exits non-zero on an api_key answer — got 0, stdout: ${res.stdout}, stderr: ${res.stderr}`
+157 < 1   )
+158 < 1 
+159 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+160 < 1   assert.equal(status.state, 'failed', '(a) status.json records state "failed"')
+161 < 1   assert.ok(
+162 < 1     typeof status.error === 'string' && status.error.includes('api_key'),
+163 < 1     `(a) status.json's error names api_key — got ${JSON.stringify(status.error)}`
+164 < 1   )
+165 < 1 }
+166 < 1 
+167 < 1 // ── (a2) a Claude Code release below the floor refuses the run ───────────
+168 < 1 
+169 < 1 {
+170 < 1   const runN = '521'
+171 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a2-'))
+172 < 1   const home = path.join(root, 'home')
+173 < 1   const bin = path.join(root, 'bin')
+174 < 1   fs.mkdirSync(home, { recursive: true })
+175 < 1   fs.mkdirSync(bin, { recursive: true })
+176 < 1   writeGitConfig(home)
+177 < 1 
+178 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+179 < 1   wireEvidence(home, evidenceDir)
+180 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+181 < 1   buildEngineDir(home, ENGINE_SHA)
+182 < 1   writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: '2.1.258' })
+183 < 1 
+184 < 1   const env = {
+185 < 1     ...baseEnv(PROXY_URL),
+186 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+187 < 1   }
+188 < 1 
+189 < 1   const res = await runBootAsync({ bin, home, env })
+190 < 1 
+191 < 1   assert.notEqual(res.code, 0, `(a2) the boot exits non-zero on claude 2.1.258 — got 0, stdout: ${res.stdout}`)
+192 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+193 < 1   assert.equal(status.state, 'failed', '(a2) status.json records state "failed"')
+194 < 1   assert.equal(
+195 < 1     status.error, 'claude 2.1.258 is below the floor 2.1.287',
+196 < 1     `(a2) status.json's error names the release and the floor — got ${JSON.stringify(status.error)}`
+197 < 1   )
+198 < 1 }
+199 < 1 
+200 < 1 // ── (a3) a missing or non-numeric claude fails the floor, not a shell error ─
+201 < 1 
+202 < 1 for (const [runN, version, error] of [
+203 < 1   ['522', null, 'claude unknown is below the floor 2.1.287'],
+204 < 1   ['523', 'v2.1.300', 'claude v2.1.300 is below the floor 2.1.287']
+205 < 1 ]) {
+206 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a3-'))
+207 < 1   const home = path.join(root, 'home')
+208 < 1   const bin = path.join(root, 'bin')
+209 < 1   fs.mkdirSync(home, { recursive: true })
+210 < 1   fs.mkdirSync(bin, { recursive: true })
+211 < 1   writeGitConfig(home)
+212 < 1 
+213 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+214 < 1   wireEvidence(home, evidenceDir)
+215 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+216 < 1   buildEngineDir(home, ENGINE_SHA)
+217 < 1   writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: version ?? undefined })
+219 > 1   // A missing claude is shadowed, not removed: the sim PATH carries node's own directory,
+220 < 1   // and on a box whose /usr/local/bin holds both node and a real claude, removing the stub
+221 < 1   // would hand the boot that real, current release.
+222 < 1   if (version === null) writeStub(bin, 'claude', '#!/bin/sh\necho "claude: not found" >&2\nexit 127\n')
+218 < 2   if (version === null) fs.rmSync(path.join(bin, 'claude'))
+219 < 1 
+220 < 1   const env = {
+221 < 1     ...baseEnv(PROXY_URL),
+222 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+223 < 1   }
+224 < 1 
+225 < 1   const res = await runBootAsync({ bin, home, env })
+226 < 1 
+227 < 1   assert.equal(res.code, 1, `(a3) the boot exits 1 on claude ${version} — got ${res.code}, stdout: ${res.stdout}`)
+228 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+229 < 1   assert.equal(status.state, 'failed', `(a3) status.json records state "failed" on claude ${version}`)
+230 < 1   assert.equal(status.error, error, `(a3) status.json's error — got ${JSON.stringify(status.error)}`)
+231 < 1 }
+232 < 1 
+233 < 1 // ── (b) [M1, M5] a clean run: land, open, merge, close, probe alive ──────
+234 < 1 
+235 < 1 {
+236 < 1   const runN = '502'
+237 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-b-'))
+238 < 1   const home = path.join(root, 'home')
+239 < 1   const bin = path.join(root, 'bin')
+240 < 1   fs.mkdirSync(home, { recursive: true })
+241 < 1   fs.mkdirSync(bin, { recursive: true })
+242 < 1   writeGitConfig(home)
+243 < 1   fs.writeFileSync(path.join(home, 'fleet-setup.log'), 'setup: the sim\'s one setup line\n')
+244 < 1 
+245 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+246 < 1   wireEvidence(home, evidenceDir)
+247 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+248 < 1   buildEngineDir(home, ENGINE_SHA)
+249 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+250 < 1 
+251 < 1   const env = {
+252 < 1     ...baseEnv(PROXY_URL),
+253 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+254 < 1     MERGE_SHA
+255 < 1   }
+256 < 1 
+257 < 1   const res = await runBootAsync({ bin, home, env })
+258 < 1 
+259 < 1   assert.equal(
+260 < 1     res.code, 0,
+261 < 1     `(b) [M1] the clean run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+262 < 1   )
+263 < 1 
+264 < 1   // [M1] the boot log carries exactly one line ending ' preflight: alive'
+265 < 1   // (at BASE, a synchronous boot blocks the in-process proxy stub and every
+266 < 1   // run classifies 'inconclusive' instead).
+267 < 1   const bootLog = fs.readFileSync(path.join(home, 'fleet-boot.log'), 'utf8')
+268 < 1   const aliveLines = bootLog.split('\n').filter((l) => l.endsWith(' preflight: alive'))
+269 < 1   assert.equal(
+270 < 1     aliveLines.length, 1,
+271 < 1     `(b) [M1] fleet-boot.log carries exactly one line ending ' preflight: alive' — got ${aliveLines.length} of them in:\n${bootLog}`
+272 < 1   )
+273 < 1 
+274 < 1   const landedSha = fs.readFileSync(path.join(home, 'landed-sha'), 'utf8').trim()
+275 < 1 
+276 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+277 < 1   assert.deepEqual(
+278 < 1     Object.keys(status), EXPECTED_STATUS_KEYS,
+279 < 1     `(b) [M1] status.json carries exactly the thirteen named keys, in order — got ${JSON.stringify(Object.keys(status))}`
+280 < 1   )
+281 < 1   assert.equal(status.state, 'done', '(b) [M1] status.json state is "done"')
+282 < 1   assert.equal(status.phase, 'the pull request was merged', '(b) [M1] status.json phase is "the pull request was merged"')
+283 < 1   assert.equal(status.pr, 'https://github.com/o/r/pull/7', '(b) [M1] status.json pr is the opened PR\'s URL')
+284 < 1   assert.equal(status.prAuthor, 'fleet-bot', '(b) [M1] status.json prAuthor is the PR\'s author login')
+285 < 1   assert.equal(status.merged, MERGE_SHA, '(b) [M1] status.json merged is the merge sha the stub reported')
+286 < 1   assert.deepEqual(
+287 < 1     status.tasks,
+288 < 1     { 1: { state: 'folded', park: null } },
+289 < 1     `(b) [M1] status.json tasks is exactly the one folded task — got ${JSON.stringify(status.tasks)}`
+290 < 1   )
+291 < 1 
+292 < 1   const eventsText = atTag(evidenceDir, runN, 'events.jsonl')
+293 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+294 < 1   for (const [i, row] of rows.entries()) {
+295 < 1     assert.ok(
+296 < 1       typeof row.ts === 'string' && row.ts.length > 0,
+297 < 1       `(b) [M1] events.jsonl row ${i} (kind=${row.kind}) carries a non-empty string ts — got ${JSON.stringify(row.ts)}`
+298 < 1     )
+299 < 1   }
+300 < 1 
+301 < 1   const nonLanding = rows.filter((r) => r.kind !== 'landing')
+302 < 1   assert.deepEqual(
+303 < 1     nonLanding.map((r) => r.kind),
+304 < 1     ['publish:pr', 'weave:push', 'merge', 'board:close', 'run:audit'],
+305 < 1     `(b) [M1] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, board:close, run:audit in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+306 < 1   )
+307 < 1   // the weave's push sits between the pull request and the merge: main's memory reaches the target
+308 < 1   // before the merge request, never after it (factory/publish.mjs `pushWeave`)
+309 < 1   const [pubRow, weaveRow, mergeRow, closeRow] = nonLanding
+310 < 1   assert.equal(weaveRow.when, 'pr', '(b) [M1] the weave:push row is the push made once the pull request is open')
+311 < 1   assert.equal(pubRow.url, 'https://github.com/o/r/pull/7', '(b) [M1] the publish:pr row names the PR url')
+312 < 1   assert.equal(pubRow.number, 7, '(b) [M1] the publish:pr row names the PR number')
+313 < 1   assert.equal(mergeRow.code, 200, '(b) [M1] the merge row records code 200')
+314 < 1   assert.equal(closeRow.what, 'run', '(b) [M1] the sole board:close row is "what":"run" (close_run\'s no-kata early return)')
+315 < 1   assert.equal(closeRow.code, null, '(b) [M1] the sole board:close row carries code null')
+316 < 1 
+317 < 1   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
+318 < 1   // `factory/record.mjs` renders the receipt from `edge` rows (this stub engine writes none, so the
+319 < 1   // body carries only the evidence line) and the run folder at its tag in the evidence repository.
+320 < 1   const evidenceLine = `**Evidence:** https://github.com/ops/evidence/tree/o-r/run-${runN}/runs/o-r/${runN}`
+321 < 1   const expectedBody = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.\n\n' +
+322 < 1     `${evidenceLine}\n\n` +
+323 < 1     'Closes #1222'
+324 < 1   // [M3] the body carries exactly that line.
+325 < 1   assert.deepEqual(
+326 < 1     JSON.parse(fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')).body.split('\n').filter((l) => l.startsWith('**Evidence:**')),
+327 < 1     [evidenceLine],
+328 < 1     '(b) [M3] the PR body carries exactly the one evidence line, byte-exact'
+329 < 1   )
+330 < 1   const expectedPrPost = JSON.stringify({
+331 < 1     title: `fleet run-${runN}: A widget that answers its size`,
+332 < 1     head: `ultra/integration-run-${runN}`,
+333 < 1     base: 'main',
+334 < 1     body: expectedBody,
+335 < 1     draft: false
+336 < 1   })
+337 < 1   assert.equal(
+338 < 1     prPost, expectedPrPost,
+339 < 1     `(b) [M1] the PR POST payload is byte-equal to the exam's own rendering — got ${prPost}`
+340 < 1   )
+341 < 1 
+342 < 1   // [M1] the evidence repository holds the run's one tag and no live branch; the
+343 < 1   // target holds exactly `main` and the integration branch.
+344 < 1   const evidenceRefs = refsOf(evidenceDir)
+345 < 1   assert.ok(`refs/tags/o-r/run-${runN}` in evidenceRefs, '(b) [M1] the evidence repository holds the o-r/run-<N> tag')
+346 < 1   assert.ok(!(`refs/heads/live/o-r/run-${runN}` in evidenceRefs), '(b) [M1] refs/heads/live/o-r/run-<N> is gone')
+347 < 1   const heads = refsOf(originDir)
+348 < 1   assert.deepEqual(
+349 < 1     Object.keys(heads).sort(),
+350 < 1     ['refs/heads/main', `refs/heads/ultra/integration-run-${runN}`],
+351 < 1     `(b) [M1] the target's refs are exactly main and the integration branch — got ${JSON.stringify(Object.keys(heads))}`
+352 < 1   )
+353 < 1 
+354 < 1   // [M4] no earlier o-r/run-<M> tag, so the engine is started with no --past-dir.
+355 < 1   const argv = engineArgv(home)
+356 < 1   assert.ok(argv.includes('--plan'), `(b) [M4] the systemd-run stub recorded the engine's argv — got ${JSON.stringify(argv)}`)
+357 < 1   assert.ok(!argv.includes('--past-dir'), `(b) [M4] with no earlier tag the engine gets no --past-dir — got ${JSON.stringify(argv)}`)
+358 < 1   const unitEnv = fs.readFileSync(path.join(home, 'engine-env'), 'utf8').split('\n').filter((l) => l !== '')
+359 < 1   assert.ok(unitEnv.includes('DISABLE_AUTOUPDATER=1'), `(b) the engine unit's env carries DISABLE_AUTOUPDATER=1 — got ${JSON.stringify(unitEnv)}`)
+360 < 1   assert.equal(fs.readFileSync(path.join(home, 'timeout-argv'), 'utf8'), '120\nsudo\n-n\nexeuntu\nupdate\nclaude\n')
+361 < 1 
+362 < 1   const integrationTree = git(originDir, ['ls-tree', '-r', '--name-only', `ultra/integration-run-${runN}`])
+363 < 1     .split('\n').filter(Boolean)
+364 < 1   assert.ok(
+365 < 1     integrationTree.includes('widget.mjs'),
+366 < 1     `(b) [M1] the integration tree carries the landed widget.mjs — got ${JSON.stringify(integrationTree)}`
+367 < 1   )
+368 < 1   assert.ok(
+369 < 1     integrationTree.includes('tests/test_widget.mjs'),
+370 < 1     `(b) [M1] the integration tree carries tests/test_widget.mjs — nothing strips it from the pull request anymore — got ${JSON.stringify(integrationTree)}`
+371 < 1   )
+372 < 1 
+373 < 1   // [M1] the tag's tree under `runs/o-r/<N>/` is exactly the plan and the
+374 < 1   // three record files, and no committed path contains exams/.
+375 < 1   const evidenceTree = git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
+376 < 1     .split('\n').filter(Boolean)
+377 < 1   assert.ok(
+378 < 1     !evidenceTree.some((p) => p.includes('exams/')),
+379 < 1     `(b) the evidence tree carries no exams/ path — got ${JSON.stringify(evidenceTree)}`
+380 < 1   )
+381 < 1   const runDirEntries = evidenceTree.filter((p) => p.startsWith(`runs/o-r/${runN}/`))
+382 < 1   assert.deepEqual(
+383 < 1     runDirEntries.slice().sort(),
+384 < 1     [
+385 < 1       `runs/o-r/${runN}/engine.log`,
+386 < 1       `runs/o-r/${runN}/events.jsonl`,
+387 < 1       `runs/o-r/${runN}/fleet-boot.log`,
+388 < 1       `runs/o-r/${runN}/fleet-setup.log`,
+389 < 1       `runs/o-r/${runN}/plan.json`,
+390 < 1       `runs/o-r/${runN}/plan.md`,
+391 < 1       `runs/o-r/${runN}/status.json`
+392 < 1     ],
+393 < 1     `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
+394 < 1   )
+395 < 1 
+396 < 1   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
+397 < 1   // rendering of the merge payload's fields — title off the plan's first
+398 < 1   // heading and the number the stub PR answered, sha the integration
+399 < 1   // branch's HEAD (the tip git ls-remote --heads lists for it above, which
+400 < 1   // with no strip step anymore is exactly the engine's own landing commit,
+401 < 1   // the same sha as `landedSha`).
+402 < 1   const mergePut = fs.readFileSync(path.join(home, 'merge-put.json'), 'utf8')
+403 < 1   const integrationTip = heads[`refs/heads/ultra/integration-run-${runN}`]
+404 < 1   const expectedMergePut = JSON.stringify({
+405 < 1     merge_method: 'squash',
+406 < 1     commit_title: `fleet run-${runN}: A widget that answers its size (#7)`,
+407 < 1     sha: integrationTip
+408 < 1   })
+409 < 1   assert.equal(
+410 < 1     mergePut, expectedMergePut,
+411 < 1     `(b) [M5] the merge PUT payload is byte-equal to the exam's own rendering — got ${mergePut}`
+412 < 1   )
+413 < 1 
+414 < 1   // #1470: the merged run whose tag verified asks the hub, once, to remove its VM.
+415 < 1   assert.deepEqual(
+416 < 1     JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 502, target: 'o/r' },
+417 < 1     '(b) the reap request carries the run and its target'
+418 < 1   )
+419 < 1   const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
+420 < 1   assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
+421 < 1 
+422 < 1   // [M3 of #1445] `boot.sh died` after a run that already ended leaves its tag where it was.
+423 < 1   const tagBefore = refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`]
+424 < 1   const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
+425 < 1   assert.equal(died.code, 0, `(b) boot.sh died exits 0 — got ${died.code}, stderr tail: ${(died.stderr || '').slice(-4000)}`)
+426 < 1   assert.equal(
+427 < 1     refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`], tagBefore,
+428 < 1     '(b) [M3] boot.sh died leaves the ended run\'s tag at the commit it named before'
+429 < 1   )
+430 < 1 }
+431 < 1 
+432 < 1 // ── (c) engine exit 3 -> the boot fails, no tag is ever cut ──────────────
+433 < 1 
+434 < 1 {
+435 < 1   const runN = '503'
+436 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-c-'))
+437 < 1   const home = path.join(root, 'home')
+438 < 1   const bin = path.join(root, 'bin')
+439 < 1   fs.mkdirSync(home, { recursive: true })
+440 < 1   fs.mkdirSync(bin, { recursive: true })
+441 < 1   writeGitConfig(home)
+442 < 1 
+443 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+444 < 1   wireEvidence(home, evidenceDir)
+445 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+446 < 1   buildEngineDir(home, ENGINE_SHA)
+447 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+448 < 1   fs.writeFileSync(path.join(home, 'engine-exit'), '3')
+449 < 1 
+450 < 1   const env = {
+451 < 1     ...baseEnv(PROXY_URL),
+452 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+453 < 1   }
+454 < 1 
+455 < 1   const res = await runBootAsync({ bin, home, env })
+456 < 1 
+457 < 1   assert.equal(
+458 < 1     res.code, 3,
+459 < 1     `(c) the boot exits with the engine's own code 3 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+460 < 1   )
+461 < 1 
+462 < 1   // [M2] a failed run is tagged too: its status at the tag says failed, and its live branch is gone.
+463 < 1   const evidenceRefs = refsOf(evidenceDir)
+464 < 1   assert.ok(`refs/tags/o-r/run-${runN}` in evidenceRefs, '(c) [M2] the failed run leaves the o-r/run-<N> tag')
+465 < 1   assert.ok(!(`refs/heads/live/o-r/run-${runN}` in evidenceRefs), '(c) [M2] refs/heads/live/o-r/run-<N> is gone')
+466 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+467 < 1   assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
+468 < 1   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
+469 < 1   // #1392: the hub's mark is in the committed record, not appended after the last commit
+470 < 1   const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
+471 < 1   assert.deepEqual(marks.map((r) => r.state), ['failed'], `(c) events.jsonl at the tag holds one board:mark row, state failed — got ${JSON.stringify(marks)}`)
+472 < 1   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
+473 < 1   // #1470: a failed run never asks the hub to remove its VM.
+474 < 1   assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
+475 < 1 }
+476 < 1 
+477 < 1 // ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────
+478 < 1 
+479 < 1 {
+480 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-d-'))
+481 < 1   const home = path.join(root, 'home')
+482 < 1   fs.mkdirSync(home, { recursive: true })
+483 < 1   const engineDir = buildEngineDir(home, ENGINE_SHA)
+484 < 1 
+485 < 1   const res = await runAsync([path.join(engineDir, 'factory', 'flock', 'engine.mjs')], { home })
+486 < 1 
+487 < 1   assert.equal(
+488 < 1     res.code, 2,
+489 < 1     `(d) [M2] node <engineDir>/factory/flock/engine.mjs with no arguments, through the rig's symlinked factory/, exits 2 — got ${res.code}, stdout: ${res.stdout}, stderr: ${res.stderr}`
+490 < 1   )
+491 < 1 }
+492 < 1 
+493 < 1 // ── (e) [M1, M2] the stale head: the first GET names an old head, the PUT
+494 < 1 //    waits for the pushed one and is sent once ─────────────────────────────
+495 < 1 
+496 < 1 {
+497 < 1   const runN = '505'
+498 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-e-'))
+499 < 1   const home = path.join(root, 'home')
+500 < 1   const bin = path.join(root, 'bin')
+501 < 1   fs.mkdirSync(home, { recursive: true })
+502 < 1   fs.mkdirSync(bin, { recursive: true })
+503 < 1   writeGitConfig(home)
+504 < 1 
+505 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+506 < 1   wireEvidence(home, evidenceDir)
+507 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+508 < 1   buildEngineDir(home, ENGINE_SHA)
+509 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+510 < 1   // One GET answers `{"mergeable":true,"head":{"sha":"<40 zeros>"}}`; the PUT
+511 < 1   // answers 405 `Pull Request is not mergeable` until a GET names the pushed tip.
+512 < 1   fs.writeFileSync(path.join(home, 'stale-heads'), '1')
+513 < 1 
+514 < 1   const env = {
+515 < 1     ...baseEnv(PROXY_URL),
+516 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+517 < 1     MERGE_SHA
+518 < 1   }
+519 < 1 
+520 < 1   const res = await runBootAsync({ bin, home, env })
+521 < 1 
+522 < 1   assert.equal(
+523 < 1     res.code, 0,
+524 < 1     `(e) the stale-head run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+525 < 1   )
+526 < 1 
+527 < 1   const eventsText = atTag(evidenceDir, runN, 'events.jsonl')
+528 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+529 < 1   const mergeRows = rows.filter((r) => r.kind === 'merge')
+530 < 1   assert.equal(
+531 < 1     mergeRows.length, 1,
+532 < 1     `(e) [M1] events.jsonl holds exactly one merge row — the PUT waited for the pushed head — got ${JSON.stringify(mergeRows)}`
+533 < 1   )
+534 < 1   assert.equal(mergeRows[0].code, 200, '(e) [M1] the one merge row records code 200')
+535 < 1   assert.equal(
+536 < 1     mergeRows[0].message, 'Pull Request successfully merged',
+537 < 1     `(e) [M2] the merge row carries GitHub's reply message — got ${JSON.stringify(mergeRows[0].message)}`
+538 < 1   )
+539 < 1 }
+540 < 1 
+541 < 1 // ── (f) [M4] the previous run: --past-dir at the highest earlier tag ────────
+542 < 1 
+543 < 1 {
+544 < 1   const runN = '506'
+545 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-f-'))
+546 < 1   const home = path.join(root, 'home')
+547 < 1   const bin = path.join(root, 'bin')
+548 < 1   fs.mkdirSync(home, { recursive: true })
+549 < 1   fs.mkdirSync(bin, { recursive: true })
+550 < 1   writeGitConfig(home)
+551 < 1 
+552 < 1   const { originDir, evidenceDir, evidenceScratch, base, plan } = buildOrigin(root, runN)
+553 < 1   // Two earlier runs and one later: the engine gets the highest below N, 77.
+554 < 1   seedPastRun(evidenceDir, evidenceScratch, 9, { 'status.json': '{"run":"9","state":"done"}\n' })
+555 < 1   seedPastRun(evidenceDir, evidenceScratch, 77, {
+556 < 1     'status.json': '{"run":"77","state":"parked","tasks":{"1":{"state":"parked"}}}\n',
+557 < 1     'events.jsonl': '{"kind":"landing"}\n'
+558 < 1   })
+559 < 1   seedPastRun(evidenceDir, evidenceScratch, 900, { 'status.json': '{"run":"900","state":"done"}\n' })
+560 < 1   wireEvidence(home, evidenceDir)
+561 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+562 < 1   buildEngineDir(home, ENGINE_SHA)
+563 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+564 < 1 
+565 < 1   const env = {
+566 < 1     ...baseEnv(PROXY_URL),
+567 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+568 < 1     MERGE_SHA
+569 < 1   }
+570 < 1   const res = await runBootAsync({ bin, home, env })
+571 < 1   assert.equal(res.code, 0, `(f) the run with earlier tags exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
+572 < 1 
+573 < 1   const argv = engineArgv(home)
+574 < 1   const at = argv.indexOf('--past-dir')
+575 < 1   assert.ok(at >= 0 && at + 1 < argv.length, `(f) [M4] the engine is started with --past-dir — got ${JSON.stringify(argv)}`)
+576 < 1   const pastDir = argv[at + 1]
+577 < 1   assert.equal(path.basename(pastDir), '77', `(f) [M4] --past-dir's basename is the highest earlier run, 77 — got ${pastDir}`)
+578 < 1   assert.equal(
+579 < 1     fs.readFileSync(path.join(pastDir, 'status.json'), 'utf8'),
+580 < 1     atTag(evidenceDir, 77, 'status.json'),
+581 < 1     '(f) [M4] the past directory\'s status.json is byte-equal to runs/o-r/77/status.json at o-r/run-77'
+582 < 1   )
+583 < 1 }
+584 < 1 
+585 < 1 // ── (g) [M5] no fleet-evidence-repo: the boot fails naming it, the target untouched ──
+586 < 1 
+587 < 1 {
+588 < 1   const runN = '507'
+589 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-g-'))
+590 < 1   const home = path.join(root, 'home')
+591 < 1   const bin = path.join(root, 'bin')
+592 < 1   fs.mkdirSync(home, { recursive: true })
+593 < 1   fs.mkdirSync(bin, { recursive: true })
+594 < 1   writeGitConfig(home)
+595 < 1 
+596 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+597 < 1   wireEvidence(home, evidenceDir, { setting: false })
+598 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+599 < 1   buildEngineDir(home, ENGINE_SHA)
+600 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+601 < 1   const targetBefore = refsOf(originDir)
+602 < 1   const evidenceBefore = refsOf(evidenceDir)
+603 < 1 
+604 < 1   const env = {
+605 < 1     ...baseEnv(PROXY_URL),
+606 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+607 < 1   }
+608 < 1   const res = await runBootAsync({ bin, home, env })
+609 < 1   assert.notEqual(res.code, 0, `(g) [M5] the boot exits non-zero with no fleet-evidence-repo — got 0, stderr: ${res.stderr}`)
+610 < 1   const bootLog = fs.readFileSync(path.join(home, 'fleet-boot.log'), 'utf8')
+611 < 1   assert.ok(
+612 < 1     bootLog.split('\n').some((l) => l.includes('fleet-evidence-repo')),
+613 < 1     `(g) [M5] a fleet-boot.log line names fleet-evidence-repo — got:\n${bootLog}`
+614 < 1   )
+615 < 1   assert.deepEqual(refsOf(originDir), targetBefore, '(g) [M5] the target\'s refs are unchanged')
+616 < 1   assert.deepEqual(refsOf(evidenceDir), evidenceBefore, '(g) the evidence repository\'s refs are unchanged')
+617 < 1 }
+618 < 1 
+619 < 1 // ── (h) nothing ahead of base with a green engine (shopping-list run-1): done, nothing to build ──
+620 < 1 
+621 < 1 {
+622 < 1   const runN = '508'
+623 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-h-'))
+624 < 1   const home = path.join(root, 'home')
+625 < 1   const bin = path.join(root, 'bin')
+626 < 1   fs.mkdirSync(home, { recursive: true })
+627 < 1   fs.mkdirSync(bin, { recursive: true })
+628 < 1   writeGitConfig(home)
+629 < 1 
+630 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+631 < 1   wireEvidence(home, evidenceDir)
+632 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+633 < 1   buildEngineDir(home, ENGINE_SHA)
+634 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+635 < 1   fs.writeFileSync(path.join(home, 'engine-lands-nothing'), '')
+636 < 1 
+637 < 1   const env = {
+638 < 1     ...baseEnv(PROXY_URL),
+639 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+640 < 1   }
+641 < 1   const res = await runBootAsync({ bin, home, env })
+642 < 1   assert.equal(res.code, 0, `(h) the nothing-ahead run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
+643 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+644 < 1   assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
+645 < 1   assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
+646 < 1   assert.equal(status.pr, null, '(h) no pull request is opened')
+647 < 1   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+648 < 1   assert.deepEqual(rows.filter((r) => r.kind === 'board:mark'), [], `(h) nothing is marked parked — got ${JSON.stringify(rows.filter((r) => r.kind === 'board:mark'))}`)
+649 < 1   assert.ok(rows.some((r) => r.kind === 'board:close' && r.what === 'run'), `(h) the run's close is in the tagged record — got ${JSON.stringify(rows.filter((r) => String(r.kind).startsWith('board')))}`)
+650 < 1   assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
+651 < 1   assert.deepEqual(rows.filter((r) => r.kind === 'run:audit').map(({ ts, ...r }) => r), [{ kind: 'run:audit', state: 'done', missing: [] }],
+652 < 1     `(h) [#1522] the record ends with one run:audit row — got ${JSON.stringify(rows.filter((r) => r.kind === 'run:audit'))}`)
+653 < 1   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
+654 < 1 }
+655 < 1 
+656 < 1 // ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──
+657 < 1 
+658 < 1 {
+659 < 1   const runN = '509'
+660 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-i-'))
+661 < 1   const home = path.join(root, 'home')
+662 < 1   const bin = path.join(root, 'bin')
+663 < 1   fs.mkdirSync(home, { recursive: true })
+664 < 1   fs.mkdirSync(bin, { recursive: true })
+665 < 1   writeGitConfig(home)
+666 < 1 
+667 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+668 < 1   wireEvidence(home, evidenceDir)
+669 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+670 < 1   buildEngineDir(home, ENGINE_SHA)
+671 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+672 < 1   fs.writeFileSync(path.join(home, 'engine-hangs'), '')
+673 < 1 
+674 < 1   const env = {
+675 < 1     ...baseEnv(PROXY_URL),
+676 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
+677 < 1   }
+678 < 1   const boot = runBootAsync({ bin, home, env })
+679 < 1 
+680 < 1   // Killed once the live branch's record says `running` and the engine stub has started.
+681 < 1   const liveStatus = () => {
+682 < 1     try {
+683 < 1       return JSON.parse(git(evidenceDir, ['show', `live/o-r/run-${runN}:runs/o-r/${runN}/status.json`])).state
+684 < 1     } catch { return null }
+685 < 1   }
+686 < 1   const deadline = Date.now() + 60000
+687 < 1   while (!(liveStatus() === 'running' && fs.existsSync(path.join(home, 'engine-argv')))) {
+688 < 1     if (Date.now() > deadline) { boot.kill(); await boot; assert.fail('(i) the boot never reached a running engine') }
+689 < 1     await new Promise((resolve) => setTimeout(resolve, 100))
+690 < 1   }
+691 < 1   boot.kill()
+692 < 1   const killed = await boot
+693 < 1   assert.equal(killed.signal, 'SIGKILL', `(i) the boot was killed — got code ${killed.code}, signal ${killed.signal}`)
+694 < 1 
+695 < 1   const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
+696 < 1   assert.equal(died.code, 0, `(i) boot.sh died exits 0 — got ${died.code}, stderr tail: ${(died.stderr || '').slice(-4000)}`)
+697 < 1 
+698 < 1   // [M1] the tag's status says failed and names how the unit ended.
+699 < 1   assert.ok(`refs/tags/o-r/run-${runN}` in refsOf(evidenceDir), '(i) [M1] the killed run leaves the o-r/run-<N> tag')
+700 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+701 < 1   assert.equal(status.state, 'failed', '(i) [M1] status.json at the tag records state "failed"')
+702 < 1   assert.ok(
+703 < 1     typeof status.error === 'string' && status.error.includes('unit signal'),
+704 < 1     `(i) [M1] status.json's error names how the unit ended — got ${JSON.stringify(status.error)}`
+705 < 1   )
+706 < 1   // [M2] the tag carries the unit's journal.
+707 < 1   assert.ok(
+708 < 1     atTag(evidenceDir, runN, 'journal.txt').includes('stub journal line'),
+709 < 1     '(i) [M2] journal.txt at the tag carries the journal stub\'s line'
+710 < 1   )
+711 < 1 }
+712 < 1 
+713 < 1 // ── (j) #1441 main moved after the target clone: the self-merge catches up before its merge ──
+714 < 1 
+715 < 1 {
+716 < 1   const runN = '510'
+717 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-j-'))
+718 < 1   const home = path.join(root, 'home')
+719 < 1   const bin = path.join(root, 'bin')
+720 < 1   fs.mkdirSync(home, { recursive: true })
+721 < 1   fs.mkdirSync(bin, { recursive: true })
+722 < 1   writeGitConfig(home)
+723 < 1 
+724 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+725 < 1   wireEvidence(home, evidenceDir)
+726 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+727 < 1 
+728 < 1   // Move the origin's main by one commit touching a file the plan never names.
+729 < 1   const side = path.join(root, 'side')
+730 < 1   git(root, ['clone', originDir, side])
+731 < 1   git(side, ['checkout', 'main'])
+732 < 1   fs.writeFileSync(path.join(side, 'other.txt'), 'a commit that landed on main after the clone\n')
+733 < 1   git(side, ['add', 'other.txt'])
+734 < 1   git(side, ['-c', 'user.name=Side', '-c', 'user.email=side@example.com', 'commit', '-m', 'move main'])
+735 < 1   git(side, ['push', 'origin', 'main'])
+736 < 1 
+737 < 1   buildEngineDir(home, ENGINE_SHA)
+738 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+739 < 1 
+740 < 1   const env = {
+741 < 1     ...baseEnv(PROXY_URL),
+742 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+743 < 1     MERGE_SHA
+744 < 1   }
+745 < 1 
+746 < 1   const res = await runBootAsync({ bin, home, env })
+747 < 1 
+748 < 1   assert.equal(
+749 < 1     res.code, 0,
+750 < 1     `(j) the moved-main run exits 0 — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+751 < 1   )
+752 < 1 
+753 < 1   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+754 < 1   const refoldAt = rows.findIndex((r) => r.kind === 'refold' && r.ok === true)
+755 < 1   const mergeAt = rows.findIndex((r) => r.kind === 'merge' && r.code === 200)
+756 < 1   assert.ok(refoldAt >= 0, `(j) events.jsonl carries a refold row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+757 < 1   assert.ok(mergeAt >= 0, `(j) events.jsonl carries a merge row with code 200 — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
+758 < 1   assert.ok(refoldAt < mergeAt, `(j) the refold row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+759 < 1 
+760 < 1   assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', '(j) status.json at the tag records state "done"')
+761 < 1   console.log('ok (j) the self-merge catches up to a moved main')
+762 < 1 }
+763 < 1 
+764 < 1 // ── (k) the request to open the pull request gets no answer (flock-baseline run-22) ──
+765 < 1 // `created`: the pull request opened all the same; the publish finds it by the run's branch and
+766 < 1 // merges it. `lost`: nothing opened; the publish asks once more.
+767 < 1 
+768 < 1 for (const [n, how] of [['511', 'created'], ['512', 'lost']]) {
+769 < 1   const runN = n
+770 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-k-'))
+771 < 1   const home = path.join(root, 'home')
+772 < 1   const bin = path.join(root, 'bin')
+773 < 1   fs.mkdirSync(home, { recursive: true })
+774 < 1   fs.mkdirSync(bin, { recursive: true })
+775 < 1   writeGitConfig(home)
+776 < 1 
+777 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+778 < 1   wireEvidence(home, evidenceDir)
+779 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+780 < 1   buildEngineDir(home, ENGINE_SHA)
+781 < 1   writeStubs(bin, { claudeAuth: 'oauth' })
+782 < 1   fs.writeFileSync(path.join(home, 'pr-no-answer'), how)
+783 < 1 
+784 < 1   const env = {
+785 < 1     ...baseEnv(PROXY_URL),
+786 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+787 < 1     MERGE_SHA
+788 < 1   }
+789 < 1   const res = await runBootAsync({ bin, home, env })
+790 < 1   assert.equal(res.code, 0, `(k ${how}) the run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-3000)}`)
+791 < 1 
+792 < 1   const bootLog = atTag(evidenceDir, runN, 'fleet-boot.log')
+793 < 1   assert.ok(bootLog.includes('POST /repos/o/r/pulls answered 000'), `(k ${how}) the boot log records the request that got no answer — got ${bootLog.slice(-1500)}`)
+794 < 1   const lookups = fs.readFileSync(path.join(home, 'pr-lookups'), 'utf8').trim().split('\n')
+795 < 1   assert.ok(lookups.every((u) => u.endsWith(`/pulls?head=o:ultra%2Fintegration-run-${runN}&state=open`)), `(k ${how}) the lookup names the run's branch — got ${JSON.stringify(lookups)}`)
+796 < 1   assert.equal(lookups.length, 1, `(k ${how}) one lookup — got ${JSON.stringify(lookups)}`)
+797 < 1   assert.equal(bootLog.includes('the pull request is open all the same: https://github.com/o/r/pull/7'), how === 'created', `(k ${how}) the boot log ${how === 'created' ? 'names' : 'does not name'} a pull request found open`)
+798 < 1   assert.ok(fs.existsSync(path.join(home, 'pr-post.json')), `(k ${how}) a pull request was opened`)
+799 < 1 
+800 < 1   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+801 < 1   const prRows = rows.filter((r) => r.kind === 'publish:pr')
+802 < 1   assert.ok(prRows.length === 1 && prRows[0].number === 7 && prRows[0].url === 'https://github.com/o/r/pull/7', `(k ${how}) one publish:pr row for pull request 7 — got ${JSON.stringify(prRows)}`)
+803 < 1   assert.ok(rows.some((r) => r.kind === 'merge' && r.code === 200), `(k ${how}) the pull request was merged — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
+804 < 1   assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', `(k ${how}) status.json at the tag records state "done"`)
+805 < 1   console.log(`ok (k) no answer to the pull request, ${how}`)
+806 < 1 }
+807 < 1 
+808 < 1 proxyServer.close()
+809 < 1 
+810 < 1 console.log('ALL TESTS PASSED')
+811 < 1 

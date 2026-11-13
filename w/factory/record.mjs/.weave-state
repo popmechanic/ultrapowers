@@ -1,0 +1,492 @@
+0 < 1 /**
+1 < 1  * factory/record.mjs — the run's renderer (#1167, #1205, #1222).
+2 < 1  *
+3 < 1  * This module decides nothing: it takes what the boot and `factory/publish.mjs` already know
+4 < 1  * and turns it into the bytes they write — the twelve-cell status page (`status`, the
+5 < 1  * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
+6 < 1  * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
+7 < 1  * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
+8 < 1  * one thing to stdout and its exit code says whether that printing happened. The JSON the
+9 < 1  * publish used to build here by hand is `publish.mjs`'s own now (#1441).
+10 < 1  */
+11 < 1 
+12 < 1 import { readFileSync } from 'node:fs'
+13 < 1 import { readEventRows } from './flock/io.mjs'
+14 < 1 import { parsedPlan } from './flock/plan.mjs'
+15 < 1 
+16 < 1 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
+17 < 1  *  whole token as the key and an empty string as the value. */
+18 < 1 function splitToken (token) {
+19 < 1   const idx = token.indexOf('=')
+20 < 1   if (idx === -1) return [token, '']
+21 < 1   return [token.slice(0, idx), token.slice(idx + 1)]
+22 < 1 }
+23 < 1 
+24 < 1 /** One `{"key":value,...}` object, keys and values rendered in the order
+25 < 1  *  given — never a plain JS object, whose own key order reorders an
+26 < 1  *  integer-looking string key ahead of insertion order. */
+27 < 1 function renderObject (entries) {
+28 < 1   return '{' + entries.map(([k, v]) => JSON.stringify(k) + ':' + JSON.stringify(v)).join(',') + '}'
+29 < 1 }
+30 < 1 
+31 < 1 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
+32 < 1  *  parse is skipped — the projection is a fact over what did land, not a reason
+33 < 1  *  to fail over what didn't — and a file that is missing or empty gives no rows. */
+34 < 1 export { readEventRows }
+35 < 1 
+36 < 1 /** The status page's `tasks` cell: one entry per task a `landing` or
+37 < 1  *  `parked` row names, in the order each task first appears, its state and
+38 < 1  *  park overwritten (position kept) by a later row for the same task. */
+39 < 1 export function projectTasks (eventsPath) {
+40 < 1   const order = []
+41 < 1   const state = {}
+42 < 1   const park = {}
+43 < 1   const note = (id, st, pk) => {
+44 < 1     if (!(id in state)) order.push(id)
+45 < 1     state[id] = st
+46 < 1     park[id] = pk
+47 < 1   }
+48 < 1   for (const row of readEventRows(eventsPath)) {
+49 < 1     if (!row || row.task == null) continue
+50 < 1     const id = String(row.task)
+51 < 1     if (row.kind === 'landing') {
+52 < 1       note(id, 'folded', null)
+53 < 1     } else if (row.kind === 'parked') {
+54 < 1       const reason = Object.prototype.hasOwnProperty.call(row, 'reason') ? row.reason : null
+55 < 1       note(id, 'failed', reason)
+56 < 1     }
+57 < 1   }
+58 < 1   const tasks = {}
+59 < 1   for (const id of order) {
+60 < 1     tasks[id] = { state: state[id], park: park[id] }
+61 < 1   }
+62 < 1   return tasks
+63 < 1 }
+64 < 1 
+65 < 1 /** A field the boot handed over as `key=` — a string, or `null` when the
+66 < 1  *  value is absent or empty. */
+67 < 1 function stringOrNull (value) {
+68 < 1   return value === undefined || value === '' ? null : value
+69 < 1 }
+70 < 1 
+71 < 1 /** A field that is always a string on the page — `""` when absent or empty. */
+72 < 1 function stringOrEmpty (value) {
+73 < 1   return value === undefined ? '' : value
+74 < 1 }
+75 < 1 
+76 < 1 /** `status key=value ... --events <file>` — the twelve-cell page, `tasks`
+77 < 1  *  last, `updatedAt` stamped fresh on every call. */
+78 < 1 export function renderStatus (fields, eventsPath) {
+79 < 1   const tasks = eventsPath ? projectTasks(eventsPath) : {}
+80 < 1   const entries = [
+81 < 1     ['run', stringOrEmpty(fields.run)],
+82 < 1     ['state', stringOrEmpty(fields.state)],
+83 < 1     ['phase', stringOrEmpty(fields.phase)],
+84 < 1     ['pr', stringOrNull(fields.pr)],
+85 < 1     ['prAuthor', stringOrNull(fields.prAuthor)],
+86 < 1     ['merged', stringOrNull(fields.merged)],
+87 < 1     ['branch', stringOrEmpty(fields.branch)],
+88 < 1     ['vm', stringOrNull(fields.vm)],
+89 < 1     ['startedAt', stringOrEmpty(fields.startedAt)],
+90 < 1     ['updatedAt', new Date().toISOString()],
+91 < 1     ['error', stringOrNull(fields.error)],
+92 < 1     ['tasks', tasks]
+93 < 1   ]
+94 < 1   return renderObject(entries)
+95 < 1 }
+96 < 1 
+97 < 1 /** The plan's `**Summary:**` paragraph: that line (its prefix and one
+98 < 1  *  optional following space removed) down to but not including the first
+99 < 1  *  blank line, each kept verbatim; no such line gives no lines at all. */
+100 < 1 function planSummaryLines (planText) {
+101 < 1   const lines = planText.split('\n')
+102 < 1   let started = false
+103 < 1   const out = []
+104 < 1   for (const line of lines) {
+105 < 1     if (!started) {
+106 < 1       if (/^\*\*Summary:\*\*/.test(line)) {
+107 < 1         started = true
+108 < 1         out.push(line.replace(/^\*\*Summary:\*\*[ ]?/, ''))
+109 < 1       }
+110 < 1       continue
+111 < 1     }
+112 < 1     if (/^[ \t]*$/.test(line)) break
+113 < 1     out.push(line)
+114 < 1   }
+115 < 1   return out
+116 < 1 }
+117 < 1 
+118 < 1 /** Exactly one line of the plan: the first `**Closes:**` after the first
+119 < 1  *  `**Goal:**` and before the first `### `. Never a regex over the body. */
+120 < 1 function planClosesLine (planText) {
+121 < 1   const lines = planText.split('\n')
+122 < 1   let goal = false
+123 < 1   for (const line of lines) {
+124 < 1     if (/^### /.test(line)) return null
+125 < 1     if (goal && /^\*\*Closes:\*\*/.test(line)) return line
+126 < 1     if (/^\*\*Goal:\*\*/.test(line)) goal = true
+127 < 1   }
+128 < 1   return null
+129 < 1 }
+130 < 1 
+131 < 1 /** `Closes #<n>` per `#<digits>` match on the plan's `**Closes:**` line;
+132 < 1  *  no such line gives no lines at all. */
+133 < 1 function planClosesLines (planText) {
+134 < 1   const line = planClosesLine(planText)
+135 < 1   if (line == null) return []
+136 < 1   const matches = line.match(/#[0-9]+/g) || []
+137 < 1   return matches.map((m) => `Closes ${m}`)
+138 < 1 }
+139 < 1 
+140 < 1 /** A row cell: a string prints raw, a number/boolean/null prints as its JSON
+141 < 1  *  text, and an absent field prints as nothing between the two spaces. */
+142 < 1 function cellText (value) {
+143 < 1   if (value === undefined) return ''
+144 < 1   if (typeof value === 'string') return value
+145 < 1   return JSON.stringify(value)
+146 < 1 }
+147 < 1 
+148 < 1 /** The plan's probes, per task in plan order, off the run's one parse (or the
+149 < 1  *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}], extra}`. A
+150 < 1  *  stories-v1 task's probes are its checker calls. A plan the parser refuses
+151 < 1  *  gives `null`, and the receipt then shows exits without probe text. */
+152 < 1 function planProbes (planPath, planJson) {
+153 < 1   let parsed
+154 < 1   try { parsed = parsedPlan(planPath, planJson) } catch { return null }
+155 < 1   return (parsed.tasks || []).map((t) => ({
+156 < 1     id: String(t.id),
+157 < 1     probes: parsed.grammar === 'stories-v1'
+158 < 1       ? (t.probes || []).map((p) => ({ cmd: 'story checker', proves: p.clause }))
+159 < 1       : (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
+160 < 1     extra: parsed.grammar === 'stories-v1' ? 'screens check' : null,
+161 < 1   }))
+162 < 1 }
+163 < 1 
+164 < 1 /** The edge row the receipt reads: the one whose `snap` is the last `settled`
+165 < 1  *  row's, or the last `edge` row when nothing settled; `null` without edges. */
+166 < 1 function receiptEdge (rows) {
+167 < 1   let settled = null
+168 < 1   const edges = []
+169 < 1   for (const row of rows) {
+170 < 1     if (!row) continue
+171 < 1     if (row.kind === 'settled') settled = row.snap
+172 < 1     else if (row.kind === 'edge') edges.push(row)
+173 < 1   }
+174 < 1   if (!edges.length) return null
+175 < 1   if (settled !== null) {
+176 < 1     const hit = edges.filter((e) => e.snap === settled).pop()
+177 < 1     if (hit) return hit
+178 < 1   }
+179 < 1   return edges[edges.length - 1]
+180 < 1 }
+181 < 1 
+182 < 1 const receiptCell = (text) => String(text).replace(/\|/g, '\\|')
+183 < 1 const probeCell = (cmd) => '`' + receiptCell(cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd) + '`'
+184 < 1 
+185 < 1 /** `### Receipt` — one row per probe the plan named, with the exit it got on the
+186 < 1  *  settled snapshot, then the run-wide checks' exit and the `**Evidence:**` link
+187 < 1  *  when one was given. No edge row gives no receipt, only the link. */
+188 < 1 function receiptLines (planPath, planJson, rows, evidenceUrl) {
+189 < 1   const out = []
+190 < 1   const edge = receiptEdge(rows)
+191 < 1   if (edge) {
+192 < 1     const perTask = edge.perTask || {}
+193 < 1     const tasks = planProbes(planPath, planJson) ||
+194 < 1       Object.keys(perTask).map((id) => ({ id, probes: perTask[id].map(() => ({ cmd: '—', proves: '—' })) }))
+195 < 1     out.push('### Receipt', '', '| task | probe | proves | exit |', '|---|---|---|---|')
+196 < 1     for (const t of tasks) {
+197 < 1       const exits = perTask[t.id] || []
+198 < 1       t.probes.forEach((p, i) => {
+199 < 1         const exit = typeof exits[i] === 'number' ? String(exits[i]) : '—'
+200 < 1         out.push(`| ${t.id} | ${p.cmd === '—' ? '—' : probeCell(p.cmd)} | ${receiptCell(p.proves || '—')} | ${exit} |`)
+201 < 1       })
+202 < 1       if (t.extra) for (const x of exits.slice(t.probes.length)) out.push(`| ${t.id} | ${probeCell(t.extra)} | — | ${typeof x === 'number' ? x : '—'} |`)
+203 < 1     }
+204 < 1     out.push('', `Run-wide checks: exit ${edge.check ?? '—'}`)
+205 < 1   }
+206 < 1   if (evidenceUrl) out.push(`**Evidence:** ${evidenceUrl}`)
+207 < 1   return out
+208 < 1 }
+209 < 1 
+210 < 1 /** `### Jev read each story step (record only)` — a two-column table, one row
+211 < 1  *  per clause naming the latest `jev:step` row for it (file order breaks a
+212 < 1  *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
+213 < 1 function jevStepLines (rows) {
+214 < 1   const last = new Map()
+215 < 1   for (const row of rows) {
+216 < 1     if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
+217 < 1   }
+218 < 1   if (!last.size) return []
+219 < 1   const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
+220 < 1   for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
+222 > 1     out.push(`| ${clause} | ${r.answer == null ? 'no reading' : safeText(r.answer).replace(/\|/g, '\\|')} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
+221 < 2     out.push(`| ${clause} | ${r.answer ?? 'no reading'} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
+222 < 1   }
+223 < 1   return out
+224 < 1 }
+225 < 1 
+226 < 1 /** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
+227 < 1  *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
+228 < 1  *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
+229 < 1 function draftReasonLines (rows) {
+230 < 1   let term = null
+231 < 1   const stalls = []
+232 < 1   for (const row of rows) {
+233 < 1     if (!row) continue
+234 < 1     if (row.kind === 'terminal') term = row
+235 < 1     else if (typeof row.kind === 'string' && row.kind.startsWith('stall:')) stalls.push(row.kind)
+236 < 1   }
+237 < 1   if (!term || term.pr !== 'draft') return []
+238 < 1   const out = [`**Draft:** ${term.why || 'the run ended without settling green'}.`]
+239 < 1   if (stalls.length) out.push(`Stalls recorded: ${[...new Set(stalls)].map((k) => '`' + k + '`').join(', ')}.`)
+240 < 1   return out
+241 < 1 }
+242 < 1 
+243 < 1 /** How many lines a provenance `lines` value names: `a-b` is b-a+1, `a` is 1, anything else 0. */
+244 < 1 function lineCount (lines) {
+245 < 1   const m = /^(\d+)(?:-(\d+))?$/.exec(String(lines ?? ''))
+246 < 1   if (!m) return 0
+247 < 1   return m[2] === undefined ? 1 : Math.max(0, Number(m[2]) - Number(m[1]) + 1)
+248 < 1 }
+249 < 1 
+250 < 1 /** The `### Provenance` section over the engine's `provenance.json` (#1404): the heading, an
+251 < 1  *  empty line and one counts line — changed lines, the tasks that changed them and the exceptions
+252 < 1  *  by kind. An absent, missing or unparseable file adds nothing. */
+253 < 1 function provenanceLines (provenancePath) {
+254 < 1   if (!provenancePath) return []
+255 < 1   let prov
+256 < 1   try { prov = JSON.parse(readFileSync(provenancePath, 'utf8')) } catch { return [] }
+257 < 1   if (!prov || typeof prov !== 'object') return []
+258 < 1   const hunks = Array.isArray(prov.hunks) ? prov.hunks : []
+259 < 1   const changed = hunks.reduce((n, h) => n + lineCount(h && h.lines), 0)
+260 < 1   // A hunk of `1|2` holds lines two tasks wrote identically: each counts once.
+261 < 1   const tasks = new Set(hunks.filter((h) => h && h.task !== undefined).flatMap((h) => String(h.task).split('|'))).size
+262 < 1   const kinds = { contested: 0, lost: 0, ordered: 0, foreign: 0 }
+263 < 1   for (const e of Array.isArray(prov.exceptions) ? prov.exceptions : []) {
+264 < 1     if (e && Object.hasOwn(kinds, e.kind)) kinds[e.kind]++
+265 < 1   }
+266 < 1   return ['### Provenance', '',
+267 < 1     `${changed} changed lines from ${tasks} tasks; exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
+268 < 1 }
+269 < 1 
+271 > 1 /** The most characters the body holds (#1529): GitHub refuses one over about 65,536, and then
+272 < 1  *  no pull request opens. One builder value is cut at `VALUE_CAP`. */
+273 < 1 const BODY_CAP = 60000
+274 < 1 const VALUE_CAP = 500
+275 < 1 
+276 < 1 /** Builder text or app data as one harmless run of body text (#1529): any value prints as its
+277 < 1  *  `cellText`, line breaks become spaces (no injected heading or list), `<` becomes `&lt;` (no
+278 < 1  *  HTML comment hiding the rest), a `#` before a digit is escaped (no `Fixes #3` closing an
+279 < 1  *  issue) and the text is cut at `VALUE_CAP` with an ellipsis. Plain text passes unchanged. */
+280 < 1 function safeText (value) {
+282 > 1   let text = cellText(value).replace(/[^\S ]+/g, ' ')
+284 > 1   /* every whitespace but a space, so line breaks such as [\r\n  ] */
+283 < 2   /* every whitespace but a space, so line breaks such as [\r\n  ]+/g, ' ')
+281 < 2   let text = cellText(value).replace(/[\r\n  ]+/g, ' ')
+282 < 1   if (text.length > VALUE_CAP) text = text.slice(0, VALUE_CAP - 1) + '…'
+283 < 1   return text.replace(/</g, '&lt;').replace(/#(?=\d)/g, '\\#')
+284 < 1 }
+285 < 1 
+270 < 1 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
+271 < 1  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
+272 < 1  *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
+273 < 1  *  closing line saying the cleanup was dropped and which snapshot landed. */
+274 < 1 function looseEndsLines (events) {
+275 < 1   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
+276 < 1   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
+277 < 1   const fb = events.filter((r) => r && r.kind === 'loose:fallback').at(-1)
+278 < 1   if (!items.length && !fb) return []
+279 < 1   const resolved = items.filter((i) => i.state === 'resolved').length
+280 < 1   const out = ['### Loose ends', '', `${items.length} reported by builders, ${resolved} resolved in the run.`]
+281 < 1   for (const i of items) {
+283 > 1     const who = i.task === undefined || i.task === null || i.task === '' ? `(${safeText(i.by)})` : `(${safeText(i.by)}, task ${safeText(i.task)})`
+284 < 1     if (i.state === 'open') out.push(`- open: ${safeText(i.path)} still contains "${safeText(i.stale)}" \u2014 ${safeText(i.claim)} ${who}`)
+285 < 1     else if (i.state === 'unchecked') out.push(`- not checked: ${safeText(i.path)} \u2014 ${safeText(i.claim)} ${who}`)
+282 < 2     const who = i.task === undefined || i.task === null || i.task === '' ? `(${i.by})` : `(${i.by}, task ${i.task})`
+283 < 2     if (i.state === 'open') out.push(`- open: ${i.path} still contains "${i.stale}" \u2014 ${i.claim} ${who}`)
+284 < 2     else if (i.state === 'unchecked') out.push(`- not checked: ${i.path} \u2014 ${i.claim} ${who}`)
+285 < 1   }
+286 < 1   if (fb) {
+287 < 1     const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
+288 < 1     out.push('', end && end.pr === 'ready' && end.snap === fb.snap
+289 < 1       ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+290 < 1       : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
+291 < 1   }
+292 < 1   return out
+293 < 1 }
+294 < 1 
+295 < 1 /** The `### What each step changed` section over the `step:receipt` rows: the heading, an empty
+296 < 1  *  line, then one line per row in file order naming each diff entry, `no change` for an empty
+297 < 1  *  diff and a trailing `; and more not shown` when truncated. No such row adds nothing. */
+298 < 1 function stepReceiptLines (events) {
+299 < 1   const receipts = events.filter((r) => r && r.kind === 'step:receipt')
+300 < 1   if (!receipts.length) return []
+301 < 1   const out = ['### What each step changed', '']
+302 < 1   for (const r of receipts) {
+303 < 1     const parts = (Array.isArray(r.diff) ? r.diff : []).filter((d) => d && typeof d === 'object').map((d) => {
+305 > 1       const path = d.tbl === '$values' ? `values.${safeText(d.cell)}` : `${safeText(d.tbl)}/${safeText(d.row)}/${safeText(d.cell)}`
+306 < 1       if (d.diff_type === 'added') return `added ${path} = ${safeText(d.to)}`
+307 < 1       if (d.diff_type === 'removed') return `removed ${path} (was ${safeText(d.from)})`
+308 < 1       return `changed ${path} ${safeText(d.from)} \u2192 ${safeText(d.to)}`
+304 < 2       const path = d.tbl === '$values' ? `values.${d.cell}` : `${d.tbl}/${d.row}/${d.cell}`
+305 < 2       if (d.diff_type === 'added') return `added ${path} = ${d.to}`
+306 < 2       if (d.diff_type === 'removed') return `removed ${path} (was ${d.from})`
+307 < 2       return `changed ${path} ${d.from} \u2192 ${d.to}`
+308 < 1     })
+309 < 1     let changes = parts.length ? parts.join('; ') : 'no change'
+310 < 1     if (r.truncated === true) changes += '; and more not shown'
+312 > 1     out.push(`- ${safeText(r.clause)} (exit ${safeText(r.exit)}): ${changes}`)
+311 < 2     out.push(`- ${r.clause} (exit ${r.exit}): ${changes}`)
+312 < 1   }
+313 < 1   return out
+314 < 1 }
+315 < 1 
+316 < 1 /** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
+317 < 1  *  empty line, the receipt, an empty line, the closes; every line, including
+318 < 1  *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
+319 < 1  *  ends follow that, a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
+320 < 1 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
+321 < 1   const planText = readFileSync(planPath, 'utf8')
+322 < 1   const summary = planSummaryLines(planText)
+323 < 1   const events = eventsPath ? readEventRows(eventsPath) : []
+324 < 1   const rows = receiptLines(planPath, planJson, events, evidenceUrl)
+325 < 1   const closes = planClosesLines(planText)
+326 < 2   let out = ''
+327 < 2   for (const line of summary) out += line + '\n'
+328 < 2   out += '\n'
+329 < 2   for (const line of rows) out += line + '\n'
+330 < 2   out += '\n'
+331 < 1   const provenance = provenanceLines(provenancePath)
+333 > 1   let looseEnds = looseEndsLines(events)
+332 < 2   for (const line of provenance) out += line + '\n'
+333 < 2   if (provenance.length) out += '\n'
+334 < 2   const looseEnds = looseEndsLines(events)
+335 < 2   for (const line of looseEnds) out += line + '\n'
+336 < 2   if (looseEnds.length) out += '\n'
+337 < 1   const draft = draftReasonLines(events)
+338 < 2   for (const line of draft) out += line + '\n'
+339 < 2   if (draft.length) out += '\n'
+340 < 1   const readings = jevStepLines(events)
+342 > 1   let changes = stepReceiptLines(events)
+343 < 1   const assemble = () => {
+344 < 1     let out = ''
+345 < 1     for (const line of summary) out += line + '\n'
+346 < 1     out += '\n'
+347 < 1     for (const line of rows) out += line + '\n'
+348 < 1     out += '\n'
+349 < 1     for (const section of [provenance, looseEnds, draft, readings, changes]) {
+350 < 1       for (const line of section) out += line + '\n'
+351 < 1       if (section.length) out += '\n'
+352 < 1     }
+353 < 1     for (const line of closes) out += line + '\n'
+354 < 1     return out
+355 < 1   }
+356 < 1   const whole = assemble()
+357 < 1   if (whole.length <= BODY_CAP) return whole
+358 < 1   // Too long for GitHub (#1529): the builders' lines give way, never the author's summary or closes.
+359 < 1   const fullLoose = looseEnds
+360 < 1   const fullChanges = changes
+361 < 1   looseEnds = looseEnds.filter((l) => !isItem(l))
+362 < 1   changes = changes.filter((l) => !isItem(l))
+363 < 1   const room = BODY_CAP - assemble().length
+364 < 1   const looseRoom = Math.max(Math.floor(room / 2), room - itemsLength(fullChanges))
+365 < 1   looseEnds = cutItems(fullLoose, looseRoom, evidenceUrl)
+366 < 1   changes = cutItems(fullChanges, room - itemsLength(looseEnds), evidenceUrl)
+367 < 1   return assemble()
+368 < 1 }
+369 < 1 
+370 < 1 const isItem = (line) => line.startsWith('- ')
+371 < 1 const itemsLength = (lines) => lines.filter(isItem).reduce((n, l) => n + l.length + 1, 0)
+372 < 1 
+373 < 1 /** `lines` with as many leading `- ` items as fit in `budget` characters, the rest replaced by
+374 < 1  *  one line counting them and pointing at the evidence; everything else is kept. */
+375 < 1 function cutItems (lines, budget, evidenceUrl) {
+376 < 1   const total = lines.filter(isItem).length
+377 < 1   const note = (n) => `- and ${n} more not shown${evidenceUrl ? `; the evidence holds them all: ${evidenceUrl}` : '.'}`
+378 < 1   let left = budget - (note(total).length + 1)
+379 < 1   const out = []
+380 < 1   let dropped = 0
+381 < 1   let noted = false
+382 < 1   for (const line of lines) {
+383 < 1     if (!isItem(line)) {
+384 < 1       if (dropped && !noted) { out.push(note(dropped)); noted = true }
+385 < 1       out.push(line)
+386 < 1     } else if (!dropped && line.length + 1 <= left) {
+387 < 1       left -= line.length + 1
+388 < 1       out.push(line)
+389 < 1     } else dropped++
+390 < 1   }
+391 < 1   if (dropped && !noted) out.push(note(dropped))
+341 < 2   for (const line of readings) out += line + '\n'
+342 < 2   if (readings.length) out += '\n'
+343 < 2   const changes = stepReceiptLines(events)
+344 < 2   for (const line of changes) out += line + '\n'
+345 < 2   if (changes.length) out += '\n'
+346 < 2   for (const line of closes) out += line + '\n'
+347 < 1   return out
+348 < 1 }
+349 < 1 
+350 < 1 /** The tokens after a subcommand, split into plain tokens and the file named
+351 < 1  *  by a `--events <file>` pair wherever it falls among them. */
+352 < 1 function extractEvents (args) {
+353 < 1   const rest = []
+354 < 1   let eventsPath
+355 < 1   for (let i = 0; i < args.length; i++) {
+356 < 1     if (args[i] === '--events') {
+357 < 1       eventsPath = args[i + 1]
+358 < 1       i++
+359 < 1       continue
+360 < 1     }
+361 < 1     rest.push(args[i])
+362 < 1   }
+363 < 1   return { rest, eventsPath }
+364 < 1 }
+365 < 1 
+366 < 1 /** One line on stderr and exit 2 — an unknown subcommand or a missing
+367 < 1  *  argument, never a stack trace. */
+368 < 1 function usageError (message) {
+369 < 1   process.stderr.write(`record: ${message}\n`)
+370 < 1   return 2
+371 < 1 }
+372 < 1 
+373 < 1 /** `node factory/record.mjs <subcommand> ...` — every subcommand writes only
+374 < 1  *  to stdout and exits 0 on success. */
+375 < 1 export function main (argv) {
+376 < 1   const args = argv.slice(2)
+377 < 1   const subcommand = args[0]
+378 < 1   switch (subcommand) {
+379 < 1     case 'status': {
+380 < 1       const { rest, eventsPath } = extractEvents(args.slice(1))
+381 < 1       const fields = {}
+382 < 1       for (const token of rest) {
+383 < 1         const [key, value] = splitToken(token)
+384 < 1         fields[key] = value
+385 < 1       }
+386 < 1       process.stdout.write(renderStatus(fields, eventsPath) + '\n')
+387 < 1       return 0
+388 < 1     }
+389 < 1     case 'pr-body': {
+390 < 1       const planPath = args[1]
+391 < 1       if (planPath === undefined) return usageError('pr-body: missing <plan.md>')
+392 < 1       const { rest, eventsPath } = extractEvents(args.slice(2))
+393 < 1       const at = rest.indexOf('--evidence')
+394 < 1       const pv = rest.indexOf('--provenance')
+395 < 1       const pj = rest.indexOf('--plan-json')
+396 < 1       process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined,
+397 < 1         pv >= 0 ? rest[pv + 1] : undefined, pj >= 0 ? rest[pj + 1] : undefined))
+398 < 1       return 0
+399 < 1     }
+400 < 1     default:
+401 < 1       return usageError(`unknown subcommand '${subcommand ?? ''}'`)
+402 < 1   }
+403 < 1 }
+404 < 1 
+405 < 1 if (import.meta.main) { process.exitCode = main(process.argv) }
+406 < 1 
+407 < 1 export default {
+408 < 1   renderStatus,
+409 < 1   renderPrBody,
+410 < 1   projectTasks,
+411 < 1   main
+412 < 1 }
+413 < 1 

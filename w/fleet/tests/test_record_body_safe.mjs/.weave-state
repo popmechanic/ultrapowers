@@ -1,0 +1,118 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_record_body_safe.mjs — the exam for "builder text and app data go into the
+2 < 1  * pull-request body escaped and capped" (#1529).
+3 < 1  *
+4 < 1  * Each case writes a small plan and an events file under a fresh temp folder, runs
+5 < 1  * `node factory/record.mjs pr-body <plan.md> --events <file> [--evidence <url>]` with
+6 < 1  * `simEnv`, and reads stdout.
+7 < 1  *
+8 < 1  *   (a) [M1] a multi-line `stale` adds no line starting with the injected heading.
+9 < 1  *   (b) [M2] a `<!--` in a claim is absent from the body.
+10 < 1  *   (c) [M3] the closing-keyword pattern has no match in `### Loose ends` or
+11 < 1  *       `### What each step changed`, for the claim and for the receipt value.
+12 < 1  *   (d) [M4] a 70,000-character changed value gives a body of at most 60,000 characters.
+13 < 1  *   (e) [M5] 400 loose ends of 300-character claims give a body of at most 60,000 characters
+14 < 1  *       that holds `Closes #77` and names the evidence URL after the last loose end shown.
+15 < 1  *   (f) [M6] a plain loose end's line is byte-equal to the line named.
+16 < 1  */
+17 < 1 
+18 < 1 import assert from 'node:assert/strict'
+19 < 1 import fs from 'node:fs'
+20 < 1 import os from 'node:os'
+21 < 1 import path from 'node:path'
+22 < 1 import { fileURLToPath } from 'node:url'
+23 < 1 import { spawnSync } from 'node:child_process'
+24 < 1 
+25 < 1 import { simEnv } from './_helpers.mjs'
+26 < 1 
+27 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+28 < 1 const RECORD_MJS = path.resolve(HERE, '../../factory/record.mjs')
+29 < 1 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'record-safe-home-'))
+30 < 1 const DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'record-safe-'))
+31 < 1 const PLAN = '# Plan\n\n**Summary:** The run does a thing.\n\n**Goal:** a goal.\n**Closes:** #77\n\n### Task 1: x\n'
+32 < 1 const EVIDENCE = 'https://evidence.example/run-1529'
+33 < 1 const CLOSING = /\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#\d+/i
+34 < 1 
+35 < 1 let n = 0
+36 < 1 function body (rows, evidence) {
+37 < 1   n++
+38 < 1   const plan = path.join(DIR, `plan-${n}.md`)
+39 < 1   const events = path.join(DIR, `events-${n}.jsonl`)
+40 < 1   fs.writeFileSync(plan, PLAN)
+41 < 1   fs.writeFileSync(events, rows.map((r) => JSON.stringify(r)).join('\n') + '\n')
+42 < 1   const args = [RECORD_MJS, 'pr-body', plan, '--events', events]
+43 < 1   if (evidence) args.push('--evidence', evidence)
+44 < 1   const res = spawnSync(process.execPath, args, { encoding: 'utf8', env: simEnv({ home: HOME }) })
+45 < 1   assert.equal(res.status, 0, `pr-body exits 0: ${res.stderr}`)
+46 < 1   return res.stdout
+47 < 1 }
+48 < 1 
+49 < 1 const loose = (items) => ({ kind: 'loose-ends', items })
+50 < 1 const open = (over) => ({ by: 'B', task: 2, about: 'app', path: 'a.txt', stale: 'x', claim: 'c', state: 'open', ...over })
+51 < 1 
+53 > 1 /** The lines of `text` from heading `name` up to the blank line that ends its items (the
+54 < 1  *  plan's own `Closes` lines follow the last section, and are the author's). */
+52 < 2 /** The lines of `text` from heading `name` up to the next `### ` heading. */
+53 < 1 function section (text, name) {
+54 < 1   const lines = text.split('\n')
+55 < 1   const at = lines.indexOf(name)
+56 < 1   if (at < 0) return ''
+58 > 1   const end = lines.findIndex((l, i) => i > at + 1 && l === '')
+57 < 2   const end = lines.findIndex((l, i) => i > at && l.startsWith('### '))
+58 < 1   return lines.slice(at, end < 0 ? undefined : end).join('\n')
+59 < 1 }
+60 < 1 
+61 < 1 // ── a. [M1] ──
+62 < 1 {
+63 < 1   const out = body([loose([open({ stale: 'x\n### Injected heading' })])])
+64 < 1   assert.ok(!out.split('\n').some((l) => l.startsWith('### Injected heading')), '(a) [M1] no injected heading line')
+65 < 1 }
+66 < 1 
+67 < 1 // ── b. [M2] ──
+68 < 1 {
+69 < 1   const out = body([loose([open({ claim: 'hide <!-- the rest' })])])
+70 < 1   assert.ok(!out.includes('<!--'), '(b) [M2] no <!-- in the body')
+71 < 1 }
+72 < 1 
+73 < 1 // ── c. [M3] ──
+74 < 1 {
+75 < 1   const out = body([
+76 < 1     loose([open({ claim: 'this resolves #1334' })]),
+77 < 1     { kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'title', diff_type: 'modified', from: 'a', to: 'Fix #3' }], truncated: false },
+78 < 1   ])
+79 < 1   const le = section(out, '### Loose ends')
+80 < 1   const ch = section(out, '### What each step changed')
+81 < 1   assert.ok(le.includes('resolves'), '(c) [M3] the loose end is shown')
+82 < 1   assert.ok(ch.includes('Fix'), '(c) [M3] the receipt value is shown')
+83 < 1   assert.ok(!CLOSING.test(le), '(c) [M3] no closing keyword in Loose ends')
+84 < 1   assert.ok(!CLOSING.test(ch), '(c) [M3] no closing keyword in What each step changed')
+85 < 1 }
+86 < 1 
+87 < 1 // ── d. [M4] ──
+88 < 1 {
+89 < 1   const out = body([{ kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'v', diff_type: 'modified', from: 'a', to: 'y'.repeat(70000) }], truncated: false }])
+90 < 1   assert.ok(out.length <= 60000, `(d) [M4] body is ${out.length} characters`)
+91 < 1 }
+92 < 1 
+93 < 1 // ── e. [M5] ──
+94 < 1 {
+95 < 1   const items = Array.from({ length: 400 }, (_, i) => open({ claim: String(i).padEnd(300, 'q') }))
+96 < 1   const out = body([loose(items)], EVIDENCE)
+97 < 1   assert.ok(out.length <= 60000, `(e) [M5] body is ${out.length} characters`)
+98 < 1   const lines = out.split('\n')
+99 < 1   assert.ok(lines.includes('Closes #77'), '(e) [M5] Closes #77 kept')
+100 < 1   const last = lines.findLastIndex((l) => l.startsWith('- open: '))
+101 < 1   assert.ok(last >= 0, '(e) [M5] some loose ends shown')
+102 < 1   assert.ok(lines.slice(last + 1).some((l) => l.includes(EVIDENCE)), '(e) [M5] evidence URL after the last loose end')
+103 < 1 }
+104 < 1 
+105 < 1 // ── f. [M6] ──
+106 < 1 {
+107 < 1   const out = body([loose([open({ path: 'a.txt', stale: 'x WIPE z', claim: 'a.txt wipes every folder', by: 'B', task: 2 })])])
+108 < 1   assert.ok(out.split('\n').includes('- open: a.txt still contains "x WIPE z" — a.txt wipes every folder (B, task 2)'), '(f) [M6] byte-equal line')
+109 < 1 }
+110 < 1 
+111 < 1 fs.rmSync(DIR, { recursive: true, force: true })
+112 < 1 fs.rmSync(HOME, { recursive: true, force: true })
+113 < 1 console.log('ALL TESTS PASSED')
+114 < 1 
