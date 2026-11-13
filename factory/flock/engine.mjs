@@ -118,6 +118,8 @@ if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-e
 // base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a run: a
 // store that cannot be read or written leaves the run frozen, with the reason on its row.
 const MAIN_MODE = mode('main.mode', ['peer', 'memory', 'frozen'], 'frozen')
+// a path main and a builder each created apart: `conflict` (a builder makes them one file) or `union`
+const MAIN_CREATED = mode('main.created', ['conflict', 'union'], 'union')
 // how often a `peer` run looks at the default branch: `--main-poll <seconds>`, else the policy cell
 // flock.main.poll_seconds, else 60
 const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
@@ -431,11 +433,16 @@ async function openConflict (p, info) {
   const reg = region(info.annotated)
   const e = ledger.get(p + '\u0000' + reg)
   if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
-  if (info.addsOnly) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
-  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party })
+  // a file main and a builder each began apart is two whole files, and no probe of this run speaks
+  // for main's: a builder makes them one (policy flock.main.created; `union` is the rollback)
+  const made = !!info.bothCreated && MAIN_CREATED === 'conflict'
+  if (info.addsOnly && !made) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
+  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party, made })
   lastChange = now()
-  ev('conflict:open', { path: p, region: reg, between: info.between })
-  await board.post({ by: 'host', claim: `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict` })
+  ev('conflict:open', { path: p, region: reg, between: info.between, ...(made ? { created: 'both' } : {}) })
+  await board.post({ by: 'host', claim: made
+    ? `open conflict in ${p}: main and a builder each created it, and the merge put one whole file after the other; whoever next works there should make it one file that says what both meant and call resolve_conflict`
+    : `open conflict in ${p} between ${info.between.join(' and ')}; whoever next works there should make it say what both sides meant and call resolve_conflict` })
 }
 const openConflicts = () => [...new Set([...ledger.values()].filter((e) => e.open).map((e) => e.path))]
 const openEntries = (p) => [...ledger.values()].filter((e) => e.open && e.path === p)
@@ -532,7 +539,7 @@ function edge (reason) {
       // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
       // answer after 5 of 9 closes on the record, masked each time by a later content change.
-      for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+      for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
       earlyClose(m, snap)
       const blocking = openConflicts()
       const factsGreen = Object.values(lastEdge.perTask).every((xs) => xs.every((x) => x === 0))
@@ -552,7 +559,7 @@ function edge (reason) {
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
     // let a NEW conflict on a once-closed path pass the edge unexamined.
-    for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], annotated: m.annotated[p], between: ['published copies'] })
+    for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     earlyClose(m, snap)
     const blocking = openConflicts()
@@ -616,12 +623,12 @@ async function pullInto (agent, task) {
   for (const c of r.changed) {
     const was = mine.get(c.path)
     // an untold conflict mark is kept until the builder is told, whatever arrives after it
-    mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, annotated: was.annotated }) } : c)
+    mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
   }
   const told = [...mine.values()].filter((c) => !quiet(c.path))
   for (const c of told) mine.delete(c.path)
   for (const c of told.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
-  for (const c of told.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
+  for (const c of told.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, bothCreated: c.bothCreated, annotated: c.annotated, between: [agent, c.from], party: agent })
   for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], quiet(s.path) ? null : agent)
   told.all = r.changed.length
   return told
@@ -1180,8 +1187,9 @@ async function settle () {
       if (prev && prev.reopen >= MAX_REOPEN) continue
       acted = true
       const ann = (openEntries(p)[0] || {}).annotated || (r.annotated || {})[p]
+      const made = openEntries(p).some((e) => e.made)
       await board.addTask({ id, title: 'Resolve conflict marks in ' + p, depends_on: [], state: 'ready', owner: null, notes: [], reopen: prev ? prev.reopen + 1 : 0, facts: [],
-        body: `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
+        body: `${made ? `Main and a builder each created \`${p}\` without seeing the other's, and the merge put one whole file after the other. It must become one file that keeps what main's version does and what the builder's does` : `Two agents changed the same part of \`${p}\` and the merge marked it as a conflict`}. Here is the merged file with the conflict sections marked (<<<<<<< begin … / ======= begin … / >>>>>>> end conflict; "left" and "right" are the two sides):\n\n\`\`\`\n${ann || '(annotation unavailable)'}\n\`\`\`\n\nYour copy holds the merged text WITHOUT the markers. Make that part of \`${p}\` say what both sides meant (edit with Edit if it does not already), run the tests, then call resolve_conflict for \`${p}\` and then done.` })
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
     }
     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {

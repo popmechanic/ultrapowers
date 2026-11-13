@@ -281,6 +281,22 @@ def same_anchor(left, right, merged, lauth, rauth):
     return out
 
 
+def both_created(left, right, lauth, rauth):
+    """A path with no text at the run's base that main and a builder each began apart: `left` and
+    `right` each show lines the other does not hold, one side's written by main since the base (a
+    stored label, `@…`) and the other's by a builder. The kernel marks that adds-only, and the union
+    is two whole files one after the other. The same from two builders of one run is not this: both
+    their tasks' probes run on the join, and no probe of this run speaks for main's file."""
+    def only(mine, theirs, auth):
+        st = M.deserialize_state(mine)
+        held = set(line_keys(theirs))
+        return {l for e, k in zip(st, line_keys(st)) if e[3] % 2 and k not in held for l in auth.get(k, ())}
+    lo, ro = only(left, right, lauth), only(right, left, rauth)
+    stored = lambda who: any(l.startswith("@") for l in who)
+    built = lambda who: any(not l.startswith("@") for l in who)
+    return (stored(lo) and built(ro)) or (built(lo) and stored(ro))
+
+
 def _union_auth(into, other):
     for path, m in other.items():
         dst = into.setdefault(path, {})
@@ -478,7 +494,7 @@ class Keeper:
                 if want is not None and p not in want:
                     continue
                 before = mine.get(p)
-                flags = []
+                flags, made = [], False
                 if before is not None and st == self.base.get(p):
                     continue   # the peer never changed this path: every copy began from this weave, so mine already holds it
                 if before is None:
@@ -492,6 +508,7 @@ class Keeper:
                     mine[p] = after
                     if st != before:   # ticket 2: concurrent inserts at one anchor (even when mine already holds theirs)
                         flags = same_anchor(before, st, after, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
+                        made = conflict and p not in self.base and both_created(before, st, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
                 _union_auth(self.auth(agent), {p: peer_auth.get(p, {})})
                 _union_del(self.dels(agent), {p: self.kdel_pub.get(peer, {}).get(p, {})})
                 _union_rep(self.reps(agent), {p: self.krep_pub.get(peer, {}).get(p, {})})
@@ -505,6 +522,7 @@ class Keeper:
                         heads = [l for l in ann if l.startswith(("<<<<<<< begin", "======= begin"))] if before is not None and conflict else []
                         changed.append({"path": p, "from": peer, "conflict": conflict,
                                         "addsOnly": bool(heads) and all("added" in h for h in heads),
+                                        "bothCreated": made,
                                         "annotated": "\n".join(strip(l) for l in ann) if conflict else None,
                                         "added": sum(1 for o in difflib.ndiff(old, new) if o.startswith("+ ")),
                                         "removed": sum(1 for o in difflib.ndiff(old, new) if o.startswith("- ")),
@@ -513,7 +531,7 @@ class Keeper:
         return {"changed": changed, "sameAnchor": flagged}
 
     def r_merged(self, order=None):
-        out, conflicts, annotated, adds_only = {}, [], {}, {}
+        out, conflicts, annotated, adds_only, made = {}, [], {}, {}, {}
         same, auth, dels = {}, {}, {}   # ticket 2 (additive): same-anchor flags, the join's digest
         for who in (order or list(self.published)):
             _union_del(dels, self.kdel_pub.get(who, {}))
@@ -532,6 +550,8 @@ class Keeper:
                         heads = [l for l in ann if l.startswith(("<<<<<<< begin", "======= begin"))]
                         only = all(("added" in h) for h in heads)
                         adds_only[p] = adds_only.get(p, True) and only
+                        if p not in self.base and both_created(out[p], st, auth.get(p, {}), pauth.get(p, {})):
+                            made[p] = True
                         annotated[p] = "\n".join(strip(l) for l in ann)
                     out[p] = m
             _union_auth(auth, pauth)
@@ -539,6 +559,7 @@ class Keeper:
         exists = {p: bool(visible_raw(st)) for p, st in out.items()}
         digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
+                "bothCreated": made,
                 "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
                 # the survival fact from this same join, so a snapshot and its lost lines never part
                 "lost": _lost_of(out, auth, dels)}
