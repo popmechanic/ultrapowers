@@ -43,6 +43,7 @@ import {
   parseArgs,
   parseJson,
   parseMemoryGb,
+  policyCell,
   readEvidenceSetting,
   readFleetJson,
   readPlanCapacity,
@@ -671,6 +672,16 @@ function kataRow (found, vmsRes) {
   )
 }
 
+/** `launch.kata.mode` of `fleet/policy.json`, read as the launcher reads it: `off` unless the cell says `on`. */
+const kataModeOf = () => policyCell(['launch', 'kata', 'mode'], ['off', 'on'])
+
+/** While no launch asks the hub, the hub is no prerequisite: the row is green and says why. */
+const kataOffRow = () => row(
+  'kata',
+  'ok',
+  'not asked: launch.kata.mode is off in fleet/policy.json, so no launch reaches the kata hub (a run is read with fleet/run-read.mjs)'
+)
+
 // ── cloudflare ───────────────────────────────────────────────────────────────
 
 /** The deploy's credential: an http-proxy integration that forwards a
@@ -774,7 +785,8 @@ function reaperKeyRow (keysRes, now) {
  * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now()
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now(),
+  kataMode = kataModeOf()
 } = {}) {
   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -829,7 +841,7 @@ export async function doctor ({
     integrationsRow(found, want),
     evidenceRow(wantEvidence, evidenceRepo, found),
     verbDriftRow(drift),
-    kataRow(found, kataVms),
+    kataMode === 'on' ? kataRow(found, kataVms) : kataOffRow(),
     cloudflareRow(found),
     reaperRow(found, keys, now, reaperProbe)
   ]

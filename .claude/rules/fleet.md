@@ -21,8 +21,11 @@ control VM, no token on any VM or in any argv.
    compute N from the evidence repository's `live/<owner>-<repo>/run-*` branches and
    `<owner>-<repo>/run-*` tags; refresh the Claude bearer (`claude-token.mjs`).
 3. Push the plan as one parentless commit in the evidence repository (tree =
-   `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`; file the
-   run on the kata hub (`kata-file.mjs`).
+   `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`. The kata hub is
+   not asked: `launch.kata.mode` in `fleet/policy.json` is `off`, so there is no ping, nothing is
+   filed and the commit carries no `kata.json`, without which the sandbox writes nothing to Kata.
+   The rollback `on` pings the hub (a dark hub refuses the launch) and files the run there
+   (`kata-file.mjs`).
 4. Issue ONE lobby verb (`lobby.mjs`): `new` with VM name `fleet-r<N>-<stamp>-<rand>`,
    `--tag fleet`, the assignment as `--comment`, both integrations, `--cpu`/`--memory` from
    `~/.ultrapowers/fleet.json`, and the setup script (`setup-script.mjs`) on stdin. No image,
@@ -69,9 +72,10 @@ Read a past run at
   `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO` and, for the
   rollback to the kata run issue, `REAPER_RECORD=kata`. Unit tests: `tests/test_reaper.py`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
-  `board-read.mjs` (print a run's board from the hub), `run-read.mjs` (print a run from its
-  evidence record: every claim, give-back, objection, conflict, move of main and the pull request;
-  `projectRun` answers plain data for any other reader), `kata-hub.mjs` + `kata-hub-setup.sh` +
+  `run-read.mjs` (print a run from its evidence record: every claim, give-back, objection,
+  conflict, move of main and the pull request; `--follow` watches it; `projectRun` answers plain
+  data for any other reader), `board-read.mjs` (print a run's board from the hub: only runs
+  launched before 2026-11-13 or under the kata rollback have one), `kata-hub.mjs` + `kata-hub-setup.sh` +
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`:
   `~/.ultrapowers/kata-hub.env` names only the host (`KATA_URL`), and the bearer is sourced from

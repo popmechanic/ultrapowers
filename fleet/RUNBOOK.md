@@ -339,37 +339,39 @@ repository, because the sandbox clones from GitHub.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
 and does not merge it (a measurement run). `--again` is the one way to launch
 a plan that is already live on the target: without it the launcher refuses
-before anything is pushed, naming the live run and its VM (a duplicate launch
-re-answers the live run's task issues on the hub and kills it, #1036).
+before anything is pushed, naming the live run and its VM (under the kata
+rollback a duplicate launch re-answers the live run's task issues on the hub
+and kills it, #1036).
 
 **Watch.** There is no live page; git is the record, in one place:
 
-- the hub, when the plan commit carried `kata.json` — the run's
-  kata project holds a mirror of the run's progress, posted as comments as it
-  happens. `fleet/CONTRACT.md` is the authority for what the current engine
-  mirrors there: the factory stamps each worker's issue through its hooks; a
-  Flock run posts `claimed by <agent>`, `released: <why>`, `reopened: <why>`
-  and `done by <agent>` on each task's issue as the move happens, so its board
-  shows every claim, release and close in flight, not only the closes at the
-  end. A run in flight is read off the board:
+- the run's evidence record, which the sandbox commits every 10 s. A run in
+  flight, or one long ended, is read from it:
 
   ```bash
-  node fleet/board-read.mjs --run <N> --target <owner>/<repo>
-  node fleet/run-read.mjs --run <N> --target <owner>/<repo>     # the same run from its evidence record: the whole log, up to 10 s behind
+  node fleet/run-read.mjs --run <N> --target <owner>/<repo>
   ```
 
-  It prints per-task state — `== now`, one line per issue of the run — then
-  the event rows under `== events`, read through the same `ssh <hub> curl`
-  door the janitor uses: the bearer is sourced on the hub, and the laptop's
-  command line carries no token.
+  It prints the run's state, each task's state, then under `== events` one
+  line for every claim, give-back, objection, conflict, move of main and the
+  pull request. It reads with `gh api` and asks no hub and no VM.
 
   To watch a run rather than read it once, add `--follow`: it re-reads every
-  10 s, prints each new row once, prints a `!` line when a task has been
-  claimed for `--quiet <minutes>` (default 10) with no `done`, or when no new
-  row has come in for that long, and ends with `== closed` (exit 0) when the
-  run's own issue closes, or `== gave up` (exit 3) after 4 hours. It is a
+  10 s, prints each new line once (up to about 20 s behind the sandbox),
+  prints a `!` line when a task has been claimed for `--quiet <minutes>`
+  (default 10) with nothing since, or when no new line has come in for that
+  long, and ends with `== run-<N> <state>` (exit 0) when the run's status
+  page says it ended, or `== gave up` (exit 3) after 4 hours. It is a
   read-only command, so it may run in the foreground or the background for as
   long as the run lasts; what never runs on a timer here is a writer (the reap, a merge).
+
+  Since 2026-11-13 a run writes nothing to the kata hub (`launch.kata.mode`
+  is `off` in `fleet/policy.json`), so `fleet/board-read.mjs` shows only runs
+  launched before that, or under the rollback: set the cell to `on` and the
+  launcher asks the hub before every launch again (and refuses when it is
+  down), files the run and its tasks there, and the engine and boot mirror
+  each claim, release and close onto them, which
+  `node fleet/board-read.mjs --run <N> --target <owner>/<repo> [--follow]` reads.
 - `runs/<owner>-<repo>/<N>/status.json` in the evidence repository —
   committed at every transition and, while the engine runs, every
   `FLEET_COMMIT_SECONDS` (default 10) that `events.jsonl` has changed, so the

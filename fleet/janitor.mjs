@@ -19,7 +19,6 @@
  */
 
 import { Buffer } from 'node:buffer'
-import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -46,6 +45,7 @@ import {
   parseComment,
   parseDuration,
   parseJson,
+  policyCell,
   readEvidenceSetting,
   runCli,
   runFolderFor,
@@ -120,21 +120,13 @@ const DEATH_ATTENTION = 'needs-human'
  * for a row the hub cannot answer, as every pass read before 2026-11-13.
  */
 export const RECORD_SOURCES = Object.freeze(['evidence', 'kata'])
-const POLICY_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
 
 /**
  * The `janitor.record.source` cell of the `policy.json` beside this file. A
  * file that cannot be read, or a cell that names neither source, is the
  * default: `evidence`.
  */
-export function recordSourceOf (policyPath = POLICY_PATH) {
-  try {
-    const source = JSON.parse(fs.readFileSync(policyPath, 'utf8'))?.janitor?.record?.source
-    return RECORD_SOURCES.includes(source) ? source : RECORD_SOURCES[0]
-  } catch {
-    return RECORD_SOURCES[0]
-  }
-}
+export const recordSourceOf = (policyPath) => policyCell(['janitor', 'record', 'source'], RECORD_SOURCES, policyPath)
 
 /** The hub of a pass that asks no hub: no client, no host, nothing dark. */
 const NO_HUB = () => ({ client: null, host: null, dark: null })

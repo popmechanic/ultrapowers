@@ -1,12 +1,23 @@
 {
   "version": "policy-v1",
   "about": "Every switch the laptop's fleet tools read, one file beside its readers, as `factory/policy.json` is for the engine. Each cell carries the n and the window it was read over, or says in terms that it was not read, and names its rollback. No default flips under n = 5 runs: a cell set under that floor is an `experiment`.",
+  "launch": {
+    "kata": {
+      "mode": "off",
+      "n": 1,
+      "window": "flock-baseline run-45, 2026-11-13",
+      "basis": "operator's decision, 2026-11-13: Kata leaves the run path. Off, the launcher never opens the hub: no ping before a launch, no project, run issue or task issues filed, and no `kata.json` in the plan commit. The sandbox writes to Kata only when that file is there (the engine's mirror, the boot's close and marks), so one cell on the laptop stops every write of a run, on any engine version. A run is then read from its evidence record (`fleet/run-read.mjs`), never from the board. Run-45 (held, done): no `kata.json` in its folder, no `kata:mirror` row, one `board:close` row `skipped: no kata.json to read`, and the hub held no run issue for it",
+      "experiment": true,
+      "rollback": "mode = on",
+      "unread": "over the next 5 runs: each run's events hold no `kata:mirror` row with `ok` true and no `board:close` or `board:mark` row with a code, and no launch is refused for a hub that did not answer"
+    }
+  },
   "janitor": {
     "record": {
       "source": "evidence",
-      "n": 1,
-      "window": "flock-baseline run-44, 2026-11-13",
-      "basis": "operator's decision, 2026-11-13: Kata leaves the run path. The evidence repository holds every run's end in full (`status.json` at the run's tag, else at its live branch); the hub held a partial copy that no agent read. Before this cell the same evidence read was the janitor's fallback whenever the hub was dark. Run-44 (held, done): a pass that asked no hub read `done` at the run's tag and named the VM for removal, and sealed run-31, which had ended with its live branch left",
+      "n": 2,
+      "window": "flock-baseline runs 44-45, 2026-11-13",
+      "basis": "operator's decision, 2026-11-13: Kata leaves the run path. The evidence repository holds every run's end in full (`status.json` at the run's tag, else at its live branch); the hub held a partial copy that no agent read. Before this cell the same evidence read was the janitor's fallback whenever the hub was dark. Run-44 (held, done): a pass that asked no hub read `done` at the run's tag and named the VM for removal, and sealed run-31, which had ended with its live branch left. Run-45 (held, done): the same read, and the pass removed the VM itself",
       "experiment": true,
       "rollback": "source = kata",
       "unread": "over the next 5 runs: every finished run's VM reaped by a pass that asked no hub, and no VM removed whose status page did not say done, parked or failed"
