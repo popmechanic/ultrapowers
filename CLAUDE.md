@@ -120,7 +120,7 @@ the engine's exit code is the merge decision.
   `.claude/ultrapowers/handoffs/` only when asked to resume. Sort by mtime, never filename, and
   treat each as what was true when written.
 - **Author plans concurrently from the issues:** `skills/ultrawrite/references/authoring-a-queue.md`
-  — one author per bundle, plans may share files (two that create one path go together), the
+  — one author per bundle, plans may share files and may create the same new file, the
   issue's sentence as the Claim, two operator touches per plan, launches serial.
 - **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
