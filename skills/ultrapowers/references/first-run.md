@@ -464,7 +464,7 @@ red when that key has expired or is gone, and says how many days a live one has 
 prints the new key once; the second reads it on stdin:
 
 ```bash
-ssh exe.dev "ssh-key generate-api-key --label=hub-reaper --cmds=rm --exp=1y"
+ssh exe.dev "ssh-key generate-api-key --label=hub-reaper-<year>-<month> --cmds=rm --exp=1y"
 ```
 
 ```bash
@@ -473,7 +473,9 @@ ssh exe.dev "integrations edit lobby-rm --bearer=-"
 
 Two things a newcomer would not know:
 
-- **The label is how the doctor finds the key.** Any label that begins `hub-reaper` is read, and the
-  one that lasts longest is the one reported, so an expired key left in the list does no harm.
+- **The label is how the doctor finds the key, and exe.dev never reuses one.** A renewal under the
+  old label is refused (`a key named "hub-reaper" already exists`, 2026-11-13), so each new key
+  carries its month. Any label that begins `hub-reaper` is read, and the one that lasts longest is
+  the one reported, so an expired key left in the list does no harm.
 - **A missing `lobby-rm` is a green row.** Without it a finished VM waits for the janitor, which is
   slower and never wrong; `fleet/RUNBOOK.md` §The hub's reaper installs it.
