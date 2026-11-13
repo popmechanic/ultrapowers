@@ -175,6 +175,13 @@ const jev = (JEV_STEP || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESA
 // summary.json the engine waits for them at most JEV_TIMEOUT_MS; a late answer is simply absent.
 const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
 const PEER_QUESTION = QSETS.flock_peer_rewrite.questions.kept
+// the second look (flock.jev_peer_rewrite.second_look): before a draft for a line of main's read as
+// lost, Jev reads the lost lines against the whole settled file. `mode` main or off (the rollback);
+// an answer under `min_confidence`, or a file over `max_lines`, excuses nothing
+const SETTLED_QUESTION = QSETS.flock_peer_settled.questions.carried
+const SECOND_MODE = mode('jev_peer_rewrite.second_look.mode', ['main', 'off'], 'off')
+const SECOND_MIN = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.min_confidence ?? 0.6)
+const SECOND_MAX_LINES = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.max_lines ?? 400)
 const trialsPending = new Set()
 const trial = (key, question, state, kind, row, then) => {
   if (!jev) return
@@ -1301,7 +1308,7 @@ for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step
 // checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
 try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
-peerRewriteDraft()
+await peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
@@ -1339,7 +1346,33 @@ process.exit(landed)
 // weave `lost`) that a peer rewrite Jev read as `loses` covers ends a draft. A read covers a lost
 // line when it is on the line's path, names the line's author among its peers and holds the line.
 // A lost line no read answers (Jev off, a null, never asked) is recorded, never drafted.
-function peerRewriteDraft () {
+// The second look. The first read judges one edit alone, and a builder that folds main's line into
+// a line of its own deletes main's in an edit that puts nothing in its place: flock-baseline run-23
+// ended a draft with nothing lost. Only main's lines (stored labels, `@…`) are looked at again: what
+// main wrote is a fixed text, and a builder of this run still answers for its own lines on the board.
+// True when Jev reads every lost line as carried by the settled file.
+async function carriedBySettled (s, e, read) {
+  const labels = String(e.author).split('|')
+  if (SECOND_MODE !== 'main' || !jev || !labels.every((a) => a.startsWith('@'))) return false
+  const row = { snap: s.snap, path: e.path, author: e.author, agent: read.agent, task: read.task, lost: e.lines }
+  const settled = String(s.files[e.path] ?? '').split('\n')
+  if (settled.length > SECOND_MAX_LINES) { ev('jev:peer-settled', { ...row, skipped: 'long', lines: settled.length, excused: false }); return false }
+  const wrote = await weave({ op: 'wrote', path: e.path, authors: labels })
+  // a hand commit says what it meant in its subject; a line another run landed has no sentence here
+  const subjects = labels.filter((a) => a.startsWith('@c:')).map((a) => gitIn(TARGET, ['log', '-1', '--format=%s', a.slice(3)], { ok: true }).stdout.trim()).filter(Boolean)
+  const t = W.tasks.find((x) => x.id === read.task)
+  const sides = {
+    theirs: { title: 'A commit on the main branch, merged while this run was at work', ...(subjects.length ? { claim: subjects.join('; ') } : {}) },
+    ours: t ? { title: t.title, claim: claimOf(t.body) } : { title: board.tasks.get(read.task)?.title ?? 'A task of this run' },
+  }
+  let out = null
+  await readTrial({ ask: jev.ask, key: 'carried', question: SETTLED_QUESTION, row, emit: (o) => { out = o },
+    state: { path: e.path, theirs: (wrote.ok && wrote.lines) || e.lines, lost: e.lines, settled, sides } })
+  const excused = !!out && out.answer === 'carried' && (out.confidence ?? 0) >= SECOND_MIN
+  ev('jev:peer-settled', { ...(out || row), excused })
+  return excused
+}
+async function peerRewriteDraft () {
   if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
   const s = snapshots.findLast((x) => x.snap === outcome.snap)
   if (!s || !s.lost) return
@@ -1351,14 +1384,17 @@ function peerRewriteDraft () {
   for (const e of lost) {
     const covers = (l) => (r) => r.path === e.path && String(e.author).split('|').some((a) => (r.peers || []).includes(a)) && (r.peer || []).includes(l)
     const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
-    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !losing.includes(r)) losing.push(r)
+    const mine = []
+    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !mine.includes(r)) mine.push(r)
     if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
+    if (mine.length && await carriedBySettled(s, e, mine[0])) continue
+    for (const r of mine) if (!losing.includes(r)) losing.push(r)
   }
   if (!losing.length) return
   if (preLoose && outcome.snap === preLoose.snap) fellBack = true   // a verdict on the pre-cleanup snapshot itself has nothing to fall back to
   ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
   terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
-  if (outcome.pr === 'ready') peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
+  if (outcome.pr === 'ready') await peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
 }
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's

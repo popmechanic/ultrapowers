@@ -52,12 +52,13 @@
     },
     "jev_peer_rewrite": {
       "mode": "enforce",
+      "second_look": { "mode": "main", "min_confidence": 0.6, "max_lines": 400 },
       "n": 1,
       "window": "run-277 (2026-09-29)",
       "basis": "weave census #1401: in 43 Flock runs (2026-09-26..30) no merge wrote a line neither side wrote; the one edit over a peer's line (run-277) ran two of the peer's words together, and the run went green",
       "experiment": true,
-      "rollback": "mode = record",
-      "unread": "jev:peer-rewrite answers against the landed line, over 20 peer rewrites; the drafts it causes per run"
+      "rollback": "mode = record. second_look.mode = off (a `loses` on main's line drafts on the first read alone, as flock-baseline run-23 did)",
+      "unread": "jev:peer-rewrite answers against the landed line, over 20 peer rewrites; the drafts it causes per run; jev:peer-settled rows (the second look, questions.json flock_peer_settled, n=0 runs): each answer against the landed file, and every draft it excused"
     },
     "scope": {
       "mode": "enforce",

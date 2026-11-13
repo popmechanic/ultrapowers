@@ -19,8 +19,14 @@
 //             cannot resolve one, so the run ends a draft.
 //   made in the run  two tasks of one plan each create new.txt, with no main in it. Both tasks'
 //             probes run on the join, so it stays a union: no conflict opens, and the run is ready.
+//   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it, and the
+//             stand-in Jev reads that edit as `loses`. Before the draft the engine looks again:
+//             it shows Jev main's lines, the lost one and the whole settled file, with main's
+//             commit subject as what main meant. Answered `carried`, the run ends ready.
+//   dropped   the same, the second look answered `drops`: the run ends a draft.
 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
+import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { simEnv } from './_helpers.mjs'
@@ -34,8 +40,9 @@ const lines = (l) => l.join('\n') + '\n'
 const BIN = Buffer.from([0xff, 0xfe, 0x00, 0x01]), BIN2 = Buffer.from([0xff, 0xfe, 0x00, 0x02, 0x03])
 
 // A target with an origin it follows, and a second clone that moves origin's main.
-function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null) {
-  const t = flockTarget({ 'a.txt': lines(BODY), 'b.txt': 'none\n', 'logo.bin': BIN })
+// `o.env` reaches the engine; `o.late` is the a.txt task 2 writes once its hold is over
+function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
+  const t = flockTarget({ 'a.txt': lines(BODY), 'b.txt': 'none\n', 'logo.bin': BIN }, { env: o.env })
   const env = simEnv({ home: t.tmp, env: t.over })
   const sh = (cwd, ...a) => {
     const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', ...a], { cwd, encoding: 'utf8', env })
@@ -56,13 +63,13 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null) {
     claim: 'a.txt carries RUN and b.txt carries B.', check: 'test -f a.txt',
     tasks: [
       task({ id: 1, title: 'Write the first line', files: ['Modify: `a.txt`'], claim: 'a.txt carries RUN.', stale: 'path-absent: `a.txt`', run: 'grep -q RUN a.txt' }),
-      task({ id: 2, title: 'Hold the run open', files: ['Modify: `b.txt`'], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
+      task({ id: 2, title: 'Hold the run open', files: ['Modify: `b.txt`', ...(o.late ? ['Modify: `a.txt`'] : [])], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
     ],
   })
   // task 1 lands at once (`first` is the a.txt it writes), before the engine's first look at main;
   // task 2 holds seven seconds, the window main moves in
   // `made`: task 1 also creates new.txt with this text
-  const script = { '@hold_ms': { 2: 7000 }, 1: { 'a.txt': first, ...(made ? { 'new.txt': made } : {}) }, 2: { 'b.txt': 'B\n' } }
+  const script = { '@hold_ms': { 2: 7000 }, 1: { 'a.txt': first, ...(made ? { 'new.txt': made } : {}) }, 2: { 'b.txt': 'B\n', ...(o.late ? { 'a.txt': o.late } : {}) } }
   return { t, move, run: () => flockRun(t, { plan, script, args: ['--main-poll', '2'] }) }
 }
 
@@ -162,6 +169,44 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null) {
   const text = fs.readFileSync(path.join(t.T, 'new.txt'), 'utf8')
   assert(text.includes('ONE') && text.includes('TWO'), `made in the run: new.txt is ${JSON.stringify(text)}`)
   t.done()
+}
+
+// ── folded, dropped ─────────────────────────────────────────────────────────────
+{
+  // the stand-in Jev: each asked key answered from `answers`, at 0.9; every request body is kept
+  let answers = {}
+  const bodies = []
+  const server = http.createServer((req, res) => {
+    let body = ''
+    req.on('data', (c) => { body += c })
+    req.on('end', () => {
+      let keys = []
+      try { const j = JSON.parse(body); bodies.push(j); keys = Object.keys(j.questions || {}) } catch {}
+      res.writeHead(200, { 'content-type': 'application/json' })
+      res.end(JSON.stringify({ answers: Object.fromEntries(keys.map((k) => [k, { choice: answers[k], confidence: 0.9 }])) }))
+    })
+  })
+  await new Promise((r) => server.listen(0, '127.0.0.1', r))
+  const env = { TYPESAFE_BASE_URL: `http://127.0.0.1:${server.address().port}` }
+  for (const [CASE, second, pr] of [['folded', 'carried', 'ready'], ['dropped', 'drops', 'draft']]) {
+    answers = { kept: 'loses', carried: second }; bodies.length = 0
+    const { t, move, run } = rig(undefined, null, { env, late: lines(['RUN', ...BODY.slice(1, -1), 'FOLDED']) })
+    const going = run()
+    await sleep(2000)
+    const tip = move({ 'a.txt': lines([...BODY.slice(0, -1), 'MAIN']) })
+    const r = await going
+    const end = r.of('terminal').at(-1), label = '@c:' + tip.slice(0, 12)
+    const first = r.of('jev:peer-rewrite').filter((x) => x.path === 'a.txt' && (x.peer || []).includes('MAIN'))
+    assert(first.length === 1 && first[0].answer === 'loses' && first[0].peers.join() === label, `${CASE}: the first read of main's line is ${JSON.stringify(r.of('jev:peer-rewrite'))}; moved ${JSON.stringify(r.of('main:moved'))}: ${r.out.slice(-500)}`)
+    const again = r.of('jev:peer-settled')
+    assert(again.length === 1 && again[0].answer === second && again[0].excused === (pr === 'ready') && again[0].author === label, `${CASE}: the second look is ${JSON.stringify(again)}`)
+    const shown = bodies.find((b) => b.questions && b.questions.carried)?.state
+    assert(shown && shown.path === 'a.txt' && JSON.stringify(shown.lost) === '["MAIN"]' && shown.theirs.includes('MAIN') && shown.settled.includes('FOLDED') && !shown.settled.includes('MAIN'), `${CASE}: Jev was shown ${JSON.stringify(shown)}`)
+    assert(shown.sides.theirs.claim === 'main moved' && shown.sides.ours.title === 'Hold the run open', `${CASE}: the sides shown are ${JSON.stringify(shown.sides)}`)
+    assert(end && end.pr === pr && (r.code === 0) === (pr === 'ready'), `${CASE}: the run exited ${r.code} with ${JSON.stringify(end)}`)
+    t.done()
+  }
+  server.close()
 }
 
 console.log('ALL TESTS PASSED')

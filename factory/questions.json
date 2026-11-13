@@ -59,6 +59,34 @@
           }
         }
       }
+    },
+    "flock_peer_settled": {
+      "when": "Before a settled green run is drafted for a line of main's that a peer rewrite read as lost, once per file and author of the lost lines",
+      "reader": "factory/flock/engine.mjs",
+      "rollback": "factory/policy.json flock.jev_peer_rewrite.second_look.mode = off (the first read alone drafts)",
+      "state": [
+        "path",
+        "theirs",
+        "lost",
+        "settled",
+        "sides"
+      ],
+      "provenance": "flock-baseline run-23 (2026-11-13): a builder asked to make one file of two folded main's opening line into its own in one edit and deleted main's in the next; the peer-rewrite read saw the second edit alone and answered loses at 0.43, and the run, whose file kept everything, ended a draft. Read from the laptop, jev-latest, 2026-11-13, n=27 answers over 9 cases: run-23's file carried 3 of 3, run-17's forced loss drops 3 of 3, five more losses and rewordings as wanted; a wording that asked about the side's meaning as a whole read run-17 as carried 3 of 3 and was dropped",
+      "calibrated": false,
+      "questions": {
+        "carried": {
+          "type": "choice",
+          "instructions": {
+            "question": "Is what each line in `lost` said or did still said or done somewhere in `settled`?",
+            "context": "`path` is the file. `theirs` is every line the other side wrote in it, in order. An agent of this run, at work on `ours`, removed the lines in `lost`, which are some of them. `settled` is the whole file as this run leaves it. `sides` says what each side meant, each with a `title` and, where it has one, a `claim`. Judge the lines in `lost` one by one, and only them. A line that this run's own work made needless is still gone."
+          },
+          "criteria": {
+            "carried": "Every line in `lost` is still there in substance: what it said is said in `settled`, in the same words or in others, and what it did is still done",
+            "drops": "At least one line in `lost` said or did something that `settled` no longer says or does",
+            "garbles": "`settled` runs together or mixes words or lines of `lost` so that they no longer read as written"
+          }
+        }
+      }
     }
   }
 }

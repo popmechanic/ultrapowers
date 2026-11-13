@@ -674,6 +674,14 @@ class Keeper:
             out[p] = [label_of(mine, k) for e, k in zip(js, line_keys(js)) if e[3] % 2]
         return {"blame": out}
 
+    def r_wrote(self, path, authors):
+        """The lines the labels in `authors` wrote in `path`, in the join's order, shown or not."""
+        join, auth, _ = self._join()
+        if path not in join:
+            return {"lines": []}
+        js, side, want = M.deserialize_state(join[path]), auth.get(path, {}), set(authors)
+        return {"lines": [strip(e[0]) for e, k in zip(js, line_keys(js)) if side.get(k, set()) & want]}
+
     # ── ticket 2 (additive): authorship by identity ──
     def r_authors_keyed(self, agent, path):
         """[author] per visible line, from the keyed sidecar ("base" when none)."""
