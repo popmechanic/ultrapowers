@@ -457,19 +457,20 @@ Three things a newcomer would not know:
 A finished run's VM asks the hub to remove it, and the hub removes it through `lobby-rm`, an
 integration only the hub may use. Its bearer is an exe.dev key named `hub-reaper` that can do one
 thing, `rm`. The key expires, and an expired key fails without a sound: the hub answers the VM and
-removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row is
-red when that key has expired or is gone, and says how many days a live one has left.
+removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row asks the
+remover itself, from the hub, and is red when it answers `invalid token`; it is also red when the
+key has expired or is gone, and says how many days a live one has left.
 
-**The operator runs** both halves, so the key is never on an argv and never in the chat. The first
-prints the new key once; the second reads it on stdin:
-
-```bash
-ssh exe.dev "ssh-key generate-api-key --label=hub-reaper-<year>-<month> --cmds=rm --exp=1y"
-```
+**The operator runs** one command, which types nothing and never prints the key:
 
 ```bash
-ssh exe.dev "integrations edit lobby-rm --bearer=-"
+bash fleet/reaper-key.sh
 ```
+
+It mints a new key that can only `rm` (labelled `hub-reaper-<date>-<time>`, good for one year), hands
+it to `lobby-rm` on stdin, then asks the remover from the hub to remove a VM that does not exist. It
+ends `WORKING` when the remover answers anything but `invalid token`, and lists the older keys that
+can then be deleted. Run it from a terminal or a Run button alike: nothing secret is shown.
 
 Two things a newcomer would not know:
 
