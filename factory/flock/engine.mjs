@@ -984,7 +984,8 @@ async function agentLoop (agent) {
 }
 
 // ── main is a peer (the main-is-a-peer design, stage 3) ───────────────────────
-// A `peer` run follows the target's default branch. When it moves, the moved main's stored weaves
+// A `peer` run follows the target's default branch: a look before its first builder opens, one
+// every MAIN_POLL_MS, and one before a green settle. When it moves, the moved main's stored weaves
 // are published into the run as the peer `main` (keeper op `main`), so every copy takes its text in
 // through the pulls it already makes, a clash with a builder is an ordinary conflict with builders
 // alive to resolve it, and the run's base moves to the new tip: the scope rule, every fact's
@@ -1081,8 +1082,12 @@ async function absorb (why) {
 }
 async function mainWatcher () {
   while (MAIN_BRANCH && !mainOff && !settled && !outcome && now() < CLOCK_MS) {
-    // short sleeps, so a run that ends is not kept waiting for the next look
-    for (let waited = 0; waited < MAIN_POLL_MS && !settled && !outcome; waited += 500) await sleep(500)
+    // the next look is due by the clock, in short sleeps so a run that ends is not kept waiting.
+    // Counting the sleeps ran late: each one stretches while an edge's tests hold the loop
+    // (flock-baseline run-12, 2026-11-13: the 60 s look had not come by 72.6 s, and the look before
+    // settling took the move in).
+    const due = now() + MAIN_POLL_MS
+    while (now() < due && !settled && !outcome) await sleep(500)
     if (await absorbMain('poll')) edge('main moved')
   }
 }
@@ -1277,6 +1282,9 @@ async function spawner () {
   }
 }
 followMain()
+// a run launched behind main takes the move in before its first builder opens, so every copy starts
+// from the main that is there now (run-12 started one commit behind and met it only at the end)
+await absorbMain('start')
 await Promise.all([spawner(), settle(), mainWatcher()])
 await Promise.all(loops)
 await edgeChain

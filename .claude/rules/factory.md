@@ -42,7 +42,8 @@ keeps the name `factory/`. Models never run git.
   reopened red is told of each same-spot insertion in its files, since the merge orders two
   insertions at one spot by their text.
 - Under `flock.main.mode = peer` a run follows the target's default branch (`absorbMain` in
-  `flock/engine.mjs`, a look every `flock.main.poll_seconds` and once more before a green settle):
+  `flock/engine.mjs`: a look before the first builder opens, one every `flock.main.poll_seconds` by
+  the clock, and one before a green settle):
   a moved main is published into the run as the peer `main` (keeper op `main`, row `main:moved`),
   its text reaching every copy through the pulls, a clash with a builder an ordinary conflict, and
   the run's base moves to the tip: `ULTRA_BASE`, the scope rule, each copy's git index and the

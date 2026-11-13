@@ -11,6 +11,8 @@
 //   conflict  task 1 put a line between two lines that main deletes. The conflict opens inside the
 //             run, with a resolve task for it; the scripted builder cannot resolve one, so the
 //             run ends a draft, and its draft commit sits on the moved main.
+//   behind    main moved before the run began. The run takes the move in before its first builder
+//             opens (`main:moved` with why `start`), and settles ready on the moved main.
 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -98,6 +100,22 @@ function rig (first = lines(['RUN', ...BODY.slice(1)])) {
   assert(r.code !== 0 && end && end.pr === 'draft', `conflict: the run exited ${r.code} with ${JSON.stringify(end)}`)
   const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
   assert(parents.length === 1 && parents[0] === tip, `conflict: the draft commit's parents are ${parents.join(',')}, not the moved main ${tip}`)
+  t.done()
+}
+
+// ── behind ──────────────────────────────────────────────────────────────────────
+{
+  const { t, move, run } = rig()
+  const tip = move({ 'logo.bin': BIN2, 'n.txt': 'new\n' })
+  const r = await run()
+  const end = r.of('terminal')[0], moved = r.of('main:moved')
+  assert(moved.length === 1 && moved[0].to === tip && moved[0].why === 'start', `behind: main:moved is ${JSON.stringify(moved)}; off ${JSON.stringify(r.of('main:off'))}: ${r.out.slice(-500)}`)
+  assert(moved[0].t < r.of('builder:open')[0].t, 'behind: a builder opened before the move was taken in')
+  assert(r.code === 0 && end && end.pr === 'ready', `behind: the run exited ${r.code} with ${JSON.stringify(end)}`)
+  const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
+  assert(parents.length === 1 && parents[0] === tip, `behind: the landed commit's parents are ${parents.join(',')}, not the moved main ${tip}`)
+  assert(fs.readFileSync(path.join(t.T, 'n.txt'), 'utf8') === 'new\n' && fs.readFileSync(path.join(t.T, 'logo.bin')).equals(BIN2), 'behind: n.txt or logo.bin is not main\'s')
+  assert(t.git('diff', '--name-only', tip, 'HEAD') === 'a.txt\nb.txt', `behind: the landed commit changes ${JSON.stringify(t.git('diff', '--name-only', tip, 'HEAD'))} over main`)
   t.done()
 }
 
