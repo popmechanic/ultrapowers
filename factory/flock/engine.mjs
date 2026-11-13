@@ -110,12 +110,18 @@ const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
 // else the policy cell flock.loose_ends.mode, else record.
 const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
 if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
-// main's memory (the main-is-a-peer design, stage 2; weave_store.py): `memory` starts the run's weaves
+// main's memory (the main-is-a-peer design; weave_store.py): `memory` starts the run's weaves
 // from the entry stored for --base's tree on the target's ref refs/ultrapowers/weave/v1 and stores the
-// landed commit's entry there, so a line keeps one identity across runs; `frozen`, every weave begun
-// from the base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a
-// run: a store that cannot be read or written leaves the run frozen, with the reason on its row.
-const MAIN_MODE = mode('main.mode', ['memory', 'frozen'], 'frozen')
+// landed commit's entry there, so a line keeps one identity across runs; `peer` does that and also
+// follows the default branch while the run is live (absorbMain: a moved main is published into the
+// run as the peer `main`, and the run's base moves to it); `frozen`, every weave begun from the
+// base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a run: a
+// store that cannot be read or written leaves the run frozen, with the reason on its row.
+const MAIN_MODE = mode('main.mode', ['peer', 'memory', 'frozen'], 'frozen')
+// how often a `peer` run looks at the default branch: `--main-poll <seconds>`, else the policy cell
+// flock.main.poll_seconds, else 60
+const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
+if (!Number.isFinite(MAIN_POLL_MS) || MAIN_POLL_MS < 1000) { console.error('engine: --main-poll (or flock.main.poll_seconds) is a number of seconds, 1 or more'); process.exit(2) }
 // `run-312` -> 312: a stored line's author is `@r312:<task>`
 const RUN_NO = (process.env.ULTRAPOWERS_FLEET_RUN || '').replace(/^run-/, '') || '?'
 const touched = {}   // per builder: the paths it has read or edited in its copy
@@ -139,6 +145,8 @@ const T0 = Date.now()
 const now = () => Date.now() - T0
 // every fact, the check and setup see the base they are judged against
 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
+// the commit the run's work sits on: --base, until a `peer` run's main moves (absorbMain)
+let BASE_NOW = BASE_SHA
 // agents never run git (#1443): a builder's PATH starts with a git that refuses, so git is refused
 // however it is reached — a script, a test, a Makefile. Facts, the check and setup keep RUN_ENV's git.
 const NOGIT = path.join(HERE, 'nogit')
@@ -225,7 +233,7 @@ function gitCopy (dir) {
   if (TARGET_OBJECTS === null) TARGET_OBJECTS = path.resolve(TARGET, git(['rev-parse', '--git-common-dir']).trim(), 'objects')
   gitIn(dir, ['init', '-q'])
   fs.writeFileSync(path.join(dir, '.git', 'objects', 'info', 'alternates'), TARGET_OBJECTS + '\n')
-  gitIn(dir, ['read-tree', BASE_SHA])
+  gitIn(dir, ['read-tree', BASE_NOW])
   gitIn(dir, ['update-index', '-q', '--refresh'])
 }
 const git = (args, opts) => gitIn(TARGET, args, opts).stdout
@@ -273,15 +281,18 @@ const BASE_DIR = path.join(WORK, 'base')
 // BASE is the target's tree at --base, checked out by the engine's own git into BASE_DIR through a
 // scratch index (the target's own index and working tree are untouched): one process, modes and
 // symlinks as the tree has them
-function writeBase (dir) {
+function writeBase (dir, sha = BASE_NOW) {
   fs.mkdirSync(dir, { recursive: true })
   const index = path.join(WORK, 'base.index')
-  gitIn(TARGET, [`--work-tree=${dir}`, 'read-tree', '--reset', '-u', BASE_SHA], { env: { ...process.env, GIT_INDEX_FILE: index } })
+  gitIn(TARGET, [`--work-tree=${dir}`, 'read-tree', '--reset', '-u', sha], { env: { ...process.env, GIT_INDEX_FILE: index } })
   fs.rmSync(index, { force: true })
 }
 writeBase(BASE_DIR)
-const BASE_PATHS = walk(BASE_DIR)
-const BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
+// the base's text paths and their text; both move with BASE_NOW. BASE_FILES_0 stays --base's, the
+// start of the compact record's patch chain.
+let BASE_PATHS = walk(BASE_DIR)
+let BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
+const BASE_FILES_0 = BASE_FILES
 // a workload with `setup` installs once into DEPS_DIR, and every copy the engine makes (each
 // builder's, the edge's) gets that install's node_modules dirs as symlinks, so the weave never sees
 // them (walk skips node_modules) and no copy pays a second install
@@ -298,7 +309,10 @@ if (SETUP) {
   const r = spawnSync(SETUP[0], SETUP.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: EXAM_MS.setup, env: RUN_ENV })
   ev('setup', { cmd: SETUP[SETUP.length - 1], exit: r.status, ms: Date.now() - t0 })
   if (r.status !== 0) throw new Error('setup failed: ' + ((r.stdout || '') + (r.stderr || '')).slice(-800))
-  DEP_DIRS = ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
+  DEP_DIRS = depDirs()
+}
+function depDirs () {
+  return ['node_modules', ...fs.readdirSync(DEPS_DIR, { withFileTypes: true }).filter((e) => e.isDirectory() && e.name !== 'node_modules')
     .map((e) => path.join(e.name, 'node_modules'))].filter((d) => fs.existsSync(path.join(DEPS_DIR, d)))
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
@@ -969,6 +983,110 @@ async function agentLoop (agent) {
   }
 }
 
+// ── main is a peer (the main-is-a-peer design, stage 3) ───────────────────────
+// A `peer` run follows the target's default branch. When it moves, the moved main's stored weaves
+// are published into the run as the peer `main` (keeper op `main`), so every copy takes its text in
+// through the pulls it already makes, a clash with a builder is an ordinary conflict with builders
+// alive to resolve it, and the run's base moves to the new tip: the scope rule, every fact's
+// ULTRA_BASE, each copy's git index and the landing commit all read it. What the weave does not
+// carry (a file that is not text) is copied into each copy as it is on main. Nothing here fails a
+// run: a move that cannot be taken in ends the following, with its reason on a `main:off` row, and
+// the publish's catch-up meets the moved main as it did before.
+let MAIN_BRANCH = null    // the default branch a `peer` run follows; null follows nothing
+let mainOff = null        // why this run stopped following main
+// a changed file that means the installed dependencies may be stale: the setup runs again
+const MANIFEST = /(^|\/)(package\.json|bun\.lockb?|package-lock\.json|requirements[^/]*\.txt|pyproject\.toml|uv\.lock|poetry\.lock|Pipfile\.lock|Cargo\.(toml|lock)|go\.(mod|sum))$/
+function followMain () {
+  if (MAIN_MODE !== 'peer' || !MEMORY) return
+  const ref = gitIn(TARGET, ['symbolic-ref', '-q', 'refs/remotes/origin/HEAD'], { ok: true })
+  const name = ref.status === 0 ? ref.stdout.trim() : ''
+  if (name.startsWith('refs/remotes/origin/')) MAIN_BRANCH = name.slice('refs/remotes/origin/'.length)
+  ev('main:follow', { branch: MAIN_BRANCH, poll_ms: MAIN_POLL_MS })
+}
+function stopFollowing (reason, more = {}) {
+  mainOff = reason
+  ev('main:off', { reason, ...more }); log('main: no longer followed —', reason)
+  return false
+}
+// the default branch's tip as the remote has it now, or null when it cannot be read
+function mainTip () {
+  const r = spawnSync('git', ['-C', TARGET, 'fetch', '-q', 'origin', `refs/heads/${MAIN_BRANCH}`], { encoding: 'utf8', timeout: 60000 })
+  return r.status === 0 ? gitIn(TARGET, ['rev-parse', 'FETCH_HEAD']).stdout.trim() : null
+}
+// Looks at main once and takes a move in. True when the base moved (the caller then asks for an
+// edge). It runs on the edge chain, so no edge is copying the base while it is replaced.
+function absorbMain (why) {
+  if (!MAIN_BRANCH || mainOff || outcome) return Promise.resolve(false)
+  const moved = edgeChain.then(() => absorb(why)).catch((e) => stopFollowing('the move could not be taken in: ' + String(e && e.message || e).slice(0, 300)))
+  edgeChain = moved
+  return moved
+}
+async function absorb (why) {
+  if (mainOff || outcome) return false
+  const tip = mainTip()
+  if (!tip || tip === BASE_NOW) return false
+  if (gitIn(TARGET, ['merge-base', '--is-ancestor', BASE_NOW, tip], { ok: true }).status !== 0) return stopFollowing('main no longer holds the commit this run is based on', { tip })
+  const changed = git(['diff', '--name-only', '--no-renames', BASE_NOW, tip]).split('\n').filter(Boolean)
+  // the moved base is laid out beside the old one, and the keeper asked, before anything is replaced
+  const next = BASE_DIR + '.next'
+  fs.rmSync(next, { recursive: true, force: true })
+  writeBase(next, tip)
+  const nextPaths = walk(next)
+  const r = await weave({ op: 'main', repo: TARGET, commit: tip, remote: 'origin', skip: SKIP.source }).catch((e) => ({ ok: false, error: String(e) }))
+  if (!r.ok || !r.moved) {
+    fs.rmSync(next, { recursive: true, force: true })
+    return stopFollowing(r.ok ? r.reason : String(r.error).slice(0, 300), { tip, paths: r.paths })
+  }
+  // the keeper holds main's weaves now: the base moves
+  const from = BASE_NOW
+  const wasText = new Set(BASE_PATHS), isTextNow = new Set(nextPaths)
+  fs.rmSync(BASE_DIR, { recursive: true, force: true }); fs.renameSync(next, BASE_DIR)
+  BASE_NOW = tip; RUN_ENV.ULTRA_BASE = tip
+  BASE_PATHS = nextPaths
+  BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
+  git(['checkout', '-q', '--detach', tip])   // the landing commit goes on the moved main
+  // the installed dependencies, again, when main changed what they are read from; the old ones
+  // stay in place when the setup fails on the moved main
+  let setup = null
+  if (SETUP && changed.some((p) => MANIFEST.test(p))) {
+    const old = DEPS_DIR + '.old'
+    fs.rmSync(old, { recursive: true, force: true }); fs.renameSync(DEPS_DIR, old)
+    fs.cpSync(BASE_DIR, DEPS_DIR, { recursive: true })
+    const t0 = Date.now()
+    const x = spawnSync(SETUP[0], SETUP.slice(1), { cwd: DEPS_DIR, encoding: 'utf8', timeout: EXAM_MS.setup, env: RUN_ENV })
+    setup = { exit: x.status, ms: Date.now() - t0 }
+    ev('setup', { cmd: SETUP[SETUP.length - 1], exit: x.status, ms: setup.ms, at: tip })
+    if (x.status === 0) fs.rmSync(old, { recursive: true, force: true })
+    else { fs.rmSync(DEPS_DIR, { recursive: true, force: true }); fs.renameSync(old, DEPS_DIR) }
+    DEP_DIRS = depDirs()
+  }
+  // what the weave does not carry: a file that is text neither at the old base nor at the new
+  const other = changed.filter((p) => !SKIP.test(p) && !wasText.has(p) && !isTextNow.has(p))
+  for (const a of pool) {
+    const dir = agentDir(a)
+    for (const p of other) {
+      const src = path.join(BASE_DIR, p), dst = path.join(dir, p)
+      fs.rmSync(dst, { recursive: true, force: true })
+      if (fs.existsSync(src)) { fs.mkdirSync(path.dirname(dst), { recursive: true }); fs.cpSync(src, dst, { verbatimSymlinks: true }) }
+    }
+    gitIn(dir, ['read-tree', tip]); gitIn(dir, ['update-index', '-q', '--refresh'], { ok: true })
+    if (setup) linkDeps(dir)
+  }
+  fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')   // the boot publishes against this base
+  ev('main:moved', { from, to: tip, why, changed: changed.length, woven: r.paths, other, via: r.via, setup })
+  log('main moved', from.slice(0, 12), '->', tip.slice(0, 12), `(${changed.length} file(s), ${r.paths.length} merged as a peer's)`)
+  await board.post({ by: 'host', claim: `main moved to ${tip.slice(0, 12)}: ${changed.length} file(s) changed there (${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}). They merge into every copy like a peer's work, from \`main\`` })
+  lastPublish = now(); lastChange = now()
+  return true
+}
+async function mainWatcher () {
+  while (MAIN_BRANCH && !mainOff && !settled && !outcome && now() < CLOCK_MS) {
+    // short sleeps, so a run that ends is not kept waiting for the next look
+    for (let waited = 0; waited < MAIN_POLL_MS && !settled && !outcome; waited += 500) await sleep(500)
+    if (await absorbMain('poll')) edge('main moved')
+  }
+}
+
 // ── settling ──────────────────────────────────────────────────────────────────
 let outcome = null   // ticket 5: { pr: 'ready' | 'draft', why, snap }
 function debounceMs () {
@@ -1017,6 +1135,8 @@ async function settle () {
     const tested = lastEdge && lastEdge.green && lastEdge.t >= lastPublish
     if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
     const r = await edge('settle check')
+    // one more look at main before a green run ends: a move is taken in and tested like any other
+    if (r.green && await absorbMain('settle')) { edge('main moved'); continue }
     if (r.green && LOOSE_MODE === 'work' && !board.tasks.has('L:loose')) {
       const loose = looseEnds(board.beliefs, textAt(r.snap)).filter((x) => x.state !== 'resolved')
       if (loose.length) {
@@ -1084,7 +1204,7 @@ async function settle () {
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
 let MEMORY = false   // the run's weaves began from main's memory
-if (MAIN_MODE === 'memory') {
+if (MAIN_MODE !== 'frozen') {
   const r = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
   MEMORY = !!(r.ok && r.memory)
   ev('weave:memory', r.ok ? { ...r, ok: undefined } : { memory: false, reason: String(r.error).slice(0, 300) })
@@ -1156,7 +1276,8 @@ async function spawner () {
     await sleep(500)
   }
 }
-await Promise.all([spawner(), settle()])
+followMain()
+await Promise.all([spawner(), settle(), mainWatcher()])
 await Promise.all(loops)
 await edgeChain
 // every step's receipt, green or red: what its latest checker result says it changed
@@ -1171,6 +1292,8 @@ const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 ev('loose-ends', { snap: looseSnap, items: looseItems })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
+  // the commit the work sits on: --base, or the main a `peer` run moved to
+  base: BASE_NOW,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefs.length,
   loose_ends: { reported: looseItems.length, resolved: looseItems.filter((x) => x.state === 'resolved').length },
@@ -1226,7 +1349,7 @@ function peerRewriteDraft () {
 // ops with file texts as fingerprints (compact_record.mjs) ──
 function writeCompactRecord () {
   const lines = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n')
-  const rec = compactRecord(snapshots, BASE_FILES, lines)
+  const rec = compactRecord(snapshots, BASE_FILES_0, lines)
   fs.writeFileSync(path.join(OUT, 'snapshots.jsonl'), rec.snapshots)
   fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), rec.digest)
 }

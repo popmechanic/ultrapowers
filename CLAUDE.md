@@ -100,8 +100,10 @@ the engine's exit code is the merge decision.
   symptom, what was tried and the constraint to Shelley (exe.dev's assistant, on
   `fleet-counsel`; `--model=claude-opus-5` reads files; read long answers back with
   `shelley client read`) before editing a script. A hack is only a bridge she has blessed.
-- **Run in parallel; same-file overlap folds at publish.** Launch plans concurrently whatever
-  files they share: a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
+- **Run in parallel; same-file overlap meets in the weave.** Launch plans concurrently whatever
+  files they share. A live run follows main (policy `flock.main.mode = peer`): a main that moves
+  mid-run is merged into the run like a builder's work, and a clash is a conflict a builder
+  resolves. For a main that moves after the engine exits, a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
   and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, on main's stored
   weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
   weave), so overlaps meet in Manyana (decision 11, #715;

@@ -119,6 +119,10 @@ evidence repository.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
     and the retire sweep deletes one whose pull request is closed and not merged.
+- **`$RUN_DIR/base`** — one line, a 40-hex sha, written by the engine only when a run that follows
+  main (policy `flock.main.mode = peer`) moved its base: the main the run's commit sits on. The boot
+  reads it after the engine exits and judges "nothing ahead of base" and the publish's catch-up
+  against it; absent, the base is the assignment's `base=`.
 - **`refs/ultrapowers/weave/v1` on the target** — main's memory (`factory/flock/weave_store.py`), the
   one ref outside `refs/heads/` the product repository receives, and only under policy
   `flock.main.mode = memory`. One commit per tree of the default branch, subject `weave <tree sha>`,

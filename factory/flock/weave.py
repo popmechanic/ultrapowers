@@ -43,6 +43,16 @@ Added for main-is-a-peer, stage 2 (main's memory, weave_store.py):
                                           `commit`'s tree, its lines authored `@r<run>:<task>`:
                                           {stored: true, entry, tree, paths} or {stored: false, reason}
 
+Added for main-is-a-peer, stage 3 (a moved main arrives mid-run):
+  main          {repo, commit, remote?, skip?}  the default branch moved to `commit`: its stored weaves
+                                          become the published copy of the peer `main`, so every pull
+                                          and the join take them in like a builder's work. Its lines
+                                          written since the run's base carry the store's own labels
+                                          (`@r<run>:<task>`, `@c:<sha12>`) as their authors; `blame`
+                                          reads such a line as `base`, since it is no work of this run.
+                                          `skip` is the engine's pattern of paths it never weaves.
+                                          {moved: true, tree, via, paths} or {moved: false, reason}
+
 Added for #1404 (one authorship mechanism, keyed by task):
   edit, rewrite take an optional task; every label recorded, compared or answered is task_label(agent, task)
   blame         {}                        {path: [label per visible line of the join]} (`a|b` or `base`)
@@ -552,6 +562,42 @@ class Keeper:
         self.mem = mem
         return {**mem.summary(), "installed": len(self.mem_installed)}
 
+    def r_main(self, repo, commit, remote=None, skip=None):
+        import re
+        import weave_store as S
+        old = self.mem
+        if old is None:
+            return {"moved": False, "reason": "no-memory"}
+        if remote:
+            S.sync(repo, remote)
+        try:
+            new = S.resolve(repo, commit)
+        except S.Drift as e:
+            return {"moved": False, "reason": "drift", "paths": e.paths}
+        if new is None:
+            return {"moved": False, "reason": "before-genesis"}
+        # a path this run weaves that main stopped keeping as text has no weave to merge: the run
+        # stops following main, and the publish's catch-up decides that path by its bytes
+        gone = sorted(p for p in self.base if p in new.unwoven and p not in old.unwoven)
+        if gone:
+            return {"moved": False, "reason": "no-longer-text", "paths": gone}
+        pub = self.published.setdefault("main", {})
+        fresh = lambda now, was: {k: who - was.get(k, set()) for k, who in now.items() if who - was.get(k, set())}
+        changed = []
+        for p, st in new.states.items():
+            if st == old.states.get(p) or (skip and re.search(skip, p)):
+                continue                       # main has not changed it since the Memory this run holds
+            if p not in self.base and p not in pub and not M.current_lines(st):
+                continue                       # absent at the run's base and absent on main still
+            pub[p] = st
+            self.mem_installed.add(p)
+            changed.append(p)
+            # only what main wrote since: an older line keeps reading `base` inside the run
+            _union_auth(self.kauth_pub.setdefault("main", {}), {p: fresh(new.auth.get(p, {}), old.auth.get(p, {}))})
+            _union_del(self.kdel_pub.setdefault("main", {}), {p: fresh(new.dels.get(p, {}), old.dels.get(p, {}))})
+        self.mem = new
+        return {"moved": True, "tree": new.tree, "via": new.via, "paths": sorted(changed)}
+
     def r_store(self, repo, commit, run="?"):
         import weave_store as S
         mem = self.mem
@@ -559,7 +605,9 @@ class Keeper:
             return {"stored": False, "reason": "no-memory"}
         join, auth, dels = self._join()
         # `A.2` (builder A on task 2) is stored `@r<run>:2`: the builder's letter means nothing after the run
-        named = lambda side: {k: {"@r%s:%s" % (run, l.split(".", 1)[1] if "." in l else "?") for l in who} for k, who in side.items()}
+        # a label the store already gave (`@...`, a line main brought mid-run) is kept as it is
+        named = lambda side: {k: {l if l.startswith("@") else "@r%s:%s" % (run, l.split(".", 1)[1] if "." in l else "?") for l in who}
+                              for k, who in side.items()}
         changed = 0
         for p, st in join.items():
             if p in mem.unwoven:
@@ -600,7 +648,9 @@ class Keeper:
         out = {}
         for p, st in join.items():
             js, side = M.deserialize_state(st), auth.get(p, {})
-            out[p] = [label_of(side, k) for e, k in zip(js, line_keys(js)) if e[3] % 2]
+            # a line main brought mid-run (`@...`) is no work of this run: it reads as base
+            mine = {k: {l for l in who if not l.startswith("@")} for k, who in side.items()}
+            out[p] = [label_of(mine, k) for e, k in zip(js, line_keys(js)) if e[3] % 2]
         return {"blame": out}
 
     # ── ticket 2 (additive): authorship by identity ──
