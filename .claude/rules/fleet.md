@@ -65,7 +65,10 @@ Read a past run at
   `kata.service` (build the one kata hub).
 - The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`:
   `~/.ultrapowers/kata-hub.env` names only the host (`KATA_URL`), and the bearer is sourced from
-  `/etc/kata/kata.env` on the hub by the hub's own shell, never on a laptop argv.
+  `/etc/kata/kata.env` on the hub by the hub's own shell, never on a laptop argv. `board-read.mjs`
+  sends its requests over one shared ssh connection (socket `~/.ultrapowers/hub-%C`, kept 60 s:
+  a hop measured about 1 s fresh and 0.2 s shared, 2026-11-13), and `--follow` reads only the rows
+  the feed gained since its last read.
 
 ## Tests
 

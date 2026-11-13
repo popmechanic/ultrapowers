@@ -594,4 +594,59 @@ const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
   assert.equal(mod.projectBoard(released, { runs: [275] }).tasks[0].state, 'released', '(mirror d) the older bare `released: <why>` still sets state released')
 }
 
+// ── one shared connection, and a follow that reads only what is new (2026-11-13) ──
+{
+  // (h) every request of a read carries the three ControlMaster options before the host, the
+  // socket beside the env file; the remote stays the last element
+  const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
+  const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
+  await main(['--run', '207', '--target', 'popmechanic/ultrapowers', '--since', '3030'], { exec, kataEnvPath, write: () => {} })
+  const want = ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + path.join(path.dirname(kataEnvPath), 'hub-%C'), '-o', 'ControlPersist=60', 'hub.example']
+  assert.equal(calls.length, 2, '(h) a read from a cursor is two requests, the projects and one page; got ' + calls.length)
+  for (const call of calls) {
+    assert.deepEqual(call.argv.slice(4, -1), want, '(h) the shared-connection options sit before the host; got ' + JSON.stringify(call.argv.slice(0, -1)))
+  }
+
+  // (i) a request that got no status over the shared connection is made once more on its own
+  const { sshTransport } = await import('../kata-client.mjs')
+  const seen = []
+  const flaky = async (cmd, argv) => {
+    seen.push(argv)
+    return argv.some((a) => String(a).startsWith('ControlPath=')) ? { code: 255, stdout: '', stderr: 'mux_client_request_session: read from master failed' } : { code: 0, stdout: '{"ok":true}\n200', stderr: '' }
+  }
+  const got = await sshTransport({ sshHost: 'hub.example', exec: flaky, control: '/x/hub-%C' }).request({ method: 'GET', path: '/api/v1/projects' })
+  assert.ok(got.status === 200 && got.json && got.json.ok === true, '(i) the retry\'s answer is the request\'s; got ' + JSON.stringify(got))
+  assert.ok(seen.length === 2 && !seen[1].some((a) => String(a).startsWith('Control')), '(i) the second hop carries no Control option; got ' + JSON.stringify(seen.map((a) => a.slice(0, -1))))
+  const plain = []
+  await sshTransport({ sshHost: 'hub.example', exec: async (cmd, argv) => { plain.push(argv); return { code: 0, stdout: '{}\n200', stderr: '' } } }).request({ method: 'GET', path: '/x' })
+  assert.deepEqual(plain[0].slice(0, -1), ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', 'hub.example'], '(i) with no control path the argv is what it was; got ' + JSON.stringify(plain[0].slice(0, -1)))
+
+  // (j) followReader: the first read starts from the run's creation; the next is one request,
+  // from the last row held, and its projection holds the old rows and the new one
+  const { hubFromEnv } = await import('../lobby.mjs')
+  const feed = [...HUB_FEED]
+  const grow = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed })
+  const page = (after) => { const rows = feed.filter((e) => e.event_id > after).slice(0, 100); return { events: rows, next_after_id: rows.length ? rows[rows.length - 1].event_id : after, reset_required: false } }
+  const requests = []
+  const live = async (cmd, argv) => {
+    const remote = String(argv[argv.length - 1]); requests.push(remote)
+    const m = remote.match(/\/api\/v1\/projects\/31\/events\?after_id=(\d+)/)
+    return m ? { code: 0, stdout: JSON.stringify(page(Number(m[1]))) + '\n200', stderr: '' } : grow.exec(cmd, argv)
+  }
+  const { client } = await hubFromEnv({ exec: live, actor: 'board-read', kataEnvPath })
+  const read = mod.followReader({ client, projectId: 31, runs: [207] })
+  const first = await read()
+  assert.equal(first.cursor, 3031, '(j) the first read ends at the feed\'s last row; got ' + first.cursor)
+  const before = requests.length
+  feed.push(row(3032, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:09:00.000Z', { body: 'done by Z' }))
+  const second = await read()
+  const made = requests.slice(before)
+  assert.ok(made.length === 1 && made[0].includes('/events?after_id=3031&'), '(j) the second read is one request, after row 3031; got ' + JSON.stringify(made.map((r) => r.slice(-60))))
+  assert.equal(second.cursor, 3032, '(j) the second read ends at the new row; got ' + second.cursor)
+  assert.equal(second.timeline.length, first.timeline.length + 1, '(j) the second projection holds every earlier row and the new one; got ' + second.timeline.length + ' after ' + first.timeline.length)
+  assert.ok(second.timeline.at(-1).what === 'done by Z' && second.timeline.at(-1).run === 207, '(j) the new row is read as run 207\'s; got ' + JSON.stringify(second.timeline.at(-1)))
+  const third = await read()
+  assert.equal(third.timeline.length, second.timeline.length, '(j) a read with nothing new changes nothing; got ' + third.timeline.length)
+}
+
 console.log('ALL TESTS PASSED')
