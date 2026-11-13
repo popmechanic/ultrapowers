@@ -35,7 +35,7 @@ assignment with `kind=factory` is refused. The boot script clones the target at 
 fetches the evidence repository's live branch (shallow, through the same edge
 host) and checks its tip against the assignment's `plan=`, runs the engine as a
 transient user unit with a memory cap — no status page, git is the record —
-commits the record to `live/<owner>-<repo>/run-<N>` every 60 s and at each
+commits the record to `live/<owner>-<repo>/run-<N>` every 10 s and at each
 transition, and — only when there is something to publish — pushes
 `ultra/integration-run-<N>` to the target and opens the PR over GitHub's REST
 API through the edge. The PR is the human gate; there is no approval step
@@ -327,6 +327,7 @@ re-answers the live run's task issues on the hub and kills it, #1036).
 
   ```bash
   node fleet/board-read.mjs --run <N> --target <owner>/<repo>
+  node fleet/run-read.mjs --run <N> --target <owner>/<repo>     # the same run from its evidence record: the whole log, up to 10 s behind
   ```
 
   It prints per-task state — `== now`, one line per issue of the run — then
@@ -343,7 +344,7 @@ re-answers the live run's task issues on the hub and kills it, #1036).
   long as the run lasts; what never runs on a timer here is a writer (the reap, a merge).
 - `runs/<owner>-<repo>/<N>/status.json` in the evidence repository —
   committed at every transition and, while the engine runs, every
-  `FLEET_COMMIT_SECONDS` (default 60) that `events.jsonl` has changed, so the
+  `FLEET_COMMIT_SECONDS` (default 10) that `events.jsonl` has changed, so the
   branch is at most one tick behind. Next to it sit `events.jsonl` and
   `engine.log`, the run's whole evidence. Read it by tag, which
   is the one spelling that keeps working after the run's live branch is gone:

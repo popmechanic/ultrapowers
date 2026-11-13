@@ -101,5 +101,5 @@ differ (temp file + `mv`), and commits `status.json`, `plan.json` (the parse the
 `fleet-boot.log` and (when the setup script left one) `fleet-setup.log` to
 `live/<owner>-<repo>/run-<N>` in the operator's evidence repository (read from
 `$HOME/fleet-evidence-repo`, under `runs/<owner>-<repo>/<N>/`) every `FLEET_COMMIT_SECONDS`
-(default 60) and at each transition; at the end of every run it tags `<owner>-<repo>/run-<N>`,
+(default 10) and at each transition; at the end of every run it tags `<owner>-<repo>/run-<N>`,
 verifies it and deletes the live branch. No status server — git is the record.

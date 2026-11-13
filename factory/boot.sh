@@ -17,7 +17,9 @@ GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 KATA_ADMIN_URL="https://kata.int.exe.xyz"
 # The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
 REAPER_URL="https://reaper.int.exe.xyz"
-FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
+# 10 s since 2026-11-13: the record is what a reader watches a run through (fleet/run-read.mjs), so it
+# is at most one tick behind. It was 60 while the hub carried the live view.
+FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-10}"
 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
 # whatever landed by then is published as a draft. No worker carries a cap of its own.
 FLEET_RUN_MAX_SECONDS="${FLEET_RUN_MAX_SECONDS:-14400}"
