@@ -35,6 +35,11 @@ keeps the name `factory/`. Models never run git.
   address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
   `audit.mjs` (a finished run's final computed row).
+- A builder that finds its task cannot be done as the plan is written, by any code, files an
+  objection (`object`, row `objection`, policy `flock.objection.mode`): the task parks at once for
+  the operator and is not handed round, and a run with nothing else left ends a draft whose reason
+  is the objection (flock-baseline run-32, 2026-11-13: without it the task was given back three
+  times and the run ended `deadlock`).
 - A builder's copy is a whole, current tree: every pull takes in every published change, and
   `flock.pulls.mode` (`flock/pulls.mjs`) narrows only what the builder is told of, a change outside
   its scope landing as a `pull` row marked `quiet` (flock-baseline run-10, 2026-11-13: a scope that

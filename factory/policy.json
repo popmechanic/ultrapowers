@@ -87,6 +87,15 @@
       "rollback": "mode = record",
       "unread": "loose ends per run, the share resolved in the run, and the drafts or wall the L:loose task adds"
     },
+    "objection": {
+      "mode": "on",
+      "n": 1,
+      "window": "flock-baseline run-32 (2026-11-13)",
+      "basis": "the wrong-plans reading (evals/fixtures/wrong_plans): on a plan whose two tasks pin one line two ways, the builder named the contradiction in its first note, the task was given back three times and the run ended `deadlock` after 69 s and 4 sessions, against 27 s and 2 sessions for the correct control; four other flawed plans ended ready",
+      "experiment": true,
+      "rollback": "mode = off (no `object` tool: a builder can only give the task back)",
+      "unread": "objection rows per run and the share the operator upholds; whether builders object where a give-back or more work was right, over the wrong-plans set and 20 real runs"
+    },
     "main": {
       "mode": "peer",
       "poll_seconds": 60,

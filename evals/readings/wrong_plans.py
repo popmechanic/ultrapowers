@@ -10,7 +10,7 @@ plan got; `<id>=gate` says the launcher refused it on its proof-gate record, whi
 
 For each run this reads `events.jsonl`, `engine.log` and `status.json` at the run's tag in the
 evidence clone and prints one row of counted facts: how it ended, wall seconds, builder sessions,
-tasks reopened red, tasks given back, conflicts opened, tasks the engine added, files written
+tasks reopened red, tasks given back, objections filed, conflicts opened, tasks the engine added, files written
 outside the plan, beliefs posted, and dollars. `--jev` adds one judgment, `said so`: whether
 anything the builders wrote states the planted flaw (`questions.json` beside this file, asked of
 TypeSafe with the key in `~/.ultrapowers/typesafe.env`). Every message read is printed under the
@@ -61,13 +61,14 @@ def read_run(evidence, slug, run):
     sessions = of('session:end')
     added = sorted({str(e.get('task')) for e in of('session:start') if str(e.get('task'))[:2] in ('R:', 'L:', 'C:')})
     said = ['%s: %s' % (e.get('by'), e.get('claim')) for e in of('belief') if e.get('by') != 'host']
+    said += ['%s objected to task %s: %s' % (e.get('agent'), e.get('task'), e.get('reason')) for e in of('objection')]
     said += ['%s, closing task %s: %s' % (e.get('agent'), e.get('task'), e.get('done')) for e in sessions if e.get('done')]
     said += ['the run ended: %s' % e.get('why') for e in ends if e.get('why')]
     return {
         'run': run, 'state': status.get('state'), 'ended': end.get('pr'), 'why': end.get('why'),
         'wall_s': round((when(end['ts']) - when(start[0]['ts'])).total_seconds()) if start and end.get('ts') else None,
         'sessions': len(sessions), 'red_proofs': sum(e.get('redRuns') or 0 for e in sessions),
-        'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')),
+        'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')), 'objected': len(of('objection')),
         'parked_tasks': len(of('task:parked')), 'conflicts': len(of('conflict:open')), 'engine_tasks': added,
         'outside_plan': sorted({e.get('path') for e in of('driver:amendment') if e.get('path')}),
         'beliefs': len([e for e in of('belief') if e.get('by') != 'host']), 'cost_usd': cost, 'said': said,
@@ -118,17 +119,17 @@ def main(argv):
         if jev and plan['flaw']:
             r['said_so'] = ask_jev(plan['flaw'], r['said'])
         results.append(r)
-    cols = ['plan', 'expected', 'ended', 'wall s', 'sessions', 'reopened', 'given back', 'conflicts', 'engine tasks', 'outside plan', 'beliefs', 'said so', '$']
+    cols = ['plan', 'expected', 'ended', 'wall s', 'sessions', 'reopened', 'given back', 'objected', 'conflicts', 'engine tasks', 'outside plan', 'beliefs', 'said so', '$']
     table = []
     for r in results:
         if r.get('gate'):
-            table.append([r['id'], r['expect'], 'refused at the gate'] + ['-'] * 10)
+            table.append([r['id'], r['expect'], 'refused at the gate'] + ['-'] * 11)
         elif r.get('missing'):
-            table.append([r['id'], r['expect'], 'no record for run %s' % r['run']] + ['-'] * 10)
+            table.append([r['id'], r['expect'], 'no record for run %s' % r['run']] + ['-'] * 11)
         else:
             s = r.get('said_so')
             table.append([r['id'], r['expect'], '%s (%s)' % (r['ended'] or r['state'], (r['why'] or '')[:44]), r['wall_s'], r['sessions'], r['reopened'],
-                          r['given_back'], r['conflicts'], ' '.join(r['engine_tasks']) or '-', ' '.join(r['outside_plan']) or '-', r['beliefs'],
+                          r['given_back'], r['objected'], r['conflicts'], ' '.join(r['engine_tasks']) or '-', ' '.join(r['outside_plan']) or '-', r['beliefs'],
                           ('%s %.2f' % (s['answer'], s['confidence'] or 0)) if s else '-', r['cost_usd'] if r['cost_usd'] is not None else '-'])
     widths = [max(len(str(x)) for x in col) for col in zip(cols, *table)] if table else [len(c) for c in cols]
     for row in [cols] + table:
