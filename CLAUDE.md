@@ -106,9 +106,11 @@ the engine's exit code is the merge decision.
   resolves. For a main that moves after the engine exits, a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
   and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, on main's stored
   weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
-  weave), so overlaps meet in Manyana (decision 11, #715;
-  every join on record was line-disjoint). A conflict is the resolver's measurement, not a
-  reason to serialize. Contention, not allocated vCPU, bounds concurrent runs.
+  weave), so overlaps meet in Manyana (decision 11, #715; read live on flock-baseline runs 16–21,
+  n=6 runs, 2026-11-13: five ready, one draft). A run whose builder must delete a line main wrote
+  ends a draft for the operator (#1401's read, operator's pick 2026-11-12). A conflict is the
+  resolver's measurement, not a reason to serialize. Contention, not allocated vCPU, bounds
+  concurrent runs.
 - **One merge, many writers (#1292).** Every builder writes its own weave replica and merges its
   peers' in any order; no engine step is the sole merger. Manyana is the only merge in the system,
   so never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned). Same-file concurrent
@@ -118,8 +120,8 @@ the engine's exit code is the merge decision.
   `.claude/ultrapowers/handoffs/` only when asked to resume. Sort by mtime, never filename, and
   treat each as what was true when written.
 - **Author plans concurrently from the issues:** `skills/ultrawrite/references/authoring-a-queue.md`
-  — partition by files, one author per bundle, the issue's sentence as the Claim, two
-  operator touches per plan, launches serial.
+  — one author per bundle, plans may share files (two that create one path go together), the
+  issue's sentence as the Claim, two operator touches per plan, launches serial.
 - **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
   whole product's map and the build order, into `product.json`, before any story.

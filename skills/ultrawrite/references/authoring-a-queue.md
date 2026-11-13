@@ -3,13 +3,23 @@
 
 ## Authoring a queue
 
-A sitting's queue of well-defined issues drains by partitioning it by files into
-disjoint bundles, and it must partition by `Create:` paths as well as by files: two
-plans that would touch one file go in one bundle, since same-file edits merge inside
-one run and never across two PRs, and two plans that would create one path go in
-one bundle, or the second declares `Consumes:` on the first and launches after it
-(the 2026-09-17 drain serialized #1095 and #1096 by hand after both listed `Create:
-fleet/jev-client.mjs`). Dispatch one author subagent per bundle — each loads this
+A sitting's queue of well-defined issues drains by cutting it into bundles an author
+can hold, one author per bundle. Plans may share files. Same-file edits from two runs
+meet on main's stored weave (`flock.main.mode = peer`): a live run takes a moved main
+in like a builder's work, and a run that finished before main moved catches up to it
+and merges (flock-baseline runs 16–21, n=6 runs, 2026-11-13: five ready, one draft;
+an experiment on one fixture, whose rollback is cutting the queue by files again).
+Two things still shape the cut:
+
+- **Two plans that would create one path go in one bundle**, or the second declares
+  `Consumes:` on the first and launches after it. The weave joins two new files of one
+  name end to end, and no run has read that case (the 2026-09-17 drain serialized #1095
+  and #1096 by hand after both listed `Create: fleet/jev-client.mjs`).
+- **Two issues that contradict on the same lines go in one bundle**, so one plan decides.
+  A run whose builder must delete a line another plan put on main ends a draft for the
+  operator, never a ready pull request (run 17; operator's pick, 2026-11-12).
+
+Dispatch one author subagent per bundle — each loads this
 skill, pins its own launch base, dispatches its own fresh gate readers per task,
 writing each diet to `<issue>-gate-<t>.json` so the filename carries the plan's
 own issue prefix and two authors' readers never collide on the scratchpad (six
