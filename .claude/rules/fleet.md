@@ -55,12 +55,19 @@ Read a past run at
 - `claude-token.mjs` — the credential: loom-style OAuth, refresh token in the keychain,
   refreshed before every launch, single-flight. **Never force-rotate while a run is live** (see
   CLAUDE.md).
-- `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and asking the kata
-  hub for the run issue's state, falling back to the evidence repository via `gh api` only when
-  the hub is dark (and not at all when `"evidence"` is unset); never a VM's disk. It also writes
-  the end of a dead or orphaned run (`failRun`, then `sealRun`) and deletes the closed-unmerged
-  `ultra/integration-run-*` branches of the targets its rows name (`--target` adds one no VM
-  names).
+- `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and then the run's
+  `status.json` in the evidence repository via `gh api`, at the run's tag, else its live branch;
+  never a VM's disk and, by default, never the hub. A run whose page cannot be read is left alone
+  and reported `unread`. The switch is `janitor.record.source` in `fleet/policy.json` (`evidence`;
+  the rollback `kata` asks the hub first, as before 2026-11-13). It also writes the end of a dead
+  or orphaned run (`failRun`, then `sealRun`), seals a run that ended with its live branch left
+  and no tag, and deletes the closed-unmerged `ultra/integration-run-*` branches, all on the
+  targets its rows name (`--target` adds one no VM names).
+- `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
+  VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
+  its tag in the evidence repository says `done`, read through the hub-only read-only integration
+  `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO` and, for the
+  rollback to the kata run issue, `REAPER_RECORD=kata`. Unit tests: `tests/test_reaper.py`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `board-read.mjs` (print a run's board from the hub), `run-read.mjs` (print a run from its
   evidence record: every claim, give-back, objection, conflict, move of main and the pull request;

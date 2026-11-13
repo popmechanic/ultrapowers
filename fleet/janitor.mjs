@@ -4,12 +4,14 @@
  *
  *   node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]
  *
- * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the hub
- * first, the evidence repository when the hub is dark), what it removes (a
- * finished run's VM after `--age`, an integration branch nothing merged), what
- * it writes (a dead or orphaned run's end, then the seal) and what it only
- * reports (`kept`, `unknown`, `stale`). This header does not restate it (#1444);
- * the comments below say why the code is shaped the way it is.
+ * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the run's
+ * status page in the evidence repository; the kata hub only when
+ * `fleet/policy.json`'s `janitor.record.source` is rolled back to `kata`), what
+ * it removes (a finished run's VM after `--age`, an integration branch nothing
+ * merged), what it writes (a dead or orphaned run's end, then the seal; the
+ * seal alone for a run that ended without one) and what it only reports
+ * (`kept`, `unknown`, `unread`, `stale`). This header does not restate it
+ * (#1444); the comments below say why the code is shaped the way it is.
  *
  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
  * is run by hand after the laptop has been asleep. `--dry-run` issues every
@@ -17,6 +19,7 @@
  */
 
 import { Buffer } from 'node:buffer'
+import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -109,7 +112,34 @@ const ATTENTION_MSG_KEY = 'work.attention_msg'
 const DEATH_STATE = 'failed'
 const DEATH_ATTENTION = 'needs-human'
 
-// ── The hub: the run's state, asked of kata ─────────────────────────────────
+// ── The switch: where a pass reads a run's end ──────────────────────────────
+
+/**
+ * `evidence`: the run's status page in the evidence repository, and the hub is
+ * never asked. `kata`: the rollback — the hub first, the evidence repository
+ * for a row the hub cannot answer, as every pass read before 2026-11-13.
+ */
+export const RECORD_SOURCES = Object.freeze(['evidence', 'kata'])
+const POLICY_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
+
+/**
+ * The `janitor.record.source` cell of the `policy.json` beside this file. A
+ * file that cannot be read, or a cell that names neither source, is the
+ * default: `evidence`.
+ */
+export function recordSourceOf (policyPath = POLICY_PATH) {
+  try {
+    const source = JSON.parse(fs.readFileSync(policyPath, 'utf8'))?.janitor?.record?.source
+    return RECORD_SOURCES.includes(source) ? source : RECORD_SOURCES[0]
+  } catch {
+    return RECORD_SOURCES[0]
+  }
+}
+
+/** The hub of a pass that asks no hub: no client, no host, nothing dark. */
+const NO_HUB = () => ({ client: null, host: null, dark: null })
+
+// ── The rollback: the run's state, asked of kata ────────────────────────────
 
 /**
  * The hub as the janitor holds it: `client` (null when there is none), `host`
@@ -119,7 +149,7 @@ const DEATH_ATTENTION = 'needs-human'
  * launcher's); with none, `~/.ultrapowers/kata-hub.env`
  * is read and the client built on its host, exactly as the launcher builds
  * its own. An env file that is absent or names no host is not a refusal here:
- * a reaper with no hub reads the target, and says so.
+ * a pass with no hub reads the evidence repository, and says so.
  */
 async function openHub ({ exec, kata, kataEnvPath }) {
   if (kata !== undefined) return { client: kata, host: kata?.host ?? null, dark: null }
@@ -202,7 +232,7 @@ function hubReader (hub) {
   }
 }
 
-// ── The fallback: the run's page, read off the evidence repository ──────────
+// ── The record: the run's page, read off the evidence repository ────────────
 
 /**
  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
@@ -627,19 +657,38 @@ async function closedUnmergedBranches (exec, targets) {
   return branches
 }
 
-// ── #1314: the runs no VM carries, whose page still says live ──────────────
+// ── #1314: the runs no VM carries, whose live branch is still there ────────
+
+/** Is any VM of the fleet, listed now, carrying this run of this target? */
+async function carriedNow (exec, target, run) {
+  const vms = await listVms(exec)
+  return vms.some((row) => {
+    const fields = parseComment(row.comment)
+    return fields.run === String(run) && fields.target === target
+  })
+}
 
 /**
  * One `matching-refs` read per target for its live branches in the evidence
  * repository; for every run no row of this pass carries on that target, its
- * branch page. A live page older than `ageMs`, on a run the fleet still
- * carries no VM for when listed again, is written failed and sealed
- * (`failRun`) — `closed` false under `--dry-run`. No evidence repository, no
- * reads and no close-outs.
+ * branch page, older than `ageMs`, on a run the fleet still carries no VM for
+ * when listed again. Two ends are written here, and answered apart:
+ *
+ * - `closed`: a page that still says the run is in flight is written failed
+ *   and sealed (`failRun`) — `closed` false under `--dry-run`.
+ * - `sealed`: a page that says the run ended (`done|parked|failed`) is a run
+ *   whose sandbox never cut its tag (flock-baseline run 31, 2026-11-13, n=1:
+ *   `done`, no tag, the live branch left). Its page is the sandbox's own last
+ *   word and is not rewritten; the run is sealed (`sealRun`: the tag cut at
+ *   the branch's head, verified, the branch deleted) — `sealed` false under
+ *   `--dry-run` and when the seal is refused, with the reason.
+ *
+ * No evidence repository, no reads and neither write.
  */
 async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs, now, dryRun }) {
   const closed = []
-  if (evidence === null) return closed
+  const sealed = []
+  if (evidence === null) return { closed, sealed }
   for (const target of [...targets].sort()) {
     const payload = await ghList(exec, evidenceRefsPath(evidence, target))
     if (!Array.isArray(payload)) continue
@@ -654,16 +703,24 @@ async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs
       const page = found?.page ?? null
       if (page === null) continue
       const state = typeof page.state === 'string' ? page.state : null
-      if (!LIVE_STATES.includes(state)) continue
+      const ended = REAPABLE_STATES.includes(state)
+      if (!ended && !LIVE_STATES.includes(state)) continue
       const updated = Date.parse(String(page.updatedAt))
       if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
       // A VM that came up between the pass's listing and now is not an
       // orphan, and there is nothing to report.
-      const vms = await listVms(exec)
-      if (vms.some((row) => {
-        const fields = parseComment(row.comment)
-        return fields.run === String(run) && fields.target === target
-      })) continue
+      if (await carriedNow(exec, target, run)) continue
+      if (ended) {
+        if (dryRun) {
+          sealed.push({ target, run, state, sealed: false })
+          continue
+        }
+        const out = await sealRun({ exec, evidence, target, run })
+        sealed.push({
+          target, run, state, sealed: out.tagged && out.deleted, ...(out.reason === undefined ? {} : { reason: out.reason })
+        })
+        continue
+      }
       if (dryRun) {
         closed.push({ target, run, state, closed: false })
         continue
@@ -674,20 +731,23 @@ async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs
       closed.push({ target, run, state, closed: out.written })
     }
   }
-  return closed
+  return { closed, sealed }
 }
 
 /**
- * Everything the janitor does, with the exec seam, the clock and the hub
- * injected. `kata` is the hub client (`null`: no hub, read the target);
+ * Everything the janitor does, with the exec seam, the clock, the hub and the
+ * switch injected. `record` is where a run's end is read (`RECORD_SOURCES`);
+ * handed none, the policy cell is (`recordSourceOf`). `evidence` is the
+ * evidence repository (#1395); handed none, the `evidence` key of `configPath`
+ * (default `~/.ultrapowers/fleet.json`) is. With neither, no run can be read
+ * and none is reaped — every row is `unread`.
+ *
+ * Under the `kata` rollback alone, `kata` is the hub client (`null`: no hub);
  * undefined reads `kataEnvPath` (default `~/.ultrapowers/kata-hub.env`) and
- * builds one. `evidence` is the evidence repository (#1395); handed none, the
- * `evidence` key of `configPath` (default `~/.ultrapowers/fleet.json`) is.
- * With neither, nothing is read from any evidence repository and the reap
- * goes on by the hub alone.
+ * builds one, and a run the hub answers is reaped by the hub alone.
  */
 export async function janitor ({
-  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath
+  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath, record
 }) {
   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
   const dryRun = opts['dry-run'] === true
@@ -699,13 +759,14 @@ export async function janitor ({
     throw new Refusal(`janitor: --target must be <owner>/<repo>, got ${JSON.stringify(opts.target)}`)
   }
   // The janitor sizes nothing, so of `fleet.json` it reads the one key
-  // `evidence` — and only when it was handed no repository; `kata-hub.env` is
-  // the only other file under `~/.ultrapowers/` it opens. The run's state
-  // lives on the hub and in the evidence repository.
+  // `evidence` — and only when it was handed no repository. The run's state
+  // lives in the evidence repository; `kata-hub.env` is opened, and the hub
+  // asked, only under the `kata` rollback.
   const evidenceRepo = isSafeTarget(evidence)
     ? evidence
     : await readEvidenceSetting({ path: configPath ?? DEFAULT_CONFIG_PATH() })
-  const hub = await openHub({ exec, kata, kataEnvPath })
+  const source = RECORD_SOURCES.includes(record) ? record : recordSourceOf()
+  const hub = source === 'kata' ? await openHub({ exec, kata, kataEnvPath }) : NO_HUB()
   const fromHub = hubReader(hub)
 
   const nowMs = now().getTime()
@@ -718,6 +779,8 @@ export async function janitor ({
   const unknown = []
   const deaths = []
   const kept = []
+  // The rows whose record answered nothing: left alone, and said so.
+  const unread = []
   // Every row that parsed to an assignment, with what its record said — the
   // launcher's duplicate check reads this list instead of listing the fleet a
   // second time (#1036). A row whose record answered nothing is here too, with
@@ -750,7 +813,9 @@ export async function janitor ({
     targets.add(target)
     carried.add(`${target}#${run}`)
 
-    // The hub first; the evidence repository when the hub cannot answer this row.
+    // The evidence record. Under the `kata` rollback the hub is asked first
+    // (`fromHub` answers null at once for a pass with no hub), and the
+    // evidence repository only for a row the hub cannot answer.
     const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, evidenceRepo, target, run)
     runs.push({
       vm: row.name,
@@ -760,8 +825,12 @@ export async function janitor ({
       live: reading?.live ?? null,
       state: reading?.state ?? null
     })
-    // No record anywhere: nothing to decide on, and nothing to age it by.
-    if (reading === null) continue
+    // No record that could be read — absent, or a read that failed: nothing
+    // to decide on and nothing to age it by, so the VM is never touched.
+    if (reading === null) {
+      unread.push({ vm: row.name, run, target })
+      continue
+    }
 
     // ── A record that says the run is in flight is cross-checked against the
     //    unit that would be running it. `run` came out of `isRunNumber` (or a
@@ -814,8 +883,11 @@ export async function janitor ({
   //    after the row loop, so every read order above is unchanged.
   const sweep = opts.target === undefined ? targets : new Set([...targets, opts.target])
   const branches = await closedUnmergedBranches(exec, sweep)
-  // ── #1314: beside it, the orphans — the runs no VM carries, still live. ───
-  const closedOut = await closeOutOrphans({ exec, evidence: evidenceRepo, targets, carried, nowMs, ageMs, now, dryRun })
+  // ── #1314: beside it, the orphans — the runs no VM carries whose live
+  //    branch is still there, on the same targets as the sweep.
+  const { closed: closedOut, sealed } = await closeOutOrphans({
+    exec, evidence: evidenceRepo, targets: sweep, carried, nowMs, ageMs, now, dryRun
+  })
 
   // ── Then the reap, through the lobby, and the branches nothing merged. ───
   if (!dryRun) {
@@ -836,13 +908,29 @@ export async function janitor ({
     }
   }
 
-  // `hub` is null for a pass that was told there is no hub; otherwise the host
-  // it asked and, when it could not, why — the first reason, kept whole.
+  // `hub` is null for a pass that asked no hub — every pass but the `kata`
+  // rollback's — and for one told there is none; otherwise the host it asked
+  // and, when it could not, why — the first reason, kept whole.
   const hubReport = hub.client === null && hub.host === null && hub.dark === null
     ? null
     : { host: hub.host, dark: hub.dark }
   return {
-    dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs, evidence: evidenceRepo
+    dryRun,
+    age,
+    record: source,
+    actions,
+    stale,
+    unknown,
+    unread,
+    deaths,
+    branches,
+    closedOut,
+    sealed,
+    kept,
+    pending,
+    hub: hubReport,
+    runs,
+    evidence: evidenceRepo
   }
 }
 
@@ -887,8 +975,8 @@ async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, ru
  * Nothing schedules the janitor, so every launch is where it runs — before
  * the run number is read, so the fleet a launch joins is already clear of the
  * VMs of runs that finished over an hour ago. `hub` is the client the launch
- * built, so the janitor asks the hub the launch already reached — or, with no
- * hub, reads the target. A reap that fails is reported and not fatal: the run
+ * built: the janitor asks it only under the `kata` rollback, so that pass asks
+ * the hub the launch already reached. A reap that fails is reported and not fatal: the run
  * being launched is worth more than the ballast the janitor came for.
  */
 export async function preflight ({
@@ -966,6 +1054,22 @@ const renderBranch = (b, dryRun) =>
 const renderClosedOut = (c, dryRun) =>
   `${dryRun ? 'would close out' : 'closed out'} run=${c.run} target=${c.target} ${c.state} → failed`
 
+/** A run that ended with its live branch left and no seal: sealed, to be, or refused. */
+const renderSealed = (s, dryRun) => {
+  const what = `run=${s.run} target=${s.target} ${s.state}`
+  if (dryRun) return `would seal ${what} — its live branch is still there`
+  if (s.sealed) return `sealed ${what} — tag ${runTagFor(s.target, s.run)} cut, live branch deleted`
+  return `not sealed ${what} — ${s.reason ?? 'unknown'}`
+}
+
+/** A row whose record could not be read: where it was looked for, and that the VM stays. */
+const renderUnread = (u, evidence) =>
+  `unread ${u.vm}  run=${u.run} ` +
+  (evidence === null
+    ? 'no evidence repository is set ("evidence" in ~/.ultrapowers/fleet.json)'
+    : `no status page in ${evidence} at ${runTagFor(u.target, u.run)} or ${liveBranchFor(u.target, u.run)}`) +
+  ' — left alone'
+
 /** A row the reap never touches, and why — the comment itself said so. */
 const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
 
@@ -984,10 +1088,12 @@ const renderJanitor = (result) => {
     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
     ...(result.pending ?? []).map((p) => `pending ${p.vm}  run=${p.run} state=${p.state ?? 'none'} reapable at ${p.reapableAt}`),
     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
+    ...(result.unread ?? []).map((u) => renderUnread(u, result.evidence ?? null)),
     // Last, after every rm, stale and unknown line: the target's branches,
     // then the evidence repository's close-outs.
     ...(result.branches ?? []).map((b) => renderBranch(b, result.dryRun)),
-    ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun))
+    ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun)),
+    ...(result.sealed ?? []).map((s) => renderSealed(s, result.dryRun))
   ]
   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
 }

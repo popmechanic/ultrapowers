@@ -5,6 +5,11 @@
  * repository (#1395), never the target's; and it deletes a target's
  * integration branch whose pull request closed unmerged, and nothing else there.
  *
+ * The evidence record is the default source and the hub is not asked (E1–E3);
+ * `record: 'kata'` is the rollback, the hub first and the evidence repository
+ * behind it (K1–K2); a run that ended with its live branch left and no tag is
+ * sealed (S1–S4).
+ *
  * Every call goes through a recording exec stub: the lobby's `ls`, the unit
  * reads over ssh, and `gh api` answered by path. The hub, where a leg needs
  * one, is the real kata client over a recording transport. No socket is
@@ -15,7 +20,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-import { janitor } from '../janitor.mjs'
+import { janitor, recordSourceOf } from '../janitor.mjs'
 import { makeKataClient } from '../kata-client.mjs'
 
 const TARGET = 'o/r'
@@ -264,7 +269,7 @@ await test('sealRun: a tag that does not name the head keeps the live branch', a
 
 // The death's hub marking: one metadata POST under the death's idempotency
 // key and no `If-Match` — the client's own patchMetadata, handed a key.
-await test('M2: a hub-read death marks the run issue under janitor:run-<N>:death, no If-Match', async () => {
+await test('M2: under the kata rollback, a hub-read death marks the run issue under janitor:run-<N>:death, no If-Match', async () => {
   const requests = []
   const issue = { uid: 'u5', status: 'open', revision: 7, updated_at: '2026-09-30T11:55:00Z', metadata: { run: RUN } }
   const transport = {
@@ -279,7 +284,7 @@ await test('M2: a hub-read death marks the run issue under janitor:run-<N>:death
   }
   const { exec } = stub({ vms: [ROW], unit: 'failed' })
   const result = await janitor({
-    argv: ['--json'], exec, kata: makeKataClient({ transport, actor: 'janitor' }), now, configPath: NO_CONFIG
+    argv: ['--json'], exec, kata: makeKataClient({ transport, actor: 'janitor' }), now, configPath: NO_CONFIG, record: 'kata'
   })
   assert.equal(result.deaths[0].hubMarked, true)
   const patches = requests.filter((r) => r.method === 'POST' && r.path.endsWith('/issues/u5/metadata'))
@@ -359,6 +364,191 @@ await test('M6: no setting reads nothing from any evidence repository', async ()
     assert.equal(result.evidence, null)
     assert.equal(result.runs.length, 1)
   }
+})
+
+// ── The evidence record decides, and the hub is not asked ──────────────────
+
+const EV = 'ops/evidence'
+const vmOf = (run) => `fleet-r${run}-1234567890-abcd`
+const rowOf = (run) => ({ vm_name: vmOf(run), ssh_dest: `${vmOf(run)}.exe.xyz`, comment: `run=${run} target=${TARGET}` })
+const statusOf = (run) => `repos/${EV}/contents/runs/o-r/${run}/status.json`
+const atTag = (run, page) => ({ [`GET ${statusOf(run)}?ref=o-r/run-${run}`]: ok(envelope(page)) })
+const atLive = (run, page) => ({ [`GET ${statusOf(run)}?ref=live/o-r/run-${run}`]: ok(envelope(page)) })
+const OLD = '2026-09-30T09:00:00Z'
+const rmCommands = (calls) => calls
+  .filter((c) => c.cmd === 'ssh' && c.args[0] === 'exe.dev' && /^rm /.test(c.args[1]))
+  .map((c) => c.args[1])
+
+/** A hub that cannot be reached: every request throws, and every one is counted. */
+const darkHub = () => {
+  const requests = []
+  const transport = { async request (req) { requests.push(req); throw new Error('ssh: connect to host kata-hub.exe.xyz: Connection refused') } }
+  return { client: makeKataClient({ transport, actor: 'janitor' }), requests }
+}
+
+// E1 — one pass over a done, a parked, a running and an unreadable run, the
+// hub unreachable and never asked: the policy file's default is what decides.
+await test('E1: with the hub unreachable, a done and a parked run are reaped, a running one left, an unread one never touched', async () => {
+  const hub = darkHub()
+  const { exec, calls } = stub({
+    vms: [rowOf(1), rowOf(2), rowOf(3), rowOf(4)],
+    unit: 'active',
+    gh: {
+      ...atTag(1, { state: 'done', updatedAt: OLD }),
+      ...atTag(2, { state: 'parked', updatedAt: OLD }),
+      ...atLive(3, { state: 'running', updatedAt: '2026-09-30T11:59:00Z' })
+      // run 4: no page at its tag or its live branch.
+    }
+  })
+  const result = await janitor({ argv: ['--json'], exec, kata: hub.client, now, evidence: EV, configPath: NO_CONFIG })
+  assert.equal(result.record, 'evidence', 'the default source')
+  assert.equal(hub.requests.length, 0, 'the hub is not asked')
+  assert.equal(result.hub, null)
+  assert.deepEqual(rmCommands(calls), [`rm ${vmOf(1)} --json`, `rm ${vmOf(2)} --json`])
+  assert.deepEqual(result.actions.map((a) => [a.run, a.state, a.applied]), [[1, 'done', true], [2, 'parked', true]])
+  assert.deepEqual(result.unread, [{ vm: vmOf(4), run: 4, target: TARGET }])
+  assert.deepEqual(result.runs.map((r) => [r.run, r.live, r.state]), [[1, false, 'done'], [2, false, 'parked'], [3, true, 'running'], [4, null, null]])
+})
+
+// E2 — a read that fails is not a finished run: gh answering an error for
+// every status read removes nothing.
+await test('E2: a status read that fails removes nothing', async () => {
+  const failed = { code: 1, stdout: '', stderr: 'gh: Server Error (HTTP 502)' }
+  const { exec, calls } = stub({
+    vms: [rowOf(1)],
+    gh: {
+      [`GET ${statusOf(1)}?ref=o-r/run-1`]: failed,
+      [`GET ${statusOf(1)}?ref=live/o-r/run-1`]: failed
+    }
+  })
+  const result = await janitor({ argv: ['--json'], exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(rmCommands(calls), [])
+  assert.deepEqual(result.actions, [])
+  assert.deepEqual(result.unread, [{ vm: vmOf(1), run: 1, target: TARGET }])
+})
+
+// E3 — a finished run inside its hour is pending, not removed; the switch's
+// default is the policy file's own cell.
+await test('E3: a done run inside --age is pending; the repo policy cell says evidence', async () => {
+  const { exec, calls } = stub({ vms: [rowOf(1)], gh: atTag(1, { state: 'done', updatedAt: '2026-09-30T11:30:00Z' }) })
+  const result = await janitor({ argv: ['--json'], exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(rmCommands(calls), [])
+  assert.deepEqual(result.pending, [{ vm: vmOf(1), run: 1, state: 'done', reapableAt: '2026-09-30T12:30:00.000Z' }])
+  assert.equal(recordSourceOf(), 'evidence')
+  assert.equal(recordSourceOf(configAt('policy-kata.json', { janitor: { record: { source: 'kata' } } })), 'kata')
+  assert.equal(recordSourceOf(configAt('policy-odd.json', { janitor: { record: { source: 'elsewhere' } } })), 'evidence')
+  assert.equal(recordSourceOf(NO_CONFIG), 'evidence')
+})
+
+// ── The rollback: `record: 'kata'` reads as every pass did before ──────────
+
+// K1 — the hub answers: a closed run issue is the finish, and no status page
+// is read for that row.
+await test('K1: under the kata rollback a closed run issue reaps the VM with no evidence read', async () => {
+  const requests = []
+  const issue = { uid: 'u1', status: 'closed', closed_reason: 'done', closed_at: OLD, updated_at: OLD, metadata: { run: 1 } }
+  const transport = {
+    async request (req) {
+      requests.push(req)
+      if (req.path.endsWith('/projects?limit=1000')) return { status: 200, json: { projects: [{ id: 3, uid: 'p3', name: 'o-r' }] } }
+      return { status: 200, json: { issues: [issue] } }
+    }
+  }
+  const { exec, calls } = stub({ vms: [rowOf(1)] })
+  const result = await janitor({
+    argv: ['--json'], exec, kata: makeKataClient({ transport, actor: 'janitor' }), now, evidence: EV, configPath: NO_CONFIG, record: 'kata'
+  })
+  assert.equal(result.record, 'kata')
+  assert.equal(requests.length, 2, 'the projects listing and the issues page')
+  assert.deepEqual(rmCommands(calls), [`rm ${vmOf(1)} --json`])
+  assert.deepEqual(ghPaths(calls).filter((p) => p.includes('/status.json')), [])
+})
+
+// K2 — the hub is dark: one failed request darkens the pass, the report says
+// so, and the row is read off the evidence repository.
+await test('K2: under the kata rollback a dark hub is reported and the evidence repository read instead', async () => {
+  const hub = darkHub()
+  const { exec, calls } = stub({ vms: [rowOf(1), rowOf(2)], gh: { ...atTag(1, { state: 'done', updatedAt: OLD }), ...atTag(2, { state: 'done', updatedAt: OLD }) } })
+  const result = await janitor({ argv: ['--json'], exec, kata: hub.client, now, evidence: EV, configPath: NO_CONFIG, record: 'kata' })
+  assert.equal(hub.requests.length, 1, 'one dark read, not one per row')
+  assert.match(result.hub.dark, /Connection refused/)
+  assert.deepEqual(rmCommands(calls), [`rm ${vmOf(1)} --json`, `rm ${vmOf(2)} --json`])
+})
+
+// ── A run that ended with its live branch left and no tag is sealed ────────
+
+const liveRefs = (...runs) => ({
+  [`GET repos/${EV}/git/matching-refs/heads/live/o-r/run-`]: ok(JSON.stringify(
+    runs.map((run) => ({ ref: `refs/heads/live/o-r/run-${run}`, object: { sha: HEAD_SHA } }))
+  ))
+})
+const sealOf = (run) => ({
+  [`GET repos/${EV}/git/ref/heads/live/o-r/run-${run}`]: ok(JSON.stringify({ object: { sha: HEAD_SHA } })),
+  [`POST repos/${EV}/git/refs`]: ok(JSON.stringify({ ref: `refs/tags/o-r/run-${run}` })),
+  [`GET repos/${EV}/git/ref/tags/o-r/run-${run}`]: ok(JSON.stringify({ object: { sha: HEAD_SHA } })),
+  [`DELETE repos/${EV}/git/refs/heads/live/o-r/run-${run}`]: ok('')
+})
+const writes = (calls) => ghCalls(calls).filter((c) => methodOf(c) !== 'GET').map((c) => `${methodOf(c)} ${c.args.find((a) => a.startsWith('repos/'))}`)
+
+// S1 — no VM carries run 7, its page says done and is over an hour old: the
+// tag is cut at the branch's head, verified, the branch deleted; the page is
+// not rewritten.
+await test('S1: an ended run no VM carries, its live branch left, is sealed and its page not rewritten', async () => {
+  const { exec, calls } = stub({
+    vms: [rowOf(9)],
+    gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: OLD }), ...sealOf(7) }
+  })
+  const result = await janitor({ argv: ['--json'], exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(result.sealed, [{ target: TARGET, run: 7, state: 'done', sealed: true }])
+  assert.deepEqual(result.closedOut, [])
+  assert.deepEqual(writes(calls), [`POST repos/${EV}/git/refs`, `DELETE repos/${EV}/git/refs/heads/live/o-r/run-7`])
+  const post = ghCalls(calls).find((c) => methodOf(c) === 'POST')
+  assert.equal(field(post, 'ref'), 'refs/tags/o-r/run-7')
+  assert.equal(field(post, 'sha'), HEAD_SHA)
+})
+
+// S2 — `--dry-run` names it and writes nothing; a page inside `--age` is the
+// sandbox still sealing, and is not named at all.
+await test('S2: --dry-run names the seal and writes nothing; a page inside --age is left to its sandbox', async () => {
+  const dry = stub({ vms: [rowOf(9)], gh: { ...liveRefs(7), ...atLive(7, { state: 'parked', updatedAt: OLD }), ...sealOf(7) } })
+  const named = await janitor({ argv: ['--json', '--dry-run'], exec: dry.exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(named.sealed, [{ target: TARGET, run: 7, state: 'parked', sealed: false }])
+  assert.deepEqual(writes(dry.calls), [])
+  const young = stub({ vms: [rowOf(9)], gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: '2026-09-30T11:59:30Z' }), ...sealOf(7) } })
+  const left = await janitor({ argv: ['--json'], exec: young.exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(left.sealed, [])
+  assert.deepEqual(writes(young.calls), [])
+})
+
+// S3 — a seal the evidence repository refuses keeps the branch and says why.
+await test('S3: a refused seal keeps the live branch and reports the reason', async () => {
+  const { exec, calls } = stub({
+    vms: [rowOf(9)],
+    gh: {
+      ...liveRefs(7),
+      ...atLive(7, { state: 'done', updatedAt: OLD }),
+      ...sealOf(7),
+      [`POST repos/${EV}/git/refs`]: { code: 1, stdout: '', stderr: 'gh: Resource not accessible (HTTP 403)' }
+    }
+  })
+  const result = await janitor({ argv: ['--json'], exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.equal(result.sealed.length, 1)
+  assert.equal(result.sealed[0].sealed, false)
+  assert.match(result.sealed[0].reason, /tag o-r\/run-7 refused/)
+  assert.ok(!writes(calls).some((w) => w.startsWith('DELETE')))
+})
+
+// S4 — `--target` reaches a target no VM names: its ended run is sealed too,
+// and a VM that still carries a run keeps that run's branch.
+await test('S4: --target seals on a target no VM names; a carried run is never sealed', async () => {
+  const bare = stub({ vms: [], gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: OLD }), ...sealOf(7) } })
+  const result = await janitor({ argv: ['--json', '--target', TARGET], exec: bare.exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(result.sealed, [{ target: TARGET, run: 7, state: 'done', sealed: true }])
+  const carried = stub({ vms: [rowOf(7)], gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: OLD }), ...sealOf(7) } })
+  const kept = await janitor({ argv: ['--json'], exec: carried.exec, kata: null, now, evidence: EV, configPath: NO_CONFIG })
+  assert.deepEqual(kept.sealed, [])
+  assert.deepEqual(writes(carried.calls), [])
+  assert.deepEqual(rmCommands(carried.calls), [`rm ${vmOf(7)} --json`], 'its VM is reaped on the page it has')
 })
 
 fs.rmSync(tmp, { recursive: true, force: true })
