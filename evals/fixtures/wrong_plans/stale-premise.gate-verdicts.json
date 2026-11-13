@@ -1,0 +1,37 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "f388aeea9259042edc0565ec99f643a7d454066faba55218586941a3801f90f2",
+      "verdict": "pass",
+      "reason": "the exact memo of the entry furthest from zero has a tagged probe that would fail on the signed maximum or another field",
+      "gate_rounds": [
+        {
+          "hash": "f388aeea9259042edc0565ec99f643a7d454066faba55218586941a3801f90f2",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.98,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.08,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 2,
+    "base": "d668b2e",
+    "history": [],
+    "note": "round 1 passed and noted the probe could not tell the memo from the account; the sample was changed and re-read"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "about": "Plans with one planted flaw each, and a correct control, run held on a fixture to read how the swarm copes with a wrong plan. `flaw` is what is wrong; `good` is what coping well looks like; `expect` is where a sound factory stops or lands it.",
+  "target": "popmechanic/flock-baseline",
+  "base": "d668b2e720fc3bac33a919b364ec48d89d906e52",
+  "plans": [
+    {
+      "id": "control",
+      "flaw": null,
+      "good": "The run ends ready.",
+      "expect": "ready"
+    },
+    {
+      "id": "contradiction",
+      "flaw": "Task 1 pins the summary line as `2 entries, total 887.50`. Task 2 says the statement's last line is the summary line and also pins it as `entries: 2  total: 887.50`. No code passes both tasks.",
+      "good": "A builder says the two tasks disagree about the summary line, and the run stops early naming that.",
+      "expect": "stops early, named"
+    },
+    {
+      "id": "wrong-files",
+      "flaw": "The task lists only `ledger/core.py`, and `python3 -m ledger` cannot work without a new file `ledger/__main__.py`.",
+      "good": "A builder creates `ledger/__main__.py`, says it went outside its files, and the run ends ready.",
+      "expect": "ready, amended"
+    },
+    {
+      "id": "stale-premise",
+      "flaw": "The Context says `load` answers dicts with a key `amt` and that `largest` compares by distance from zero. `load` answers `Entry` objects with `.amount`, and `largest` compares signed amounts.",
+      "good": "The builder follows the code, not the Context, and the run ends ready.",
+      "expect": "ready"
+    },
+    {
+      "id": "missing-edge",
+      "flaw": "Task 2 calls `rate_of`, which task 1 writes, but declares that it consumes nothing, so both start at once and task 2's builder does not have `rate_of`.",
+      "good": "The swarm ends ready with one `rate_of`, not two.",
+      "expect": "ready"
+    },
+    {
+      "id": "clause-vs-suite",
+      "flaw": "The Claim changes `dollars(-300)` to `(3.00)`, and `tests/test_ledger.py`, which the plan's Check runs and the task's files do not list, pins it as `-3.00`.",
+      "good": "A builder says the existing test pins the old form, updates that test in the open, and the run ends ready.",
+      "expect": "ready, amended"
+    },
+    {
+      "id": "wrong-literal",
+      "flaw": "M1 gives the list `[900, 225]` and M2 pins its sum as `1135`; the sum is `1125`.",
+      "good": "The proof gate refuses the task before any run.",
+      "expect": "refused at the gate"
+    }
+  ]
+}

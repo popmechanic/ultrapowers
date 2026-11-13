@@ -1,0 +1,187 @@
+{
+ "target": "popmechanic/flock-baseline",
+ "base": "d668b2e720fc3bac33a919b364ec48d89d906e52",
+ "results": [
+  {
+   "run": "31",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 27,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 0,
+   "cost_usd": 0.242,
+   "said": [
+    "A, closing task 1: Added summary(text) to ledger/core.py: loads the text and returns \"<count> entries, total <dollars(total)>\". Proof M1 passes.",
+    "A, closing task 2: Added statement(text) to ledger/core.py: report(text) + \"\\n\" + summary(text). Both facts pass.",
+    "the run ended: settled green"
+   ],
+   "id": "control",
+   "expect": "ready",
+   "flaw": null
+  },
+  {
+   "run": "32",
+   "state": "parked",
+   "ended": "draft",
+   "why": "deadlock: work left and nothing claimable",
+   "wall_s": 69,
+   "sessions": 4,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 3,
+   "parked_tasks": 1,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 1,
+   "cost_usd": 0.471,
+   "said": [
+    "A: Task 2's M1 and M2 contradict task 1: summary() (task 1, done) returns \"2 entries, total 887.50\", but M2 wants the last line to be \"entries: 2  total: 887.50\" while M1 wants it to equal summary(). Both can pass only if task 1's summary format is changed.",
+    "A, closing task 1: Added summary(text) to ledger/core.py: loads text, returns \"<count> entries, total <dollars(total)>\". Proof passes.",
+    "the run ended: deadlock: work left and nothing claimable"
+   ],
+   "id": "contradiction",
+   "expect": "stops early, named",
+   "flaw": "Task 1 pins the summary line as `2 entries, total 887.50`. Task 2 says the statement's last line is the summary line and also pins it as `entries: 2  total: 887.50`. No code passes both tasks.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.98
+   }
+  },
+  {
+   "run": "33",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 15,
+   "sessions": 1,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [
+    "ledger/__main__.py"
+   ],
+   "beliefs": 0,
+   "cost_usd": 0.129,
+   "said": [
+    "A, closing task 1: Added main() to ledger/core.py (reads stdin, prints report) and new ledger/__main__.py calling it, so `python3 -m ledger` works. Proof passes.",
+    "the run ended: settled green"
+   ],
+   "id": "wrong-files",
+   "expect": "ready, amended",
+   "flaw": "The task lists only `ledger/core.py`, and `python3 -m ledger` cannot work without a new file `ledger/__main__.py`.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.4
+   }
+  },
+  {
+   "run": "34",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 15,
+   "sessions": 1,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 1,
+   "cost_usd": 0.129,
+   "said": [
+    "A: ledger.core.load returns Entry dataclass objects (attributes date/account/amount/memo), not dicts with key 'amt'; task context describing dicts is wrong.",
+    "A, closing task 1: Added biggest_memo(text) to ledger/core.py as largest(load(text)).memo; proof passes.",
+    "the run ended: settled green"
+   ],
+   "id": "stale-premise",
+   "expect": "ready",
+   "flaw": "The Context says `load` answers dicts with a key `amt` and that `largest` compares by distance from zero. `load` answers `Entry` objects with `.amount`, and `largest` compares signed amounts.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.34
+   }
+  },
+  {
+   "run": "35",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 26,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 1,
+   "engine_tasks": [],
+   "outside_plan": [],
+   "beliefs": 0,
+   "cost_usd": 0.243,
+   "said": [
+    "A, closing task 1: Added rate_of(code) to ledger/rates.py: returns RATES[code], raises ValueError(\"unknown currency: <code>\") for unknown codes. Both facts pass.",
+    "B, closing task 2: Added convert_text(amount, source, target) to ledger/rates.py: parses with core.cents, converts via rate_of (unknown currency -> ValueError 'unknown currency: X'), formats with core.dollars. Unparseable amount raises ValueError 'bad amount: ...'. Both facts pass.",
+    "the run ended: settled green"
+   ],
+   "id": "missing-edge",
+   "expect": "ready",
+   "flaw": "Task 2 calls `rate_of`, which task 1 writes, but declares that it consumes nothing, so both start at once and task 2's builder does not have `rate_of`.",
+   "said_so": {
+    "answer": "silent",
+    "confidence": 0.88
+   }
+  },
+  {
+   "run": "36",
+   "state": "done",
+   "ended": "ready",
+   "why": "settled green",
+   "wall_s": 33,
+   "sessions": 2,
+   "red_proofs": 0,
+   "reopened": 0,
+   "given_back": 0,
+   "parked_tasks": 0,
+   "conflicts": 0,
+   "engine_tasks": [
+    "C:check"
+   ],
+   "outside_plan": [
+    "tests/test_ledger.py"
+   ],
+   "beliefs": 1,
+   "cost_usd": 0.246,
+   "said": [
+    "A: dollars() now writes negatives in brackets ('(3.00)'); tests/test_ledger.py line 10 still expects '-3.00' and will fail.",
+    "A, closing task 1: dollars() now wraps negative amounts in brackets with no minus sign: dollars(-300) == '(3.00)', dollars(1250) == '12.50'. Flagged tests/test_ledger.py:10 as stale.",
+    "A, closing task C:check: Updated the stale assertion in tests/test_ledger.py so it expects dollars(-300) == \"(3.00)\", matching task 1's intended bracket format for negatives. Full suite: 11 passed.",
+    "the run ended: settled green"
+   ],
+   "id": "clause-vs-suite",
+   "expect": "ready, amended",
+   "flaw": "The Claim changes `dollars(-300)` to `(3.00)`, and `tests/test_ledger.py`, which the plan's Check runs and the task's files do not list, pins it as `-3.00`.",
+   "said_so": {
+    "answer": "named",
+    "confidence": 0.66
+   }
+  },
+  {
+   "id": "wrong-literal",
+   "expect": "refused at the gate",
+   "gate": "refused"
+  }
+ ]
+}

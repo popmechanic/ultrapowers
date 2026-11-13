@@ -1,0 +1,66 @@
+{
+  "tasks": {
+    "1": {
+      "hash": "17478a59dd04d990b22421ac00d04f5dd4fde7155723baf268678cd9ed227e0b",
+      "verdict": "pass",
+      "reason": "the byte-exact summary line has one tagged probe on the same input and literal, and the literal is satisfiable",
+      "gate_rounds": [
+        {
+          "hash": "17478a59dd04d990b22421ac00d04f5dd4fde7155723baf268678cd9ed227e0b",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.99,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.03,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    },
+    "2": {
+      "hash": "5260b3a650bede747fa77081b25e032e84e878e1794aaa32dc6e196cf865db03",
+      "verdict": "pass",
+      "reason": "both computable facts have a tagged probe that would fail if false, and no leg contradicts its clause",
+      "gate_rounds": [
+        {
+          "hash": "5260b3a650bede747fa77081b25e032e84e878e1794aaa32dc6e196cf865db03",
+          "agent": "pass",
+          "jev": "pass",
+          "clauses": [
+            {
+              "id": "M1",
+              "fact": 0.96,
+              "caught": 0.99
+            },
+            {
+              "id": "M2",
+              "fact": 0.95,
+              "caught": 0.99
+            }
+          ],
+          "contradiction": 0.02,
+          "pinned": null,
+          "reading": {
+            "caught": "caught_v2",
+            "own_files": "dropped"
+          }
+        }
+      ]
+    }
+  },
+  "tally": {
+    "dispatched": 2,
+    "rejected": 0,
+    "rounds": 1,
+    "base": "d668b2e",
+    "history": []
+  }
+}
