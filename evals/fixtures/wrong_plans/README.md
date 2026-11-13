@@ -22,3 +22,7 @@ python3 evals/readings/wrong_plans.py <evidence clone> control=<run> contradicti
 The plans say nothing of what they are for. The first round (2026-11-13, runs 25–30) named the
 reading in every task, and one builder cited an operator's decision that did not exist; its
 results are kept as `evals/results/wrong-plans-2026-11-13-leaked.json` and are not a baseline.
+
+Readings so far, one run per plan each: `evals/results/wrong-plans-2026-11-13.json` (runs 31–36,
+engine `be789d83`, the baseline) and `evals/results/wrong-plans-2026-11-13-objection.json` (runs
+37–42, engine `cc323aa1`, with `flock.objection.mode = on`).
