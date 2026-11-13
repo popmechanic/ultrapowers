@@ -49,8 +49,8 @@ Read a past run at
 
 ## The other laptop tools
 
-- `doctor.mjs` — which of its eleven rows is missing (the last, `reaper`, reads whether the exe.dev
-  key the hub removes finished VMs with has expired; `exe-verbs.json` feeds its verb-drift row;
+- `doctor.mjs` — which of its eleven rows is missing (the last, `reaper`, asks the hub's VM remover
+  whether its exe.dev key still works and reads that key's expiry; `reaper-key.sh` renews it; `exe-verbs.json` feeds its verb-drift row;
   its `evidence` row checks the one-time evidence-repository setup).
 - `claude-token.mjs` — the credential: loom-style OAuth, refresh token in the keychain,
   refreshed before every launch, single-flight. **Never force-rotate while a run is live** (see

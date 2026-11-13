@@ -13,23 +13,30 @@
  *   (e) two keys, one expired and a `hub-reaper-2` that is not: ok on the one that lasts longest.
  *   (f) no key named `hub-reaper…`: missing. (g) a key with no expiry: ok, `does not expire`.
  *   (h) `ssh-key list --json` answers code 1: missing, the detail naming the code.
+ *   (i) the hub is listed and its remover answers `invalid token` while the key list shows a key
+ *       good for a year (2026-11-13's state): missing, the detail naming `bash fleet/reaper-key.sh`;
+ *       the probe is one `ssh <the hub's ssh_dest> <REAPER_PROBE>`.
+ *   (j) the remover answers that the VM is not found: ok, the detail saying the remover answered.
+ *   Legs (c) to (g) list no hub, so their details say the remover was not asked.
  */
 import assert from 'node:assert/strict'
 
-import { doctor } from '../doctor.mjs'
+import { doctor, REAPER_PROBE } from '../doctor.mjs'
 
 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
 const NOW = Date.parse('2026-11-13T00:00:00Z')
 const LOBBY_RM = { name: 'lobby-rm', config_summary: 'target=https://exe.dev/ header=Authorization:Bearer ***' }
 
-function makeExec ({ integrations, keys }) {
+function makeExec ({ integrations, keys, probe = null }) {
   const calls = []
   const exec = async (command, argv) => {
     const cmd = keyOf(command, argv)
     calls.push(cmd)
     if (cmd === lobbyKey('integrations list --json')) return { code: 0, stdout: JSON.stringify(integrations) }
     if (cmd === lobbyKey('ssh-key list --json')) return keys
+    if (probe !== null && cmd === lobbyKey('ls kata-hub --json')) return { code: 0, stdout: JSON.stringify({ vms: [{ vm_name: 'kata-hub', ssh_dest: 'hub.example', status: 'running' }] }) }
+    if (probe !== null && cmd === keyOf('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', 'hub.example', REAPER_PROBE])) return probe
     return { code: 1, stdout: '' }
   }
   exec.calls = calls
@@ -56,11 +63,11 @@ const reaperOf = async (opts) => {
 }
 { // (c)
   const { row } = await reaperOf({ integrations: [LOBBY_RM], keys: keysOf(key('hub-reaper', '2027-11-01T00:00:00Z')) })
-  assert.ok(row.status === 'ok' && row.detail === 'the key hub-reaper is good until 2027-11-01 (353 days)', `(c) a live key is ok with its days — got ${JSON.stringify(row)}`)
+  assert.ok(row.status === 'ok' && row.detail === 'the key hub-reaper is good until 2027-11-01 (353 days); the remover was not asked (the hub was not reached)', `(c) a live key is ok with its days — got ${JSON.stringify(row)}`)
 }
 { // (d)
   const { row } = await reaperOf({ integrations: [LOBBY_RM], keys: keysOf(key('hub-reaper', '2026-11-20T00:00:00Z')) })
-  assert.ok(row.status === 'ok' && row.detail.endsWith('(7 days) — renew it soon'), `(d) a key near its end says so — got ${JSON.stringify(row)}`)
+  assert.ok(row.status === 'ok' && row.detail.includes('(7 days) — renew it soon'), `(d) a key near its end says so — got ${JSON.stringify(row)}`)
 }
 { // (e)
   const { row } = await reaperOf({ integrations: [LOBBY_RM], keys: keysOf(key('hub-reaper', '2026-10-30T18:55:40Z'), key('hub-reaper-2', '2027-01-01T00:00:00Z')) })
@@ -70,9 +77,20 @@ const reaperOf = async (opts) => {
   const none = await reaperOf({ integrations: [LOBBY_RM], keys: keysOf(key('laptop-read')) })
   assert.ok(none.row.status === 'missing' && none.row.detail.includes('no exe.dev key named hub-reaper'), `(f) no such key is missing — got ${JSON.stringify(none.row)}`)
   const forever = await reaperOf({ integrations: [LOBBY_RM], keys: keysOf(key('hub-reaper')) })
-  assert.ok(forever.row.status === 'ok' && forever.row.detail === 'the key hub-reaper does not expire', `(g) a key with no expiry is ok — got ${JSON.stringify(forever.row)}`)
+  assert.ok(forever.row.status === 'ok' && forever.row.detail.startsWith('the key hub-reaper does not expire'), `(g) a key with no expiry is ok — got ${JSON.stringify(forever.row)}`)
   const unread = await reaperOf({ integrations: [LOBBY_RM], keys: { code: 1, stdout: '' } })
   assert.ok(unread.row.status === 'missing' && unread.row.detail.includes('answered code 1'), `(h) an unread list is missing — got ${JSON.stringify(unread.row)}`)
+}
+
+{ // (i), (j)
+  const live = keysOf(key('hub-reaper', '2026-10-30T18:55:40Z'), key('hub-reaper-2026-11b', '2027-11-13T00:00:00Z'))
+  const dead = await reaperOf({ integrations: [LOBBY_RM], keys: live, probe: { code: 0, stdout: '{"error":"invalid token"}\n' } })
+  assert.ok(dead.row.status === 'missing' && dead.row.detail.includes('invalid token') && dead.row.detail.includes('bash fleet/reaper-key.sh'), `(i) a remover that answers invalid token is missing whatever the keys say — got ${JSON.stringify(dead.row)}`)
+  assert.equal(dead.exec.calls.filter((c) => c.endsWith(REAPER_PROBE)).length, 1, '(i) the remover is asked once, from the hub')
+  const good = await reaperOf({ integrations: [LOBBY_RM], keys: live, probe: { code: 0, stdout: '{"deleted":[],"not_found":["fleet-r0-doctor-probe"]}\n' } })
+  assert.ok(good.row.status === 'ok' && good.row.detail === 'the key hub-reaper-2026-11b is good until 2027-11-13 (365 days); the remover answered from the hub', `(j) a remover that answers is ok and said so — got ${JSON.stringify(good.row)}`)
+  const none = await reaperOf({ integrations: [], keys: live, probe: { code: 0, stdout: '{"error":"invalid token"}' } })
+  assert.equal(none.exec.calls.filter((c) => c.endsWith(REAPER_PROBE)).length, 0, '(j) with no lobby-rm the remover is not asked')
 }
 
 console.log('ALL TESTS PASSED')

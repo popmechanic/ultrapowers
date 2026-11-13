@@ -700,6 +700,9 @@ function cloudflareRow (found) {
 const REAPER_INTEGRATION = 'lobby-rm'
 const REAPER_KEY = 'hub-reaper'
 const REAPER_SOON_DAYS = 14
+/** What the row asks the hub's remover, from the hub: to remove a VM that cannot exist. A working
+ *  key answers that the VM is not found; a dead one answers `invalid token`. Nothing is removed. */
+export const REAPER_PROBE = "curl -sS -m 30 -X POST https://lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"
 
 /**
  * The eleventh row: the hub removes a finished run's VM through `lobby-rm`, whose bearer is an
@@ -707,14 +710,29 @@ const REAPER_SOON_DAYS = 14
  * hub answers the VM 202 and removes nothing (the key expired 2026-10-30, and on 2026-11-13 the
  * hub's journal read `removed=False` for all 8 finished runs of the day; each VM waited for a
  * janitor run). Absent `lobby-rm` is `ok`: a finished VM then waits for the janitor by design.
- * Present, the row reads `ssh-key list --json` for the key named `hub-reaper…` that lasts longest:
- * red when there is none or it has expired, green with the days left otherwise.
+ * Present, the row first asks the remover itself, from the hub (`probe`, the answer to
+ * `REAPER_PROBE`): `invalid token` is red whatever the keys say, since a good key that never
+ * reached the integration removes nothing either (2026-11-13: the key list read 364 days while the
+ * remover still answered 401). Then it reads `ssh-key list --json` for the key named `hub-reaper…`
+ * that lasts longest: red when there is none or it has expired, green with the days left otherwise.
+ * A remover that could not be asked is said so in the detail and judged on the key alone.
  */
-function reaperRow (found, keysRes, now) {
+function reaperRow (found, keysRes, now, probe = null) {
   if (found === null || found === undefined || !found.has(REAPER_INTEGRATION)) {
     return row('reaper', 'ok', `no ${REAPER_INTEGRATION} integration — a finished run's VM waits for the janitor`)
   }
-  if (keysRes.code !== 0) return row('reaper', 'missing', `ssh-key list answered code ${keysRes.code}, so the ${REAPER_KEY} key is unread`)
+  const asked = probe !== null && probe.code === 0 && String(probe.stdout ?? '').trim() !== ''
+  if (asked && /invalid token/i.test(probe.stdout)) {
+    return row('reaper', 'missing', `the hub's remover answers \`invalid token\`: the key ${REAPER_INTEGRATION} holds is dead, so a finished VM is answered and not removed — bash fleet/reaper-key.sh renews it`)
+  }
+  const tested = asked ? '; the remover answered from the hub' : '; the remover was not asked (the hub was not reached)'
+  const keyRow = reaperKeyRow(keysRes, now)
+  return row('reaper', keyRow.status, keyRow.detail + (keyRow.status === 'ok' ? tested : ''))
+}
+
+/** The key half of the row: `{ status, detail }` from `ssh-key list --json`. */
+function reaperKeyRow (keysRes, now) {
+  if (keysRes.code !== 0) return ({ status: 'missing', detail: `ssh-key list answered code ${keysRes.code}, so the ${REAPER_KEY} key is unread` })
   let keys = []
   try {
     const parsed = JSON.parse(keysRes.stdout)
@@ -722,17 +740,17 @@ function reaperRow (found, keysRes, now) {
   } catch { keys = [] }
   const mine = keys.filter((k) => typeof k?.name === 'string' && k.name.startsWith(REAPER_KEY))
   if (mine.length === 0) {
-    return row('reaper', 'missing', `no exe.dev key named ${REAPER_KEY}: the hub cannot remove a finished run's VM`)
+    return ({ status: 'missing', detail: `no exe.dev key named ${REAPER_KEY}: the hub cannot remove a finished run's VM` })
   }
   const until = (k) => (typeof k.expires_at === 'string' && k.expires_at !== '' ? Date.parse(k.expires_at) : Infinity)
   const best = mine.reduce((a, b) => (until(b) > until(a) ? b : a))
-  if (until(best) === Infinity) return row('reaper', 'ok', `the key ${best.name} does not expire`)
+  if (until(best) === Infinity) return ({ status: 'ok', detail: `the key ${best.name} does not expire` })
   const day = best.expires_at.slice(0, 10)
   if (!(until(best) > now)) {
-    return row('reaper', 'missing', `the key ${best.name} expired ${day}: the hub answers a finished VM and removes nothing, so each waits for a janitor run`)
+    return ({ status: 'missing', detail: `the key ${best.name} expired ${day}: the hub answers a finished VM and removes nothing, so each waits for a janitor run` })
   }
   const days = Math.floor((until(best) - now) / 86400000)
-  return row('reaper', 'ok', `the key ${best.name} is good until ${day} (${days} days)${days < REAPER_SOON_DAYS ? ' — renew it soon' : ''}`)
+  return ({ status: 'ok', detail: `the key ${best.name} is good until ${day} (${days} days)${days < REAPER_SOON_DAYS ? ' — renew it soon' : ''}` })
 }
 
 // ── the doctor ───────────────────────────────────────────────────────────────
@@ -790,8 +808,12 @@ export async function doctor ({
   const accounts = await tokenRead(run, ['accounts', '--json'])
   // The hub's VM, then the evidence repository when a key names one.
   const kataVms = await read(READS.kataVm)
-  // The account's keys, for the one the hub's reaper removes VMs with.
+  // The account's keys, for the one the hub's reaper removes VMs with, and the remover's own answer.
   const keys = await read(READS.keys)
+  const hub = kataVmRow(kataVms)
+  const reaperProbe = found && found.has(REAPER_INTEGRATION) && typeof hub?.ssh_dest === 'string' && hub.ssh_dest !== ''
+    ? await run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', hub.ssh_dest, REAPER_PROBE])
+    : null
   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
   const drift = await verbDrift({
     help: (verb) => read(`help ${verb}`),
@@ -809,7 +831,7 @@ export async function doctor ({
     verbDriftRow(drift),
     kataRow(found, kataVms),
     cloudflareRow(found),
-    reaperRow(found, keys, now)
+    reaperRow(found, keys, now, reaperProbe)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }
