@@ -109,6 +109,10 @@ const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
 // most once a run) instead of settling; `record` only writes the run's `loose-ends` row. `--loose-ends`,
 // else the policy cell flock.loose_ends.mode, else record.
 const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
+// objections (the wrong-plans reading, 2026-11-13): a builder may say its task's plan cannot be
+// satisfied as written; the task then parks at once for the operator. `--objection`, else the policy
+// cell flock.objection.mode, else off, where a builder can only give the task back.
+const OBJECTION = arg('objection') ?? mode('objection.mode', ['on', 'off'], 'off')
 if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
 // main's memory (the main-is-a-peer design; weave_store.py): `memory` starts the run's weaves
 // from the entry stored for --base's tree on the target's ref refs/ultrapowers/weave/v1 and stores the
@@ -602,7 +606,7 @@ Rules:
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 - Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
-- If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
+${OBJECTION === 'on' ? '- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again.\n' : ''}- If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
 // What a pull brought that its builder has not been told of yet: agent -> path -> the change.
@@ -685,6 +689,22 @@ async function giveBack (agent, task, why) {
   await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
 }
 
+// A builder's objection: its task's plan cannot be satisfied as written, by any code: two clauses
+// that cannot both hold, or a proof nothing can pass. The task parks at once and the run, when
+// nothing else is left to do, ends a draft that says so. A give-back hands the task to the next
+// builder, who meets the same wall: on flock-baseline run-32 (2026-11-13, n=1 run) the builder named
+// the contradiction in its first note, the task was given back three times over 24 s, and the run
+// ended `deadlock` without the reason.
+const objections = []   // { task, agent, reason }
+async function objectTo (agent, task, why) {
+  const reason = String(why).replace(/\s+/g, ' ').trim().slice(0, 600)
+  objections.push({ task: task.id, agent, reason })
+  await board.park(task, `${agent} objected: ${reason}`)
+  ev('objection', { task: task.id, agent, reason })
+  ev('task:parked', { task: task.id, releases: task.released || 0, reason: reason.slice(0, 300), objected: true })
+  await stall('objection', { task: task.id }); log(agent, 'objects to', task.id, '—', reason)
+}
+
 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
 // it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
 // held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
@@ -722,6 +742,16 @@ async function scriptedSession (agent, task) {
   }
   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
+  // test seam: `@object` maps a task to the objection its session files instead of writing; with
+  // objections off it is a give-back, as the `object` tool's absence leaves a builder
+  const objected = (SCRIPT['@object'] || {})[task.id]
+  if (objected) {
+    usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+    ev('session:end', { agent, task: task.id, released: OBJECTION === 'on' ? false : objected, objected: OBJECTION === 'on' ? objected : undefined, done: false })
+    live.delete(agent); lastChange = now()
+    if (OBJECTION === 'on') await objectTo(agent, task, objected); else await giveBack(agent, task, objected)
+    return
+  }
   if (files) {
     // a path mapped to null is deleted, as a builder's delete_file would
     writeFiles(cwd, Object.entries(files))
@@ -849,6 +879,8 @@ async function session (agent, task) {
       }),
     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
+    ...(OBJECTION === 'on' ? [tool('object', 'Say that your task cannot be done as the plan is written, by any code: two clauses that cannot both be true, or a proof nothing can pass. Name the clauses and say why. The task then waits for the operator and is not handed to another builder. When you are only blocked for now, use release.', { reason: z.string().max(600) },
+      async (a) => { st.objected = a.reason; return say('objection filed; end your turn now') })] : []),
     tool('done', 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.', { summary: z.string() },
       async (a) => {
         const red = redOf(runFacts(cwd, task))
@@ -977,12 +1009,12 @@ async function session (agent, task) {
   clearTimeout(killer); stops.delete(agent)
   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0 })
-  ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
+  ev('session:end', { agent, task: task.id, released: st.released, objected: st.objected, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
-  if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
+  if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
     const red = redOf(runFacts(cwd, task))
     if (red.length) {
       ev('facts:red', { agent, task: task.id, at: 'session-end', exits: red.map((r) => r.exit) })
@@ -1149,6 +1181,11 @@ async function settle () {
     // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
     const claimed = all.some((t) => t.state === 'claimed')
     if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
+      // nothing left that anyone can do. An objection is why: the run says so in the builder's words.
+      if (objections.length) {
+        const o = objections[0], more = objections.length - 1
+        terminal('draft', `objection on task ${o.task}: ${o.reason}${more ? ` (and ${more} more)` : ''}`, lastEdge); break
+      }
       // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
       await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
       terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
