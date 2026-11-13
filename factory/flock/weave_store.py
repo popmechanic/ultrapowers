@@ -28,6 +28,16 @@ tree, and a mismatch raises Drift.
     python3 factory/flock/weave_store.py open --repo <dir> --commit <sha> [--remote origin]
     python3 factory/flock/weave_store.py push --repo <dir> [--remote origin]
 
+    python3 factory/flock/weave_store.py join --repo <dir> --run <sha> --onto <sha> --out <file> [--remote origin]
+    python3 factory/flock/weave_store.py settle --repo <dir> --commit <sha> --from <file>
+
+`join` is the catch-up's merge: the run's entry joined with the moved main's, one JSON line
+{"joined": true, "conflicts": [path], "files": {path: text | null}, "paths": [path]}: `paths` every
+path it decided, `files` those whose text differs from the moved main's; or {"joined": false,
+"reason"}. The joined Memory goes to --out.
+`settle` stores that Memory as the entry of the commit the catch-up then made:
+{"stored": true, "entry"} or {"stored": false, "reason"}.
+
 `open` prints one JSON line: {"memory": true, "tree", "via", "stored", "unwoven"} (exit 0),
 {"memory": false, "reason": "before-genesis"} (exit 0), or {"memory": false, "reason": "drift",
 "paths"} (exit 1). With --remote it syncs first, and a store it begins is pushed before it is used.
@@ -136,6 +146,19 @@ class Memory:
 
     def summary(self):
         return {"memory": True, "tree": self.tree, "via": self.via, "stored": len(self.states), "unwoven": len(self.unwoven)}
+
+    def to_json(self):
+        lists = lambda side: {p: {k: sorted(v) for k, v in m.items()} for p, m in side.items()}
+        return {"tree": self.tree, "entry": self.entry, "via": self.via, "states": self.states, "auth": lists(self.auth),
+                "dels": lists(self.dels), "unwoven": sorted(self.unwoven), "dirty": sorted(self.dirty)}
+
+    @classmethod
+    def from_json(cls, doc):
+        mem = cls(doc["tree"], doc["entry"], doc["via"])
+        sets = lambda side: {p: {k: set(v) for k, v in m.items()} for p, m in side.items()}
+        mem.states, mem.auth, mem.dels = doc["states"], sets(doc["auth"]), sets(doc["dels"])
+        mem.unwoven, mem.dirty = set(doc["unwoven"]), set(doc["dirty"])
+        return mem
 
 
 def load(repo, entry):
@@ -296,6 +319,78 @@ def genesis(repo, commit):
     return mem
 
 
+def union(into, other):
+    """Take `other`'s labels into `into`: both are one path's {line key: set(label)}."""
+    for k, who in other.items():
+        into.setdefault(k, set()).update(who)
+
+
+def settle(repo, commit, mem, via="run"):
+    """Store `mem` as the entry of `commit`'s tree: the weaves a run (or a catch-up's join) ended on.
+    A stored path that is not a regular UTF-8 file there becomes unwoven. Raises Drift, and stores
+    nothing, when a stored path's visible text is not git's text at that tree."""
+    mem.tree = tree_of(repo, commit)
+    at = listing(repo, mem.tree)
+    data = cat(repo, [at[p][1] for p in mem.states if p in at and at[p][0] in REGULAR])
+    for p in [p for p in mem.states if p in at and (at[p][0] not in REGULAR or text_of(data[at[p][1]]) is None)]:
+        mem.unwoven.add(p)
+        for side in (mem.states, mem.auth, mem.dels):
+            side.pop(p, None)
+        mem.dirty.add(p)
+    bad = verify(repo, mem)
+    if bad:
+        raise Drift(mem.tree, bad)
+    return write_entry(repo, mem, via)
+
+
+def join(repo, run, onto):
+    """The catch-up's merge. `run` is the run's own commit, whose entry the engine stored; `onto` is
+    the moved main. Both weaves descend from the entry the run started on, so this is one
+    `merge_states` per path that differs, with every line's identity kept: no text is diffed.
+    Returns ({"joined": True, "conflicts", "files", "paths"}, Memory) or ({"joined": False, "reason"}, None)."""
+    have = entries(repo)
+    if tree_of(repo, run) not in have:
+        return {"joined": False, "reason": "no-run-entry"}, None
+    mem = resolve(repo, onto)
+    if mem is None:
+        return {"joined": False, "reason": "before-genesis"}, None
+    ours = load(repo, have[tree_of(repo, run)])
+    at = listing(repo, mem.tree)
+    lazy = [p for p in ours.states if p not in mem.states and p in at and at[p][0] in REGULAR]
+    data = cat(repo, [at[p][1] for p in lazy])
+    conflicts, files, decided = [], {}, []
+    for p in sorted(ours.states):
+        if p in mem.unwoven or p in ours.unwoven:
+            continue
+        theirs = mem.states.get(p)
+        if theirs is None and p in at:
+            text = text_of(data[at[p][1]]) if at[p][0] in REGULAR else None
+            if text is None:
+                continue                      # not text on main: the catch-up's own byte rule decides it
+            theirs = M.initial_state(text.split("\n"))
+        mine = ours.states[p]
+        decided.append(p)
+        if theirs is None:
+            new = mine                        # the run made this path
+        elif theirs == mine:
+            continue
+        else:
+            new, marked = M.merge_states(theirs, mine)
+            if marked != M.current_lines(new):
+                conflicts.append(p)
+        union(mem.auth.setdefault(p, {}), ours.auth.get(p, {}))
+        union(mem.dels.setdefault(p, {}), ours.dels.get(p, {}))
+        if new != mem.states.get(p):
+            mem.states[p] = new
+            mem.dirty.add(p)
+        before = M.current_lines(theirs) if theirs is not None else []
+        after = M.current_lines(new)
+        if after != before:
+            files[p] = "\n".join(after) if after else None
+    mem.unwoven |= ours.unwoven
+    return {"joined": True, "conflicts": conflicts, "files": files, "paths": decided}, mem
+
+
 def sync(repo, remote="origin"):
     """Take in the remote's entries. Local entries whose trees the remote lacks are kept, re-parented
     onto the remote's tip; one whose tree the remote holds is dropped, and named in `forks` when the
@@ -327,6 +422,10 @@ def push(repo, remote="origin", tries=5):
     forks = []
     for _ in range(tries):
         forks += sync(repo, remote)["forks"]
+        if forks:
+            # this clone built a tree's weave the remote holds differently, so what it wove on top
+            # of its own is not main's memory: keep the remote's and push nothing
+            return {"pushed": False, "forks": forks}
         tip = out(repo, "rev-parse", "--verify", "-q", REF, ok=True)
         if not tip:
             return {"pushed": False, "forks": forks}
@@ -368,11 +467,33 @@ def main(argv):
             return 1
         print(json.dumps(mem.summary() if mem else {"memory": False, "reason": "before-genesis"}))
         return 0
+    if verb == "join" and repo and arg("--run") and arg("--onto") and arg("--out"):
+        if remote:
+            sync(repo, remote)
+        try:
+            res, mem = join(repo, out(repo, "rev-parse", arg("--run")), out(repo, "rev-parse", arg("--onto")))
+        except Drift as e:
+            res, mem = {"joined": False, "reason": "drift", "paths": e.paths}, None
+        if mem is not None:
+            with open(arg("--out"), "w", encoding="utf-8") as f:
+                json.dump(mem.to_json(), f)
+        print(json.dumps(res))
+        return 0 if res["joined"] else 1
+    if verb == "settle" and repo and arg("--commit") and arg("--from"):
+        with open(arg("--from"), encoding="utf-8") as f:
+            mem = Memory.from_json(json.load(f))
+        try:
+            print(json.dumps({"stored": True, "entry": settle(repo, out(repo, "rev-parse", arg("--commit")), mem)}))
+            return 0
+        except Drift as e:
+            print(json.dumps({"stored": False, "reason": "drift", "paths": e.paths}))
+            return 1
     if verb == "push" and repo:
         res = push(repo, remote or "origin")
         print(json.dumps(res))
         return 0 if res["pushed"] else 1
-    print("usage: weave_store.py open --repo <dir> --commit <sha> [--remote <name>] | push --repo <dir> [--remote <name>]", file=sys.stderr)
+    print("usage: weave_store.py open --repo <dir> --commit <sha> [--remote <name>] | push --repo <dir> [--remote <name>]"
+          " | join --repo <dir> --run <sha> --onto <sha> --out <file> [--remote <name>] | settle --repo <dir> --commit <sha> --from <file>", file=sys.stderr)
     return 2
 
 

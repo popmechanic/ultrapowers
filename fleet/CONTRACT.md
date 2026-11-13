@@ -114,11 +114,20 @@ evidence repository.
       carries `unreadable: true` instead (#1491). No diff or store is copied.
     Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
     `checks/` itself. (History: the retired factory engine wrote none of these eight.)
-  - `ultra/integration-run-<N>` on the target — the work, and the only ref the product repository
+  - `ultra/integration-run-<N>` on the target — the work, and the only branch the product repository
     ever receives. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
     and the retire sweep deletes one whose pull request is closed and not merged.
+- **`refs/ultrapowers/weave/v1` on the target** — main's memory (`factory/flock/weave_store.py`), the
+  one ref outside `refs/heads/` the product repository receives, and only under policy
+  `flock.main.mode = memory`. One commit per tree of the default branch, subject `weave <tree sha>`,
+  holding the Manyana weave of every path changed since the store began. It is not a branch: a
+  clone does not fetch it, branch protection does not cover it, and nothing reads it but a sandbox.
+  The publish pushes it after the pull request is open and after each catch-up, always before a
+  merge request and never after one, with a lease on the tip it was built on; a push that fails
+  costs only that landing's memory. Appended to, never rewritten: a changed recipe is `v2`.
+  Deleting the ref forgets the memory and nothing else.
 - **The one tag** — a run's record, and the only ref that outlives it. At the end of every run
   (done, parked and failed) the sandbox cuts one tag `<owner>-<repo>/run-<N>` in the evidence
   repository on the live branch's last commit, verifies it against the remote with

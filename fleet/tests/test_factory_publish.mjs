@@ -197,8 +197,8 @@ function evidenceRunDirEntries (evidenceDir, runN) {
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
     nonLanding.map((r) => r.kind),
-    ['publish:pr', 'merge', 'publish:deploy', 'publish:verify', 'board:close', 'run:audit'],
-    `(a) [M2] events.jsonl's non-landing kinds are exactly publish:pr, merge, publish:deploy, publish:verify, board:close, run:audit in order, no rollback row — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+    ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify', 'board:close', 'run:audit'],
+    `(a) [M2] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, publish:deploy, publish:verify, board:close, run:audit in order, no rollback row — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
   )
 
   const deployRow = rows.find((r) => r.kind === 'publish:deploy')
@@ -295,7 +295,7 @@ function evidenceRunDirEntries (evidenceDir, runN) {
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
     nonLanding.map((r) => r.kind),
-    ['publish:pr', 'merge', 'publish:deploy', 'publish:verify', 'publish:rollback', 'board:close', 'run:audit'],
+    ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify', 'publish:rollback', 'board:close', 'run:audit'],
     `(b) [M3] events.jsonl carries deploy, verify, exactly one rollback row, in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
   )
 
@@ -347,7 +347,7 @@ function evidenceRunDirEntries (evidenceDir, runN) {
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
     nonLanding.map((r) => r.kind),
-    ['publish:pr', 'merge', 'publish:deploy', 'board:close', 'run:audit'],
+    ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'board:close', 'run:audit'],
     `(c) [M4] events.jsonl carries exactly one publish:deploy row and no verify/rollback rows — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
   )
   const deployRow = rows.find((r) => r.kind === 'publish:deploy')

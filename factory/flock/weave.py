@@ -32,6 +32,17 @@ lines had replaced when the peer wrote them, `after` what this edit put there.
   merged        also answers lost [{path, author, by, lines}]: lines of the join of every published
                                           copy that someone other than their author (`by`) removed
 
+Added for main-is-a-peer, stage 2 (main's memory, weave_store.py):
+  memory        {repo, commit, remote?}   after `base`, before any copy: the stored weaves of `commit`'s
+                                          tree replace the base weaves of the paths the store holds, so
+                                          a run's lines keep the identity they have on main. Answers
+                                          {memory: true, tree, via, stored, unwoven, installed} or
+                                          {memory: false, reason}. The store's authorship stays out of
+                                          the run's sidecars: a line from an earlier run reads `base`.
+  store         {repo, commit, run}       the join of every published copy becomes the entry of
+                                          `commit`'s tree, its lines authored `@r<run>:<task>`:
+                                          {stored: true, entry, tree, paths} or {stored: false, reason}
+
 Added for #1404 (one authorship mechanism, keyed by task):
   edit, rewrite take an optional task; every label recorded, compared or answered is task_label(agent, task)
   blame         {}                        {path: [label per visible line of the join]} (`a|b` or `base`)
@@ -334,6 +345,10 @@ class Keeper:
         # #1410: the visible lines the edit that wrote each entry replaced, keyed by identity
         self.krep = {}        # copy -> {path -> {key -> {label -> (line, ...)}}}
         self.krep_pub = {}    # agent -> the sidecar as of its last publish
+        # main's memory (weave_store.py): the Memory the run started on, and the paths whose base
+        # weave it supplied
+        self.mem = None
+        self.mem_installed = set()
 
     def auth(self, who):
         return self.kauth.setdefault(who, {})
@@ -361,7 +376,9 @@ class Keeper:
     # ── requests ──────────────────────────────────────────────────────────
     def r_base(self, root, paths):
         for p in paths:
-            with open(os.path.join(root, p), encoding="utf-8") as f:
+            # newline="": a CRLF file's lines keep their \r, as the file has them on disk and as the
+            # store weaves them; universal newlines made every such line drift on its first sync
+            with open(os.path.join(root, p), encoding="utf-8", newline="") as f:
                 self.base[p] = M.initial_state(f.read().split("\n"))
         return {"paths": len(paths)}
 
@@ -509,6 +526,56 @@ class Keeper:
                 "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
                 # the survival fact from this same join, so a snapshot and its lost lines never part
                 "lost": _lost_of(out, auth, dels)}
+
+    def r_memory(self, repo, commit, remote=None):
+        import weave_store as S
+        if self.copies:
+            raise RuntimeError("memory comes before any copy")
+        try:
+            mem = S.open_store(repo, commit, remote)
+        except S.Drift as e:
+            return {"memory": False, "reason": "drift", "paths": e.paths}
+        if mem is None:
+            return {"memory": False, "reason": "before-genesis"}
+        # only paths the engine handed to `base`: a stored path absent at this tree (deleted, or one
+        # the engine never weaves) stays out of every copy, and `store` meets it again
+        for p, st in mem.states.items():
+            if p in self.base:
+                self.base[p] = st
+                self.mem_installed.add(p)
+        self.mem = mem
+        return {**mem.summary(), "installed": len(self.mem_installed)}
+
+    def r_store(self, repo, commit, run="?"):
+        import weave_store as S
+        mem = self.mem
+        if mem is None:
+            return {"stored": False, "reason": "no-memory"}
+        join, auth, dels = self._join()
+        # `A.2` (builder A on task 2) is stored `@r<run>:2`: the builder's letter means nothing after the run
+        named = lambda side: {k: {"@r%s:%s" % (run, l.split(".", 1)[1] if "." in l else "?") for l in who} for k, who in side.items()}
+        changed = 0
+        for p, st in join.items():
+            if p in mem.unwoven:
+                continue
+            old = mem.states.get(p)
+            if old is None and st == self.base.get(p):
+                continue                         # untouched, and never stored: its weave is still its text
+            if old is not None and p not in self.mem_installed:
+                st = M.merge_states(old, st)[0]  # a path the store held but this run began anew (deleted, made again)
+            if st == old:
+                continue
+            mem.states[p] = st
+            mem.dirty.add(p)
+            S.union(mem.auth.setdefault(p, {}), named(auth.get(p, {})))
+            S.union(mem.dels.setdefault(p, {}), named(dels.get(p, {})))
+            changed += 1
+        self.mem = None   # the Memory now describes `commit`, not this run's base
+        try:
+            entry = S.settle(repo, commit, mem)
+        except S.Drift as e:
+            return {"stored": False, "reason": "drift", "paths": e.paths}
+        return {"stored": True, "entry": entry, "tree": mem.tree, "paths": changed}
 
     def _join(self):
         """The join of every published copy (merged as r_merged merges them), with the union of

@@ -302,10 +302,13 @@ for (const [runN, version, error] of [
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
     nonLanding.map((r) => r.kind),
-    ['publish:pr', 'merge', 'board:close', 'run:audit'],
-    `(b) [M1] events.jsonl's non-landing kinds are exactly publish:pr, merge, board:close, run:audit in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+    ['publish:pr', 'weave:push', 'merge', 'board:close', 'run:audit'],
+    `(b) [M1] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, board:close, run:audit in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
   )
-  const [pubRow, mergeRow, closeRow] = nonLanding
+  // the weave's push sits between the pull request and the merge: main's memory reaches the target
+  // before the merge request, never after it (factory/publish.mjs `pushWeave`)
+  const [pubRow, weaveRow, mergeRow, closeRow] = nonLanding
+  assert.equal(weaveRow.when, 'pr', '(b) [M1] the weave:push row is the push made once the pull request is open')
   assert.equal(pubRow.url, 'https://github.com/o/r/pull/7', '(b) [M1] the publish:pr row names the PR url')
   assert.equal(pubRow.number, 7, '(b) [M1] the publish:pr row names the PR number')
   assert.equal(mergeRow.code, 200, '(b) [M1] the merge row records code 200')
