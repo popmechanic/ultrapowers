@@ -2,7 +2,7 @@
 /**
  * fleet/doctor.mjs — "do you have a fleet?"
  *
- * The ten rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+ * The eleven rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
  * each red row names the `references/first-run.md` section that builds the
  * piece. This header does not restate them (#1444). Every row is a read:
  * running the doctor twice is the same as running it once.
@@ -49,10 +49,10 @@ import {
   runCli
 } from './lobby.mjs'
 
-/** The ten rows, in the order the doctor reports them. Each id is also a
+/** The eleven rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -78,7 +78,8 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 const READS = Object.freeze({
   whoami: 'whoami',
   github: 'integrations setup github --list',
-  kataVm: 'ls kata-hub --json'
+  kataVm: 'ls kata-hub --json',
+  keys: 'ssh-key list --json'
 })
 
 /** One lobby read: `ssh exe.dev "<remote>"`, answered whatever its exit code,
@@ -692,6 +693,48 @@ function cloudflareRow (found) {
   return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy attached to ${FLEET_POLICY}`)
 }
 
+// ── reaper ──
+
+/** The hub-only integration the hub's reaper removes a finished VM through, and the exe.dev key
+ *  its bearer is. */
+const REAPER_INTEGRATION = 'lobby-rm'
+const REAPER_KEY = 'hub-reaper'
+const REAPER_SOON_DAYS = 14
+
+/**
+ * The eleventh row: the hub removes a finished run's VM through `lobby-rm`, whose bearer is an
+ * exe.dev key named `hub-reaper`. That key expires, and an expired one fails without a sound: the
+ * hub answers the VM 202 and removes nothing (the key expired 2026-10-30, and on 2026-11-13 the
+ * hub's journal read `removed=False` for all 8 finished runs of the day; each VM waited for a
+ * janitor run). Absent `lobby-rm` is `ok`: a finished VM then waits for the janitor by design.
+ * Present, the row reads `ssh-key list --json` for the key named `hub-reaper…` that lasts longest:
+ * red when there is none or it has expired, green with the days left otherwise.
+ */
+function reaperRow (found, keysRes, now) {
+  if (found === null || found === undefined || !found.has(REAPER_INTEGRATION)) {
+    return row('reaper', 'ok', `no ${REAPER_INTEGRATION} integration — a finished run's VM waits for the janitor`)
+  }
+  if (keysRes.code !== 0) return row('reaper', 'missing', `ssh-key list answered code ${keysRes.code}, so the ${REAPER_KEY} key is unread`)
+  let keys = []
+  try {
+    const parsed = JSON.parse(keysRes.stdout)
+    keys = Array.isArray(parsed?.ssh_keys) ? parsed.ssh_keys : []
+  } catch { keys = [] }
+  const mine = keys.filter((k) => typeof k?.name === 'string' && k.name.startsWith(REAPER_KEY))
+  if (mine.length === 0) {
+    return row('reaper', 'missing', `no exe.dev key named ${REAPER_KEY}: the hub cannot remove a finished run's VM`)
+  }
+  const until = (k) => (typeof k.expires_at === 'string' && k.expires_at !== '' ? Date.parse(k.expires_at) : Infinity)
+  const best = mine.reduce((a, b) => (until(b) > until(a) ? b : a))
+  if (until(best) === Infinity) return row('reaper', 'ok', `the key ${best.name} does not expire`)
+  const day = best.expires_at.slice(0, 10)
+  if (!(until(best) > now)) {
+    return row('reaper', 'missing', `the key ${best.name} expired ${day}: the hub answers a finished VM and removes nothing, so each waits for a janitor run`)
+  }
+  const days = Math.floor((until(best) - now) / 86400000)
+  return row('reaper', 'ok', `the key ${best.name} is good until ${day} (${days} days)${days < REAPER_SOON_DAYS ? ' — renew it soon' : ''}`)
+}
+
 // ── the doctor ───────────────────────────────────────────────────────────────
 
 /**
@@ -713,7 +756,7 @@ function cloudflareRow (found) {
  * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now()
 } = {}) {
   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -747,6 +790,8 @@ export async function doctor ({
   const accounts = await tokenRead(run, ['accounts', '--json'])
   // The hub's VM, then the evidence repository when a key names one.
   const kataVms = await read(READS.kataVm)
+  // The account's keys, for the one the hub's reaper removes VMs with.
+  const keys = await read(READS.keys)
   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
   const drift = await verbDrift({
     help: (verb) => read(`help ${verb}`),
@@ -763,7 +808,8 @@ export async function doctor ({
     evidenceRow(wantEvidence, evidenceRepo, found),
     verbDriftRow(drift),
     kataRow(found, kataVms),
-    cloudflareRow(found)
+    cloudflareRow(found),
+    reaperRow(found, keys, now)
   ]
   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
   return { config: cfg, rows, verdict }

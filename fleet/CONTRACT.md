@@ -536,7 +536,7 @@ evidence repository.
   **http-proxy**, the hub's `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
   (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one exception is
   `lobby-rm`, the `rm`-only lobby key, which is attached to `vm:kata-hub` and never to the tag.
-- **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
+- **Doctor (`fleet/doctor.mjs`) — eleven rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -549,6 +549,7 @@ evidence repository.
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
   | `kata` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists, carries a bearer and is attached to `tag:fleet`, and `.vms[]` has a `kata-hub` row; the red says which is absent, and names `node fleet/kata-hub.mjs` — or, for a missing attachment, `integrations attach kata tag:fleet` |
   | `cloudflare` | `integrations list --json` | green when the object is absent (only a plan with a `**Publish:**` line needs it) or attached to `tag:fleet`; red for a present object that is not, naming `integrations attach cloudflare tag:fleet` |
+  | `reaper` | `integrations list --json` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor), or when the exe.dev key named `hub-reaper…` that lasts longest has not expired, the detail giving its day and the days left; red when no such key exists or it has expired, since the hub then answers a finished VM `202` and removes nothing |
 
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
