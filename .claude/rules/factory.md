@@ -82,6 +82,10 @@ keeps the name `factory/`. Models never run git.
 
 ## Kata (the board)
 
+- Since 2026-11-13 no run carries a Kata record: the launcher's `launch.kata.mode`
+  (`fleet/policy.json`) is `off`, so the plan commit has no `kata.json`, the boot passes the engine
+  no `--kata-*` flag and `board.mjs` records one `skipped: no kata.json to read` row. Everything
+  below describes the rollback (`mode` `on`), which needs no engine change.
 - The board is the Kata 0.18 hub, written directly through `kata.int.exe.xyz`, where the edge
   injects the hub's bearer; the sandbox runs no kata daemon and no credential helper. The boot
   writes the plan commit's `kata.json` to `$FLEET_HOME/plans/<run>.kata.json` and, when it is

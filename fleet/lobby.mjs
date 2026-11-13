@@ -29,6 +29,7 @@
 
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
+import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -185,6 +186,25 @@ export const runOfEvidenceRef = (target, ref) => {
 
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
+/** `fleet/policy.json`: every switch the laptop's fleet tools read, beside its readers. */
+export const POLICY_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
+
+/**
+ * One cell of `fleet/policy.json`, named by its keys (`['launch', 'kata',
+ * 'mode']`). The answer is always one of `allowed`: the cell's value when it
+ * names one, else the first — so a file that cannot be read, or a cell nobody
+ * recognises, is the default and never a refusal.
+ */
+export function policyCell (keys, allowed, policyPath = POLICY_FILE) {
+  try {
+    let value = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
+    for (const key of keys) value = value?.[key]
+    return allowed.includes(value) ? value : allowed[0]
+  } catch {
+    return allowed[0]
+  }
+}
+
 /** The attachment every fleet integration carries (`integrations attach <name> tag:fleet`): the tag a fleet VM is created with. */
 export const FLEET_POLICY = `tag:${FLEET_TAG}`
 /** The http-proxy integration that carries the Claude bearer at the edge. */

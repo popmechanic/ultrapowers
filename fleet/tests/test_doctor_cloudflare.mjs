@@ -133,4 +133,16 @@ const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare
   )
 }
 
+// ── (e) the kata row follows `launch.kata.mode` ─────────────────────────────
+{
+  // No `kata` integration and no hub VM anywhere in this listing.
+  const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
+  const off = (await doctor({ config: {}, exec, configKeys: null, account: null })).rows.find((r) => r.id === 'kata')
+  assert.equal(off.status, 'ok', `(e) with kata off (the policy file's default) a missing hub is not a red row — got: ${JSON.stringify(off)}`)
+  assert.ok(off.detail.includes('launch.kata.mode is off'), `(e) and the detail says why — got: ${JSON.stringify(off.detail)}`)
+  const on = (await doctor({ config: {}, exec, configKeys: null, account: null, kataMode: 'on' })).rows.find((r) => r.id === 'kata')
+  assert.equal(on.status, 'missing', `(e) under the rollback the hub is a prerequisite again — got: ${JSON.stringify(on)}`)
+  assert.ok(on.detail.includes('node fleet/kata-hub.mjs'), '(e) and the red names the command that builds it')
+}
+
 console.log('ALL TESTS PASSED')

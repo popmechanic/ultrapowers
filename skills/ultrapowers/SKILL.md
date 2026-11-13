@@ -174,15 +174,15 @@ approved plan, **is** the authorization to execute — no further approval pause
    measurement run; the sandbox then publishes and does not merge.
 
 3. **Walk away.** The run outlives this session; there is nothing to tail.
-   While the run is in flight, read it off the board:
+   While the run is in flight, read it from its evidence record:
 
    ```bash
-   node ${CLAUDE_PLUGIN_ROOT}/fleet/board-read.mjs --run <N> --target <repo>
+   node ${CLAUDE_PLUGIN_ROOT}/fleet/run-read.mjs --run <N> --target <repo>
    ```
 
-   It prints `== now` — one line per issue of the run (the run issue and each
-   task) with its state — then `== events`, the event feed for the run in
-   order.
+   It prints the run's state, one line per task with its state, then
+   `== events`: every claim, give-back, objection, conflict, move of main and
+   the pull request, in order. The sandbox commits the record every 10 s.
 
    Its state is also `status.json`, written at every transition: `booting` →
    `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
@@ -197,11 +197,12 @@ approved plan, **is** the authorization to execute — no further approval pause
 
    While the run is in flight that tag is not written yet and the same bytes
    are on its `live/<owner>-<repo>/run-<N>` branch, a working surface that
-   goes at the end of the run — read `status.json` there
-   (`?ref=live/<owner>-<repo>/run-<N>`) as a fallback when the hub is dark.
+   goes at the end of the run — `run-read.mjs` reads whichever of the two
+   holds the run.
 
-   The board is the poll: read it on whatever cadence the user asks for, or
-   watch it with `--follow`, in the foreground or the background. A watcher
+   The record is the poll: read it on whatever cadence the user asks for, or
+   watch it with `--follow`, in the foreground or the background; it ends
+   by itself when the run's status says `done`, `parked` or `failed`. A watcher
    only reads; nothing on this machine writes to a run (step 5).
 
 4. **The PR is the gate.** There is no approval command. When the engine is

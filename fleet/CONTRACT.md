@@ -215,7 +215,15 @@ evidence repository.
   --no-rotate`) and refuse a reading at or past 95% of either window, naming the account and the
   reset time, before any push (#1114); under the wall, the launch line carries
   `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>` →
-  kata: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
+  kata, only under the rollback. The `launch.kata.mode` cell of `fleet/policy.json` is `off` (the
+  operator's decision of 2026-11-13: Kata leaves the run path): the launcher does not open
+  `~/.ultrapowers/kata-hub.env`, pings no hub, files nothing, and the plan commit carries no
+  `kata.json` — and since the sandbox writes to Kata only when that file is there (the Flock's
+  `kata:mirror`, the boot's `board.mjs close-run` and `mark-run`), a run writes nothing to the hub,
+  on any engine version; its `events.jsonl` holds one `board:close` or `board:mark` row saying
+  `skipped: no kata.json to read`, and a hub that is down refuses no launch. A run is read from its
+  evidence record (`fleet/run-read.mjs`, `--follow` to watch). Under the rollback, `mode` `on`,
+  everything from here to the push is as before: the run filed on the hub, for each push attempt's N and before that attempt's plan commit is
   built — `plan_parse.py <plan>` (the launch's second call; the old compiler's per-task `factsheet`
   left with it at cut B, 2026-09-21 — nothing in the factory read it), one project `<owner>-<repo>` (slashes in the
   target become `-`) — one project per target and not one per run, so a name the hub already holds
@@ -554,7 +562,7 @@ evidence repository.
   | `integrations` | `integrations list --json` for `claude-max` and `gh-<owner>-<repo>` (with `--target`) | with `--target <owner>/<repo>`, `gh-<owner>-<repo>` exists; every one of those objects is attached to `tag:fleet` — the red names the first that is not and `integrations attach <name> tag:fleet` |
   | `evidence` | `fleet.json`'s `"evidence"` + `gh repo view <owner>/<repo>` + `integrations list --json` | the one-time setup, three checks in order, the red naming the first that fails and its fix: the key is set (`"evidence": "<owner>/<repo>"`); the repository exists (`gh repo create <owner>/<repo> --private`); its integration `gh-<owner>-<repo>` exists on `tag:fleet` (`node fleet/target.mjs <owner>/<repo>`) |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
-  | `kata` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists, carries a bearer and is attached to `tag:fleet`, and `.vms[]` has a `kata-hub` row; the red says which is absent, and names `node fleet/kata-hub.mjs` — or, for a missing attachment, `integrations attach kata tag:fleet` |
+  | `kata` | `fleet/policy.json`'s `launch.kata.mode`; under `on`, `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` | with the mode `off`, always: no launch asks the hub, so it is no prerequisite and the detail says so; under `on`, the `kata` http-proxy exists, carries a bearer and is attached to `tag:fleet`, and `.vms[]` has a `kata-hub` row; the red says which is absent, and names `node fleet/kata-hub.mjs` — or, for a missing attachment, `integrations attach kata tag:fleet` |
   | `cloudflare` | `integrations list --json` | green when the object is absent (only a plan with a `**Publish:**` line needs it) or attached to `tag:fleet`; red for a present object that is not, naming `integrations attach cloudflare tag:fleet` |
   | `reaper` | `integrations list --json` + `ssh <the hub's ssh_dest> "curl … lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor); otherwise red when the remover, asked from the hub to remove a VM that cannot exist, answers `invalid token`, and red when no key named `hub-reaper…` exists or the one that lasts longest has expired, since the hub then answers a finished VM `202` and removes nothing; green with the key's day and days left, the detail saying whether the remover answered. `bash fleet/reaper-key.sh` renews the key |
 

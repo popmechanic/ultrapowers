@@ -51,6 +51,7 @@ import {
   output,
   parseArgs,
   parseMemoryGb,
+  policyCell,
   readEvidenceSetting,
   readPlanCapacity,
   runCli,
@@ -94,6 +95,15 @@ const LAUNCH_FLAGS = [
  *  run issue and one issue per task on the hub, each with the revision it had
  *  when the launcher last read it (#913). Written only when a hub is reached. */
 const KATA_FILE = 'kata.json'
+/**
+ * Whether a launch asks the kata hub at all — the `launch.kata.mode` cell of
+ * `fleet/policy.json`. `off`: the hub is not opened, not pinged and nothing is
+ * filed on it, so the plan commit carries no `kata.json`; the sandbox writes
+ * to Kata only when that file is there, so the engine and the boot write
+ * nothing either. `on` is the rollback: every launch as before 2026-11-13.
+ */
+export const KATA_MODES = Object.freeze(['off', 'on'])
+export const kataModeOf = (policyPath) => policyCell(['launch', 'kata', 'mode'], KATA_MODES, policyPath)
 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
  *  reads the same file. */
@@ -655,7 +665,7 @@ export async function launch (params) {
 async function launchBody ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
   refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
-  kata, kataEnvPath = defaultKataEnvPath(), held
+  kata, kataEnvPath = defaultKataEnvPath(), kataMode, held
 }) {
   // ── Local validation. Nothing has been executed at this point, and nothing
   //    will be until every one of these passes. ──────────────────────────────
@@ -705,9 +715,14 @@ async function launchBody ({
   // is made and the result's `kata` is null, which is what keeps every sim that
   // hands `launch` a config at its BASE behaviour. The env read is a refusal
   // that precedes every command.
+  //
+  // All of it under `launch.kata.mode` `on` alone. Under `off` — the default —
+  // there is no hub: an injected client is not used, the env file is not
+  // opened, and a laptop with no `kata-hub.env` launches all the same.
+  const hubMode = KATA_MODES.includes(kataMode) ? kataMode : kataModeOf()
   let kataHost = null
-  let hub = kata === undefined ? null : kata
-  if (kata === undefined && (config === undefined || config === null)) {
+  let hub = hubMode !== 'on' || kata === undefined ? null : kata
+  if (hubMode === 'on' && kata === undefined && (config === undefined || config === null)) {
     const opened = await hubFromEnv({ exec, actor: 'launch', kataEnvPath })
     if (opened.dark !== null) throw new Refusal(`launch: ${opened.dark}`)
     hub = opened.client

@@ -358,6 +358,11 @@ Three things a newcomer would not know:
 
 ## kata
 
+Since 2026-11-13 no launch asks the kata hub (`launch.kata.mode` is `off` in
+`fleet/policy.json`), so this row is green without one and says
+`not asked: launch.kata.mode is off`; a run is read with `fleet/run-read.mjs`.
+The rest of this section applies only under the rollback, `mode` `on`.
+
 The fleet has one kata hub: a single persistent VM named `kata-hub` running the
 kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
 integration named `kata` and which the laptop reaches over ssh. It is not part

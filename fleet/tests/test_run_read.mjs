@@ -13,10 +13,16 @@
  *   (d) listLive: the live branches of one target, as `{ target, run, branch }`, in run order.
  *   (e) main: `--run … --target …` prints the rendering; `--json` prints the projection with its
  *       `ref`; a run with no record is a refusal beginning `run-read:`; so is a missing `--run`.
+ *   (f) follow: each timeline line prints once, in order, across looks; a claim older than the
+ *       quiet window prints one `!` line; a run with no new line for the window prints one; the
+ *       follow ends 0 with one `== run-<N> <state>` line when every run's status says it ended,
+ *       and 3 with `== gave up` at the limit. A run with no record yet is waited for.
+ *   (g) followReader: a run is asked on its live branch first, its tag only once that is gone,
+ *       and its plan once; `--follow` through `main` prints the header and the lines.
  */
 import assert from 'node:assert/strict'
 
-import { projectRun, renderRun, readRunRecord, listLive, main } from '../run-read.mjs'
+import { projectRun, renderRun, readRunRecord, listLive, main, follow, followReader, parseArgs } from '../run-read.mjs'
 
 const T = (s) => `2026-11-13T18:${s}Z`
 const ROWS = [
@@ -116,6 +122,67 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   assert.ok(parsed.length === 1 && parsed[0].ref === 'o-r/run-300' && parsed[0].timeline.length === 12, '(e) --json prints the projection with its ref')
   await assert.rejects(() => main(['--run', '9', '--target', 'o/r', '--evidence-repo', 'e/v'], { exec: stub({}).exec, write: () => {} }), (e) => /^run-read: no record for run 9/.test(e.message), '(e) a run with no record is refused')
   await assert.rejects(() => main(['--target', 'o/r', '--evidence-repo', 'e/v'], { exec: stub({}).exec, write: () => {} }), (e) => /^run-read: --run and --target are required/.test(e.message), '(e) a missing --run is refused')
+}
+
+// ── (f) follow ──
+{
+  const looksOf = (n, status) => [{ ...projectRun({ run: 300, target: 'o/r', rows: ROWS.slice(0, n), status, plan: PLAN }) }]
+  const running = { state: 'running', phase: 'the engine is running' }
+  // three looks: nothing yet, six rows at work, the whole log ended
+  const seq = [[null], looksOf(6, running), looksOf(6, running), looksOf(ROWS.length, STATUS)]
+  let i = 0, clock = Date.parse(T('58:00')); const lines = []
+  const rc = await follow({
+    read: async () => seq[Math.min(i++, seq.length - 1)], write: (s) => lines.push(s.trimEnd()), runs: [300],
+    now: () => clock, sleep: async (ms) => { clock += ms }
+  })
+  assert.equal(rc, 0, '(f) ends 0 when the status says the run ended')
+  assert.equal(i, 4, '(f) it looks until the run has ended and no further')
+  const body = lines.filter((l) => !l.startsWith('=='))
+  assert.equal(body.length, 12, `(f) each timeline line once — got ${JSON.stringify(body)}`)
+  assert.equal(body[0], '  18:54:48Z run-300 task 1     claimed by A', `(f) a line's shape — got ${body[0]}`)
+  assert.ok(body[3].endsWith('task 2     claimed by B') && body[4].includes('main moved to 2fb0b33'), '(f) the second look prints only what the first did not')
+  assert.equal(lines.at(-1), '== run-300 parked: the pull request is open  https://github.com/o/r/pull/7', `(f) the last line names the end — got ${lines.at(-1)}`)
+
+  // a claim that sits: one `!` for the claim, one for the quiet run, each once, then the limit
+  let c2 = Date.parse(T('55:10')); const out2 = []
+  const rc2 = await follow({
+    read: async () => looksOf(6, running), write: (s) => out2.push(s.trimEnd()), runs: [300],
+    quietMs: 5 * 60000, maxMs: 20 * 60000, everyMs: 60000, now: () => c2, sleep: async (ms) => { c2 += ms }
+  })
+  assert.equal(rc2, 3, '(f) the limit ends 3')
+  assert.equal(out2.at(-1), '== gave up')
+  const bangs = out2.filter((l) => l.startsWith('!'))
+  assert.deepEqual(bangs, ['! run-300 task 1 claimed by A 5 min ago, and nothing since', '! run-300 task 2 claimed by B 5 min ago, and nothing since', '! no new line for 5 min'],
+    `(f) each warning once — got ${JSON.stringify(bangs)}`)
+}
+
+// ── (g) followReader, and --follow through main ──
+{
+  const live = (file) => at(file, 'live/o-r/run-300')
+  const files = { [live('events.jsonl')]: ROWS.slice(0, 6).map((r) => JSON.stringify(r)).join('\n') + '\n', [live('status.json')]: JSON.stringify({ state: 'running' }), [live('plan.json')]: JSON.stringify(PLAN) }
+  const s = stub(files)
+  const read = followReader({ exec: s.exec, evidence: 'e/v', target: 'o/r', runs: [300] })
+  const first = await read()
+  assert.ok(first[0].live === true && first[0].tasks[0].title === 'Write A' && first[0].cursor === 6, '(g) the live branch is read, with the plan\'s titles')
+  assert.deepEqual(s.calls.map((c) => c.at(-1)), [live('events.jsonl'), live('status.json'), live('plan.json')], `(g) live first, three reads — got ${JSON.stringify(s.calls.map((c) => c.at(-1)))}`)
+  s.calls.length = 0
+  const second = await read()
+  assert.deepEqual(s.calls.map((c) => c.at(-1)), [live('events.jsonl'), live('status.json')], '(g) the plan is read once')
+  assert.equal(second[0].tasks[0].title, 'Write A', '(g) and its titles are kept')
+  // the run ends: the live branch is gone and the tag holds the record
+  for (const k of Object.keys(files)) delete files[k]
+  files[at('events.jsonl', 'o-r/run-300')] = LOG; files[at('status.json', 'o-r/run-300')] = JSON.stringify(STATUS)
+  const third = await read()
+  assert.ok(third[0].live === false && third[0].state === 'parked' && third[0].ref === 'o-r/run-300', '(g) once the live branch is gone the tag is read')
+  assert.deepEqual(await followReader({ exec: stub({}).exec, evidence: 'e/v', target: 'o/r', runs: [9] })(), [null], '(g) a run with no record yet is null')
+
+  let out = ''
+  const rc = await main(['--run', '300', '--target', 'o/r', '--evidence-repo', 'e/v', '--follow'], { exec: s.exec, write: (x) => { out += x }, sleep: async () => {} })
+  assert.equal(rc, 0)
+  const printed = out.trimEnd().split('\n')
+  assert.ok(printed[0].startsWith('== following') && printed.length === 14 && printed.at(-1).startsWith('== run-300 parked'), `(g) --follow prints the header, the lines and the end — got ${JSON.stringify(printed)}`)
+  assert.throws(() => parseArgs(['--run', '1', '--target', 'o/r', '--follow', '--json']), /^Refusal: run-read: --follow prints lines|run-read: --follow prints lines/, '(g) --follow refuses --json')
+  assert.equal(parseArgs(['--run', '1', '--target', 'o/r', '--follow', '--quiet', '3']).quietMinutes, 3)
 }
 
 console.log('ALL TESTS PASSED')
