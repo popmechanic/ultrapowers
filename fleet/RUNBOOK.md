@@ -212,7 +212,7 @@ The sandbox reaches the repository through the same edge host as the target
 hand archive under `archive/`; no tool writes to `main`, and runs live only
 under `runs/`, on `live/*` branches and on the run tags. The janitor (its
 close-out included), the census and the launcher's duplicate check read runs only from
-here (the janitor keeps reaping by the hub alone when the key is unset).
+here (with the key unset the janitor can read no run and reaps none).
 
 The doctor's tenth row, `cloudflare`, is not part of this one-time walk: it is
 the deploy's credential, needed only by a plan that carries a `**Publish:**`
@@ -261,19 +261,42 @@ integration goes. A missing attachment is repaired as in step 5:
 
 ### The hub's reaper (#1470)
 
-A fleet VM whose run closed as done asks the hub to remove it: `POST /reap`
+A fleet VM whose run ended done asks the hub to remove it: `POST /reap`
 with `{"run": <n>, "target": "<owner>/<repo>"}`. The reaper
 (`fleet/reaper.py`, stdlib Python on port 8001) reads the caller from the
 platform-set `X-Exedev-Source-Vm` header, checks that the caller's name carries
-the body's run, finds the run issue on the hub's own kata, and only when it is
-closed as done answers 202 and then removes that caller's VM, never any other.
-One-time install:
+the body's run, reads the run's `status.json` at its tag
+`<owner>-<repo>/run-<N>` in the evidence repository, and only when that page is
+there and says `state` `done` answers 202 and then removes that caller's VM,
+never any other. A run with no tag yet, or one that parked or failed, is
+answered 409 and waits for the janitor. One-time install:
 
 ```bash
+ssh exe.dev "integrations add github --name evidence-read --repository <evidence owner>/<repo> --readonly --attach vm:kata-hub"
+ssh kata-hub.exe.xyz 'sudo install -d /etc/reaper && echo REAPER_EVIDENCE_REPO=<evidence owner>/<repo> | sudo tee /etc/reaper/reaper.env'
 scp fleet/reaper.py fleet/reaper.service kata-hub.exe.xyz:/tmp/
 ssh kata-hub.exe.xyz 'sudo install -D -m 0755 /tmp/reaper.py /usr/local/lib/reaper/reaper.py && sudo install -m 0644 /tmp/reaper.service /etc/systemd/system/reaper.service'
 ssh kata-hub.exe.xyz 'sudo systemctl daemon-reload && sudo systemctl enable --now reaper.service'
 ssh exe.dev "integrations add http-proxy --name=reaper --target=https://kata-hub.exe.xyz:8001/ --peer --attach=tag:fleet"
+```
+
+`evidence-read` is the hub's one road to the evidence repository: read-only,
+attached to `vm:kata-hub` alone and never to `tag:fleet`, where the read-write
+`gh-<owner>-<repo>` already names the same repository (Shelley, 2026-11-13:
+two integrations for one repository are routed apart only while no VM carries
+both; without `--act-as-user` it reads as the exe.dev app). Check the road from
+the hub with one read of a run that has ended — it prints that run's page:
+
+```bash
+ssh kata-hub.exe.xyz "curl -sS -H 'Accept: application/vnd.github.raw' 'https://github.int.exe.xyz/api/v3/repos/<evidence owner>/<repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>'"
+```
+
+The rollback is the record the reaper read before 2026-11-13, the run issue on
+the hub's own kata, closed as done. It is one line and a restart, and
+deleting the line is the way forward again:
+
+```bash
+ssh kata-hub.exe.xyz 'echo REAPER_RECORD=kata | sudo tee -a /etc/reaper/reaper.env && sudo systemctl restart reaper.service'
 ```
 
 A port other than 8000 rides in the target URL. The reaper removes through
@@ -285,7 +308,8 @@ the key's expiry. Renew it with `bash fleet/reaper-key.sh`: it mints a new `rm`-
 key whose label begins `hub-reaper` (a label is never reused), pipes it on stdin to
 `integrations edit lobby-rm --bearer=-`, and tests the remover (first-run.md §reaper).
 The journal (`journalctl -u reaper`) has one line per request: the caller, the
-run, the status and, on 202, whether the removal succeeded.
+run, the status, the record it was decided on (`record=evidence`, or
+`record=kata` under the rollback) and, on 202, whether the removal succeeded.
 
 ## Per run
 
@@ -402,20 +426,23 @@ Integrations page, and check the account is not a team.
 node fleet/janitor.mjs
 ```
 
-It lists the fleet, reads each VM's comment for its run and its target, asks
-the hub for that run's issue (`ssh <KATA_URL host> curl localhost:8000/api/v1/…`,
-the bearer sourced on the hub — the road the launcher takes), and `rm`s every
-VM whose run issue has been closed for over an hour — the `--age 1h` default:
+It lists the fleet, reads each VM's comment for its run and its target, reads
+that run's status page off the evidence repository with `gh api` — at the run
+tag `<owner>-<repo>/run-<N>` first and at the branch
+`live/<owner>-<repo>/run-<N>` only while the run has no tag — and `rm`s every
+VM whose page has said `done`, `parked` or `failed` for over an hour — the `--age 1h` default:
 a finished run's VM is kept for one hour so the operator has a window to look
 at it before it goes, so a janitor that answers `nothing to do` beside `done`
 VMs inside that hour is the hold and not a fault (six such VMs on 2026-09-15);
-`--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. When the hub
-cannot be asked — no `~/.ultrapowers/kata-hub.env`, an ssh that fails — it says so on its
-first line and reads each run's status page off the evidence repository with
-`gh api` instead (none when `"evidence"` is unset: then it reaps by the hub
-alone), at the run tag `<owner>-<repo>/run-<N>` first and at the branch
-`live/<owner>-<repo>/run-<N>` only while the run is in flight; a run the hub has never heard of is read that way too, and a run with
-no record anywhere is left alone. Last in its report it also names, for each
+`--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. It asks no
+hub. A run whose page cannot be read — no page at either ref, a read that
+failed, or `"evidence"` unset — is left alone and named on an `unread` line.
+The rollback is one cell, `janitor.record.source` in `fleet/policy.json`, set
+to `kata`: the janitor then asks the hub for the run's issue first
+(`ssh <KATA_URL host> curl localhost:8000/api/v1/…`, the bearer sourced on the
+hub — the road the launcher takes), reaps on an issue closed or marked finished
+for over an hour, and reads the evidence repository only for a run the hub
+cannot answer, saying so on its first line when the hub is dark. Last in its report it also names, for each
 target its rows carry, every `ultra/integration-run-<N>` whose highest-numbered
 pull request is closed and not merged, and deletes it (`--dry-run` only names
 it; `--target <owner>/<repo>` sweeps a target no VM names). It merges nothing:
@@ -423,8 +450,16 @@ an approved run merges its own pull request from the sandbox.
 For any fleet VM whose run has had no update in six hours it prints a line,
 once, naming where it read the age. The only ssh into a fleet VM is the unit
 read of a run the record says is in flight; a unit that has died is written as
-the death — the journal and the page on the live branch, the run issue
-marked `failed` on the hub (its metadata patched; the janitor closes nothing) — and reaped an hour later. A VM that has to go now:
+the death — the journal and the page on the live branch (and, under the `kata`
+rollback, the run issue marked `failed` on the hub, its metadata patched; the
+janitor closes nothing) — and reaped an hour later. A run no VM carries whose
+live branch is still there is ended too, on each target a VM names and on
+`--target`'s, once its page is over `--age` old: a page still in flight is
+written `failed` and sealed (`closed out`), and a page that already says the
+run ended is only sealed — its tag cut, read back, the branch deleted
+(`sealed`, or `not sealed` with the reason). The second is a run whose sandbox
+never cut its tag: flock-baseline run 31 on 2026-11-13 ended `done` with its
+live branch left, and `run-read.mjs --live` listed it as running. A VM that has to go now:
 `ssh exe.dev "rm <vm> --json"` — `rm` takes several names.
 
 The launcher runs it before every launch; nothing schedules it. Run it by hand

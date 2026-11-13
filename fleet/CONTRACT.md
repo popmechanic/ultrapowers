@@ -39,7 +39,9 @@ opens the PR over GitHub's REST API through the edge. At the end of every run (d
 failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
 `git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
 whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
-removes the calling VM only when the run issue is closed `done` (#1470); the janitor still reaps what
+removes the calling VM only when the run's `status.json` at that tag, read from the evidence
+repository, says `state` `done` (#1470; a run issue closed `done` on the hub's kata is the rollback,
+`REAPER_RECORD=kata` in the hub's `/etc/reaper/reaper.env`); the janitor still reaps what
 never asks. The PR is the human gate: the target's
 integration and the evidence repository's ride the VM for the run's whole life, and there is no
 grant step. There is no image to keep fresh, no orchestrator, no control VM, and no token on any VM.
@@ -534,8 +536,13 @@ evidence repository.
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
   Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's `kata`
   **http-proxy**, the hub's `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
-  (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one exception is
-  `lobby-rm`, the `rm`-only lobby key, which is attached to `vm:kata-hub` and never to the tag.
+  (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are the
+  hub's own, attached to `vm:kata-hub` and never to the tag: `lobby-rm`, the `rm`-only lobby key, and
+  `evidence-read`, a `github --readonly` integration naming the evidence repository, through which
+  the hub's reaper reads one file — `GET https://github.int.exe.xyz/api/v3/repos/<evidence
+  repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>` — and
+  can write nothing. It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
+  attached to `tag:fleet`: two GitHub integrations for one repository on one VM have no tie-break.
 - **Doctor (`fleet/doctor.mjs`) — eleven rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
@@ -554,7 +561,20 @@ evidence repository.
   The doctor imports only `node:`-prefixed specifiers and no other fleet module, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`.
 - **Janitor (`fleet/janitor.mjs`):** `ls 'fleet-r*' --json` → for each row, parse the VM's `comment` for
-  `run=` and `target=` → ask the hub for the run's state (#938): once per pass, on the first row that
+  `run=` and `target=` → read the run's end off the evidence record (the operator's decision of
+  2026-11-13: Kata leaves the run path): `runs/<owner>-<repo>/<N>/status.json` in the evidence
+  repository (taken from the `"evidence"` setting) with `gh api`
+  (`gh api repos/<evidence repo>/contents/…?ref=…`) at the run tag `<owner>-<repo>/run-<N>` first and
+  at the branch `live/<owner>-<repo>/run-<N>` only when the tag answered no envelope — the page's
+  `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) is the run's state
+  and its `updatedAt` the age → `rm <vm> --json` for a finished run older than 1 h. No hub is asked
+  and `~/.ultrapowers/kata-hub.env` is not opened; the result carries `record: "evidence"` and
+  `hub: null`. A run whose page cannot be read — absent at both refs, a read that failed, or the
+  `"evidence"` key unset — is never removed and is reported `unread`, the line naming the two refs.
+  The switch is the `janitor.record.source` cell of `fleet/policy.json` (the file beside the
+  janitor, as `factory/policy.json` is beside the engine): `evidence` by default, and its rollback
+  `kata`, under which a pass reads as every pass did before — asking the hub for the run's state (#938):
+  once per pass, on the first row that
   needs it, `GET /api/v1/projects?limit=1000`, matched on `name` against the target's one project
   `<owner>-<repo>` (kata addresses a project by integer `id`; a name in the path is a 400),
   then `GET /api/v1/projects/<id>/issues?limit=1000` — one page holding every run of that target —
@@ -567,36 +587,32 @@ evidence repository.
   parked run — whose issue stays open for the operator to read — is reaped an hour on like any
   other (the factory boot, `factory/boot.sh` through `board.mjs mark-run`, is the writer of that
   `work.state` key when a run parks or fails, with `work.attention` `needs-human`, and it labels the
-  run's task issues `needs-review`, leaving them open, #1391); an `open` issue with no such key is a run in flight, aged from `updated_at` →
-  `rm <vm> --json` for a finished run older than 1 h. The hub is reached exactly as the launcher
+  run's task issues `needs-review`, leaving them open, #1391); an `open` issue with no such key is a run in flight, aged from `updated_at`.
+  Under the rollback the hub is reached exactly as the launcher
   reaches it, `fleet/kata-client.mjs`'s `sshTransport`: `ssh <KATA_URL host>` running `curl` against
   `localhost:8000`, the bearer sourced from `/etc/kata/kata.env` ON the hub, the laptop's argv
   carrying the literal `$KATA_AUTH_TOKEN` and never a token; `KATA_URL` is
   `~/.ultrapowers/kata-hub.env`'s, and `fleet/launch.mjs` hands the janitor the client it already
   built. A hub that cannot be read — the env file absent, ssh or curl failing, an answer that is not
   one — darkens the pass at the first error: no further hub request is made, every row from there
-  is read from the evidence repository (taken from the `"evidence"` setting; with the key unset the
-  janitor reads no evidence and keeps reaping by the hub alone), `runs/<owner>-<repo>/<N>/status.json`
-  with `gh api` (`gh api repos/<evidence repo>/contents/…?ref=…`) at the run tag
-  `<owner>-<repo>/run-<N>` first and at the branch `live/<owner>-<repo>/run-<N>` only when the tag
-  answered no envelope — the page's
-  `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) and `updatedAt`
-  standing in for the issue's — the result carries `hub: {host, dark}`, and the report opens with one
-  `hub <host> unreachable` line. A run the hub is up for but holds no project or run issue for is
-  read from the evidence the same way, row by row, without darkening the pass; a run with no record
+  is read from the evidence repository as above, the result carries `hub: {host, dark}`, and the
+  report opens with one `hub <host> unreachable` line. A run the hub is up for but holds no project
+  or run issue for is read from the evidence the same way, row by row, without darkening the pass.
+  Under either source a run with no record
   anywhere is left alone, and no plan-tag or plan-branch read is issued for it. A VM whose `comment`
   carries the substring `do not reap` is never removed: the guard is decided on the raw comment
   before the assignment is parsed, so nothing is read for that row at all, and it is reported as
   `kept` instead. A VM whose run has had no update in 6 h is notified once, the line naming where
-  the age was read (`kata:<project>`, or the evidence ref). A run the record says is in flight is
+  the age was read (the evidence ref, or `kata:<project>` under the rollback). A run the record says is in flight is
   cross-checked at its unit (`ssh <ssh_dest> "… systemctl --user show fleet-run@<N>.service …"`, the
   one ssh into a fleet VM); a dead unit is written as the death — the journal and the page as
   `failed`, both `gh api -X PUT` on the live branch in the evidence repository when it has a page, and, for a row the hub
-  answered, one `POST …/issues/<run uid>/metadata` patching the run issue's three keys, `work.state`
+  answered (the rollback's only), one `POST …/issues/<run uid>/metadata` patching the run issue's three keys, `work.state`
   `failed`, `work.attention` `needs-human` and `work.attention_msg` the death's own line, under
   `Idempotency-Key janitor:run-<N>:death` — the run issue left open and never a `wontfix` close, a
   close carrying a verified outcome and a death being a run nobody has read yet — and reaped an hour
-  later by the ordinary rule, off the `work.state` the death itself wrote. The VM writes its own
+  later by the ordinary rule, off the `failed` the death itself wrote (the page's `state`; the
+  issue's `work.state` under the rollback). The VM writes its own
   death through the unit's `ExecStopPost=` → `boot.sh died` (#1445); the janitor's death write
   remains the backstop for a VM whose stop-post never ran, to be retired after n=5 runs of
   VM-written deaths. No
@@ -604,7 +620,14 @@ evidence repository.
   a sleep; nothing schedules it, and the janitor merges nothing — the sandbox merges its own PR.
   The janitor's close-out, the census and the launcher's duplicate check likewise read runs only
   from the evidence repository, taking it from the same setting; none of them reads a target's
-  refs. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
+  refs. The close-out covers every target a row names and `--target`'s: for a run no VM carries
+  whose live branch is still there and whose page is older than `--age`, a page still in flight is
+  written `failed` and sealed (#1314, reported `closed out`), and a page that already says
+  `done|parked|failed` — a run whose sandbox never cut its tag (flock-baseline run 31, 2026-11-13,
+  n=1) — is not rewritten, only sealed: the tag `<owner>-<repo>/run-<N>` cut at the branch's head,
+  read back, and only then the branch deleted, reported `sealed`, or `not sealed` with the reason
+  and the branch kept. A run a VM still carries is never sealed by the janitor: its VM is reaped on
+  the page it has and the seal is the next pass's. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
   highest-numbered pull request (`pulls?state=all&per_page=100&head=<owner>:ultra/integration-run-<N>`, every page) is
   closed with `merged_at` null; an open, merged or absent one keeps the branch.
 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
