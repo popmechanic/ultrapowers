@@ -35,6 +35,12 @@ keeps the name `factory/`. Models never run git.
   address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
   `audit.mjs` (a finished run's final computed row).
+- A builder's copy is a whole, current tree: every pull takes in every published change, and
+  `flock.pulls.mode` (`flock/pulls.mjs`) narrows only what the builder is told of, a change outside
+  its scope landing as a `pull` row marked `quiet` (flock-baseline run-10, 2026-11-13: a scope that
+  held changes back starved a builder of a file its task needed, and the run ended a draft). A task
+  reopened red is told of each same-spot insertion in its files, since the merge orders two
+  insertions at one spot by their text.
 - `flock/weave_store.py` is main's memory (the main-is-a-peer design, stages 1 and 2; policy
   `flock.main.mode`, `memory` or the rollback `frozen`): one stored weave per tree of the default
   branch, on the target's ref `refs/ultrapowers/weave/v1`. The engine starts every copy from the

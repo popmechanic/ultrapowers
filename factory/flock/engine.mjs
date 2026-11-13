@@ -86,8 +86,9 @@ const mode = (cell, allowed, dflt) => {
   if (!allowed.includes(v)) { console.error(`engine: policy flock.${cell} is ${allowed.join(', ')}`); process.exit(2) }
   return v
 }
-// pulls `narrow` (#1292): a builder takes in only the peer changes its work touches (pulls.mjs);
-// `all`, every published change, is the rollback. The policy cell flock.pulls.mode, else all.
+// pulls `narrow` (#1292): a builder is told only of the peer changes its work touches (pulls.mjs);
+// `all`, told of every published change, is the rollback. Either way every change reaches its copy
+// (pullInto). The policy cell flock.pulls.mode, else all.
 const PULLS = mode('pulls.mode', ['narrow', 'all'], 'all')
 // record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
 // a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
@@ -575,6 +576,15 @@ Rules:
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
+// What a pull brought that its builder has not been told of yet: agent -> path -> the change.
+const unsaid = {}
+// Every published change reaches the copy, whatever the builder's task: a copy is a whole, current
+// tree, since its facts run on all of it. On flock-baseline run-10 (2026-11-13, n=1 run) a narrow
+// pull left task 7's builder without `atlas/geo.py`, written by a task it depended on only through
+// another, and read by it with `cat`: the file never arrived, the task was given back three times
+// over 22 minutes and the run ended a draft. The scope (pulls.mjs) narrows only what a builder is
+// TOLD: a change outside it lands silently and is told, with its conflict mark, once the path comes
+// into scope. Answers the changes told now; `.all` counts every change that reached the copy.
 async function pullInto (agent, task) {
   // a resolve task (R:<path>) scopes to its own path
   if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
@@ -582,15 +592,25 @@ async function pullInto (agent, task) {
   const base = new Set(BASE_PATHS)
   const created = [...new Set(Object.entries(lastEditT).filter(([a]) => a !== agent).flatMap(([, ps]) => Object.keys(ps)))].filter((p) => !base.has(p))
   const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS, created }) : null
-  const r = await must(scope ? { op: 'pull', agent, paths: [...scope] } : { op: 'pull', agent })
+  const r = await must({ op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) known[agent].add(c.path)
   writeFiles(dir, r.changed.map((c) => [c.path, c.exists ? c.text : null]))
-  if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict })) })
-  for (const c of r.changed.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
-  for (const c of r.changed.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
-  for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], agent)
-  return r.changed
+  const quiet = (p) => !!scope && !scope.has(p)
+  if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict, quiet: quiet(c.path) || undefined })) })
+  const mine = (unsaid[agent] = unsaid[agent] || new Map())
+  for (const c of r.changed) {
+    const was = mine.get(c.path)
+    // an untold conflict mark is kept until the builder is told, whatever arrives after it
+    mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, annotated: was.annotated }) } : c)
+  }
+  const told = [...mine.values()].filter((c) => !quiet(c.path))
+  for (const c of told) mine.delete(c.path)
+  for (const c of told.filter((x) => x.conflict)) (lastMarkedT[agent] = lastMarkedT[agent] || {})[c.path] = now()
+  for (const c of told.filter((x) => x.conflict)) await openConflict(c.path, { addsOnly: c.addsOnly, annotated: c.annotated, between: [agent, c.from], party: agent })
+  for (const s of r.sameAnchor || []) await sameSpot(s.path, s.flags, [agent, s.from], quiet(s.path) ? null : agent)
+  told.all = r.changed.length
+  return told
 }
 
 // ── ticket 2 fix (b): two agents inserting at one spot. The kernel orders such lines by their
@@ -605,7 +625,7 @@ async function sameSpot (p, flags, between, agent) {
     const text = `${f.kind === 'unified' ? 'one block starts with the other\'s line' : 'two insertions'} at one spot in ${p}, after ${JSON.stringify(f.anchor)}: ${JSON.stringify(f.lines).slice(0, 200)} (by ${(f.authors || between).join(' and ')}); the merge chose their order by text, so check the order says what both meant`
     if (agent) (spotNotes[agent] = spotNotes[agent] || new Set()).add(text)
     if (spots.has(key)) continue
-    spots.set(key, { p, f, t: now() })
+    spots.set(key, { p, f, text, t: now() })
     ev('same-anchor', { path: p, flag: f.kind, anchor: f.anchor, lines: f.lines, authors: f.authors, between })
     await board.post({ by: 'host', claim: text })
   }
@@ -755,7 +775,7 @@ async function session (agent, task) {
           await sleep(1000)
           const changed = await pullInto(agent, task)
           for (const c of changed) merged.set(c.path, c)
-          if (changed.length) proofChanged = true
+          if (changed.all) proofChanged = true   // a change the builder was not told of still changes what its facts read
           spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
           held = holds()
         }
@@ -1019,7 +1039,12 @@ async function settle () {
       if (t.reopen >= MAX_REOPEN) continue
       acted = true
       t.reopen += 1
-      await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}`)
+      // the merge orders two insertions at one spot by their text, which no builder chose: a task
+      // reopened red is told of each such spot in its files (flock-baseline run-10: tasks 12 and 13
+      // each added one rule to one list, the merge put them in alphabetical order, both went red)
+      const here = [...spots.values()].filter((x) => (t.files || []).includes(x.p)).map((x) => x.text)
+      await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}` +
+        (here.length ? `. Look here first: ${here.join('; ')}` : ''))
       await board.post({ by: 'host', claim: `edge red on task ${t.id} at snapshot ${r.snap}`, task: t.id })
       ev('reopen', { task: t.id, snap: r.snap, n: t.reopen }); log('reopen task', t.id, 'at', r.snap)
     }
