@@ -1,0 +1,42 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The loose-path sim (#1531): a loose end whose path the run cannot read is reported as not checked,
+2 < 1 // never counted as resolved. The base holds a.txt (`x y z`) and b.txt (`b`); task 1 writes `x WIPE z`
+3 < 1 // into a.txt and task 2 writes an empty b.txt, which the weave reads as the file gone. Three loose ends
+4 < 1 // are posted, and the run's last `loose-ends` row (`--loose-ends record`) reads:
+5 < 1 //   - `./a.txt` (no file has that exact path at the base or in the settled snapshot): unchecked;
+6 < 1 //   - `b.txt`, stale `b` (at the base, gone from the settled snapshot): resolved;
+7 < 1 //   - `a.txt`, stale `x WIPE z` (still in the settled a.txt): open.
+8 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+9 < 1 import { flockTarget, flockRun, task, writePlan } from './_flock_helpers.mjs'
+10 < 1 
+11 < 1 const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' })
+12 < 1 const plan = writePlan(t, {
+13 < 1   claim: 'a.txt carries WIPE and b.txt is gone.',
+14 < 1   check: 'test -f a.txt',
+15 < 1   tasks: [
+16 < 1     task({ id: 1, title: 'Wipe a', files: ['Modify: `a.txt`'], claim: 'a.txt carries WIPE.', run: 'grep -q WIPE a.txt', stale: 'path-exists: `a.txt`' }),
+17 < 1     task({ id: 2, title: 'Empty b', files: ['Modify: `b.txt`'], claim: 'b.txt is empty.', run: 'test ! -s b.txt', stale: 'path-exists: `b.txt`' }),
+18 < 1   ],
+19 < 1 })
+20 < 1 const r = await flockRun(t, {
+21 < 1   plan, args: ['--loose-ends', 'record'],
+22 < 1   script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': '' },
+23 < 1     '@beliefs': [
+24 < 1       { task: '1', about: 'app', path: './a.txt', claim: 'a.txt by another name', stale: 'x WIPE z' },
+25 < 1       { task: '2', about: 'app', path: 'b.txt', claim: 'b.txt still says b', stale: 'b' },
+26 < 1       { task: '1', about: 'app', path: 'a.txt', claim: 'a.txt still says WIPE', stale: 'x WIPE z' },
+27 < 1     ] },
+28 < 1 })
+29 < 1 const items = r.of('loose-ends').at(-1)?.items || []
+30 < 1 const state = (p) => items.find((x) => x.path === p)?.state
+31 < 1 const fails = []
+32 < 1 if (state('./a.txt') !== 'unchecked') fails.push(`(a) ./a.txt reads ${state('./a.txt')}, expected unchecked`)
+33 < 1 if (state('b.txt') !== 'resolved') fails.push(`(b) b.txt reads ${state('b.txt')}, expected resolved`)
+34 < 1 if (state('a.txt') !== 'open') fails.push(`(c) a.txt reads ${state('a.txt')}, expected open`)
+35 < 1 if (fails.length) {
+36 < 1   console.log(`LOOSE PATH FAILED: ${fails.join('; ')}\nitems: ${JSON.stringify(items)}\n${r.out.slice(-2000)}`)
+37 < 1   process.exit(1)
+38 < 1 }
+39 < 1 t.done()
+40 < 1 console.log('ALL TESTS PASSED')
+41 < 1 

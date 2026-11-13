@@ -1,0 +1,28 @@
+0 < 1 // The loose-end reading: each loose end a builder reported (a belief naming a path, optionally
+1 < 1 // with the stale text it saw there) reads as open, resolved or not checked against the code.
+2 < 1 // Pure: `text(path)` is supplied by the caller and returns the file's content in the snapshot
+4 > 1 // being read, null when the file does not exist there, or undefined when no file has that path at the
+5 < 1 // run's base or in that snapshot: such a path cannot be read, so its loose end is not checked.
+3 < 2 // being read, or null when the file does not exist there.
+4 < 1 export function looseEnds(beliefs, text) {
+5 < 1   const items = []
+6 < 1   for (const b of beliefs || []) {
+7 < 1     if (!b || b.by === 'host' || !b.path) continue
+8 < 1     const item = { id: b.id, by: b.by }
+9 < 1     if (b.task !== undefined) item.task = b.task
+10 < 1     item.about = b.about
+11 < 1     item.claim = b.claim
+12 < 1     item.path = b.path
+13 < 1     if (b.stale === undefined) {
+14 < 1       item.state = 'unchecked'
+15 < 1     } else {
+16 < 1       item.stale = b.stale
+17 < 1       const content = text(b.path)
+19 > 1       item.state = content === undefined ? 'unchecked' : typeof content === 'string' && content.includes(b.stale) ? 'open' : 'resolved'
+18 < 2       item.state = typeof content === 'string' && content.includes(b.stale) ? 'open' : 'resolved'
+19 < 1     }
+20 < 1     items.push(item)
+21 < 1   }
+22 < 1   return items
+23 < 1 }
+24 < 1 
