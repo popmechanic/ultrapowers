@@ -469,9 +469,13 @@ class Keeper:
                     continue
                 before = mine.get(p)
                 flags = []
+                if before is not None and st == self.base.get(p):
+                    continue   # the peer never changed this path: every copy began from this weave, so mine already holds it
                 if before is None:
                     mine[p] = st
                     after, conflict, ann = st, False, []
+                elif st == before:
+                    after, conflict, ann = before, False, []   # one weave: nothing to merge, its authors still to take in
                 else:
                     after, ann = M.merge_states(before, st)
                     conflict = ann != M.current_lines(after)
@@ -507,6 +511,8 @@ class Keeper:
             for p, st in pub.items():
                 if p not in out:
                     out[p] = st
+                elif st == out[p] or st == self.base.get(p):
+                    pass   # the same weave, or the base every copy began from: the join already holds it
                 else:
                     m, ann = M.merge_states(out[p], st)
                     if st != out[p]:
