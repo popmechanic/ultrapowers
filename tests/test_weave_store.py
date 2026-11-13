@@ -192,3 +192,109 @@ def test_the_cli_opens_a_store_and_says_what_it_holds(tmp_path):
     assert first == {"memory": True, "tree": sh(repo, "rev-parse", shas[0] + "^{tree}"), "via": "genesis", "stored": 0, "unwoven": 0}
     later = json.loads(subprocess.run([*cli, "open", "--repo", str(repo), "--commit", shas[4]], capture_output=True, text=True, check=True).stdout)
     assert later["via"] == "replay" and later["stored"] == 3
+
+
+# ── stage 2: a run starts from the store and lands into it; the catch-up joins real weaves ──
+
+BODY = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]
+
+
+def flock_run(repo, base, run, edits):
+    """What the engine does around the keeper, by hand: the tree checked out at `base`, the keeper
+    seeded from its text and then from main's memory, each agent's rewrite published, the join's
+    text committed, and that commit's entry stored. Returns (commit, memory answer, store answer, keeper)."""
+    sh(repo, "checkout", "-q", "--detach", base)
+    k = S.W.Keeper()
+    k.r_base(str(repo), sh(repo, "ls-files").split("\n"))
+    answer = k.r_memory(str(repo), base)
+    for agent, task, path, text in edits:
+        k.r_rewrite(agent, path, text, task=task)
+        k.r_publish(agent)
+    m = k.r_merged()
+    assert m["conflicts"] == []
+    sha = commit(repo, {p: (m["files"][p] if m["exists"][p] else None) for p in m["files"]}, "run-%s" % run)
+    return sha, answer, k.r_store(str(repo), sha, run=run), k
+
+
+def labels(repo, commit_sha, path):
+    mem = S.resolve(str(repo), commit_sha)
+    return {l for who in mem.auth.get(path, {}).values() for l in who}
+
+
+def test_a_run_lands_its_weave_and_the_next_run_starts_from_it(tmp_path):
+    repo = new_repo(tmp_path / "r")
+    c0 = commit(repo, {"a.txt": lines(*BODY), "b.txt": lines("untouched")})
+    one, began, stored, _ = flock_run(repo, c0, "1", [("A", "2", "a.txt", lines("ALPHA", *BODY[1:]))])
+    assert began["memory"] and began["via"] == "genesis" and began["installed"] == 0
+    assert stored["stored"] and stored["paths"] == 1 and stored["tree"] == sh(repo, "rev-parse", one + "^{tree}")
+    assert labels(repo, one, "a.txt") == {"@r1:2"}
+    two, began, stored, k = flock_run(repo, one, "2", [("A", "5", "a.txt", lines("ALPHA", *BODY[1:-1], "THETA"))])
+    assert began["via"] == "run" and began["installed"] == 1
+    # inside run 2 a line run 1 wrote reads as base: only this run's own lines have a peer's name
+    assert k.r_authors_keyed("B", "a.txt")["authors"][0] == "base"
+    assert stored["stored"] and labels(repo, two, "a.txt") == {"@r1:2", "@r2:5"}
+    mem = S.resolve(str(repo), two)
+    assert sorted(mem.states) == ["a.txt"] and S.verify(str(repo), mem) == []
+
+
+def two_runs_from_one_base(tmp_path, mine, theirs):
+    repo = new_repo(tmp_path / "r")
+    c0 = commit(repo, {"a.txt": lines(*BODY)})
+    landed, _, _, _ = flock_run(repo, c0, "1", [("A", "1", "a.txt", theirs)])   # this one reaches main first
+    run, _, _, _ = flock_run(repo, c0, "2", [("A", "1", "a.txt", mine)])
+    return repo, landed, run
+
+
+def test_the_catch_up_joins_two_runs_on_their_own_lines(tmp_path):
+    repo, landed, run = two_runs_from_one_base(tmp_path, lines(*BODY[:-1], "THETA"), lines("ALPHA", *BODY[1:]))
+    answer, mem = S.join(str(repo), run, landed)
+    want = lines("ALPHA", *BODY[1:-1], "THETA")
+    assert answer == {"joined": True, "conflicts": [], "files": {"a.txt": want}, "paths": ["a.txt"]}
+    sh(repo, "checkout", "-q", "--detach", landed)
+    head = commit(repo, {"a.txt": want}, "caught up")
+    S.settle(str(repo), head, S.Memory.from_json(json.loads(json.dumps(mem.to_json()))))
+    assert labels(repo, head, "a.txt") == {"@r1:1", "@r2:1"}
+
+
+def test_the_catch_up_names_a_conflict_on_one_line(tmp_path):
+    repo, landed, run = two_runs_from_one_base(tmp_path, lines("MINE", *BODY[1:]), lines("THEIRS", *BODY[1:]))
+    answer, _ = S.join(str(repo), run, landed)
+    assert answer["joined"] and answer["conflicts"] == ["a.txt"]
+
+
+def test_a_run_with_no_entry_is_not_joined(tmp_path):
+    repo = new_repo(tmp_path / "r")
+    c0 = commit(repo, {"a.txt": lines(*BODY)})
+    S.genesis(str(repo), c0)
+    c1 = commit(repo, {"a.txt": lines("ALPHA", *BODY[1:])})
+    sh(repo, "checkout", "-q", "--detach", c0)
+    by_hand = commit(repo, {"a.txt": lines(*BODY, "iota")})
+    entries_before = S.entries(str(repo))
+    assert S.join(str(repo), by_hand, c1) == ({"joined": False, "reason": "no-run-entry"}, None)
+    assert S.entries(str(repo)) == entries_before
+
+
+def test_a_file_deleted_on_main_and_made_again_by_a_run_keeps_its_old_lines(tmp_path):
+    repo = new_repo(tmp_path / "r")
+    c0 = commit(repo, {"a.txt": lines(*BODY), "b.txt": lines("old one", "old two")})
+    S.genesis(str(repo), c0)
+    c1 = commit(repo, {"b.txt": None})
+    sha, began, stored, _ = flock_run(repo, c1, "3", [("A", "1", "b.txt", lines("new"))])
+    assert began["installed"] == 0 and stored["stored"]
+    state = M.deserialize_state(S.resolve(str(repo), sha).states["b.txt"])
+    assert sorted(e[0] for e in state if e[3] % 2 == 0) == ["", "old one", "old two"]
+    assert M.current_lines(S.resolve(str(repo), sha).states["b.txt"]) == ["new", ""]
+
+
+def test_a_join_that_is_not_the_commits_text_stores_nothing(tmp_path):
+    repo = new_repo(tmp_path / "r")
+    c0 = commit(repo, {"a.txt": lines(*BODY)})
+    sh(repo, "checkout", "-q", "--detach", c0)
+    k = S.W.Keeper()
+    k.r_base(str(repo), ["a.txt"])
+    k.r_memory(str(repo), c0)
+    k.r_rewrite("A", "a.txt", lines("ALPHA", *BODY[1:]), task="1")
+    k.r_publish("A")
+    other = commit(repo, {"a.txt": lines("SOMETHING ELSE", *BODY[1:])})
+    assert k.r_store(str(repo), other, run="4") == {"stored": False, "reason": "drift", "paths": ["a.txt"]}
+    assert sh(repo, "rev-parse", other + "^{tree}") not in S.entries(str(repo))

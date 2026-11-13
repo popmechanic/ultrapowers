@@ -35,9 +35,15 @@ keeps the name `factory/`. Models never run git.
   address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
   `audit.mjs` (a finished run's final computed row).
-- `flock/weave_store.py` is main's memory (the main-is-a-peer design, stage 1): one stored weave
-  per tree of the default branch, on the target's ref `refs/ultrapowers/weave/v1`. No engine reads
-  it yet. A tree's weave is built once and shared, never rebuilt from text where one is stored
+- `flock/weave_store.py` is main's memory (the main-is-a-peer design, stages 1 and 2; policy
+  `flock.main.mode`, `memory` or the rollback `frozen`): one stored weave per tree of the default
+  branch, on the target's ref `refs/ultrapowers/weave/v1`. The engine starts every copy from the
+  entry of `--base`'s tree (keeper op `memory`, row `weave:memory`) and stores the landed commit's
+  entry (`store`, row `weave:store`), its lines authored `@r<N>:<task>`; `catchup.mjs` joins the
+  run's entry with the moved main's (`join`, then `settle`) and falls to the three-text join only
+  for a path the store does not hold; `publish.mjs` pushes the ref before every merge request (row
+  `weave:push`). None of it can fail a run. Main does not yet arrive mid-run (stage 3). A tree's
+  weave is built once and shared, never rebuilt from text where one is stored
   (two weaves of one text built by different routes merged back to it 0 times in 25, n=25 files,
   917 commits, 2026-11-12); a commit with no entry is replayed from the nearest stored ancestor,
   one commit at a time, so the recipe is never changed in place: a new recipe is a new ref version.

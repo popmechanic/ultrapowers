@@ -28,6 +28,7 @@ import { renderPrBody } from './record.mjs'
 
 const POLICY = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
 const CATCHUP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'flock', 'catchup.mjs')
+const STORE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'flock', 'weave_store.py')
 const CLOUDFLARE_API_BASE_URL = 'https://cloudflare.int.exe.xyz/client/v4'
 
 /** `publish.self_merge` and `publish.probe` off `policyPath`. A missing file, unparseable
@@ -43,7 +44,10 @@ export function publishPolicy (policyPath = POLICY) {
   const int = (v, d) => (v === undefined ? d : Math.trunc(Number(v)))
   const sm = cell('self_merge')
   const probe = cell('probe')
+  const main = doc && typeof doc === 'object' && doc.flock && typeof doc.flock === 'object' ? doc.flock.main : undefined
   return {
+    // main's memory (flock.main.mode): anything but `memory` pushes no weave entry
+    memory: Boolean(main && typeof main === 'object' && main.mode === 'memory'),
     selfMerge: { enabled: Boolean(sm?.enabled), maxRefolds: int(sm?.max_refolds, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
     probe: { enabled: Boolean(probe?.enabled), timeoutSeconds: int(probe?.timeout_seconds, 600) }
   }
@@ -109,6 +113,20 @@ export async function publish (o) {
   log(`publish: ${prUrl} (base ${base}, draft ${draft}, author ${prAuthor || '<unknown>'})`)
   row('publish:pr', { url: prUrl, number, draft })
 
+  // Main's memory (factory/flock/weave_store.py): the entry the engine stored for the run's commit,
+  // and the one a catch-up stores for its own, is pushed to the target's weave ref here, always before
+  // a merge request and never after one, so main never shows a tree whose stored weave could still
+  // arrive late. A push that fails only costs the memory of this landing: the next reader replays it.
+  const pushWeave = (when) => {
+    if (!policy.memory) return
+    const r = spawnSync('python3', [STORE, 'push', '--repo', o.targetDir, '--remote', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+    const res = json((r.stdout ?? '').trimEnd().split('\n').pop()) ?? {}
+    const forks = Array.isArray(res.forks) ? res.forks : []
+    row('weave:push', { when, pushed: res.pushed === true, forks })
+    log(`weave: push ${when} — ${res.pushed === true ? 'pushed' : 'not pushed'}${forks.length ? `, ${forks.length} fork(s)` : ''}`)
+  }
+  pushWeave('pr')
+
   let merged = ''
   let mergePhase = ''
 
@@ -148,6 +166,7 @@ export async function publish (o) {
     const prov = path.join(o.runDir, 'provenance.json')
     if (fs.existsSync(prov)) fs.copyFileSync(prov, path.join(o.evidenceDir, 'provenance.json'))
     row('refold', { ok: true })
+    pushWeave('refold')
     return true
   }
 

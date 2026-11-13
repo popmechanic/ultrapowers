@@ -102,7 +102,8 @@ the engine's exit code is the merge decision.
   `shelley client read`) before editing a script. A hack is only a bridge she has blessed.
 - **Run in parallel; same-file overlap folds at publish.** Launch plans concurrently whatever
   files they share: a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
-  and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, through the
+  and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, on main's stored
+  weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
   weave), so overlaps meet in Manyana (decision 11, #715;
   every join on record was line-disjoint). A conflict is the resolver's measurement, not a
   reason to serialize. Contention, not allocated vCPU, bounds concurrent runs.

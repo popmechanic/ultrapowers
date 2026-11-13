@@ -45,7 +45,8 @@ The branches are where a run works, not what it leaves. At the end of every
 run — done, parked or failed — the sandbox tags the live branch's last commit
 `<owner>-<repo>/run-<N>` in the evidence repository, verifies it with
 `git ls-remote --tags`, and deletes `live/<owner>-<repo>/run-<N>`.
-`ultra/integration-run-<N>`, the only ref the target ever receives, has three
+`ultra/integration-run-<N>`, the only branch the target ever receives (main's memory is the
+one other ref, `refs/ultrapowers/weave/v1`, see CONTRACT.md), has three
 fates: a merged PR's branch goes with the merge (delete-on-merge), a `--hold`
 run's stays while its PR is open, and the retire sweep deletes one whose pull
 request is closed and not merged. What a run leaves is that one tag, in the

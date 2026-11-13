@@ -39,8 +39,9 @@ overwrites itself (run-68).
 
 The record lives in the operator's evidence repository, never on the target. The sandbox
 commits it to `live/<owner>-<repo>/run-<N>` under `runs/<owner>-<repo>/<N>/` every 60 s and at
-each transition, pushes `ultra/integration-run-<N>` to the target (the only ref the target
-receives) and opens its own PR over REST (`prAuthor` recorded). The PR is the gate. At the end of
+each transition, pushes `ultra/integration-run-<N>` to the target (the only branch the target
+receives; main's memory, `refs/ultrapowers/weave/v1`, is the one other ref, pushed by the publish
+before every merge request) and opens its own PR over REST (`prAuthor` recorded). The PR is the gate. At the end of
 every run (done, parked, failed) it tags the last commit `<owner>-<repo>/run-<N>`, verifies it
 with `git ls-remote --tags`, then deletes the live branch; a tag that doesn't verify keeps it.
 Read a past run at

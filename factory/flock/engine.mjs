@@ -109,6 +109,14 @@ const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
 // else the policy cell flock.loose_ends.mode, else record.
 const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
 if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
+// main's memory (the main-is-a-peer design, stage 2; weave_store.py): `memory` starts the run's weaves
+// from the entry stored for --base's tree on the target's ref refs/ultrapowers/weave/v1 and stores the
+// landed commit's entry there, so a line keeps one identity across runs; `frozen`, every weave begun
+// from the base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a
+// run: a store that cannot be read or written leaves the run frozen, with the reason on its row.
+const MAIN_MODE = mode('main.mode', ['memory', 'frozen'], 'frozen')
+// `run-312` -> 312: a stored line's author is `@r312:<task>`
+const RUN_NO = (process.env.ULTRAPOWERS_FLEET_RUN || '').replace(/^run-/, '') || '?'
 const touched = {}   // per builder: the paths it has read or edited in its copy
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
@@ -1050,6 +1058,13 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
+let MEMORY = false   // the run's weaves began from main's memory
+if (MAIN_MODE === 'memory') {
+  const r = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
+  MEMORY = !!(r.ok && r.memory)
+  ev('weave:memory', r.ok ? { ...r, ok: undefined } : { memory: false, reason: String(r.error).slice(0, 300) })
+  log('memory', MEMORY ? `${r.via} entry, ${r.installed} of ${r.stored} stored paths at base` : 'none: ' + (r.reason || r.error))
+}
 ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: PULLS, chain: Object.fromEntries(board.cp) })
 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
 // the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
@@ -1149,8 +1164,8 @@ writeFailureRecord()
 log('summary', JSON.stringify(summary))
 // the join's blame and text, asked before the weave closes, for provenance.json at landing
 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
-keeper.end()
 const landed = await land()
+keeper.end()
 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
 // a post still pending is dropped at exit: say how many, so the record accounts for every post
 if (kataPending.size) ev('kata:mirror', { abandoned: kataPending.size })
@@ -1204,6 +1219,15 @@ function commitSnapshot (snap, message) {
   git(['commit', '-qm', message], { identity: true })
   return git(['rev-parse', 'HEAD']).trim()
 }
+// The landed commit's entry in main's memory: the join's weaves, authored by this run's tasks. The
+// boot's publish pushes it before the merge request. A join that is not the landed text (a draft
+// that fell back to an earlier snapshot) stores nothing; the next reader replays the commit instead.
+async function storeEntry (sha) {
+  if (!MEMORY) return
+  const r = await weave({ op: 'store', repo: TARGET, commit: sha, run: RUN_NO }).catch((e) => ({ ok: false, error: String(e) }))
+  ev('weave:store', r.ok ? { commit: sha, ...r, ok: undefined } : { commit: sha, stored: false, reason: String(r.error).slice(0, 300) })
+  log('memory', r.ok && r.stored ? `stored ${r.paths} changed path(s) for ${sha.slice(0, 12)}` : 'not stored: ' + (r.reason || r.error))
+}
 async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
@@ -1220,6 +1244,7 @@ async function land () {
     }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
+    await storeEntry(sha)
     writeProvenance(outcome.snap)
     await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
     return 0
@@ -1227,6 +1252,7 @@ async function land () {
   if (lastEdge) {
     const sha = commitSnapshot(lastEdge.snap, `flock: draft ${lastEdge.snap}`)
     if (sha) {
+      await storeEntry(sha)
       writeProvenance(lastEdge.snap)
       for (const t of W.tasks) {
         if ((lastEdge.perTask[t.id] || []).some((x) => x !== 0)) ev('parked', { task: t.id, reason: `red at ${lastEdge.snap}` })

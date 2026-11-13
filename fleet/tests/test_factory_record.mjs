@@ -240,14 +240,14 @@ ${F}
 {
   assert.deepEqual(
     publishPolicy(POLICY_JSON),
-    { selfMerge: { enabled: true, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
-    "(d) [M4] the repo's own factory/policy.json: self_merge enabled, 3 refolds, 120 s; probe enabled, 600 s"
+    { memory: true, selfMerge: { enabled: true, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+    "(d) [M4] the repo's own factory/policy.json: main's memory on, self_merge enabled, 3 refolds, 120 s; probe enabled, 600 s"
   )
   const noEnabledPath = path.join(FIXTURES, 'policy-no-enabled.json')
   fs.writeFileSync(noEnabledPath, JSON.stringify({
     publish: { self_merge: { max_refolds: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
   }))
-  const disabled = { selfMerge: { enabled: false, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } }
+  const disabled = { memory: false, selfMerge: { enabled: false, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } }
   assert.deepEqual(
     publishPolicy(noEnabledPath), disabled,
     '(d) [M4] cells with no "enabled" key read as disabled with the defaults — the whole read falls back, not just the missing key'
