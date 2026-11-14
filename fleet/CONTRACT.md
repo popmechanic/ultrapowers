@@ -475,9 +475,12 @@ evidence repository.
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
   Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's
   `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
-  (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are the
-  hub's own, attached to `vm:kata-hub` and never to the tag: `lobby-rm`, the `rm`-only lobby key, and
-  `evidence-read`, a `github --readonly` integration naming the evidence repository, through which
+  (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are
+  attached to a VM by name and never to the tag: `lobby-rm`, the `rm`-only lobby key, on
+  `vm:kata-hub`; and `evidence-read`, a `github --readonly` integration naming the evidence
+  repository, on `vm:kata-hub` and on `vm:ultraviz` (the run viewer, popmechanic/ultraviz, a
+  persistent VM that carries no tag and holds this one grant since 2026-11-13: it reads each run's
+  record and a write through it is refused, `integration is read-only`). Through it
   the hub's reaper reads one file — `GET https://github.int.exe.xyz/api/v3/repos/<evidence
   repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>` — and
   can write nothing. It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
@@ -541,7 +544,8 @@ evidence repository.
   it, and the comment is the second lock. What it runs for the fleet is the VM remover
   (`fleet/reaper.py` as `reaper.service`, port 8001, fronted by the `reaper` `http-proxy --peer` on
   `tag:fleet`); what it holds is `/etc/reaper/reaper.env` (`REAPER_EVIDENCE_REPO=<owner>/<repo>`) and
-  two integrations of its own on `vm:kata-hub`, `lobby-rm` and `evidence-read`. No tool builds it:
+  two integrations on `vm:kata-hub`, `lobby-rm` and `evidence-read` (the second shared with the
+  viewer's VM). No tool builds it:
   `fleet/RUNBOOK.md` §The hub's reaper is the hand procedure, and a fleet without one works, each
   finished VM waiting for the janitor. exe.dev re-runs a VM's stored setup script on every
   restart (RUNBOOK §Traps, systemd on the VM), so the hub also carries
