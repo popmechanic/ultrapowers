@@ -23,8 +23,9 @@
  *       opened and merged, the run closes — plus the one line ending
  *       ` preflight: alive` in `<home>/fleet-boot.log`; the evidence
  *       repository holding the tag `o-r/run-<N>` whose `runs/o-r/<N>/` is
- *       exactly `engine.log`, `events.jsonl`, `plan.json`, `plan.md` and `status.json`
- *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
+ *       exactly `engine.log`, `events.jsonl`, `fleet-boot.log`, `fleet-setup.log`,
+ *       `plan.json`, `plan.md`, `status.json` (`state` `done`) and `view.json`
+ *       (committed with the first `status.json`), `live/o-r/run-<N>` gone and the target holding
  *       exactly `main` and the integration branch (M1); the PR body's
  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
  *       there being no earlier tag (M4); and `<home>/merge-put.json`
@@ -390,10 +391,21 @@ for (const [runN, version, error] of [
       `runs/o-r/${runN}/fleet-setup.log`,
       `runs/o-r/${runN}/plan.json`,
       `runs/o-r/${runN}/plan.md`,
-      `runs/o-r/${runN}/status.json`
+      `runs/o-r/${runN}/status.json`,
+      `runs/o-r/${runN}/view.json`
     ],
-    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
+    `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md, status.json and view.json — got ${JSON.stringify(runDirEntries)}`
   )
+  // The run's view at the tag: `view` 1, the run, the target, and the state status.json says.
+  const view = JSON.parse(atTag(evidenceDir, runN, 'view.json'))
+  assert.equal(view.view, 1, '(b) view.json view is 1')
+  assert.equal(view.run, Number(runN),'(b) view.json run is the run\'s number')
+  assert.equal(view.target, 'o/r', '(b) view.json target is o/r')
+  assert.equal(view.state, status.state, '(b) view.json state is status.json\'s state')
+  // The view is in the record from its first commit: the commit that first adds status.json first adds view.json.
+  const firstAdd = (p) => git(evidenceDir, ['log', '--diff-filter=A', '--format=%H', `o-r/run-${runN}`, '--', `runs/o-r/${runN}/${p}`])
+    .split('\n').filter(Boolean).pop()
+  assert.equal(firstAdd('view.json'), firstAdd('status.json'), 'view.json is committed with the first status.json')
 
   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
   // rendering of the merge payload's fields — title off the plan's first

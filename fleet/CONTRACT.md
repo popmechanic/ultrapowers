@@ -461,7 +461,9 @@ evidence repository.
   `publish.json` in the evidence directory as `publish-deploy.log`/`publish-verify.log`/
   `publish-rollback.log` — none of it is ever embedded in an event row. `evidence_commit`'s fixed
   file list grew the four new names (`publish.json` and the three logs) alongside
-  `status.json`/`events.jsonl`/`engine.log`.
+  `status.json`/`events.jsonl`/`engine.log`. It also adds `view.json`: the run's view (where the
+  run is, each task's state and the timeline), rendered by `factory/record.mjs view` from the
+  folder's own `status.json`, `events.jsonl`, `plan.json` and `summary.json` before every commit.
 - **Integration naming:** ONE GitHub integration per repository — each target, and the evidence
   repository (the operator's is `gh-popmechanic-fleet-evidence`) — `gh-<owner>-<repo>` (slashes → `-`),
   `--act-as-user`, not readonly, attached to `tag:fleet` by `node fleet/target.mjs <owner>/<repo>`
