@@ -192,6 +192,20 @@ collect_evidence() {
   done
   return 0
 }
+# The run's view, rendered from the folder's own record files through a temporary name: `view.json`
+# is replaced only when `factory/record.mjs view` exits 0 and prints something; otherwise one `view:`
+# line, and the commit goes ahead with the rest. With no engine checkout yet (a run failing before
+# its assignment is read) there is nothing to render with.
+render_view() {
+  local d="$EVIDENCE_DIR/$EVIDENCE_REL" tmp
+  [ -n "$ENGINE_REPO_DIR" ] || { log "view: no engine checkout — view.json not rendered"; return 0; }
+  tmp="$d/view.json.tmp.$$"
+  if fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" view run="$RUN_N" target="$TARGET_REPO" \
+      --events "$d/events.jsonl" --status "$d/status.json" --plan-json "$d/plan.json" --summary "$d/summary.json" >"$tmp" \
+    && [ -s "$tmp" ]; then mv "$tmp" "$d/view.json"
+  else rm -f "$tmp"; log "view: factory/record.mjs view failed — view.json not replaced"; fi
+  return 0
+}
 evidence_commit() { # $1 = commit subject
   local p n=0 paths=()
   # The two logs as they stand now, so a line logged after the engine exits reaches this commit.
@@ -199,7 +213,8 @@ evidence_commit() { # $1 = commit subject
   for p in fleet-boot.log fleet-setup.log; do
     if [ -f "$FLEET_HOME/$p" ]; then cp "$FLEET_HOME/$p" "$EVIDENCE_DIR/$EVIDENCE_REL/$p"; fi
   done
-  for p in status.json plan.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
+  render_view
+  for p in status.json plan.json view.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
   done
   [ "${#paths[@]}" -gt 0 ] || return 0

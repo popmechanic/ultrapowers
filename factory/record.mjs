@@ -5,7 +5,7 @@
  * and turns it into the bytes they write — the twelve-cell status page (`status`, the
  * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
  * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
- * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
+ * closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
  * one thing to stdout and its exit code says whether that printing happened. The JSON the
  * publish used to build here by hand is `publish.mjs`'s own now (#1441).
  */
@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs'
 import { readEventRows } from './flock/io.mjs'
 import { parsedPlan } from './flock/plan.mjs'
+import { renderView } from './view.mjs'
 
 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
  *  whole token as the key and an empty string as the value. */
@@ -413,6 +414,12 @@ function extractEvents (args) {
   return { rest, eventsPath }
 }
 
+/** A JSON file's value, or null when no path is given or the file is missing or not JSON. */
+function jsonFileOrNull (filePath) {
+  if (!filePath) return null
+  try { return JSON.parse(readFileSync(filePath, 'utf8')) } catch { return null }
+}
+
 /** One line on stderr and exit 2 — an unknown subcommand or a missing
  *  argument, never a stack trace. */
 function usageError (message) {
@@ -445,6 +452,26 @@ export function main (argv) {
       const pj = rest.indexOf('--plan-json')
       process.stdout.write(renderPrBody(planPath, eventsPath, at >= 0 ? rest[at + 1] : undefined,
         pv >= 0 ? rest[pv + 1] : undefined, pj >= 0 ? rest[pj + 1] : undefined))
+      return 0
+    }
+    case 'view': {
+      const { rest, eventsPath } = extractEvents(args.slice(1))
+      const fields = {}
+      const files = {}
+      for (let i = 0; i < rest.length; i++) {
+        if (['--status', '--plan-json', '--summary'].includes(rest[i])) { files[rest[i]] = rest[i + 1]; i++; continue }
+        const [key, value] = splitToken(rest[i])
+        fields[key] = value
+      }
+      const run = /^[0-9]+$/.test(fields.run ?? '') ? Number(fields.run) : (fields.run ?? null)
+      process.stdout.write(JSON.stringify(renderView({
+        run,
+        target: fields.target ?? null,
+        rows: eventsPath ? readEventRows(eventsPath) : [],
+        status: jsonFileOrNull(files['--status']),
+        plan: jsonFileOrNull(files['--plan-json']),
+        summary: jsonFileOrNull(files['--summary'])
+      })) + '\n')
       return 0
     }
     default:
