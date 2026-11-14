@@ -64,8 +64,8 @@ Read a past run at
   targets its rows name (`--target` adds one no VM names).
 - `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
   VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
-  its tag in the evidence repository says `done`, read through the hub-only read-only integration
-  `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
+  its tag in the evidence repository says `done`, read through the read-only integration
+  `evidence-read` (attached to `vm:kata-hub` and to the viewer's `vm:ultraviz`, never to the tag). `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
   keeps its name from the days it ran the kata daemon. Unit tests: `tests/test_reaper.py`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `run-read.mjs` (print a run from its evidence record: every claim, give-back, objection,

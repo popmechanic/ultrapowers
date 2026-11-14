@@ -265,7 +265,9 @@ ssh exe.dev "integrations add http-proxy --name=reaper --target=https://kata-hub
 ```
 
 `evidence-read` is the hub's one road to the evidence repository: read-only,
-attached to `vm:kata-hub` alone and never to `tag:fleet`, where the read-write
+attached to `vm:kata-hub` (and, since 2026-11-13, to the run viewer's `vm:ultraviz`,
+which carries no tag: `ssh exe.dev "integrations attach evidence-read vm:ultraviz"`)
+and never to `tag:fleet`, where the read-write
 `gh-<owner>-<repo>` already names the same repository (Shelley, 2026-11-13:
 two integrations for one repository are routed apart only while no VM carries
 both; without `--act-as-user` it reads as the exe.dev app). Check the road from
