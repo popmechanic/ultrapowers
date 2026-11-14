@@ -1,0 +1,161 @@
+0 < 1 /**
+1 < 1  * factory/view.mjs — the run's finished picture (pure).
+2 < 1  *
+3 < 1  * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
+4 < 1  * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
+5 < 1  * re-exports it. `renderView` is what the engine writes as the run's view: that projection plus
+6 < 1  * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
+7 < 1  * here reads a file; the engine may not import `fleet/`, so nothing here does either.
+8 < 1  */
+9 < 1 
+10 < 1 const short = (text, n) => { const s = String(text ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
+11 < 1 
+12 < 1 /** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
+13 < 1  *  task the line belongs to, null for a line about the whole run. */
+14 < 1 function lineOf (e) {
+15 < 1   const k = e.kind
+16 < 1   if (k === 'session:start') return { task: e.task, what: `claimed by ${e.agent}` }
+17 < 1   if (k === 'session:end') {
+18 < 1     if (e.objected) return null   // the `objection` row says it
+19 < 1     if (e.released) return { task: e.task, what: `${e.agent} gave it back: ${short(e.released, 140)}` }
+20 < 1     if (e.done) return { task: e.task, what: `done by ${e.agent}` }
+21 < 1     return null
+22 < 1   }
+23 < 1   if (k === 'objection') return { task: e.task, what: `${e.agent} objected: ${short(e.reason, 200)}` }
+24 < 1   if (k === 'task:parked') return { task: e.task, what: e.objected ? 'parked for the operator' : `parked after ${e.releases} give-backs` }
+25 < 1   if (k === 'reopen') return { task: e.task, what: `reopened red (${e.n})` }
+26 < 1   if (k === 'belief' && e.by !== 'host') return { task: e.task ?? null, what: `${e.by} noted: ${short(e.claim, 160)}` }
+27 < 1   if (k === 'main:moved') return { task: null, what: `main moved to ${String(e.to).slice(0, 7)} (${e.why}), ${e.changed} file${e.changed === 1 ? '' : 's'} taken in` }
+28 < 1   if (k === 'main:off') return { task: null, what: `stopped following main: ${short(e.reason ?? e.why, 120)}` }
+29 < 1   if (k === 'conflict:open') return { task: null, what: `conflict opened in ${e.path}${e.created ? ' (both sides created it)' : ''}` }
+30 < 1   if (k === 'conflict:close') return { task: null, what: `conflict in ${e.path} closed by ${e.by}` }
+31 < 1   if (k === 'resolve-task') return { task: `R:${e.path}`, what: 'added by the engine: resolve the conflict' }
+32 < 1   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
+33 < 1   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
+34 < 1   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
+35 < 1   if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
+36 < 1   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
+37 < 1   if (k === 'merge') return { task: null, what: `merge answered ${e.code}${e.message ? `: ${short(e.message, 80)}` : ''}` }
+38 < 1   return null
+39 < 1 }
+40 < 1 
+41 < 1 /** A task's state after a line: what the line says happened to it. */
+42 < 1 function stateAfter (what, was) {
+43 < 1   if (what.startsWith('claimed by ')) return 'claimed'
+44 < 1   if (what.startsWith('done by ')) return 'done'
+45 < 1   if (what.startsWith('parked')) return 'parked'
+46 < 1   if (what.startsWith('reopened red') || what.includes(' gave it back: ')) return 'ready'
+47 < 1   if (what.startsWith('added by the engine')) return 'ready'
+48 < 1   return was
+49 < 1 }
+50 < 1 
+51 < 1 /**
+52 < 1  * `{ run, target, state, phase, pr, merged, tasks, timeline, cursor }` for one run, from its
+53 < 1  * `events.jsonl` rows, its `status.json` and, when given, the plan's parse (for task titles).
+54 < 1  * `tasks` is every task the plan names and every one the engine added, each `{ id, title, state,
+55 < 1  * last, lastAt }`; `timeline` is one `{ n, at, task, what }` per line, `n` the row's 1-based
+56 < 1  * place in the log; `cursor` is how many rows were read.
+57 < 1  */
+58 < 1 export function projectRun ({ run, target, rows, status = null, plan = null }) {
+59 < 1   const tasks = new Map()
+60 < 1   const titled = new Map((plan && Array.isArray(plan.tasks) ? plan.tasks : []).map((t) => [String(t.id), t.title]))
+61 < 1   const touch = (id) => {
+62 < 1     const key = String(id)
+63 < 1     if (!tasks.has(key)) tasks.set(key, { id: key, title: titled.get(key) ?? '', state: 'filed', last: null, lastAt: null })
+64 < 1     return tasks.get(key)
+65 < 1   }
+66 < 1   for (const id of titled.keys()) touch(id)
+67 < 1   for (const id of Object.keys((status && status.tasks) || {})) touch(id)
+68 < 1   const timeline = []
+69 < 1   const list = Array.isArray(rows) ? rows : []
+70 < 1   list.forEach((e, i) => {
+71 < 1     if (!e || typeof e !== 'object') return
+72 < 1     const line = lineOf(e)
+73 < 1     if (line === null) return
+74 < 1     const at = typeof e.ts === 'string' ? e.ts : null
+75 < 1     const task = line.task === null || line.task === undefined ? null : String(line.task)
+76 < 1     if (task !== null) {
+77 < 1       const t = touch(task)
+78 < 1       t.state = stateAfter(line.what, t.state); t.last = line.what; t.lastAt = at
+79 < 1     }
+80 < 1     timeline.push({ n: i + 1, at, task, what: line.what })
+81 < 1   })
+82 < 1   const s = status && typeof status === 'object' ? status : {}
+83 < 1   return {
+84 < 1     run, target, state: s.state ?? null, phase: s.phase ?? null, pr: s.pr ?? null, merged: s.merged ?? null,
+85 < 1     tasks: [...tasks.values()], timeline, cursor: list.length
+86 < 1   }
+87 < 1 }
+88 < 1 
+89 < 1 const ids = (list) => (Array.isArray(list) ? list : []).map((t) => String(t && typeof t === 'object' ? t.id : t))
+90 < 1 const later = (a, b) => {
+91 < 1   if (typeof a !== 'string') return typeof b === 'string' ? b : null
+92 < 1   if (typeof b !== 'string') return a
+93 < 1   return Date.parse(b) > Date.parse(a) ? b : a
+94 < 1 }
+95 < 1 
+96 < 1 /** A `proof` row's reading: 0 when every exit is 0 and no error was caught, else the first
+97 < 1  *  non-zero exit, else 1. */
+98 < 1 function proofOf (e) {
+99 < 1   const exits = Array.isArray(e.exits) ? e.exits : []
+100 < 1   const errs = Array.isArray(e.errs) ? e.errs : []
+101 < 1   const bad = exits.find((x) => x !== 0)
+102 < 1   if (bad !== undefined) return bad
+103 < 1   return errs.length ? 1 : 0
+104 < 1 }
+105 < 1 
+106 < 1 /**
+107 < 1  * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
+108 < 1  * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
+109 < 1  * last, lastAt }` plus `wave` (its 1-based launch wave, one past the last for a task the plan does
+110 < 1  * not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
+111 < 1  * `proof` row's reading, null without one).
+112 < 1  */
+113 < 1 export function renderView ({ run, target, rows, status = null, plan = null, summary = null }) {
+114 < 1   const p = projectRun({ run, target, rows, status, plan })
+115 < 1   const list = Array.isArray(rows) ? rows : []
+116 < 1   const waves = plan && Array.isArray(plan.launch_waves) ? plan.launch_waves : []
+117 < 1   const waveOf = new Map()
+118 < 1   waves.forEach((w, i) => { for (const id of ids(w)) if (!waveOf.has(id)) waveOf.set(id, i + 1) })
+119 < 1   const deps = new Map()
+120 < 1   const dep = (id, on) => { if (!deps.has(id)) deps.set(id, new Set()); deps.get(id).add(on) }
+121 < 1   for (const t of plan && Array.isArray(plan.tasks) ? plan.tasks : []) for (const on of ids(t.depends_on)) dep(String(t.id), on)
+122 < 1   for (const e of plan && Array.isArray(plan.dag_edges) ? plan.dag_edges : []) if (e) dep(String(e.to), String(e.from))
+123 < 1   const agents = new Map()
+124 < 1   const proofs = new Map()
+125 < 1   for (const e of list) {
+126 < 1     if (!e || typeof e !== 'object' || e.task === undefined || e.task === null) continue
+127 < 1     if (e.kind === 'session:start') agents.set(String(e.task), e.agent ?? null)
+128 < 1     else if (e.kind === 'proof') proofs.set(String(e.task), proofOf(e))
+129 < 1   }
+130 < 1   const s = status && typeof status === 'object' ? status : {}
+131 < 1   const last = list.length ? list[list.length - 1] : null
+132 < 1   return {
+133 < 1     view: 1,
+134 < 1     run,
+135 < 1     target,
+136 < 1     state: s.state ?? null,
+137 < 1     phase: s.phase ?? null,
+138 < 1     pr: s.pr ?? null,
+139 < 1     merged: s.merged ?? null,
+140 < 1     error: s.error ?? null,
+141 < 1     startedAt: s.startedAt ?? null,
+142 < 1     updatedAt: s.updatedAt ?? null,
+143 < 1     heardAt: later(s.updatedAt ?? null, last && typeof last === 'object' ? last.ts ?? null : null),
+144 < 1     costUsd: summary && typeof summary === 'object' ? summary.cost_usd ?? null : null,
+145 < 1     tasks: p.tasks.map((t) => ({
+146 < 1       id: t.id,
+147 < 1       title: t.title,
+148 < 1       state: t.state,
+149 < 1       last: t.last,
+150 < 1       lastAt: t.lastAt,
+151 < 1       wave: waveOf.get(t.id) ?? waves.length + 1,
+152 < 1       deps: [...(deps.get(t.id) ?? [])].sort(),
+153 < 1       agent: agents.get(t.id) ?? null,
+154 < 1       proof: proofs.has(t.id) ? proofs.get(t.id) : null
+155 < 1     })),
+156 < 1     timeline: p.timeline,
+157 < 1     cursor: p.cursor
+158 < 1   }
+159 < 1 }
+160 < 1 

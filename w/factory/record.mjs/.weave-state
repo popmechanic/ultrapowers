@@ -5,7 +5,8 @@
 4 < 1  * and turns it into the bytes they write — the twelve-cell status page (`status`, the
 5 < 1  * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
 6 < 1  * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
-7 < 1  * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
+8 > 1  * closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
+7 < 2  * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
 8 < 1  * one thing to stdout and its exit code says whether that printing happened. The JSON the
 9 < 1  * publish used to build here by hand is `publish.mjs`'s own now (#1441).
 10 < 1  */
@@ -13,6 +14,7 @@
 12 < 1 import { readFileSync } from 'node:fs'
 13 < 1 import { readEventRows } from './flock/io.mjs'
 14 < 1 import { parsedPlan } from './flock/plan.mjs'
+16 > 1 import { renderView } from './view.mjs'
 15 < 1 
 16 < 1 /** A `key=value` token split at its FIRST `=`; a token with no `=` is the
 17 < 1  *  whole token as the key and an empty string as the value. */
@@ -442,6 +444,12 @@
 363 < 1   return { rest, eventsPath }
 364 < 1 }
 365 < 1 
+367 > 1 /** A JSON file's value, or null when no path is given or the file is missing or not JSON. */
+368 < 1 function jsonFileOrNull (filePath) {
+369 < 1   if (!filePath) return null
+370 < 1   try { return JSON.parse(readFileSync(filePath, 'utf8')) } catch { return null }
+371 < 1 }
+372 < 1 
 366 < 1 /** One line on stderr and exit 2 — an unknown subcommand or a missing
 367 < 1  *  argument, never a stack trace. */
 368 < 1 function usageError (message) {
@@ -476,6 +484,26 @@
 397 < 1         pv >= 0 ? rest[pv + 1] : undefined, pj >= 0 ? rest[pj + 1] : undefined))
 398 < 1       return 0
 399 < 1     }
+401 > 1     case 'view': {
+402 < 1       const { rest, eventsPath } = extractEvents(args.slice(1))
+403 < 1       const fields = {}
+404 < 1       const files = {}
+405 < 1       for (let i = 0; i < rest.length; i++) {
+406 < 1         if (['--status', '--plan-json', '--summary'].includes(rest[i])) { files[rest[i]] = rest[i + 1]; i++; continue }
+407 < 1         const [key, value] = splitToken(rest[i])
+408 < 1         fields[key] = value
+409 < 1       }
+410 < 1       const run = /^[0-9]+$/.test(fields.run ?? '') ? Number(fields.run) : (fields.run ?? null)
+411 < 1       process.stdout.write(JSON.stringify(renderView({
+412 < 1         run,
+413 < 1         target: fields.target ?? null,
+414 < 1         rows: eventsPath ? readEventRows(eventsPath) : [],
+415 < 1         status: jsonFileOrNull(files['--status']),
+416 < 1         plan: jsonFileOrNull(files['--plan-json']),
+417 < 1         summary: jsonFileOrNull(files['--summary'])
+418 < 1       })) + '\n')
+419 < 1       return 0
+420 < 1     }
 400 < 1     default:
 401 < 1       return usageError(`unknown subcommand '${subcommand ?? ''}'`)
 402 < 1   }

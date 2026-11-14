@@ -23,8 +23,11 @@
 22 < 1  *       opened and merged, the run closes — plus the one line ending
 23 < 1  *       ` preflight: alive` in `<home>/fleet-boot.log`; the evidence
 24 < 1  *       repository holding the tag `o-r/run-<N>` whose `runs/o-r/<N>/` is
-25 < 1  *       exactly `engine.log`, `events.jsonl`, `plan.json`, `plan.md` and `status.json`
-26 < 1  *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
+26 > 1  *       exactly `engine.log`, `events.jsonl`, `fleet-boot.log`, `fleet-setup.log`,
+27 < 1  *       `plan.json`, `plan.md`, `status.json` (`state` `done`) and `view.json`
+28 < 1  *       (committed with the first `status.json`), `live/o-r/run-<N>` gone and the target holding
+25 < 2  *       exactly `engine.log`, `events.jsonl`, `plan.json`, `plan.md` and `status.json`
+26 < 2  *       (`state` `done`), `live/o-r/run-<N>` gone and the target holding
 27 < 1  *       exactly `main` and the integration branch (M1); the PR body's
 28 < 1  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
 29 < 1  *       there being no earlier tag (M4); and `<home>/merge-put.json`
@@ -402,10 +405,24 @@
 388 < 1       `runs/o-r/${runN}/fleet-setup.log`,
 389 < 1       `runs/o-r/${runN}/plan.json`,
 390 < 1       `runs/o-r/${runN}/plan.md`,
-391 < 1       `runs/o-r/${runN}/status.json`
+392 > 1       `runs/o-r/${runN}/status.json`,
+393 < 1       `runs/o-r/${runN}/view.json`
+391 < 2       `runs/o-r/${runN}/status.json`
 392 < 1     ],
-393 < 1     `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
+394 > 1     `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md, status.json and view.json — got ${JSON.stringify(runDirEntries)}`
+393 < 2     `(b) [M1] runs/o-r/${runN}/ carries exactly engine.log, events.jsonl, fleet-boot.log, fleet-setup.log, plan.json, plan.md and status.json — got ${JSON.stringify(runDirEntries)}`
 394 < 1   )
+396 > 1   // The run's view at the tag: `view` 1, the run, the target, and the state status.json says.
+397 < 1   const view = JSON.parse(atTag(evidenceDir, runN, 'view.json'))
+398 < 1   assert.equal(view.view, 1, '(b) view.json view is 1')
+400 > 1   assert.equal(view.run, Number(runN),'(b) view.json run is the run\'s number')
+399 < 2   assert.equal(view.run, runN, '(b) view.json run is the run\'s number')
+400 < 1   assert.equal(view.target, 'o/r', '(b) view.json target is o/r')
+401 < 1   assert.equal(view.state, status.state, '(b) view.json state is status.json\'s state')
+402 < 1   // The view is in the record from its first commit: the commit that first adds status.json first adds view.json.
+403 < 1   const firstAdd = (p) => git(evidenceDir, ['log', '--diff-filter=A', '--format=%H', `o-r/run-${runN}`, '--', `runs/o-r/${runN}/${p}`])
+404 < 1     .split('\n').filter(Boolean).pop()
+405 < 1   assert.equal(firstAdd('view.json'), firstAdd('status.json'), 'view.json is committed with the first status.json')
 395 < 1 
 396 < 1   // [M5] the merge PUT body the boot sent is byte-equal to the exam's own
 397 < 1   // rendering of the merge payload's fields — title off the plan's first
