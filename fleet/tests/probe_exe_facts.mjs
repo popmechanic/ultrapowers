@@ -418,8 +418,8 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
 
 // ── The hand run ────────────────────────────────────────────────────────────
 //
-// Guarded exactly as `fleet/janitor.mjs` and `probe_kata_facts.mjs` guard
-// their own: nothing below runs on an import, so an import issues no ssh and
+// Guarded exactly as `fleet/janitor.mjs` guards
+// its own: nothing below runs on an import, so an import issues no ssh and
 // starts no process.
 
 const main = async () => {

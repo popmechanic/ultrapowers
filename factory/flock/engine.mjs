@@ -4,10 +4,6 @@
 //
 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
 //        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
-//        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
-//   (with both --kata-url and --kata-json, and a record that reads, the board's
-//    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
-//    flight; without them the board stays in memory and sends nothing.)
 //
 // With N builders working one plan together, each on its own copy, merging with each other
 // between tool batches, the swarm settles on green code; the engine then leaves the target one
@@ -31,10 +27,8 @@ import { compactRecord } from './compact_record.mjs'
 import { pullScope } from './pulls.mjs'
 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 import { readTrial, claimOf } from './trial_reading.mjs'
-import { mirrorBoard } from './kata_mirror.mjs'
 import { looseEnds } from './loose_ends.mjs'
-import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds, POLICY_FLOCK, EXAM_MS } from './io.mjs'
-import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
+import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
 import { stepReceipts } from './step_receipts.mjs'
@@ -50,11 +44,6 @@ const TARGET = path.resolve(need('target'))
 const BASE_SHA = need('base')
 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 const RUN_DIR = path.resolve(need('run-dir'))
-// --kata-url / --kata-json / --kata-actor: the boot passes them to either engine. With the first
-// two and a record that reads with an integer project.id and a run.uid, each board move is mirrored straight onto the task's issue on the
-// hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
-// never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
-// comment uid. Otherwise the board stays in memory.
 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 const BUILDER = arg('builder', 'sdk')
@@ -337,32 +326,8 @@ function freshCopy (dir, s) {
 }
 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 
-// ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
+// ── the board: in memory; its moves are rows in events.jsonl. ──
 const board = new Board({ tasks: W.tasks, now })
-const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
-let kataRecord = null
-if (KATA_URL && KATA_JSON) {
-  try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
-}
-// posts queued or in flight, so the engine can let them land (bounded) before it exits
-const kataPending = new Set()
-// a post gives up after 10 s (radio-station run-2 lost 1 of 6 notes at 3 s, 2026-09-28, n=1 run);
-// the exit still waits at most 3 s for posts in flight, so Kata never holds the publish longer
-const KATA_POST_MS = 10000
-const KATA_EXIT_MS = 3000
-// the posts go to the record's project and are keyed on its run uid: without both, nothing mirrors
-if (kataRecord && !kataIds(kataRecord)) {
-  log('kata record lacks an integer project.id or a run.uid, not mirroring')
-  kataRecord = null
-}
-if (kataRecord) {
-  // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
-  const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
-  const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
-  const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
-  // the record's project.id is the hub's own project id: posts go straight to the hub
-  mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid })
-}
 
 // ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
@@ -1378,9 +1343,6 @@ log('summary', JSON.stringify(summary))
 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
 const landed = await land()
 keeper.end()
-if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
-// a post still pending is dropped at exit: say how many, so the record accounts for every post
-if (kataPending.size) ev('kata:mirror', { abandoned: kataPending.size })
 process.exit(landed)
 
 // #1401: under `enforce`, a settled green whose snapshot lost a peer's line (the survival fact,

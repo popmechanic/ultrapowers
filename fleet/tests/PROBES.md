@@ -9,25 +9,8 @@ globs `test_*.mjs`, CI has no credentials, and the hermetic sweep
 `test_sims_are_hermetic.mjs` never reads a `probe_*.mjs`. The naming is the
 whole mechanism — CI and the suite never run these.
 
-The kata probe spends no tokens and holds no bearer, reaching the hub over the
-laptop's own ssh seam (the bearer is sourced on the hub), so it runs on the
-LAPTOP and nowhere else — a sandbox reaches the hub through the edge and
-cannot file a throwaway project:
-
-    node fleet/tests/probe_kata_facts.mjs
-
 The current probes:
 
-- `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
-  contract says it does: the 24 kata facts (#978, #979, #993, #1023 and CLAUDE.md's
-  seams paragraph), re-read one line per fact against a throwaway project, each
-  line stamped with the version it was read on. Run it on every kata upgrade,
-  and before any plan that touches `fleet/kata-client.mjs` — those facts are
-  what that file's shape is argued from, and nothing in the suite talks to a
-  hub, so an upgrade can falsify any of them with the tree still green. It
-  removes its `probe-kata-facts-*` project with the very purge ladder its last
-  fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
-  unreachable or the project was left behind.
 - `probe_exe_facts.mjs` — whether exe.dev's lobby still behaves the way
   `fleet/RUNBOOK.md`'s §Traps (*Tags, keys and names*, *Reading the lobby*)
   and `fleet/CONTRACT.md`'s `exe.dev facts (measured)` list say it does: the

@@ -5,8 +5,7 @@
  * HOME/USER/PATH set and nothing else — no XDG_RUNTIME_DIR, passwordless
  * `sudo -n`, the file piped in as /dev/stdin and capped at 10 KiB. The image
  * already ships claude, gh, busybox, git, jq and python3; the delta this script
- * installs is exactly node, bun, celld and pytest — kata is the engine boot's to install, at the
- * version its own sha pins (#1190). It also drops the two files a run
+ * installs is exactly node, bun, celld and pytest. It also drops the two files a run
  * needs — the bootstrap at /usr/local/lib/fleet/bootstrap.sh (root-owned, 0555)
  * and the unit template in the user's own systemd directory — waits for the
  * user bus, starts the run, and deletes itself.

@@ -2,7 +2,7 @@
 // that is not an answer.
 //
 // Jev is an exe.dev `http-proxy` integration named `typesafe` on the fleet
-// policy `tag:fleet`, the same shape as `claude-max` and `kata`. From a fleet
+// policy `tag:fleet`, the same shape as `claude-max`. From a fleet
 // VM the endpoint is `https://typesafe.int.exe.xyz/v1/systemone`, HTTPS only.
 // The request carries NO `Authorization` header of its own: the edge injects
 // the bearer, which is the whole reason a sandbox holding no TypeSafe
@@ -11,7 +11,7 @@
 // for callers off the fleet (the laptop's authoring checks, which call
 // `api.typesafe.ai` directly with their own key); the fleet passes none.
 //
-// The shape is `httpTransport`'s (`fleet/kata-client.mjs`): `fetchImpl`
+// `fetchImpl` is
 // injected with `globalThis.fetch` as the default, `res.text()` and then a
 // parse — so a sim's fake reply needs only `status` and `text()`, and no sim
 // opens a socket.

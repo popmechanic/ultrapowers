@@ -5,8 +5,7 @@
  *   node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]
  *
  * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the run's
- * status page in the evidence repository; the kata hub only when
- * `fleet/policy.json`'s `janitor.record.source` is rolled back to `kata`), what
+ * status page in the evidence repository), what
  * it removes (a finished run's VM after `--age`, an integration branch nothing
  * merged), what it writes (a dead or orphaned run's end, then the seal; the
  * seal alone for a run that ended without one) and what it only reports
@@ -22,7 +21,6 @@ import { Buffer } from 'node:buffer'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { projectNamed, runIssueOf } from './kata-client.mjs'
 import {
   DEFAULT_CONFIG_PATH,
   PLAN_FILE,
@@ -30,7 +28,6 @@ import {
   defaultExec,
   evidenceUrlFor,
   git,
-  hubFromEnv,
   integrationBranchFor,
   isFullSha,
   isRunNumber,
@@ -45,26 +42,20 @@ import {
   parseComment,
   parseDuration,
   parseJson,
-  policyCell,
   readEvidenceSetting,
   runCli,
   runFolderFor,
   runOfBranch,
   runOfEvidenceRef,
   runOfVmName,
-  runTagFor,
-  targetSlug
+  runTagFor
 } from './lobby.mjs'
 
 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]'
 
 export const usage = () => USAGE
 
-/**
- * The states that mean the run is over and its VM is ballast — the same three
- * words wherever a run's finish is read: the status page's `state`, and the run
- * issue's own `work.state` (#964).
- */
+/** The states of a status page that mean the run is over and its VM is ballast. */
 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 /** Page states that claim the run is still in flight — the ones worth a probe. */
 const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
@@ -88,142 +79,11 @@ const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
     : { action: 'pending', reapableAt: new Date(at).toISOString() }
 }
 /**
- * The comment that takes a VM out of the reap. The hub's own comment is
- * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
- * it; the guard matches this substring, case-sensitively, so any row someone
- * marks by hand is kept the same way.
+ * The comment that takes a VM out of the reap: the hub VM's own comment ends
+ * `persistent service, do not reap`. The guard matches this substring,
+ * case-sensitively, so any row someone marks by hand is kept the same way.
  */
 const NEVER_REAP = 'do not reap'
-/** The actor every hub write of the janitor's carries. */
-const HUB_ACTOR = 'janitor'
-/** The idempotency key of the one hub write: a re-driven death is the same patch. */
-const deathKeyFor = (run) => `janitor:run-${run}:death`
-
-/**
- * The three keys a run's issue carries about itself, spelled as kata stores
- * them: FLAT, dotted name and all (#960). `metadata.work.state` reads nothing —
- * there is no `work` object — so every read and every write here goes through
- * `metadata['work.state']`.
- */
-const STATE_KEY = 'work.state'
-const ATTENTION_KEY = 'work.attention'
-const ATTENTION_MSG_KEY = 'work.attention_msg'
-/** What a death writes into those keys: the state, and the hand it raises. */
-const DEATH_STATE = 'failed'
-const DEATH_ATTENTION = 'needs-human'
-
-// ── The switch: where a pass reads a run's end ──────────────────────────────
-
-/**
- * `evidence`: the run's status page in the evidence repository, and the hub is
- * never asked. `kata`: the rollback — the hub first, the evidence repository
- * for a row the hub cannot answer, as every pass read before 2026-11-13.
- */
-export const RECORD_SOURCES = Object.freeze(['evidence', 'kata'])
-
-/**
- * The `janitor.record.source` cell of the `policy.json` beside this file. A
- * file that cannot be read, or a cell that names neither source, is the
- * default: `evidence`.
- */
-export const recordSourceOf = (policyPath) => policyCell(['janitor', 'record', 'source'], RECORD_SOURCES, policyPath)
-
-/** The hub of a pass that asks no hub: no client, no host, nothing dark. */
-const NO_HUB = () => ({ client: null, host: null, dark: null })
-
-// ── The rollback: the run's state, asked of kata ────────────────────────────
-
-/**
- * The hub as the janitor holds it: `client` (null when there is none), `host`
- * (the ssh destination, for the report) and `dark` — null while the hub is
- * answering, else the first reason it could not, kept for the pass. An
- * injected `kata` is the client (`null` for "no hub" outright — a sim's, or the
- * launcher's); with none, `~/.ultrapowers/kata-hub.env`
- * is read and the client built on its host, exactly as the launcher builds
- * its own. An env file that is absent or names no host is not a refusal here:
- * a pass with no hub reads the evidence repository, and says so.
- */
-async function openHub ({ exec, kata, kataEnvPath }) {
-  if (kata !== undefined) return { client: kata, host: kata?.host ?? null, dark: null }
-  const hub = await hubFromEnv({ exec, actor: HUB_ACTOR, kataEnvPath })
-  if (hub.client === null) return { client: null, host: null, dark: hub.dark }
-  return { client: hub.client, host: hub.host, dark: null }
-}
-
-/** The first line of what went wrong, for a report line and nothing longer. */
-const reasonOf = (error) => String(error?.message ?? error).split('\n')[0].trim()
-
-/**
- * The finish an OPEN issue carries about itself, or null when it carries none:
- * `work.state`, read flat, and only when it names one of the three states that
- * mean the run is over. Anything else there — a run in flight's own word, a
- * value nobody here knows — is not a finish, and the row is read as open.
- */
-const markedFinishOf = (issue) => {
-  const value = issue?.metadata?.[STATE_KEY]
-  return typeof value === 'string' && REAPABLE_STATES.includes(value) ? value : null
-}
-
-/**
- * What the hub says about one run, as the row loop reads it: `finished`,
- * `live`, `state`, `updatedAt`, `from`, and the project and issue a death
- * would mark. A run is finished when its issue is `closed` OR when an open
- * issue's `work.state` says so — the park is the case that needs the second
- * reading, since a parked run's issue stays open and its VM is ballast all the
- * same (#964). `closed_at` is the age of a closed issue and `updated_at` of
- * every other row — a closed issue's `updated_at` moves with later comments,
- * and the reap's clock is the close; a marked issue's is the mark, which is
- * the last thing that touched it.
- */
-const readingOfIssue = (project, issue) => {
-  const closed = issue.status === 'closed'
-  const marked = closed ? null : markedFinishOf(issue)
-  const updatedAt = closed
-    ? (typeof issue.closed_at === 'string' ? issue.closed_at : issue.updated_at)
-    : issue.updated_at
-  return {
-    source: 'hub',
-    finished: closed || marked !== null,
-    // A marked run is not in flight, so no unit is probed for it: the record
-    // already says how it ended, and the probe is only ever a cross-check of a
-    // record that claims the run is still going.
-    live: issue.status === 'open' && marked === null,
-    state: closed ? String(issue.closed_reason ?? 'closed') : (marked ?? String(issue.status ?? 'open')),
-    updatedAt: typeof updatedAt === 'string' ? updatedAt : null,
-    from: `kata:${project.name}`,
-    project,
-    issue
-  }
-}
-
-/**
- * The hub reader for one pass. The projects listing is fetched once, on the
- * first row that needs it, and every error darkens the hub for the rest of
- * the pass — one dark read costs one ssh timeout, not one per row. A `null`
- * answer means "not from the hub": the caller reads the evidence for that row.
- */
-function hubReader (hub) {
-  let listing = null
-  const darken = (error) => {
-    if (hub.dark === null) hub.dark = reasonOf(error)
-  }
-  return async (target, run, plan) => {
-    if (hub.client === null || hub.dark !== null) return null
-    try {
-      if (listing === null) listing = await hub.client.listProjects()
-      const project = projectNamed(listing, targetSlug(target))
-      if (project === null) return null
-      const json = await hub.client.listIssues(project.id)
-      const issues = Array.isArray(json?.issues) ? json.issues : []
-      const issue = runIssueOf(issues, run, plan ?? null)
-      return issue === null ? null : readingOfIssue({ id: project.id, uid: project.uid, name: project.name }, issue)
-    } catch (error) {
-      darken(error)
-      return null
-    }
-  }
-}
-
 // ── The record: the run's page, read off the evidence repository ────────────
 
 /**
@@ -286,7 +146,6 @@ async function evidenceReading (exec, evidence, target, run) {
   if (found === null || found.page === null) return null
   const state = typeof found.page.state === 'string' ? found.page.state : null
   return {
-    source: 'evidence',
     finished: REAPABLE_STATES.includes(state),
     live: LIVE_STATES.includes(state),
     state,
@@ -404,13 +263,9 @@ const unitSummary = (unit) => UNIT_PROPERTIES
   .map((p) => `${p}=${unit[p]}`)
   .join(' ')
 
-/**
- * What the written page says happened, in the page's own `error` cell — and
- * the hub close's message, which kata wants forty characters long. `said` is
- * `page` for a row read off the evidence and `hub` for one the hub answered.
- */
-const deathError = (run, unit, state, said) =>
-  `janitor: ${unitOf(run)} ${unitSummary(unit)} while the ${said} said ${state}`
+/** What the written page says happened, in the page's own `error` cell. */
+const deathError = (run, unit, state) =>
+  `janitor: ${unitOf(run)} ${unitSummary(unit)} while the page said ${state}`
 
 // ── A run's end, written for it ─────────────────────────────────────────────
 
@@ -486,72 +341,32 @@ async function failRun ({ exec, evidence, target, run, found, at, error, why, jo
 }
 
 /**
- * The death, written: the unit's journal and the page (`failRun`), then, for
- * a row the hub answered, the run issue's three keys. A hub-read row's page is
- * fetched here, off the evidence BRANCH, since the death is written where the
- * sandbox writes; a branch with no page (a boot that never committed) gets no
- * PUT and the marking alone. A patch the hub refuses is reported on the entry,
- * never thrown.
+ * The death, written: the unit's journal and the page (`failRun`), on the
+ * run's live branch in the evidence repository.
  */
-async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at, hub }) {
-  const fromHub = reading.source === 'hub'
-  const said = fromHub ? 'hub' : 'page'
+async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at }) {
   const death = { vm: row.name, run, target, state: reading.state, unit, applied: false }
-  if (fromHub) death.hubMarked = false
   // `--dry-run` reads — the unit read above was one — and writes nothing.
   if (dryRun) return death
-
-  // No evidence repository: no page to read, and the hub's marking alone.
-  const found = evidence === null
-    ? null
-    : fromHub ? await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run)) : reading
-  if ((found?.page ?? null) !== null) {
-    const journal = await onVm(exec, row.sshDest, journalCommand(run))
-    const out = await failRun({
-      exec,
-      evidence,
-      target,
-      run,
-      found,
-      at,
-      error: deathError(run, unit, reading.state, said),
-      why: unitSummary(unit),
-      journal: journal.code === 0
-        ? String(journal.stdout ?? '')
-        : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
-    })
-    if (out.written) {
-      death.applied = true
-      death.sealed = out.sealed
-    } else {
-      death.error = out.error
-    }
-  }
-
-  if (fromHub) {
-    // The run issue is MARKED, not closed: a close carries a verified outcome
-    // and this one is nobody's yet, so the record reads `failed` and raises a
-    // hand — the same three keys, spelled the same flat way, that the sandbox
-    // writes at a park. No `If-Match`: the janitor reads the hub once a pass
-    // and a death is the same three keys however often it is driven, so a
-    // revision it held would only turn the second pass into a 412; the key
-    // makes a re-driven death the same patch.
-    try {
-      await hub.client.patchMetadata(
-        reading.project.id,
-        reading.issue.uid,
-        {
-          [STATE_KEY]: DEATH_STATE,
-          [ATTENTION_KEY]: DEATH_ATTENTION,
-          [ATTENTION_MSG_KEY]: deathError(run, unit, reading.state, said)
-        },
-        undefined,
-        { idempotencyKey: deathKeyFor(run) }
-      )
-      death.hubMarked = true
-    } catch (error) {
-      death.hubError = reasonOf(error)
-    }
+  const journal = await onVm(exec, row.sshDest, journalCommand(run))
+  const out = await failRun({
+    exec,
+    evidence,
+    target,
+    run,
+    found: reading,
+    at,
+    error: deathError(run, unit, reading.state),
+    why: unitSummary(unit),
+    journal: journal.code === 0
+      ? String(journal.stdout ?? '')
+      : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
+  })
+  if (out.written) {
+    death.applied = true
+    death.sealed = out.sealed
+  } else {
+    death.error = out.error
   }
   return death
 }
@@ -727,19 +542,13 @@ async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs
 }
 
 /**
- * Everything the janitor does, with the exec seam, the clock, the hub and the
- * switch injected. `record` is where a run's end is read (`RECORD_SOURCES`);
- * handed none, the policy cell is (`recordSourceOf`). `evidence` is the
- * evidence repository (#1395); handed none, the `evidence` key of `configPath`
- * (default `~/.ultrapowers/fleet.json`) is. With neither, no run can be read
- * and none is reaped — every row is `unread`.
- *
- * Under the `kata` rollback alone, `kata` is the hub client (`null`: no hub);
- * undefined reads `kataEnvPath` (default `~/.ultrapowers/kata-hub.env`) and
- * builds one, and a run the hub answers is reaped by the hub alone.
+ * Everything the janitor does, with the exec seam and the clock injected.
+ * `evidence` is the evidence repository (#1395); handed none, the `evidence`
+ * key of `configPath` (default `~/.ultrapowers/fleet.json`) is. With neither,
+ * no run can be read and none is reaped — every row is `unread`.
  */
 export async function janitor ({
-  argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath, record
+  argv = [], exec = defaultExec, now = () => new Date(), evidence = null, configPath
 }) {
   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
   const dryRun = opts['dry-run'] === true
@@ -752,14 +561,10 @@ export async function janitor ({
   }
   // The janitor sizes nothing, so of `fleet.json` it reads the one key
   // `evidence` — and only when it was handed no repository. The run's state
-  // lives in the evidence repository; `kata-hub.env` is opened, and the hub
-  // asked, only under the `kata` rollback.
+  // lives in the evidence repository and nowhere else.
   const evidenceRepo = isSafeTarget(evidence)
     ? evidence
     : await readEvidenceSetting({ path: configPath ?? DEFAULT_CONFIG_PATH() })
-  const source = RECORD_SOURCES.includes(record) ? record : recordSourceOf()
-  const hub = source === 'kata' ? await openHub({ exec, kata, kataEnvPath }) : NO_HUB()
-  const fromHub = hubReader(hub)
 
   const nowMs = now().getTime()
   const rows = await listVms(exec)
@@ -805,10 +610,7 @@ export async function janitor ({
     targets.add(target)
     carried.add(`${target}#${run}`)
 
-    // The evidence record. Under the `kata` rollback the hub is asked first
-    // (`fromHub` answers null at once for a pass with no hub), and the
-    // evidence repository only for a row the hub cannot answer.
-    const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, evidenceRepo, target, run)
+    const reading = await evidenceReading(exec, evidenceRepo, target, run)
     runs.push({
       vm: row.name,
       run,
@@ -832,7 +634,7 @@ export async function janitor ({
       const unit = await readUnit(exec, row.sshDest, run)
       if (unit !== null && unitIsDead(unit)) {
         deaths.push(await writeDeath({
-          exec, dryRun, row, run, target, evidence: evidenceRepo, reading, unit, at: nowIso, hub
+          exec, dryRun, row, run, target, evidence: evidenceRepo, reading, unit, at: nowIso
         }))
         // The record now says the run died as of now: the reap is the next
         // pass's, an hour on, and that hour is the operator's window to ssh in.
@@ -900,16 +702,9 @@ export async function janitor ({
     }
   }
 
-  // `hub` is null for a pass that asked no hub — every pass but the `kata`
-  // rollback's — and for one told there is none; otherwise the host it asked
-  // and, when it could not, why — the first reason, kept whole.
-  const hubReport = hub.client === null && hub.host === null && hub.dark === null
-    ? null
-    : { host: hub.host, dark: hub.dark }
   return {
     dryRun,
     age,
-    record: source,
     actions,
     stale,
     unknown,
@@ -920,7 +715,6 @@ export async function janitor ({
     sealed,
     kept,
     pending,
-    hub: hubReport,
     runs,
     evidence: evidenceRepo
   }
@@ -959,26 +753,24 @@ async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, ru
 
 /**
  * A launch's reap and duplicate check (#1437): `fleet/launch.mjs` calls it
- * after the hub's ping and before the run number is read. Answers
+ * before the run number is read. Answers
  * `{ reaped, reapError, again }` — the VMs this pass removed, why the pass
  * failed (or null), and the live runs of this plan that `again` let through —
  * or throws the launcher's own refusal.
  *
  * Nothing schedules the janitor, so every launch is where it runs — before
  * the run number is read, so the fleet a launch joins is already clear of the
- * VMs of runs that finished over an hour ago. `hub` is the client the launch
- * built: the janitor asks it only under the `kata` rollback, so that pass asks
- * the hub the launch already reached. A reap that fails is reported and not fatal: the run
+ * VMs of runs that finished over an hour ago. A reap that fails is reported and not fatal: the run
  * being launched is worth more than the ballast the janitor came for.
  */
 export async function preflight ({
-  exec = defaultExec, now = () => new Date(), hub, evidence, repoDir, target, planText, again = false
+  exec = defaultExec, now = () => new Date(), evidence, repoDir, target, planText, again = false
 }) {
   const reaped = []
   let reapError = null
   let fleetRuns = null
   try {
-    const reap = await janitor({ argv: [], exec, now, kata: hub, evidence })
+    const reap = await janitor({ argv: [], exec, now, evidence })
     fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
     for (const action of reap.actions) {
       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
@@ -999,10 +791,10 @@ export async function preflight ({
 
   // ── The duplicate check (#1036). A plan that is already live on this target
   //    is refused here, before the run number is read and before anything is
-  //    pushed: a second launch of the same plan re-answers the live run's task
-  //    issues on the hub and bumps their revision, and the first run dies at
-  //    Setup on `kata-revision-mismatch`. "The same plan" is the plan text's
-  //    git blob sha — the identity the hub's `Idempotency-Key` is built from —
+  //    pushed: a second launch of the same plan is two sandboxes building one
+  //    change, and two pull requests for it. (Until 2026-11-13 it also killed
+  //    the first run, whose task issues on the kata hub the replay re-answered.)
+  //    "The same plan" is the plan text's git blob sha,
   //    never the comment's `plan=` commit, which carries the run number in its
   //    subject and so differs on every launch. A row whose record says the run
   //    ended never refuses, however recently; a row with no record yet counts
@@ -1013,8 +805,7 @@ export async function preflight ({
   if (duplicates.length > 0 && again !== true) {
     throw new Refusal(duplicates.map((d) =>
       `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
-      'pass --again to launch it again on purpose (a byte-identical replay re-answers the live ' +
-      "run's task issues on the hub and bumps their revision)"
+      'pass --again to launch it again on purpose (two runs of one plan build the same change twice)'
     ).join('\n'))
   }
   return { reaped, reapError, again: duplicates }
@@ -1024,17 +815,9 @@ const renderAction = (a, dryRun) =>
   `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}` +
   (a.error === undefined ? '' : ` (failed: ${a.error})`)
 
-/** A hub-read death also names the hub: marked, would be marked, or refused. */
-const renderDeathHub = (d, dryRun) => {
-  if (d.hubMarked === undefined) return ''
-  if (d.hubMarked || dryRun) return ' and the hub'
-  return ` (hub not marked: ${d.hubError ?? 'unknown'})`
-}
-
 const renderDeath = (d, dryRun) =>
   `${dryRun ? 'would write death' : 'death'} ${d.vm}  run=${d.run} ` +
-  `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}` +
-  renderDeathHub(d, dryRun)
+  `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}`
 
 /** #724: a branch nothing merged, deleted (or, dry, to be). */
 const renderBranch = (b, dryRun) =>
@@ -1065,13 +848,8 @@ const renderUnread = (u, evidence) =>
 /** A row the reap never touches, and why — the comment itself said so. */
 const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
 
-/** A hub that could not be asked: first, because every line below was read another way. */
-const renderHub = (h) =>
-  `hub ${h.host ?? 'none'} unreachable (${h.dark}) — every run read from the evidence repository instead`
-
 const renderJanitor = (result) => {
   const lines = [
-    ...(result.hub?.dark ? [renderHub(result.hub)] : []),
     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
     ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
     // After every rm and before every stale line: what was removed, then what

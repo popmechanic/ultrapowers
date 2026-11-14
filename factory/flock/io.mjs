@@ -1,5 +1,5 @@
-// The Flock's shared plumbing (#1439): the engine (engine.mjs), the catch-up (catchup.mjs) and the
-// boot's board CLI (../board.mjs) each wrote these once of their own.
+// The Flock's shared plumbing (#1439): the engine (engine.mjs) and the catch-up (catchup.mjs)
+// each wrote these once of their own.
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -75,9 +75,3 @@ export function readEventRows (file) {
   return rows
 }
 
-// a kata.json record's hub address: its integer project.id and non-empty run.uid, else null
-export function kataIds (doc) {
-  const projectId = doc && doc.project && doc.project.id
-  const runUid = doc && doc.run && doc.run.uid
-  return Number.isInteger(projectId) && typeof runUid === 'string' && runUid ? { projectId, runUid } : null
-}

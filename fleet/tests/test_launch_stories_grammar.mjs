@@ -46,8 +46,7 @@ const err = await thrown(() => launch({
   now: () => new Date('2026-09-27T12:00:00Z'),
   sleep: async () => {},
   refreshCredential: () => ({ ok: true }),
-  readUsage: () => ({ unread: true, reason: 'sim' }),
-  kata: null
+  readUsage: () => ({ unread: true, reason: 'sim' })
 }))
 cleanup(root)
 assert.ok(err !== null, 'launch must refuse a stories-v1 plan with a Numbers section')
@@ -95,8 +94,7 @@ const err2 = await thrown(() => launch({
   now: () => new Date('2026-09-27T12:00:00Z'),
   sleep: async () => {},
   refreshCredential: () => ({ ok: true }),
-  readUsage: () => ({ unread: true, reason: 'sim' }),
-  kata: null
+  readUsage: () => ({ unread: true, reason: 'sim' })
 }))
 cleanup(root2)
 if (err2 !== null) {

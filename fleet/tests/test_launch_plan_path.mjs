@@ -82,8 +82,7 @@ const launchIn = (ws, { exec, planPath, extra = [] }) => launch({
   config: CAPPED,
   now: () => NOW,
   sleep: async () => {},
-  refreshCredential: () => ({ ok: true }),
-  kata: null
+  refreshCredential: () => ({ ok: true })
 })
 
 const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
@@ -146,8 +145,7 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
     config: CAPPED,
     now: () => NOW,
     sleep: async () => {},
-    refreshCredential: () => ({ ok: true }),
-    kata: null
+    refreshCredential: () => ({ ok: true })
   }
 
   // With --repo R: the message names R/plans/nope.md.

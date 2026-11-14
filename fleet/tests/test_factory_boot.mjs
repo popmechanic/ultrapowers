@@ -72,7 +72,7 @@
  * `.gitconfig`; the `systemd-run` stub records the engine's argv to
  * `<home>/engine-argv`. `<FLEET_HOME>/target` is a plain clone of the origin. `<FLEET_HOME>/engines/<sha>/
  * factory` and `.../skills` are symlinks to this checkout's own `factory/`
- * and `skills/`, so the boot's real `factory/audit.mjs` (and, in leg (d),
+ * and `skills/`, so the boot's real `factory/publish.mjs` (and, in leg (d),
  * `factory/flock/engine.mjs`) genuinely runs through a symlinked directory. A `bin`
  * directory stubs `claude` (one `authMethod:` line), `curl` (a small
  * argument-sniffing router answering the GitHub-shaped endpoints `boot.sh`
@@ -91,9 +91,9 @@
  * of context a later reader lacks: that credential-probe failure and engine
  * failure both still route through `fail()` writing `status.json` onto the
  * live branch and cutting the run's tag before exiting non-zero (so (a) and
- * (c) can read it back at the tag); that a plan commit with no `kata.json`
- * blob leaves the board unbound, so `close_run()` takes its early-return
- * path and appends exactly one `board:close` row; that `factory/policy.json`'s
+ * (c) can read it back at the tag); that the boot writes to no issue board,
+ * so no `board:close`, `board:mark` or `run:audit` row follows the publish's
+ * own rows; that `factory/policy.json`'s
  * `publish.self_merge.enabled: true` (already in this repo) is what makes
  * (b)'s merge actually happen; and that the `publish:pr` event row's own
  * `ts` field is out of this task's own diff — this exam still asserts M1's
@@ -104,7 +104,7 @@
  * and, with no `--plan` given, exits 2 before
  * touching anything that would need a fuller rig — the same shape the
  * sibling exam `test_factory_preflight.mjs` already assumes of
- * `audit.mjs`/`preflight.mjs`.
+ * `preflight.mjs`.
  */
 
 import assert from 'node:assert/strict'
@@ -305,18 +305,16 @@ for (const [runN, version, error] of [
   const nonLanding = rows.filter((r) => r.kind !== 'landing')
   assert.deepEqual(
     nonLanding.map((r) => r.kind),
-    ['publish:pr', 'weave:push', 'merge', 'board:close', 'run:audit'],
-    `(b) [M1] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, board:close, run:audit in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+    ['publish:pr', 'weave:push', 'merge'],
+    `(b) [M1] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge in order, and no board row — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
   )
   // the weave's push sits between the pull request and the merge: main's memory reaches the target
   // before the merge request, never after it (factory/publish.mjs `pushWeave`)
-  const [pubRow, weaveRow, mergeRow, closeRow] = nonLanding
+  const [pubRow, weaveRow, mergeRow] = nonLanding
   assert.equal(weaveRow.when, 'pr', '(b) [M1] the weave:push row is the push made once the pull request is open')
   assert.equal(pubRow.url, 'https://github.com/o/r/pull/7', '(b) [M1] the publish:pr row names the PR url')
   assert.equal(pubRow.number, 7, '(b) [M1] the publish:pr row names the PR number')
   assert.equal(mergeRow.code, 200, '(b) [M1] the merge row records code 200')
-  assert.equal(closeRow.what, 'run', '(b) [M1] the sole board:close row is "what":"run" (close_run\'s no-kata early return)')
-  assert.equal(closeRow.code, null, '(b) [M1] the sole board:close row carries code null')
 
   const prPost = fs.readFileSync(path.join(home, 'pr-post.json'), 'utf8')
   // `factory/record.mjs` renders the receipt from `edge` rows (this stub engine writes none, so the
@@ -470,9 +468,11 @@ for (const [runN, version, error] of [
   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
-  // #1392: the hub's mark is in the committed record, not appended after the last commit
-  const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
-  assert.deepEqual(marks.map((r) => r.state), ['failed'], `(c) events.jsonl at the tag holds one board:mark row, state failed — got ${JSON.stringify(marks)}`)
+  // The failure is the status page's alone: the boot marks no issue board.
+  // (a failed run whose engine wrote no row has no events.jsonl at all)
+  const eventsAtTag = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })()
+  const boardRows = eventsAtTag.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.kind).startsWith('board:'))
+  assert.deepEqual(boardRows, [], `(c) events.jsonl at the tag holds no board row — got ${JSON.stringify(boardRows)}`)
   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
   // #1470: a failed run never asks the hub to remove its VM.
   assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
@@ -648,12 +648,10 @@ for (const [runN, version, error] of [
   assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
   assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
   assert.equal(status.pr, null, '(h) no pull request is opened')
-  const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  assert.deepEqual(rows.filter((r) => r.kind === 'board:mark'), [], `(h) nothing is marked parked — got ${JSON.stringify(rows.filter((r) => r.kind === 'board:mark'))}`)
-  assert.ok(rows.some((r) => r.kind === 'board:close' && r.what === 'run'), `(h) the run's close is in the tagged record — got ${JSON.stringify(rows.filter((r) => String(r.kind).startsWith('board')))}`)
+  // (the stub engine wrote no row, and the boot adds none: the record may hold no events.jsonl)
+  const rows = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+  assert.deepEqual(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))), [], `(h) the record holds no board, kata or audit row — got ${JSON.stringify(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))))}`)
   assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
-  assert.deepEqual(rows.filter((r) => r.kind === 'run:audit').map(({ ts, ...r }) => r), [{ kind: 'run:audit', state: 'done', missing: [] }],
-    `(h) [#1522] the record ends with one run:audit row — got ${JSON.stringify(rows.filter((r) => r.kind === 'run:audit'))}`)
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
 }
 

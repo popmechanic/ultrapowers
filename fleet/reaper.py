@@ -7,10 +7,9 @@ stripping anything the caller sent. The hub removes only the VM that asked,
 and only once the run's evidence record says it ended done: the status page
 at the run's tag in the evidence repository. Standard library only.
 
-Two settings, read from the unit's environment (/etc/reaper/reaper.env):
-REAPER_EVIDENCE_REPO, the evidence repository as <owner>/<repo>, and
-REAPER_RECORD, `evidence` (the default) or `kata`. `kata` is the rollback:
-the run issue on the hub's own kata, closed as done, as before 2026-11-13.
+One setting, read from the unit's environment (/etc/reaper/reaper.env):
+REAPER_EVIDENCE_REPO, the evidence repository as <owner>/<repo>. Without it
+no record can be read and nothing is removed.
 """
 import base64
 import json
@@ -21,14 +20,12 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-KATA_URL = "http://localhost:8000"
 # The GitHub integration attached to the hub: the edge routes by repository and adds the credential.
 GITHUB_URL = "https://github.int.exe.xyz/api/v3"
 # https: the plain http:// address answers 301.
 RM_URL = "https://lobby-rm.int.exe.xyz/exec"
 VM_RE = re.compile(r"^fleet-r([1-9][0-9]*)-")
 TARGET_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
-RECORDS = ("evidence", "kata")
 # The calling boot waits five seconds for its answer; the one read stays under that.
 READ_SECONDS = 4
 
@@ -56,16 +53,6 @@ def decide(source_vm, body, done):
 def status_done(status):
     """The evidence record: a status page whose state is done."""
     return isinstance(status, dict) and status.get("state") == "done"
-
-
-def issue_done(issue):
-    """The rollback's record: a kata run issue closed as done."""
-    return isinstance(issue, dict) and issue.get("status") == "closed" and issue.get("closed_reason") == "done"
-
-
-def record_of(value):
-    """REAPER_RECORD as read: `kata` only when it says so, else `evidence`."""
-    return value if value in RECORDS else RECORDS[0]
 
 
 def status_url(evidence, target, run):
@@ -109,51 +96,7 @@ def rm_succeeded(code, text):
     return "not found" in (text or "").lower()
 
 
-def _kata_get(path):
-    req = urllib.request.Request(
-        KATA_URL + path,
-        headers={"Authorization": "Bearer " + os.environ.get("KATA_AUTH_TOKEN", "")},
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _items(data, key):
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict):
-        for k in (key, "items", "data"):
-            if isinstance(data.get(k), list):
-                return data[k]
-    return []
-
-
-def find_issue(target, run):
-    """The run issue (metadata run, no task key) on the hub's kata, or None."""
-    name = target.replace("/", "-")
-    projects = _items(_kata_get("/api/v1/projects?limit=1000"), "projects")
-    project = next((p for p in projects if isinstance(p, dict) and p.get("name") == name), None)
-    if project is None:
-        return None
-    pid = urllib.parse.quote(str(project.get("id")), safe="")
-    issues = _items(_kata_get(f"/api/v1/projects/{pid}/issues?limit=1000"), "issues")
-    for issue in issues:
-        if not isinstance(issue, dict):
-            continue
-        meta = issue.get("metadata")
-        if isinstance(meta, dict) and type(meta.get("run")) is int and meta["run"] == run and "task" not in meta:
-            return issue
-    return None
-
-
-def run_done(record, evidence, target, run, read=read_status, find=find_issue):
-    """What the chosen record says: True only when the run ended done."""
-    if record == "kata":
-        return issue_done(find(target, run))
-    return status_done(read(evidence, target, run))
-
-
-def answer_for(caller, raw, record, evidence, read=read_status, find=find_issue):
+def answer_for(caller, raw, evidence, read=read_status):
     """One request, decided: (status, vm, run). No record is read for a wrong caller, body or target."""
     if not caller:
         return (403, None, None)
@@ -165,7 +108,7 @@ def answer_for(caller, raw, record, evidence, read=read_status, find=find_issue)
     status, _ = decide(caller, body, True)
     if status != 202:
         return (status, None, run)
-    status, vm = decide(caller, body, run_done(record, evidence, body["target"], run, read, find))
+    status, vm = decide(caller, body, status_done(read(evidence, body["target"], run)))
     return (status, vm, run)
 
 
@@ -207,7 +150,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         caller, run, status, vm, removed = None, None, 500, None, None
-        record = record_of(os.environ.get("REAPER_RECORD"))
         try:
             if self.path.split("?", 1)[0] != "/reap":
                 status = 404
@@ -216,7 +158,7 @@ class Handler(BaseHTTPRequestHandler):
             caller = self.headers.get("X-Exedev-Source-Vm")
             length = int(self.headers.get("Content-Length") or 0)
             raw = self.rfile.read(length) if length > 0 else b""
-            status, vm, run = answer_for(caller, raw, record, os.environ.get("REAPER_EVIDENCE_REPO"))
+            status, vm, run = answer_for(caller, raw, os.environ.get("REAPER_EVIDENCE_REPO"))
             self._answer(status, {"status": status, "vm": vm})
         except Exception as e:
             status, vm = 500, None
@@ -232,7 +174,7 @@ class Handler(BaseHTTPRequestHandler):
                         removed = remove_vm(vm)
                     except Exception:
                         removed = False
-                line = f"reap caller={caller} run={run} status={status} record={record}"
+                line = f"reap caller={caller} run={run} status={status}"
                 if status == 202:
                     line += f" vm={vm} removed={removed}"
                 print(line, flush=True)
@@ -241,7 +183,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    # REAPER_PORT, never PORT: the unit loads /etc/kata/kata.env, whose PORT=8000 is the daemon's own
+    # REAPER_PORT, never PORT: a name too common to trust in a shared environment file
     port = int(os.environ.get("REAPER_PORT", "8001"))
     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
     print(f"reaper listening on 0.0.0.0:{port}", flush=True)

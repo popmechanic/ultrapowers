@@ -1,13 +1,12 @@
 [Unit]
 Description=fleet reaper: removes a fleet VM once its run's evidence record says done (#1470)
-After=network-online.target kata.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=exedev
-EnvironmentFile=/etc/kata/kata.env
-# REAPER_EVIDENCE_REPO=<owner>/<repo>, and REAPER_RECORD=kata for the rollback; absent, nothing is removed.
+# REAPER_EVIDENCE_REPO=<owner>/<repo>; absent, no record can be read and nothing is removed.
 EnvironmentFile=-/etc/reaper/reaper.env
 ExecStart=/usr/bin/python3 /usr/local/lib/reaper/reaper.py
 Restart=on-failure

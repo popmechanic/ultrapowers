@@ -28,13 +28,12 @@ keeps the name `factory/`. Models never run git.
   the new main through the weave keeper and re-runs the plan's setup, probes and check with
   `ULTRA_BASE` set to the new main; on a conflict or a red check it leaves the run's commit
   alone, so the boot opens a draft.
-- Supporting modules: `flock/flock_board.mjs` (the board), `flock/kata_mirror.mjs` (board
-  moves mirrored onto Kata), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
+- Supporting modules: `flock/flock_board.mjs` (the board, in memory; its moves are rows in
+  `events.jsonl`), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
   `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
-  wrapper, the weave keeper client, snapshot writes, `events.jsonl` rows and the `kata.json`
-  address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
-  `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
-  `audit.mjs` (a finished run's final computed row).
+  wrapper, the weave keeper client, snapshot writes and `events.jsonl` rows the engine and the
+  catch-up share), `flock/nogit/git` (the refusing git first on every builder's PATH),
+  `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body).
 - A builder that finds its task cannot be done as the plan is written, by any code, files an
   objection (`object`, row `objection`, policy `flock.objection.mode`): the task parks at once for
   the operator and is not handed round, and a run with nothing else left ends a draft whose reason
@@ -80,23 +79,13 @@ keeps the name `factory/`. Models never run git.
 - **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
   `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.
 
-## Kata (the board)
+## No issue board
 
-- Since 2026-11-13 no run carries a Kata record: the launcher's `launch.kata.mode`
-  (`fleet/policy.json`) is `off`, so the plan commit has no `kata.json`, the boot passes the engine
-  no `--kata-*` flag and `board.mjs` records one `skipped: no kata.json to read` row. Everything
-  below describes the rollback (`mode` `on`), which needs no engine change.
-- The board is the Kata 0.18 hub, written directly through `kata.int.exe.xyz`, where the edge
-  injects the hub's bearer; the sandbox runs no kata daemon and no credential helper. The boot
-  writes the plan commit's `kata.json` to `$FLEET_HOME/plans/<run>.kata.json` and, when it is
-  there, passes the engine `--kata-url`, `--kata-json` and `--kata-actor`. The record is rows in
-  `events.jsonl`.
-- `board.mjs` owns the run's close and marks (`boot.sh` only calls its CLI) and never fails a
-  run; hub writes are never the run's failure, and the launcher's `hub.ping()` is the one gate.
-- **Seams:** every `*.int.exe.xyz` host is `https://` (an http 301, followed, turns a POST into
-  a GET). A `done` close needs a ≥40-character message.
-- A byte-identical plan relaunched while its twin is live collides on the board (412, #1308);
-  serialize them.
+The engine and the boot write to no service: the kata hub left on 2026-11-13, and with it
+`board.mjs`, `flock/kata_mirror.mjs`, `audit.mjs` and the `kata:mirror`, `board:close`,
+`board:mark` and `run:audit` rows. A run's whole record is its evidence folder; a parked or failed
+run says so on its status page and nowhere else. Every `*.int.exe.xyz` host is `https://` (an http
+301, followed, turns a POST into a GET).
 
 ## Evidence
 

@@ -9,10 +9,9 @@
  *
  * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
  * share: the exec seam, the config file, the name validators, the branch
- * names, the lobby readers, and the hub opened from its env file (`hubFromEnv`).
+ * names and the lobby readers.
  * It runs from the installed plugin cache, so every specifier is
- * `node:`-prefixed or `./kata-client.mjs` (itself import-free), and there are
- * no npm dependencies.
+ * `node:`-prefixed, and there are no npm dependencies.
  *
  * ## The exec seam
  *
@@ -29,13 +28,11 @@
 
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import fs from 'node:fs'
 import fsp from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { makeKataClient, sshTransport } from './kata-client.mjs'
 
 // ── Names and shas ──────────────────────────────────────────────────────────
 
@@ -85,9 +82,8 @@ export const runOfVmName = (name) => {
 /** The whole fleet, as the server-side `ls` pattern. */
 export const FLEET_PATTERN = 'fleet-r*'
 
-/** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name,
- *  and the name of the target's one kata hub project (every run against one target
- *  files into it; a name the hub already holds answers the existing project). */
+/** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name
+ *  and of every evidence ref and folder a run has. */
 export const targetSlug = (target) => String(target).replace('/', '-')
 
 /**
@@ -186,25 +182,6 @@ export const runOfEvidenceRef = (target, ref) => {
 
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
-/** `fleet/policy.json`: every switch the laptop's fleet tools read, beside its readers. */
-export const POLICY_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
-
-/**
- * One cell of `fleet/policy.json`, named by its keys (`['launch', 'kata',
- * 'mode']`). The answer is always one of `allowed`: the cell's value when it
- * names one, else the first — so a file that cannot be read, or a cell nobody
- * recognises, is the default and never a refusal.
- */
-export function policyCell (keys, allowed, policyPath = POLICY_FILE) {
-  try {
-    let value = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
-    for (const key of keys) value = value?.[key]
-    return allowed.includes(value) ? value : allowed[0]
-  } catch {
-    return allowed[0]
-  }
-}
-
 /** The attachment every fleet integration carries (`integrations attach <name> tag:fleet`): the tag a fleet VM is created with. */
 export const FLEET_POLICY = `tag:${FLEET_TAG}`
 /** The http-proxy integration that carries the Claude bearer at the edge. */
@@ -232,67 +209,6 @@ export const FLEET_DEFAULTS = Object.freeze({
 })
 
 export const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
-
-// ── The kata hub, as the laptop knows it ────────────────────────────────────
-
-/** The one command that builds the hub, named by every refusal about it. */
-export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
-
-/** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */
-export const defaultKataEnvPath = () => path.join(os.homedir(), '.ultrapowers', 'kata-hub.env')
-
-/**
- * `~/.ultrapowers/kata-hub.env`, parsed: `{ url, token }` from its `KATA_URL=`
- * and `KATA_TOKEN=` lines, each `null` when the line is missing. The first
- * spelling of a key wins. Deciding what a missing line means is the caller's:
- * the launcher refuses, the janitor reads the target instead.
- */
-export function parseKataEnv (text) {
-  const fields = {}
-  for (const line of String(text ?? '').split('\n')) {
-    const m = /^(KATA_URL|KATA_TOKEN)=(.*)$/.exec(line.trim())
-    if (m && !(m[1] in fields)) fields[m[1]] = m[2].trim()
-  }
-  return { url: fields.KATA_URL || null, token: fields.KATA_TOKEN || null }
-}
-
-/** The host `ssh` reaches the hub at: the `KATA_URL`'s hostname, or null. */
-export const kataHostOf = (url) => {
-  try {
-    return new URL(String(url ?? '')).hostname || null
-  } catch {
-    return null
-  }
-}
-
-/**
- * The hub, opened from its env file: read `kataEnvPath` (default
- * `defaultKataEnvPath()`), take its `KATA_URL`'s host, and build a kata client
- * for `actor` over `sshTransport` on that host. Resolves
- * `{ client, host, transport, dark }` and never throws on a missing or hostless
- * env: then `client`, `host` and `transport` are null and `dark` is the reason,
- * in the words every caller refuses or reports with.
- */
-export async function hubFromEnv ({ exec, actor, kataEnvPath, share = false } = {}) {
-  const envPath = kataEnvPath ?? defaultKataEnvPath()
-  const none = (dark) => ({ client: null, host: null, transport: null, dark })
-  let text
-  try {
-    text = await fsp.readFile(envPath, 'utf8')
-  } catch (error) {
-    return none(`no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — ${KATA_HUB_FIX}`)
-  }
-  const env = parseKataEnv(text)
-  const host = kataHostOf(env.url)
-  if (host === null) {
-    return none(`${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}`)
-  }
-  // `share`: the caller makes many requests (the board reader), so they ride one ssh connection,
-  // its socket beside the env file (`%C` is ssh's own hash of the connection, so the path stays short)
-  const control = share ? path.join(path.dirname(envPath), 'hub-%C') : undefined
-  const transport = sshTransport({ sshHost: host, exec, control })
-  return { client: makeKataClient({ transport, actor }), host, transport, dark: null }
-}
 
 /**
  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent

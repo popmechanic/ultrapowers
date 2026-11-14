@@ -1,6 +1,6 @@
 // The Flock's board (map #1292): the in-memory board the engine (factory/flock/engine.mjs) uses —
-// Kata's verbs (ready, claim, release, park, done, reopen, post_belief, board_read, add task), no
-// Kata. kata_mirror.mjs mirrors its moves onto the hub when the boot passes a record.
+// the verbs of an issue board (ready, claim, release, park, done, reopen, post_belief, board_read,
+// add task) and no service behind them: its moves are rows in events.jsonl.
 
 // Each claimer starts its walk of the ready list at its own offset, so N claimers
 // do not all race for the first row.
