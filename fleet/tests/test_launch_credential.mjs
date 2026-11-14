@@ -29,8 +29,8 @@
  *       with `result.token` exactly the held line, carried by `renderLaunch`
  *       as its own whole line; `{ ok: true }` alone renders no `token:` line.
  *
- * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential,
- * kata: null })` in-process over the launch sims' shared rig in
+ * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential })`
+ * in-process over the launch sims' shared rig in
  * `_lobby_helpers.mjs` (`launchRules`, `launchWorkspace`): a local bare origin
  * stands in for GitHub, and every lobby verb, `gh api` and `python3` call is
  * answered by a rule.
@@ -147,8 +147,7 @@ const launchIn = (ws, { exec, refreshCredential, readUsage }) => launch({
   now: () => NOW,
   sleep: async () => {},
   refreshCredential,
-  ...(readUsage === undefined ? {} : { readUsage }),
-  kata: null
+  ...(readUsage === undefined ? {} : { readUsage })
 })
 
 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))

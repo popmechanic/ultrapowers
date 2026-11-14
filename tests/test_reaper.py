@@ -2,8 +2,8 @@
 
 The remover answers 202 only when the caller is a fleet VM whose name carries
 the run it names and the record says that run ended done. The record is the
-evidence repository's status page at the run's tag by default; the kata run
-issue is the rollback. No socket is opened: the readers are handed in.
+evidence repository's status page at the run's tag. No socket is opened: the
+reader is handed in.
 """
 import base64
 import importlib.util
@@ -55,24 +55,12 @@ def test_decide_answers_409_unless_the_record_said_done(done):
     assert reaper.decide(CALLER, BODY, done) == (409, None)
 
 
-# ── The two records ────────────────────────────────────────────────────────
+# ── The record ─────────────────────────────────────────────────────────────
 
 def test_status_done_is_a_status_page_whose_state_is_done():
     assert reaper.status_done({"state": "done", "merged": None}) is True
     for status in [None, {}, {"state": "parked"}, {"state": "failed"}, {"state": "running"}, {"state": "publishing"}, "done"]:
         assert reaper.status_done(status) is False
-
-
-def test_issue_done_is_a_run_issue_closed_as_done():
-    assert reaper.issue_done({"status": "closed", "closed_reason": "done"}) is True
-    for issue in [None, {"status": "open"}, {"status": "closed", "closed_reason": "wontfix"}]:
-        assert reaper.issue_done(issue) is False
-
-
-def test_record_of_is_evidence_unless_it_says_kata():
-    assert reaper.record_of("kata") == "kata"
-    for value in [None, "", "evidence", "KATA", "hub"]:
-        assert reaper.record_of(value) == "evidence"
 
 
 # ── The evidence read ──────────────────────────────────────────────────────
@@ -145,34 +133,32 @@ def reader(status):
     return read, seen
 
 
-def test_evidence_record_done_at_the_tag_answers_202_and_kata_is_not_asked():
+def test_evidence_record_done_at_the_tag_answers_202():
     read, seen = reader({"state": "done"})
-    assert reaper.answer_for(CALLER, RAW, "evidence", EVIDENCE, read=read, find=never) == (202, VM, 7)
+    assert reaper.answer_for(CALLER, RAW, EVIDENCE, read=read) == (202, VM, 7)
     assert seen == [(EVIDENCE, "o/r", 7)]
 
 
 @pytest.mark.parametrize("status", [None, {"state": "parked"}, {"state": "failed"}, {"state": "running"}, {}])
 def test_evidence_record_that_does_not_say_done_answers_409(status):
     read, _ = reader(status)
-    assert reaper.answer_for(CALLER, RAW, "evidence", EVIDENCE, read=read, find=never) == (409, None, 7)
+    assert reaper.answer_for(CALLER, RAW, EVIDENCE, read=read) == (409, None, 7)
 
 
 def test_no_record_is_read_for_a_wrong_caller_body_or_target():
-    assert reaper.answer_for(None, RAW, "evidence", EVIDENCE, read=never, find=never) == (403, None, None)
-    assert reaper.answer_for("kata-hub.exe.xyz", RAW, "evidence", EVIDENCE, read=never, find=never) == (403, None, 7)
-    assert reaper.answer_for(CALLER, b"not json", "evidence", EVIDENCE, read=never, find=never) == (400, None, None)
+    assert reaper.answer_for(None, RAW, EVIDENCE, read=never) == (403, None, None)
+    assert reaper.answer_for("kata-hub.exe.xyz", RAW, EVIDENCE, read=never) == (403, None, 7)
+    assert reaper.answer_for(CALLER, b"not json", EVIDENCE, read=never) == (400, None, None)
     other = json.dumps({"run": 8, "target": "o/r"}).encode("utf-8")
-    assert reaper.answer_for(CALLER, other, "evidence", EVIDENCE, read=never, find=never) == (403, None, 8)
+    assert reaper.answer_for(CALLER, other, EVIDENCE, read=never) == (403, None, 8)
     bad = json.dumps({"run": 7, "target": "nowhere"}).encode("utf-8")
-    assert reaper.answer_for(CALLER, bad, "kata", EVIDENCE, read=never, find=never) == (400, None, 7)
+    assert reaper.answer_for(CALLER, bad, EVIDENCE, read=never) == (400, None, 7)
 
 
-def test_the_kata_rollback_decides_on_the_run_issue_and_reads_no_evidence():
-    closed = lambda target, run: {"status": "closed", "closed_reason": "done"}
-    assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=closed) == (202, VM, 7)
-    still_open = lambda target, run: {"status": "open"}
-    assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=still_open) == (409, None, 7)
-    assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=lambda t, r: None) == (409, None, 7)
+def test_no_kata_is_left_in_the_remover():
+    text = REAPER.read_text()
+    assert "kata" not in text.lower()
+    assert "localhost:8000" not in text
 
 
 def test_rm_succeeded_counts_a_2xx_and_a_vm_already_gone():

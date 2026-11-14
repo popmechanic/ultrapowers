@@ -17,7 +17,6 @@ import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
-import { fileRunOnHub } from './kata-file.mjs'
 
 import {
   COMMENT_MAX_BYTES,
@@ -41,9 +40,6 @@ import {
   isSafeSha,
   isSafeTarget,
   isVmName,
-  KATA_HUB_FIX,
-  hubFromEnv,
-  defaultKataEnvPath,
   listIntegrations,
   liveBranchFor,
   loadFleetConfig,
@@ -51,7 +47,6 @@ import {
   output,
   parseArgs,
   parseMemoryGb,
-  policyCell,
   readEvidenceSetting,
   readPlanCapacity,
   runCli,
@@ -91,23 +86,6 @@ const VERDICTS_FILE = 'gate-verdicts.json'
 const LAUNCH_FLAGS = [
   'account', 'again', 'base', 'cpu', 'engine', 'evidence-repo', 'hold', 'json', 'memory', 'repo', 'target'
 ]
-/** The third file of the plan commit: the run's kata record — the project, the
- *  run issue and one issue per task on the hub, each with the revision it had
- *  when the launcher last read it (#913). Written only when a hub is reached. */
-const KATA_FILE = 'kata.json'
-/**
- * Whether a launch asks the kata hub at all — the `launch.kata.mode` cell of
- * `fleet/policy.json`. `off`: the hub is not opened, not pinged and nothing is
- * filed on it, so the plan commit carries no `kata.json`; the sandbox writes
- * to Kata only when that file is there, so the engine and the boot write
- * nothing either. `on` is the rollback: every launch as before 2026-11-13.
- */
-export const KATA_MODES = Object.freeze(['off', 'on'])
-export const kataModeOf = (policyPath) => policyCell(['launch', 'kata', 'mode'], KATA_MODES, policyPath)
-/** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
- *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
- *  reads the same file. */
-
 /**
  * What a base off the default branch is told to do. The parked branch is not
  * lost and nothing here takes a patch: decision 5 of #715 asks the operator to
@@ -665,7 +643,7 @@ export async function launch (params) {
 async function launchBody ({
   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
   refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
-  kata, kataEnvPath = defaultKataEnvPath(), kataMode, held
+  held
 }) {
   // ── Local validation. Nothing has been executed at this point, and nothing
   //    will be until every one of these passes. ──────────────────────────────
@@ -706,30 +684,6 @@ async function launchBody ({
       'no VM was created and nothing was pushed'
     )
   }
-  // The hub, on the same branch the account takes: an injected
-  // `kata` is the client (a fake in a sim; `null` means "no hub" outright); with
-  // none injected and no injected config, the laptop's own `kata-hub.env` is
-  // read and the client is built on it — one `ssh <hub> curl …` per request
-  // through this launch's own `exec` seam, the bearer sourced ON the hub. A
-  // config injected with no `kata` is a launch with no hub at all: no request
-  // is made and the result's `kata` is null, which is what keeps every sim that
-  // hands `launch` a config at its BASE behaviour. The env read is a refusal
-  // that precedes every command.
-  //
-  // All of it under `launch.kata.mode` `on` alone. Under `off` — the default —
-  // there is no hub: an injected client is not used, the env file is not
-  // opened, and a laptop with no `kata-hub.env` launches all the same.
-  const hubMode = KATA_MODES.includes(kataMode) ? kataMode : kataModeOf()
-  let kataHost = null
-  let hub = hubMode !== 'on' || kata === undefined ? null : kata
-  if (hubMode === 'on' && kata === undefined && (config === undefined || config === null)) {
-    const opened = await hubFromEnv({ exec, actor: 'launch', kataEnvPath })
-    if (opened.dark !== null) throw new Refusal(`launch: ${opened.dark}`)
-    hub = opened.client
-    kataHost = opened.host
-  }
-  const kataUrl = hub === null ? null : (hub.url ?? kataHost)
-
   // The ceiling this run is sized under: `--cpu`/`--memory` when the launch
   // line carries them — an explicit value wins outright, and is then its own
   // ceiling — and otherwise the `fleet.json` pair, or `FLEET_DEFAULTS`. The
@@ -839,22 +793,10 @@ async function launchBody ({
     )
   }
 
-  // ── The hub answers, or nothing is launched. One `ping` right after the
-  //    integrations read and before the reap: a hub that is dark is a run
-  //    that would park at boot on `kata unreachable`, so the laptop refuses it
-  //    here, before a plan branch or a VM exists.
-  if (hub !== null) {
-    try {
-      await hub.ping()
-    } catch (error) {
-      throw new Refusal(`launch: the kata hub at ${kataUrl} did not answer its ping — ${error?.message ?? error}; nothing was pushed and no VM was created (${KATA_HUB_FIX} rebuilds it)`)
-    }
-  }
-
   // ── The reap and the duplicate check (#1036), before the run number is
   //    read: `janitor.mjs`'s `preflight`.
   const { reaped, reapError, again } = await preflight({
-    exec, now, hub, evidence, repoDir, target, planText, again: opts.again
+    exec, now, evidence, repoDir, target, planText, again: opts.again
   })
 
   // The N this launch asks for: one past the highest the evidence repository
@@ -864,10 +806,9 @@ async function launchBody ({
   const firstRun = inEvidence + 1
 
   // ── The parse. Exactly one, here, before the `new` verb — everything
-  //    downstream reads it: the VM's size, and the tasks and edges
-  //    `fileRunOnHub` files on the hub. `plan_parse.py`'s output does not move
-  //    with the run number, so a bumped push files the same parse under N+1;
-  //    the stamp is only a label.
+  //    downstream reads it: the VM's size and what a fresh sandbox must run.
+  //    `plan_parse.py`'s output does not move with the run number; the stamp
+  //    is only a label.
   const firstCompiled = await compilePlanForRun({
     exec, repoDir, planPath, stamp: `run-${firstRun}`, compilerPath: compiler.parserPath
   })
@@ -882,38 +823,6 @@ async function launchBody ({
   //    never touched. The push is also what reserves the run number, so the N
   //    the launch ends up with is the one that got through — see `pushPlan`.
   const commands = []
-  // The hub's half of each push attempt: the target's project, the issues
-  // filed under THIS N, the record read back — and, on a bump, the run-N issue
-  // CLOSED before N+1 is filed. Nothing is destroyed: the task issues are the
-  // repository's and the same idempotency keys answer them again, so a bump
-  // refiles them under the new run issue rather than purging a project that
-  // holds the target's whole history.
-  const kataCall = async (method, fn) => {
-    try {
-      return await fn()
-    } catch (error) {
-      throw new LobbyError(`launch: kata ${method} failed — ${error?.message ?? error}; no plan branch was pushed and no VM was created`)
-    }
-  }
-  const kataStep = hub === null
-    ? null
-    : async (n, compiled) => {
-        const record = await fileRunOnHub({
-          hub, call: kataCall, planText, target, base: opts.base, n, compiled
-        })
-        return { text: `${JSON.stringify(record, null, 2)}\n`, record }
-      }
-  // A number that was taken, said on the run issue it was filed under. `wontfix`
-  // is the reason a run that never existed deserves, and the message names the
-  // number so a reader of the target's one project can tell an abandoned
-  // attempt from a run that failed.
-  const kataBump = hub === null
-    ? null
-    : (record, taken, next) => kataCall('close', () => hub.close(record.project.id, record.run.uid, {
-        reason: 'wontfix',
-        message: `run-${taken} was taken in the evidence repository before this plan commit could be pushed; ` +
-          `this launch refiles the same tasks under run-${next}.`
-      }))
   const plan = await pushPlan({
     exec,
     repoDir,
@@ -925,8 +834,6 @@ async function launchBody ({
     verdictsText,
     commands,
     reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
-    kataStep,
-    kataBump,
     compiled: firstCompiled
   })
   const run = plan.run
@@ -1015,10 +922,6 @@ async function launchBody ({
     // held rather than rotated because a listed fleet VM is still live — carried
     // onto the launch line so a launch beside live runs says so.
     ...(cred.held === undefined ? {} : { token: cred.held }),
-    // The hub's record of this run — `{url, project, run, tasks}`, the same
-    // object the plan commit carries as `.ultrapowers/kata.json` — or null for
-    // a launch that reached no hub.
-    kata: plan.kata,
     github: githubName,
     cpu,
     memory,
@@ -1088,7 +991,7 @@ async function readDefaultBranch ({ exec, repoDir }) {
 /**
  * The plan commit: a commit with NO parent whose tree is the run's folder
  * alone — `runs/<slug>/<N>/plan.md`, and `gate-verdicts.json` when the plan
- * has a sibling `.gate-verdicts.json`, and `kata.json` when a hub is reached —
+ * has a sibling `.gate-verdicts.json` —
  * built entirely with plumbing against a temporary (empty) index file, in the
  * target clone's object store. Nothing of `<base>`'s tree is read into it: it
  * is pushed to the evidence repository, which holds no copy of the product.
@@ -1098,7 +1001,7 @@ async function readDefaultBranch ({ exec, repoDir }) {
  * A local git failure here is still a refusal: exe.dev has seen nothing but
  * reads, and neither the target nor the evidence repository has anything new.
  */
-async function commitPlan ({ exec, repoDir, target, base, run, planText, verdictsText = null, kataText = null }) {
+async function commitPlan ({ exec, repoDir, target, base, run, planText, verdictsText = null }) {
   const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
   const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
   const plumb = async (argv, options = {}) => {
@@ -1112,7 +1015,6 @@ async function commitPlan ({ exec, repoDir, target, base, run, planText, verdict
     const folder = runFolderFor(target, run)
     const entries = [[`${folder}/${PLAN_FILE}`, planText]]
     if (verdictsText !== null) entries.push([`${folder}/${VERDICTS_FILE}`, verdictsText])
-    if (kataText !== null) entries.push([`${folder}/${KATA_FILE}`, kataText])
     for (const [rel, text] of entries) {
       const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
       if (!isSafeSha(blob)) {
@@ -1157,33 +1059,25 @@ const PUSH_ATTEMPTS = 3
  * decide, not the wording of a rejection line.
  *
  * The parse does not move with the number: `compiled` is the launch's one
- * parse, filed on the hub under whichever N the push wins, and it rides back
- * out on `compiled` for the verb to size the box from.
+ * parse, and it rides back out on `compiled` for the verb to size the box from.
  *
  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
  * text a single refused push has always carried — with ` after <n> tries` when
  * more than one was made.
  */
 async function pushPlan ({
-  exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread,
-  kataStep = null, kataBump = null, compiled = null
+  exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread, compiled = null
 }) {
   const url = evidenceUrlFor(evidence)
   let n = run
   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
     const branch = liveBranchFor(target, n)
-    // The hub is filed for THIS N before the commit is built: a bump closes
-    // the run issue it filed and files N+1's instead. The project is the
-    // target's and outlives every number, so a bump destroys nothing.
-    const filed = kataStep === null ? null : await kataStep(n, compiled)
-    const sha = await commitPlan({
-      exec, repoDir, target, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
-    })
+    const sha = await commitPlan({ exec, repoDir, target, base, run: n, planText, verdictsText })
     const pushArgv = ['-C', repoDir, 'push', url, `${sha}:refs/heads/${branch}`]
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
     if (push.code === 0) {
-      return { run: n, sha, branch, compiled, kata: filed === null ? null : filed.record }
+      return { run: n, sha, branch, compiled }
     }
 
     const refusal = () =>
@@ -1194,9 +1088,7 @@ async function pushPlan ({
     if (attempt === PUSH_ATTEMPTS) throw refusal()
     const highest = await reread()
     if (highest < n) throw refusal()
-    const taken = n
     n = highest + 1
-    if (filed !== null) await kataBump(filed.record, taken, n)
   }
 }
 
@@ -1250,7 +1142,6 @@ export const renderLaunch = (result) => [
   result.account === undefined ? null : `account=${result.account}`,
   result.usage === undefined ? null : result.usage,
   result.token === undefined ? null : result.token,
-  result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
   engineLine(result),
   result.compiler === undefined || result.compiler === null ? null : `compiler=${result.compiler}`,
   ...(result.baseFacts ?? [])

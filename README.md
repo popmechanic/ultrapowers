@@ -198,7 +198,7 @@ alongside it if you want its brainstorming and practice skills as companions.
 ### 2. `/ultrapowers setup`
 
 Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
-`exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
+`exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper` — and fixes every red row with you,
 offering each choice as options rather than asking you to invent an answer. Setup is safe to
 re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
 

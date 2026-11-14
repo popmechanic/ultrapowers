@@ -11,8 +11,8 @@
  *
  * Legs, each naming the Machine clause it comes from:
  *
- *   (a) [M1] `ROW_IDS` is exactly the eleven pinned ids, the tenth `cloudflare`,
- *       and `doctor()` answers eleven rows in that same order.
+ *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the ninth `cloudflare`,
+ *       and `doctor()` answers ten rows in that same order.
  *   (b) [M2] with no `cloudflare` object in `integrations list --json`: the
  *       row is `ok`, and its detail contains `absent` and `Publish:`.
  *   (c) [M2] with the object present and attached to `tag:fleet`: `ok`.
@@ -75,15 +75,15 @@ const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare
 
 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
 {
-  const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper']
+  const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper']
   assert.deepEqual(
     [...ROW_IDS], want,
-    `(a) [M1] ROW_IDS is exactly the eleven pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+    `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
   )
 
   const exec = makeExec(JSON.stringify([]))
   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
-  assert.equal(result.rows.length, 11, `(a) [M1] doctor() answers eleven rows — got ${result.rows.length}`)
+  assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
   assert.deepEqual(
     result.rows.map((r) => r.id), want,
     `(a) [M1] doctor()'s rows are in ROW_IDS order — got: ${JSON.stringify(result.rows.map((r) => r.id))}`
@@ -131,18 +131,6 @@ const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare
     cloudflare.detail.includes('integrations attach cloudflare tag:fleet'),
     `(d) [M2] detail names the attach — got: ${JSON.stringify(cloudflare.detail)}`
   )
-}
-
-// ── (e) the kata row follows `launch.kata.mode` ─────────────────────────────
-{
-  // No `kata` integration and no hub VM anywhere in this listing.
-  const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
-  const off = (await doctor({ config: {}, exec, configKeys: null, account: null })).rows.find((r) => r.id === 'kata')
-  assert.equal(off.status, 'ok', `(e) with kata off (the policy file's default) a missing hub is not a red row — got: ${JSON.stringify(off)}`)
-  assert.ok(off.detail.includes('launch.kata.mode is off'), `(e) and the detail says why — got: ${JSON.stringify(off.detail)}`)
-  const on = (await doctor({ config: {}, exec, configKeys: null, account: null, kataMode: 'on' })).rows.find((r) => r.id === 'kata')
-  assert.equal(on.status, 'missing', `(e) under the rollback the hub is a prerequisite again — got: ${JSON.stringify(on)}`)
-  assert.ok(on.detail.includes('node fleet/kata-hub.mjs'), '(e) and the red names the command that builds it')
 }
 
 console.log('ALL TESTS PASSED')

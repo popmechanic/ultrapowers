@@ -53,7 +53,7 @@ differs by version and by host, never has to be derived by hand. The reference f
 which Claude Code does not rewrite, write the same directory as `<plugin-root>`.
 
 The doctor answers with one row per piece, and its row ids are `exe-dev`,
-`capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, in that
+`capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper`, in that
 order. Each row carries
 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
 section of `references/first-run.md` that repairs it. Read the rows back to the

@@ -1,5 +1,5 @@
 /**
- * fleet/tests/test_doctor_reaper.mjs — the doctor's eleventh row, `reaper`: the exe.dev key the
+ * fleet/tests/test_doctor_reaper.mjs — the doctor's tenth row, `reaper`: the exe.dev key the
  * hub removes a finished run's VM with has not expired (the key expired 2026-10-30 and nothing
  * said so; on 2026-11-13 the hub answered eight finished VMs and removed none).
  *

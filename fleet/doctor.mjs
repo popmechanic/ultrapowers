@@ -2,7 +2,7 @@
 /**
  * fleet/doctor.mjs — "do you have a fleet?"
  *
- * The eleven rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+ * The ten rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
  * each red row names the `references/first-run.md` section that builds the
  * piece. This header does not restate them (#1444). Every row is a read:
  * running the doctor twice is the same as running it once.
@@ -43,17 +43,16 @@ import {
   parseArgs,
   parseJson,
   parseMemoryGb,
-  policyCell,
   readEvidenceSetting,
   readFleetJson,
   readPlanCapacity,
   runCli
 } from './lobby.mjs'
 
-/** The eleven rows, in the order the doctor reports them. Each id is also a
+/** The ten rows, in the order the doctor reports them. Each id is also a
  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
-  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper'
+  'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper'
 ])
 
 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
@@ -68,18 +67,18 @@ const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 
 /** The standing lobby reads, as the remote half of `ssh exe.dev "<remote>"`,
  *  in the order the doctor issues them; the three `claude-token.mjs` reads sit
- *  between the github and kata ones, then the `help` reads of the
+ *  between the github and hub ones, then the `help` reads of the
  *  verb-drift row, one per verb of the record; together they are the only
  *  commands the doctor ever runs, every one through the exec seam
  *  `exec(cmd, argv)` — `ssh` or `node`, never a shell string.
  *
- *  The last is the `kata` row's: the hub is the one thing the doctor asks `ls`
- *  about, every other row reading edge-side objects the listing already
- *  carries. */
+ *  `hubVm` is the `reaper` row's: the hub VM (`kata-hub`, the name it has had
+ *  since it also ran the kata daemon) is the one thing the doctor asks `ls`
+ *  about, since the remover is asked from it. */
 const READS = Object.freeze({
   whoami: 'whoami',
   github: 'integrations setup github --list',
-  kataVm: 'ls kata-hub --json',
+  hubVm: 'ls kata-hub --json',
   keys: 'ssh-key list --json'
 })
 
@@ -629,58 +628,19 @@ function evidenceRow (evidence, repoRes, found) {
   return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is attached to ${FLEET_POLICY}`)
 }
 
-// ── kata ─────────────────────────────────────────────────────────────────────
+// ── the hub VM ───────────────────────────────────────────────────────────────
 
-/** The hub's VM, the integration that fronts it, and the one command that
- *  builds either. */
-const KATA_INTEGRATION = 'kata'
-const KATA_VM = 'kata-hub'
-const KATA_FIX = 'node fleet/kata-hub.mjs'
+/** The one persistent VM of the fleet: the home of the VM remover. */
+const HUB_VM = 'kata-hub'
 
 /** `ssh exe.dev "ls kata-hub --json"` → the `kata-hub` row of `.vms[]`, or null.
  *  `.vms[]` only: `.shared_vms[]` are other people's machines. */
-function kataVmRow (res) {
+function hubVmRow (res) {
   if (!res || res.code !== 0) return null
   const parsed = parseJson(res.stdout)
   const rows = Array.isArray(parsed?.vms) ? parsed.vms : []
-  return rows.find((entry) => entry?.vm_name === KATA_VM) ?? null
+  return rows.find((entry) => entry?.vm_name === HUB_VM) ?? null
 }
-
-/**
- * The hub, in the order an operator fixes it: the object, its bearer, its
- * attachment, and then the VM behind it.
- */
-function kataRow (found, vmsRes) {
-  const have = found === null ? undefined : found.get(KATA_INTEGRATION)
-  if (have === undefined) {
-    return row('kata', 'missing', `no ${KATA_INTEGRATION} http-proxy at the edge — ${KATA_FIX}`)
-  }
-  if (!have.bearer) {
-    return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
-  }
-  const off = attachRowFor(KATA_INTEGRATION, { id: 'kata', found })
-  if (off !== null) return off
-  const vm = kataVmRow(vmsRes)
-  if (vm === null) {
-    return row('kata', 'missing', `no ${KATA_VM} VM — ${KATA_FIX}`)
-  }
-  const status = typeof vm.status === 'string' && vm.status !== '' ? vm.status : 'unknown'
-  return row(
-    'kata',
-    'ok',
-    `${KATA_INTEGRATION} carries the bearer, attached to ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
-  )
-}
-
-/** `launch.kata.mode` of `fleet/policy.json`, read as the launcher reads it: `off` unless the cell says `on`. */
-const kataModeOf = () => policyCell(['launch', 'kata', 'mode'], ['off', 'on'])
-
-/** While no launch asks the hub, the hub is no prerequisite: the row is green and says why. */
-const kataOffRow = () => row(
-  'kata',
-  'ok',
-  'not asked: launch.kata.mode is off in fleet/policy.json, so no launch reaches the kata hub (a run is read with fleet/run-read.mjs)'
-)
 
 // ── cloudflare ───────────────────────────────────────────────────────────────
 
@@ -785,8 +745,7 @@ function reaperKeyRow (keysRes, now) {
  * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
  */
 export async function doctor ({
-  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now(),
-  kataMode = kataModeOf()
+  config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now()
 } = {}) {
   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
   const run = exec ?? defaultExec
@@ -819,10 +778,10 @@ export async function doctor ({
     : ['usage', '--json', '--no-rotate'])
   const accounts = await tokenRead(run, ['accounts', '--json'])
   // The hub's VM, then the evidence repository when a key names one.
-  const kataVms = await read(READS.kataVm)
+  const hubVms = await read(READS.hubVm)
   // The account's keys, for the one the hub's reaper removes VMs with, and the remover's own answer.
   const keys = await read(READS.keys)
-  const hub = kataVmRow(kataVms)
+  const hub = hubVmRow(hubVms)
   const reaperProbe = found && found.has(REAPER_INTEGRATION) && typeof hub?.ssh_dest === 'string' && hub.ssh_dest !== ''
     ? await run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', hub.ssh_dest, REAPER_PROBE])
     : null
@@ -841,7 +800,6 @@ export async function doctor ({
     integrationsRow(found, want),
     evidenceRow(wantEvidence, evidenceRepo, found),
     verbDriftRow(drift),
-    kataMode === 'on' ? kataRow(found, kataVms) : kataOffRow(),
     cloudflareRow(found),
     reaperRow(found, keys, now, reaperProbe)
   ]

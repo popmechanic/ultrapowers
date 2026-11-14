@@ -109,8 +109,7 @@ const launchIn = (ws, { exec, extra = [] }) => launch({
   config: CAPPED,
   now: () => NOW,
   sleep: async () => {},
-  refreshCredential: () => ({ ok: true }),
-  kata: null
+  refreshCredential: () => ({ ok: true })
 })
 const drive = async ({ rows, record, extra = [] }) => {
   const ws = workspace()
@@ -215,7 +214,7 @@ const assertLaunched = (d, leg) => {
   ]
   const janitorIn = async (record) => {
     const exec = makeExec({ rules: [sshRule("ls '", vmsPayload(rows)), recordRule(record), NO_REMOTE_OPS, NO_NETWORK_GIT] })
-    return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW, kata: null })
+    return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW })
   }
   const recorded = await janitorIn(RUNNING)
   assert.deepEqual(

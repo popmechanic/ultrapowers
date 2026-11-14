@@ -63,7 +63,7 @@ the engine's exit code is the merge decision.
   `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check}.py`.
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.
-- `fleet/` — laptop tools (launcher, doctor, token, janitor, board reader) and the VM
+- `fleet/` — laptop tools (launcher, doctor, token, janitor, run reader) and the VM
   bootstrap (see `.claude/rules/fleet.md`). `fleet/CONTRACT.md` is the authority for every
   literal, `fleet/RUNBOOK.md` the operator procedure; the contract wins.
 - `hooks/` — wired by `hooks/hooks.json`. `session_start.sh` injects the plan-routing rule
@@ -131,8 +131,8 @@ the engine's exit code is the merge decision.
   the sandbox is the one writer of a run and the launcher reaps by hand after a sleep, so
   nothing on a timer here merges, reaps or edits. Reading is telemetry and is wanted: watch a
   run with `fleet/run-read.mjs --follow`, in the background or on any cadence (operator,
-  2026-09-29, narrowing the 2026-09-05 no-timer rule to writers). A run writes nothing to the
-  kata hub (`launch.kata.mode` is `off` in `fleet/policy.json`, 2026-11-13; `on` is the rollback).
+  2026-09-29, narrowing the 2026-09-05 no-timer rule to writers). A run writes to no issue board:
+  the kata hub left on 2026-11-13, and its rollback is a checkout made before that.
 - **Every choice is an AskUserQuestion:** 2–3 concrete options with consequences and a
   `(Recommended)` tag, always plus `Please explain` — which re-asks in place with the
   explanation written in, escalating from plain words to a before-and-after to a rewrite.
@@ -180,7 +180,7 @@ the engine's exit code is the merge decision.
   never delete a branch while auto-merge is pending (GitHub closes the PR).
 - **When an engine gate is broken, route around the fleet:** offer to implement the signed
   plan inline first, not a relaunch.
-- **The durable record is GitHub issues and PRs, the evidence tags and kata** — Claude's memory
+- **The durable record is GitHub issues and PRs and the evidence tags** — Claude's memory
   is off. A fact worth keeping goes in an issue comment, the RUNBOOK's Traps, or here.
 
 ## Conventions & gotchas

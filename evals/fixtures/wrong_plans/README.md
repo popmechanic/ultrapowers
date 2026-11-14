@@ -12,6 +12,11 @@ merges and every run starts from the same commit:
 node fleet/launch.mjs <clone>/.plan/wrong/<id>.md --target popmechanic/flock-baseline --base <manifest base> --engine <sha> --repo <clone> --hold
 ```
 
+The manifest's base, `d668b2e7`, is two commits behind the fixture's main since 2026-11-13: run 48
+merged the control plan on purpose (a check of the hub's VM remover) and a revert put the files
+back, so main (`5683eb2a`) holds the same tree as the base. A run launched at the base takes main
+in with no file changed.
+
 `wrong-literal` is refused by the launcher on its gate record; that refusal is its result. Score
 the rest from the evidence clone, then close the held pull requests unmerged:
 

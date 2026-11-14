@@ -14,7 +14,7 @@ on the target. The launcher validates its arguments, reads the account pool,
 computes N from the evidence repository's `live/<owner>-<repo>/run-*` branches
 and `<owner>-<repo>/run-*` tags, refreshes the Claude bearer, and pushes the plan
 as one parentless commit to `live/<owner>-<repo>/run-<N>` in the evidence
-repository — its tree is `runs/<owner>-<repo>/<N>/` with `plan.md`, `kata.json`
+repository — its tree is `runs/<owner>-<repo>/<N>/` with `plan.md`
 and `gate-verdicts.json`, its message naming the target and base sha.
 Then it issues one lobby verb, `new`, which creates a fresh VM named
 `fleet-r<N>-<yymmddHHMM>-<4 hex>` with `--tag fleet`, the assignment as its
@@ -214,7 +214,7 @@ under `runs/`, on `live/*` branches and on the run tags. The janitor (its
 close-out included), the census and the launcher's duplicate check read runs only from
 here (with the key unset the janitor can read no run and reaps none).
 
-The doctor's tenth row, `cloudflare`, is not part of this one-time walk: it is
+The doctor's ninth row, `cloudflare`, is not part of this one-time walk: it is
 the deploy's credential, needed only by a plan that carries a `**Publish:**`
 line, and an absent object is green. When one exists it is judged the same way
 as the rest of this section, and it is built the same way, an `http-proxy`
@@ -227,37 +227,21 @@ ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.
 `skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
 goes on its stdin.
 
-**7. `kata` — the hub.** One persistent VM, `kata-hub`, running the kata issue
-daemon, plus the one `http-proxy --peer` integration every sandbox reaches it
-through. Built by one command, which is idempotent — on a built hub it prints
-`kata-hub already built` and issues no verb, and on a half-built one it resumes:
+**7. The hub VM (optional).** One persistent VM, `kata-hub` (the name it has
+had since it ran the kata issue daemon, which left on 2026-11-13), is the home
+of the VM remover below. A fleet without one works: each finished run's VM
+then waits for the janitor, and the doctor's `reaper` row is green. To have
+one, create it by hand, small, with no tag and a comment the janitor honours:
 
 ```bash
-node fleet/kata-hub.mjs
+ssh exe.dev "new --name kata-hub --cpu 1 --memory 2GB --disk 20GB --comment 'fleet hub — persistent service, do not reap'"
 ```
 
-It issues three mutating verbs and nothing else: `new --name kata-hub --cpu 1
---memory 2GB --disk 20GB` with the rendered setup script on stdin and no tag at
-all, `share port kata-hub 8000`, and
-
-```bash
-ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --attach tag:fleet"
-```
-
-with a freshly minted 32-byte bearer on stdin. `<https_url>` is read off the
-`kata-hub` row of `ls kata-hub --json`, never guessed from the VM name. It then
-waits for first boot, delivers `/var/lib/kata/config.toml` and
-`/etc/kata/kata.env` (`root:exedev`, 0640) over ssh, restarts the unit, waits
-for `systemctl is-active kata.service` to answer `active`, and only then writes
-`~/.ultrapowers/kata-hub.env` at mode 0600 with `KATA_URL` and `KATA_TOKEN`.
 The hub carries no tag, so the janitor's `fleet-r*` never lists it; its comment
 says so a second time. Its 1 vCPU and 2 GB come out of the same pool step 2
 measures. Never `cp` the hub, or any fleet VM, without `--copy-tags=false`:
 `cp --copy-tags` is on by default, so the copy inherits `tag:fleet` and with it
-every credential the tag grants. Never prune the `peer-kata` ssh key
-`--peer` generates: it is how a sandbox reaches the hub, and it goes when the
-integration goes. A missing attachment is repaired as in step 5:
-`integrations attach kata tag:fleet`.
+every credential the tag grants.
 
 ### The hub's reaper (#1470)
 
@@ -291,14 +275,6 @@ the hub with one read of a run that has ended — it prints that run's page:
 ssh kata-hub.exe.xyz "curl -sS -H 'Accept: application/vnd.github.raw' 'https://github.int.exe.xyz/api/v3/repos/<evidence owner>/<repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>'"
 ```
 
-The rollback is the record the reaper read before 2026-11-13, the run issue on
-the hub's own kata, closed as done. It is one line and a restart, and
-deleting the line is the way forward again:
-
-```bash
-ssh kata-hub.exe.xyz 'echo REAPER_RECORD=kata | sudo tee -a /etc/reaper/reaper.env && sudo systemctl restart reaper.service'
-```
-
 A port other than 8000 rides in the target URL. The reaper removes through
 `lobby-rm`, the hub-only integration holding the `rm`-only key (`hub-reaper`).
 That key expired 2026-10-30 and nothing said so: on 2026-11-13 the journal read
@@ -308,8 +284,9 @@ the key's expiry. Renew it with `bash fleet/reaper-key.sh`: it mints a new `rm`-
 key whose label begins `hub-reaper` (a label is never reused), pipes it on stdin to
 `integrations edit lobby-rm --bearer=-`, and tests the remover (first-run.md §reaper).
 The journal (`journalctl -u reaper`) has one line per request: the caller, the
-run, the status, the record it was decided on (`record=evidence`, or
-`record=kata` under the rollback) and, on 202, whether the removal succeeded.
+run, the status and, on 202, whether the removal succeeded. Until 2026-11-13
+the reaper decided on the hub's kata run issue; that read is gone, and the way
+back is a checkout from before that day with `kata.service` started again.
 
 ## Per run
 
@@ -339,9 +316,8 @@ repository, because the sandbox clones from GitHub.
 `--hold` keeps the pull request open for a person: the sandbox publishes it
 and does not merge it (a measurement run). `--again` is the one way to launch
 a plan that is already live on the target: without it the launcher refuses
-before anything is pushed, naming the live run and its VM (under the kata
-rollback a duplicate launch re-answers the live run's task issues on the hub
-and kills it, #1036).
+before anything is pushed, naming the live run and its VM (two runs of one
+plan build the same change twice, #1036).
 
 **Watch.** There is no live page; git is the record, in one place:
 
@@ -365,36 +341,8 @@ and kills it, #1036).
   read-only command, so it may run in the foreground or the background for as
   long as the run lasts; what never runs on a timer here is a writer (the reap, a merge).
 
-  Since 2026-11-13 a run writes nothing to the kata hub (`launch.kata.mode`
-  is `off` in `fleet/policy.json`), so `fleet/board-read.mjs` shows only runs
-  launched before that, or under the rollback: set the cell to `on` and the
-  launcher asks the hub before every launch again (and refuses when it is
-  down), files the run and its tasks there, and the engine and boot mirror
-  each claim, release and close onto them, which
-  `node fleet/board-read.mjs --run <N> --target <owner>/<repo> [--follow]` reads.
-- `runs/<owner>-<repo>/<N>/status.json` in the evidence repository —
-  committed at every transition and, while the engine runs, every
-  `FLEET_COMMIT_SECONDS` (default 10) that `events.jsonl` has changed, so the
-  branch is at most one tick behind. Next to it sit `events.jsonl` and
-  `engine.log`, the run's whole evidence. Read it by tag, which
-  is the one spelling that keeps working after the run's live branch is gone:
-
-  ```bash
-  gh api 'repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>' --jq .content | base64 -d
-  ```
-
-  While the run is still in flight the tag is not written yet, and the same
-  bytes are on its live branch instead, so a live run is read by branch
-  and, after the end, by tag — the two spellings of one read:
-
-  ```bash
-  gh api 'repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=live/<owner>-<repo>/run-<N>' --jq .content | base64 -d   # in flight
-  gh api 'repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>' --jq .content | base64 -d        # after the end
-  ```
-
-  The branch is deleted when the tag verifies (the contract's one-tag rule),
-  so a watcher polling the branch sees one unreadable read at the moment the run
-  finishes and reads the tag from then on.
+  A run writes to no issue board: the kata hub left on 2026-11-13, and
+  `fleet/board-read.mjs` with it.
 
 **The PR.** There is no approval step between the gate and the PR. Once the
 engine service is inactive and the branch is ahead of base, the sandbox pushes
@@ -436,15 +384,9 @@ VM whose page has said `done`, `parked` or `failed` for over an hour — the `--
 a finished run's VM is kept for one hour so the operator has a window to look
 at it before it goes, so a janitor that answers `nothing to do` beside `done`
 VMs inside that hour is the hold and not a fault (six such VMs on 2026-09-15);
-`--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. It asks no
-hub. A run whose page cannot be read — no page at either ref, a read that
-failed, or `"evidence"` unset — is left alone and named on an `unread` line.
-The rollback is one cell, `janitor.record.source` in `fleet/policy.json`, set
-to `kata`: the janitor then asks the hub for the run's issue first
-(`ssh <KATA_URL host> curl localhost:8000/api/v1/…`, the bearer sourced on the
-hub — the road the launcher takes), reaps on an issue closed or marked finished
-for over an hour, and reads the evidence repository only for a run the hub
-cannot answer, saying so on its first line when the hub is dark. Last in its report it also names, for each
+`--age 30m`, or `ssh exe.dev "rm <vm> --json"`, takes one sooner. A run whose
+page cannot be read — no page at either ref, a read that failed, or
+`"evidence"` unset — is left alone and named on an `unread` line. Last in its report it also names, for each
 target its rows carry, every `ultra/integration-run-<N>` whose highest-numbered
 pull request is closed and not merged, and deletes it (`--dry-run` only names
 it; `--target <owner>/<repo>` sweeps a target no VM names). It merges nothing:
@@ -452,9 +394,7 @@ an approved run merges its own pull request from the sandbox.
 For any fleet VM whose run has had no update in six hours it prints a line,
 once, naming where it read the age. The only ssh into a fleet VM is the unit
 read of a run the record says is in flight; a unit that has died is written as
-the death — the journal and the page on the live branch (and, under the `kata`
-rollback, the run issue marked `failed` on the hub, its metadata patched; the
-janitor closes nothing) — and reaped an hour later. A run no VM carries whose
+the death — the journal and the page on the live branch — and reaped an hour later. A run no VM carries whose
 live branch is still there is ended too, on each target a VM names and on
 `--target`'s, once its page is over `--age` old: a page still in flight is
 written `failed` and sealed (`closed out`), and a page that already says the
@@ -664,7 +604,7 @@ on the next one, ask her before editing a script.
 **TypeSafe.**
 
 - The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to
-  `tag:fleet`, the same shape as `claude-max` and `kata`, and a VM reaches it at
+  `tag:fleet`, the same shape as `claude-max`, and a VM reaches it at
   `https://typesafe.int.exe.xyz/v1/systemone` — `https` only, because the http form answers `301`
   and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
   sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
@@ -800,16 +740,6 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   prompt` starts it; an on-VM `shelley client chat` against an inactive
   service prints a conversation id and creates nothing.
 
-**The hub.**
-
-- Never restate a kata behaviour from memory. The `Kata facts (measured)` list
-  of `fleet/CONTRACT.md` is the one record, each row carrying the version and
-  the date it was read on; re-read it with
-  `node fleet/tests/probe_kata_facts.mjs` after every kata upgrade and before
-  any plan touching `fleet/kata-client.mjs`, and edit the rows that moved. An
-  issue comment cites the list rather than restating a fact — a fact copied
-  into a thread goes stale where nobody is looking.
-
 **The laptop.**
 
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
@@ -880,25 +810,13 @@ since `factory/stack/tinyapp/celld.ts` waits on it.
   two) as the raw byte. GitHub still merges such a PR by hand. Find one with
   `grep -Plc '\x00' fleet/*.mjs factory/*.mjs`; the fix is the escape, one byte.
 
-**The factory's board.**
+**A run that parked or failed.**
 
-- The sandbox runs no kata of its own (#1390): the engine writes the hub directly through
-  `https://kata.int.exe.xyz`, where the edge injects the hub's bearer. The boot passes it
-  `--kata-url`, `--kata-json` and `--kata-actor` exactly when `$FLEET_HOME/plans/<run>.kata.json`
-  exists — the plan commit's `kata.json`, written by the boot; a plan commit without one runs with
-  no board, and the boot log says `board: no … kata.json`. Before #1390 a per-sandbox daemon's bind
-  wait took about 35 s of a 74 s boot (runs 283–284, 2026-09-30).
-- A factory run that ended `parked` or `failed` leaves its hub run issue open but marks it: the boot
-  (`close_run` and the nothing-ahead park in `boot()`, and `fail()` once its evidence is ready in
-  `factory/boot.sh`) runs `board.mjs mark-run`, which writes `work.state` = `parked`|`failed` on the run
-  issue's metadata beside `work.attention` = `needs-human` and `work.attention_msg` (the phase, or the
-  failure's error), labels every task issue `needs-review` with one comment naming the evidence, and
-  leaves them open so a relaunch reuses them (#1391); the janitor reaps the VM an hour on by its
-  ordinary rule (#1150, #1288). Every run waiting on you is one query on the hub:
-  `kata list --meta work.attention=needs-human`. A VM
-  still reported `stale … state=open — look before you rm` is a run whose mark never reached the hub
-  (its `events.jsonl` `board:mark` row says what the hub answered): verify `<owner>-<repo>/run-<N>`
-  with `git ls-remote --tags` against the evidence repository, then `ssh exe.dev rm <vm>` by hand.
+- Its status page says so (`state` `parked` or `failed`, with the phase or the error), its pull
+  request, when it opened one, is a draft, and the janitor reaps its VM an hour on by the ordinary
+  rule. Nothing else marks it: the boot writes to no issue board (until 2026-11-13 it marked the
+  run's issue on the kata hub). Find the runs waiting on you with
+  `gh pr list -R <owner>/<repo> --draft`, and read one with `node fleet/run-read.mjs`.
 
 ## Capacity
 

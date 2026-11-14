@@ -7,7 +7,7 @@ paths:
 
 `fleet/CONTRACT.md` is the authority for every literal and `fleet/RUNBOOK.md` the operator
 procedure; the contract wins. `fleet/` is laptop tools plus the VM bootstrap — the engine is
-`factory/`, and the only fleet file it imports is `kata-client.mjs`. No orchestrator, no
+`factory/`, which imports no fleet file. No orchestrator, no
 control VM, no token on any VM or in any argv.
 
 ## A launch (`launch.mjs`, split by phase in #1307)
@@ -21,11 +21,8 @@ control VM, no token on any VM or in any argv.
    compute N from the evidence repository's `live/<owner>-<repo>/run-*` branches and
    `<owner>-<repo>/run-*` tags; refresh the Claude bearer (`claude-token.mjs`).
 3. Push the plan as one parentless commit in the evidence repository (tree =
-   `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`. The kata hub is
-   not asked: `launch.kata.mode` in `fleet/policy.json` is `off`, so there is no ping, nothing is
-   filed and the commit carries no `kata.json`, without which the sandbox writes nothing to Kata.
-   The rollback `on` pings the hub (a dark hub refuses the launch) and files the run there
-   (`kata-file.mjs`).
+   `runs/<owner>-<repo>/<N>/plan.md` and its siblings) to `live/<owner>-<repo>/run-<N>`. Nothing
+   else is told of the run: there is no issue board (the kata hub left on 2026-11-13).
 4. Issue ONE lobby verb (`lobby.mjs`): `new` with VM name `fleet-r<N>-<stamp>-<rand>`,
    `--tag fleet`, the assignment as `--comment`, both integrations, `--cpu`/`--memory` from
    `~/.ultrapowers/fleet.json`, and the setup script (`setup-script.mjs`) on stdin. No image,
@@ -52,7 +49,7 @@ Read a past run at
 
 ## The other laptop tools
 
-- `doctor.mjs` — which of its eleven rows is missing (the last, `reaper`, asks the hub's VM remover
+- `doctor.mjs` — which of its ten rows is missing (the last, `reaper`, asks the hub's VM remover
   whether its exe.dev key still works and reads that key's expiry; `reaper-key.sh` renews it; `exe-verbs.json` feeds its verb-drift row;
   its `evidence` row checks the one-time evidence-repository setup).
 - `claude-token.mjs` — the credential: loom-style OAuth, refresh token in the keychain,
@@ -60,33 +57,27 @@ Read a past run at
   CLAUDE.md).
 - `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and then the run's
   `status.json` in the evidence repository via `gh api`, at the run's tag, else its live branch;
-  never a VM's disk and, by default, never the hub. A run whose page cannot be read is left alone
-  and reported `unread`. The switch is `janitor.record.source` in `fleet/policy.json` (`evidence`;
-  the rollback `kata` asks the hub first, as before 2026-11-13). It also writes the end of a dead
+  never a VM's disk. A run whose page cannot be read is left alone
+  and reported `unread`. It also writes the end of a dead
   or orphaned run (`failRun`, then `sealRun`), seals a run that ended with its live branch left
   and no tag, and deletes the closed-unmerged `ultra/integration-run-*` branches, all on the
   targets its rows name (`--target` adds one no VM names).
 - `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
   VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
   its tag in the evidence repository says `done`, read through the hub-only read-only integration
-  `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO` and, for the
-  rollback to the kata run issue, `REAPER_RECORD=kata`. Unit tests: `tests/test_reaper.py`.
+  `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
+  keeps its name from the days it ran the kata daemon. Unit tests: `tests/test_reaper.py`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `run-read.mjs` (print a run from its evidence record: every claim, give-back, objection,
   conflict, move of main and the pull request; `--follow` watches it; `projectRun` answers plain
-  data for any other reader), `board-read.mjs` (print a run's board from the hub: only runs
-  launched before 2026-11-13 or under the kata rollback have one), `kata-hub.mjs` + `kata-hub-setup.sh` +
-  `kata.service` (build the one kata hub).
-- The laptop reads the hub daemon with `ssh kata-hub.exe.xyz curl localhost:8000/api/v1/…`:
-  `~/.ultrapowers/kata-hub.env` names only the host (`KATA_URL`), and the bearer is sourced from
-  `/etc/kata/kata.env` on the hub by the hub's own shell, never on a laptop argv. `board-read.mjs`
-  sends its requests over one shared ssh connection (socket `~/.ultrapowers/hub-%C`, kept 60 s:
-  a hop measured about 1 s fresh and 0.2 s shared, 2026-11-13), and `--follow` reads only the rows
-  the feed gained since its last read.
+  data for any other reader).
+- Kata is gone (2026-11-13): no `kata-client.mjs`, `kata-file.mjs`, `kata-hub.mjs`, `board-read.mjs`
+  or `fleet/policy.json`, and no tool reads `~/.ultrapowers/kata-hub.env`. `fleet/CONTRACT.md`
+  §The hub VM lists what left; the way back is a checkout made before it.
 
 ## Tests
 
-`ls fleet/tests/test_*.mjs` is the list: the launcher, doctor, token and board-read sims, the
+`ls fleet/tests/test_*.mjs` is the list: the launcher, doctor, token and run-read sims, the
 factory sims (`test_factory_*`), the Flock's scripted runs (`test_flock_*`), the Jev client, and
 the hermeticity guard. `_helpers.mjs`, `_boot_helpers.mjs`, `_lobby_helpers.mjs` and
 `_flock_helpers.mjs` are the rig; `probe_*.mjs` are live probes and the Bun `*_probe.mjs` files

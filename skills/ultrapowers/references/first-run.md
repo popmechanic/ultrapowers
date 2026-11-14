@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with eleven rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -356,73 +356,6 @@ Three things a newcomer would not know:
   the lobby at all; both are reported as `help unreadable` inside the same green
   row, with the exit code that came back.
 
-## kata
-
-Since 2026-11-13 no launch asks the kata hub (`launch.kata.mode` is `off` in
-`fleet/policy.json`), so this row is green without one and says
-`not asked: launch.kata.mode is off`; a run is read with `fleet/run-read.mjs`.
-The rest of this section applies only under the rollback, `mode` `on`.
-
-The fleet has one kata hub: a single persistent VM named `kata-hub` running the
-kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
-integration named `kata` and which the laptop reaches over ssh. It is not part
-of any run. Its HTTPS front door is the daemon's port and nothing else: exe.dev
-fronts exactly one port per VM (`share port`), so any second browser service — the
-Viz page, for one — lives on a VM of its own. This row is `ok` when the `kata` integration carries a bearer at the
-edge, it is attached to `tag:fleet`, and `ls kata-hub --json` answers a
-`kata-hub` row; the detail says which of the three is missing.
-
-**In a browser:** nothing.
-
-**The agent runs** this once, and it is the whole build:
-
-```bash
-node <plugin-root>/fleet/kata-hub.mjs
-```
-
-It creates the VM with its first-boot setup script, pins the daemon's port with
-`share port kata-hub 8000`, reads the VM's own `https_url` off
-`ls kata-hub --json`, and creates the integration with a freshly minted bearer
-on stdin:
-
-```bash
-printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --attach tag:fleet"
-```
-
-It then waits for first boot, delivers the daemon's config and env over ssh,
-waits for `systemctl is-active kata.service` to answer `active`, and only then
-writes `~/.ultrapowers/kata-hub.env` (mode 0600, `KATA_URL` and `KATA_TOKEN`).
-Running it again on a built hub prints `kata-hub already built` and touches
-nothing; running it on a half-built one resumes from where it stopped.
-
-Five things a newcomer would not know:
-
-- **Never prune the `peer-kata` ssh key.** `--peer` makes exe.dev generate a
-  key pair server-side so a sandbox can reach the hub without holding anything;
-  it shows up in `ssh-key list` as `peer-kata` and goes when the integration
-  goes. A sweep that tidies unknown keys takes the fleet's hub down with it.
-- **The hub carries no tag at all.** The janitor lists `fleet-r*` and never
-  sees it, and its comment — `kata hub — persistent service, do not reap` — is
-  the second lock. Its 1 vCPU and 2 GB do come out of the same pool every
-  wave's sandboxes are subtracted from, so the `capacity` row counts it.
-- **Never `cp` the hub, or any fleet VM, without `--copy-tags=false`.**
-  `cp --copy-tags` is on by default, so a copy of a fleet VM inherits
-  `tag:fleet` and is granted every credential the tag grants; a copy of the
-  hub inherits its comment and its daemon.
-- **The bearer has exactly two homes.** `/etc/kata/kata.env` on the hub
-  (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
-  the setup script) and `~/.ultrapowers/kata-hub.env` on this laptop, mode
-  0600. No sandbox holds it: the edge injects it, and the sandbox-side URL is
-  `https://kata.int.exe.xyz/<path>`. Rotation is one
-  `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
-  the same token delivered to the hub's env file.
-- **A missing attachment is repaired with one command**, the fix the doctor
-  prints:
-
-```bash
-ssh exe.dev "integrations attach kata tag:fleet"
-```
-
 ## cloudflare
 
 The deploy's credential, needed only by a plan that carries a `**Publish:**`
@@ -451,7 +384,7 @@ Three things a newcomer would not know:
 - **The sandbox never talks to `api.cloudflare.com` directly.** It reaches the
   API through the edge at `https://cloudflare.int.exe.xyz`, and `wrangler` is
   pointed there by the `CLOUDFLARE_API_BASE_URL` environment variable the box
-  is launched with — the same shape as `kata`'s and `typesafe`'s http-proxies.
+  is launched with — the same shape as `typesafe`'s http-proxy.
 - **This row is not part of the one-time walk.** Every other row is built once
   and stays built; `cloudflare` is the one the launcher checks fresh against
   each plan, refusing a `**Publish:**` plan that has no credential at the edge

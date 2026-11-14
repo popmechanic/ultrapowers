@@ -1,9 +1,8 @@
 /**
  * fleet/tests/test_factory_preflight.mjs — the exam for "the credential probe
  * answers each of the six things the edge can say with one exact line,
- * examined by a rig that can answer it; and the probe and the audit each run
- * when called through a symlinked `factory/`, where before the audit
- * silently did nothing."
+ * examined by a rig that can answer it; and the probe runs when called
+ * through a symlinked `factory/`."
  *
  * Legs, each naming the Machine clause it comes from:
  *
@@ -14,10 +13,8 @@
  *       `bearer_dead 401 <message>` (a 401 with a `"type":"error"` JSON body
  *       carrying a `message`), and `edge_refused 401 <first line>` (a 401
  *       with a plain body starting `integration not found`).
- *   (b) [M2] `node <D>/factory/audit.mjs <events> done`, through a
- *       symlinked `<D>/factory`, prints exactly one line parsing to an
- *       object whose `kind` is `run:audit`, `state` is `done` and `ts` is a
- *       non-empty string, and exits 0.
+ *   (b) retired with `factory/audit.mjs` (2026-11-13: its one row listed the kata closes a run
+ *       missed, and no run has a board to close).
  *   (c) [M3] `node <D>/factory/preflight.mjs --proxy <U>`, through the same
  *       link, with an `oauth_token` auth answer and a 200 usage answer,
  *       prints exactly `alive\n` and exits 0.
@@ -32,7 +29,7 @@
  * `claude` stub is a `#!/bin/sh` script, mode `0755`, first on the child's
  * `PATH`, that `cat`s an `auth.txt` file the case writes ahead of the run
  * with one of `authMethod: oauth_token`, `authMethod: api_key` or
- * `authMethod: none`. Every child — `preflight.mjs` and `audit.mjs` alike —
+ * `authMethod: none`. Every child
  * is driven by `runAsync`, which `spawn`s (never `spawnSync`, which would
  * block the event loop the proxy stub server runs on) and awaits the close
  * event, `env: simEnv({ bin, home })` throughout. Every directory this file
@@ -45,9 +42,7 @@
  * never by importing `classify` in-process); that `preflight.mjs`'s `main`
  * takes the argv already sliced past the node/script pair, so spawning it
  * with `[PREFLIGHT, '--proxy', url]` as the child's own argv is the same
- * call `factory/boot.sh` makes; and that `audit.mjs`'s `main` slices
- * `process.argv` itself, so spawning it with `[AUDIT, eventsPath, 'done']`
- * is likewise the direct call. Neither assumption reaches past what the
+ * call `factory/boot.sh` makes. The assumption does not reach past what the
  * task's own Context and "For the examiner" section already state.
  */
 
@@ -189,43 +184,6 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   const D = path.join(linkRoot, 'D')
   fs.mkdirSync(D, { recursive: true })
   fs.symlinkSync(FACTORY_DIR, path.join(D, 'factory'), 'dir')
-
-  // "<D>/../ev.jsonl" — one row, exactly.
-  const eventsPath = path.join(D, '..', 'ev.jsonl')
-  fs.writeFileSync(eventsPath, `${JSON.stringify({ kind: 'landing', task: 1 })}\n`)
-
-  // ── (b) [M2] audit.mjs through the link ──────────────────────────────
-  {
-    const auditHome = path.join(linkRoot, 'audit-home')
-    fs.mkdirSync(auditHome, { recursive: true })
-
-    const res = await runAsync(
-      [path.join(D, 'factory', 'audit.mjs'), eventsPath, 'done'],
-      { home: auditHome }
-    )
-
-    assert.equal(
-      res.code, 0,
-      `(b) [M2] audit.mjs invoked as <D>/factory/audit.mjs through the symlink exits 0 — got ${res.code}, stderr: ${res.stderr}`
-    )
-    const trimmed = res.stdout.trim()
-    assert.ok(
-      trimmed.length > 0,
-      '(b) [M2] audit.mjs through the symlink prints a non-empty line — before the fix, main() never ran and nothing was printed'
-    )
-    const outLines = trimmed.split('\n')
-    assert.equal(
-      outLines.length, 1,
-      `(b) [M2] audit.mjs through the symlink prints exactly one line — got ${outLines.length}: ${JSON.stringify(trimmed)}`
-    )
-    const parsed = JSON.parse(outLines[0])
-    assert.equal(parsed.kind, 'run:audit', `(b) [M2] the line's kind is run:audit — got ${JSON.stringify(parsed.kind)}`)
-    assert.equal(parsed.state, 'done', `(b) [M2] the line's state is done — got ${JSON.stringify(parsed.state)}`)
-    assert.ok(
-      typeof parsed.ts === 'string' && parsed.ts.length > 0,
-      `(b) [M2] the line's ts is a non-empty string — got ${JSON.stringify(parsed.ts)}`
-    )
-  }
 
   // ── (c) [M3] preflight.mjs through the link ──────────────────────────
   {

@@ -161,8 +161,7 @@ const isFunction = (leg, name, value) => assert.equal(
     config: CAPPED,
     now: () => NOW,
     sleep: async () => {},
-    refreshCredential: () => ({ ok: true }),
-    kata: null
+    refreshCredential: () => ({ ok: true })
   }))
 
   assert.ok(error instanceof Refusal,

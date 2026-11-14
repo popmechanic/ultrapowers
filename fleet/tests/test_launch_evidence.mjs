@@ -33,10 +33,9 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
 import path from 'node:path'
 
-import { kataModeOf, launch } from '../launch.mjs'
+import { launch } from '../launch.mjs'
 import { EXE_HOST, Refusal } from '../lobby.mjs'
 import {
   PLAN, commentOf, gitEnv, launchRules, launchWorkspace, makeEvidenceRepo, makeExec, pushCalls
@@ -78,7 +77,7 @@ function workspace () {
   return { ...ws, other, targetRefs }
 }
 
-const drive = async (ws, { extra = [], config = CAPPED, integrations, kata = null, kataMode } = {}) => {
+const drive = async (ws, { extra = [], config = CAPPED, integrations } = {}) => {
   const exec = makeExec({ rules: readRules({ ws, integrations }) })
   let result = null
   let error = null
@@ -90,9 +89,7 @@ const drive = async (ws, { extra = [], config = CAPPED, integrations, kata = nul
       now: () => NOW,
       sleep: async () => {},
       refreshCredential: () => ({ ok: true }),
-      readUsage: () => ({ unread: true, reason: 'sim' }),
-      kata,
-      ...(kataMode === undefined ? {} : { kataMode })
+      readUsage: () => ({ unread: true, reason: 'sim' })
     })
   } catch (e) {
     error = e
@@ -240,50 +237,6 @@ const assertRefusedClean = (d, leg, needles) => {
   assert.ok(b.error.message.includes('--evidence-repo'), '(f) [M6] naming the flag')
   assert.equal(b.exec.calls.length, 0, '(f) [M6] and nothing was executed')
   bad.cleanup()
-}
-
-// ══════════════════════════════════════════════════════════════════════════
-// (g) the kata switch: off by default, and the hub is then never asked
-// ══════════════════════════════════════════════════════════════════════════
-{
-  // A hub that is down: every call is counted and throws.
-  const downHub = () => {
-    const calls = []
-    const client = new Proxy({ url: 'https://hub.example' }, {
-      get: (obj, name) => name in obj ? obj[name] : async (...args) => { calls.push([name, ...args]); throw new Error('connect ECONNREFUSED') }
-    })
-    return { client, calls }
-  }
-
-  assert.equal(kataModeOf(), 'off', '(g) the repository\'s own fleet/policy.json says launch.kata.mode is off')
-  const cell = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-policy-')), 'policy.json')
-  fs.writeFileSync(cell, JSON.stringify({ launch: { kata: { mode: 'on' } } }))
-  assert.equal(kataModeOf(cell), 'on', '(g) the rollback is the cell saying on')
-  fs.writeFileSync(cell, JSON.stringify({ launch: { kata: { mode: 'maybe' } } }))
-  assert.equal(kataModeOf(cell), 'off', '(g) a value nobody knows is off')
-  fs.rmSync(path.dirname(cell), { recursive: true, force: true })
-
-  // Off (the default): a hub that is down does not stop the launch, is not asked,
-  // and the plan commit carries no kata.json for the sandbox to write by.
-  const ws = workspace()
-  const off = downHub()
-  const d = await drive(ws, { kata: off.client })
-  assert.equal(d.error, null, `(g) with kata off a down hub does not refuse the launch: ${d.error?.message ?? ''}`)
-  assert.deepEqual(off.calls, [], '(g) and the hub is not asked at all')
-  assert.equal(d.result.kata, null, '(g) the record names no hub')
-  const tree = ws.evidence.git(['ls-tree', '-r', '--name-only', d.result.plan]).split('\n').sort()
-  assert.deepEqual(tree, [`runs/${SLUG}/1/gate-verdicts.json`, `runs/${SLUG}/1/plan.md`], '(g) the plan commit holds no kata.json')
-  assert.equal(newCalls(d.exec).length, 1, '(g) the VM is created')
-  ws.cleanup()
-
-  // On (the rollback): the hub is the gate again — one ping, and a hub that
-  // does not answer refuses the launch before anything is pushed.
-  const ws2 = workspace()
-  const on = downHub()
-  const r = await drive(ws2, { kata: on.client, kataMode: 'on' })
-  assertRefusedClean(r, '(g) rollback:', ['did not answer its ping'])
-  assert.deepEqual(on.calls.map((c) => c[0]), ['ping'], '(g) rollback: the hub was asked once')
-  ws2.cleanup()
 }
 
 console.log('ALL TESTS PASSED')
