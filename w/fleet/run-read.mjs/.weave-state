@@ -1,0 +1,315 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 /**
+2 < 1  * fleet/run-read.mjs — a run, read from the evidence record.
+3 < 1  *
+4 < 1  *   node fleet/run-read.mjs --run <N>[,<M>…] --target <owner>/<repo> [--evidence-repo <owner>/<repo>]
+6 > 1  *                           [--since <n>] [--json] [--follow [--quiet <minutes>]]
+5 < 2  *                           [--since <n>] [--json]
+6 < 1  *   node fleet/run-read.mjs --live [--target <owner>/<repo>] [--evidence-repo <owner>/<repo>] [--json]
+7 < 1  *
+8 < 1  * The sandbox is the one writer of a run, and its record is git: `status.json` and `events.jsonl`
+9 < 1  * under `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, on the run's live branch
+10 < 1  * while it works and on its tag once it has ended. This reads that record and nothing else: no
+11 < 1  * hub, no VM. `projectRun` is pure and answers plain data (the run's state, each task's state and
+12 < 1  * a timeline of every row worth a line), so a page in a browser can use it as it stands; the CLI
+13 < 1  * prints it the way `board-read.mjs` prints the hub's copy, which holds claims and closes only.
+14 < 1  *
+15 < 1  * `--since <n>` prints only timeline rows after the first `n` (the last line of every print is
+17 > 1  * `cursor <rows read>`). `--follow` keeps reading every 10 s, prints each new line once, flags a
+18 < 1  * claim or a run gone quiet with `!`, and ends when every asked run's status says it ended; the
+19 < 1  * record is committed every 10 s, so a line is up to about 20 s behind the sandbox. `--live` lists the runs that have a live branch. The evidence repository
+16 < 2  * `cursor <rows read>`). `--live` lists the runs that have a live branch. The evidence repository
+17 < 1  * is `--evidence-repo`, else `"evidence"` in `~/.ultrapowers/fleet.json`. Reads go through `gh api`.
+18 < 1  */
+19 < 1 import { fileURLToPath } from 'node:url'
+20 < 1 
+21 < 1 import {
+22 < 1   Refusal, defaultExec, liveBranchFor, readEvidenceSetting, runCli, runFolderFor, runTagFor, targetSlug
+23 < 1 } from './lobby.mjs'
+24 < 1 
+25 < 1 const fail = (message) => { throw new Refusal(`run-read: ${message}`) }
+26 < 1 const short = (text, n) => { const s = String(text ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
+27 < 1 const timeOf = (iso) => (typeof iso === 'string' && iso.length >= 19 ? iso.slice(11, 19) + 'Z' : '-')
+28 < 1 
+29 < 1 // ── The projection (pure) ────────────────────────────────────────────────
+30 < 1 
+31 < 1 /** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
+32 < 1  *  task the line belongs to, null for a line about the whole run. */
+33 < 1 function lineOf (e) {
+34 < 1   const k = e.kind
+35 < 1   if (k === 'session:start') return { task: e.task, what: `claimed by ${e.agent}` }
+36 < 1   if (k === 'session:end') {
+37 < 1     if (e.objected) return null   // the `objection` row says it
+38 < 1     if (e.released) return { task: e.task, what: `${e.agent} gave it back: ${short(e.released, 140)}` }
+39 < 1     if (e.done) return { task: e.task, what: `done by ${e.agent}` }
+40 < 1     return null
+41 < 1   }
+42 < 1   if (k === 'objection') return { task: e.task, what: `${e.agent} objected: ${short(e.reason, 200)}` }
+43 < 1   if (k === 'task:parked') return { task: e.task, what: e.objected ? 'parked for the operator' : `parked after ${e.releases} give-backs` }
+44 < 1   if (k === 'reopen') return { task: e.task, what: `reopened red (${e.n})` }
+45 < 1   if (k === 'belief' && e.by !== 'host') return { task: e.task ?? null, what: `${e.by} noted: ${short(e.claim, 160)}` }
+46 < 1   if (k === 'main:moved') return { task: null, what: `main moved to ${String(e.to).slice(0, 7)} (${e.why}), ${e.changed} file${e.changed === 1 ? '' : 's'} taken in` }
+47 < 1   if (k === 'main:off') return { task: null, what: `stopped following main: ${short(e.reason ?? e.why, 120)}` }
+48 < 1   if (k === 'conflict:open') return { task: null, what: `conflict opened in ${e.path}${e.created ? ' (both sides created it)' : ''}` }
+49 < 1   if (k === 'conflict:close') return { task: null, what: `conflict in ${e.path} closed by ${e.by}` }
+50 < 1   if (k === 'resolve-task') return { task: `R:${e.path}`, what: 'added by the engine: resolve the conflict' }
+51 < 1   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
+52 < 1   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
+53 < 1   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
+54 < 1   if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
+55 < 1   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
+56 < 1   if (k === 'merge') return { task: null, what: `merge answered ${e.code}${e.message ? `: ${short(e.message, 80)}` : ''}` }
+57 < 1   return null
+58 < 1 }
+59 < 1 
+60 < 1 /** A task's state after a line: what the line says happened to it. */
+61 < 1 function stateAfter (what, was) {
+62 < 1   if (what.startsWith('claimed by ')) return 'claimed'
+63 < 1   if (what.startsWith('done by ')) return 'done'
+64 < 1   if (what.startsWith('parked')) return 'parked'
+65 < 1   if (what.startsWith('reopened red') || what.includes(' gave it back: ')) return 'ready'
+66 < 1   if (what.startsWith('added by the engine')) return 'ready'
+67 < 1   return was
+68 < 1 }
+69 < 1 
+70 < 1 /**
+71 < 1  * `{ run, target, state, phase, pr, merged, tasks, timeline, cursor }` for one run, from its
+72 < 1  * `events.jsonl` rows, its `status.json` and, when given, the plan's parse (for task titles).
+73 < 1  * `tasks` is every task the plan names and every one the engine added, each `{ id, title, state,
+74 < 1  * last, lastAt }`; `timeline` is one `{ n, at, task, what }` per line, `n` the row's 1-based
+75 < 1  * place in the log; `cursor` is how many rows were read.
+76 < 1  */
+77 < 1 export function projectRun ({ run, target, rows, status = null, plan = null }) {
+78 < 1   const tasks = new Map()
+79 < 1   const titled = new Map((plan && Array.isArray(plan.tasks) ? plan.tasks : []).map((t) => [String(t.id), t.title]))
+80 < 1   const touch = (id) => {
+81 < 1     const key = String(id)
+82 < 1     if (!tasks.has(key)) tasks.set(key, { id: key, title: titled.get(key) ?? '', state: 'filed', last: null, lastAt: null })
+83 < 1     return tasks.get(key)
+84 < 1   }
+85 < 1   for (const id of titled.keys()) touch(id)
+86 < 1   for (const id of Object.keys((status && status.tasks) || {})) touch(id)
+87 < 1   const timeline = []
+88 < 1   const list = Array.isArray(rows) ? rows : []
+89 < 1   list.forEach((e, i) => {
+90 < 1     if (!e || typeof e !== 'object') return
+91 < 1     const line = lineOf(e)
+92 < 1     if (line === null) return
+93 < 1     const at = typeof e.ts === 'string' ? e.ts : null
+94 < 1     const task = line.task === null || line.task === undefined ? null : String(line.task)
+95 < 1     if (task !== null) {
+96 < 1       const t = touch(task)
+97 < 1       t.state = stateAfter(line.what, t.state); t.last = line.what; t.lastAt = at
+98 < 1     }
+99 < 1     timeline.push({ n: i + 1, at, task, what: line.what })
+100 < 1   })
+101 < 1   const s = status && typeof status === 'object' ? status : {}
+102 < 1   return {
+103 < 1     run, target, state: s.state ?? null, phase: s.phase ?? null, pr: s.pr ?? null, merged: s.merged ?? null,
+104 < 1     tasks: [...tasks.values()], timeline, cursor: list.length
+105 < 1   }
+106 < 1 }
+107 < 1 
+108 < 1 /** The projection as the operator reads it; `since` drops timeline lines at or before that row. */
+109 < 1 export function renderRun (p, { since = 0 } = {}) {
+110 < 1   const lines = [`== run-${p.run} ${p.state ?? 'unknown'}${p.phase ? `: ${p.phase}` : ''}${p.pr ? `  ${p.pr}` : ''}`]
+111 < 1   for (const t of p.tasks) {
+112 < 1     lines.push(`  ${('task ' + t.id).padEnd(10)} ${t.state.padEnd(8)} last ${timeOf(t.lastAt)}  ${t.title}`)
+113 < 1   }
+114 < 1   lines.push('== events')
+115 < 1   for (const r of p.timeline) {
+116 < 1     if (r.n <= since) continue
+117 < 1     lines.push(`  ${timeOf(r.at)} ${(r.task === null ? 'run' : 'task ' + r.task).padEnd(10)} ${r.what}`)
+118 < 1   }
+119 < 1   lines.push(`cursor ${p.cursor}`)
+120 < 1   return lines.join('\n')
+121 < 1 }
+122 < 1 
+123 < 1 // ── Reading the record ───────────────────────────────────────────────────
+124 < 1 
+125 < 1 /** One file of the evidence repository at a ref, as text, or null when it is not there. */
+126 < 1 async function fileAt (exec, evidence, filePath, ref) {
+127 < 1   const res = await exec('gh', ['api', '-H', 'Accept: application/vnd.github.raw',
+128 < 1     `repos/${evidence}/contents/${filePath}?ref=${encodeURIComponent(ref)}`])
+129 < 1   return res.code === 0 ? String(res.stdout ?? '') : null
+130 < 1 }
+131 < 1 
+132 < 1 const jsonOf = (text) => { try { return JSON.parse(text) } catch { return null } }
+133 < 1 const rowsOf = (text) => String(text ?? '').split('\n').filter((l) => l.trim() !== '').map(jsonOf).filter((e) => e !== null)
+134 < 1 
+135 < 1 /**
+136 < 1  * A run's record: `{ ref, live, rows, status, plan }`, or null when the evidence repository holds
+137 < 1  * neither a tag nor a live branch for it. The tag is tried first: a run that has ended is read
+138 < 1  * where it will stay, and a run still at work has only its live branch.
+139 < 1  */
+141 > 1 export async function readRunRecord ({ exec = defaultExec, evidence, target, run, liveFirst = false, plan: wantPlan = true }) {
+140 < 2 export async function readRunRecord ({ exec = defaultExec, evidence, target, run }) {
+141 < 1   const folder = runFolderFor(target, run)
+143 > 1   const refs = [[runTagFor(target, run), false], [liveBranchFor(target, run), true]]
+144 < 1   // `liveFirst` is the follower's order: a run at work is on its live branch, so the tag is asked
+145 < 1   // only once that branch is gone. `plan: false` skips the plan's parse, which never changes.
+146 < 1   for (const [ref, live] of liveFirst ? refs.reverse() : refs) {
+142 < 2   for (const [ref, live] of [[runTagFor(target, run), false], [liveBranchFor(target, run), true]]) {
+143 < 1     const events = await fileAt(exec, evidence, `${folder}/events.jsonl`, ref)
+144 < 1     const status = await fileAt(exec, evidence, `${folder}/status.json`, ref)
+145 < 1     if (events === null && status === null) continue
+147 > 1     const plan = wantPlan ? await fileAt(exec, evidence, `${folder}/plan.json`, ref) : null
+146 < 2     const plan = await fileAt(exec, evidence, `${folder}/plan.json`, ref)
+147 < 1     return { ref, live, rows: rowsOf(events), status: jsonOf(status), plan: jsonOf(plan) }
+148 < 1   }
+149 < 1   return null
+151 > 1 }
+152 < 1 
+153 < 1 // ── Following a run ──────────────────────────────────────────────────────
+154 < 1 
+155 < 1 /** The states a run's status page ends on (`fleet/janitor.mjs`'s `REAPABLE_STATES`). */
+156 < 1 const ENDED = ['done', 'parked', 'failed']
+157 < 1 
+158 < 1 /**
+159 < 1  * `--follow`'s reader: each call answers one projection per asked run, in order, or null for a
+160 < 1  * run whose record holds nothing yet. A run is read live branch first (two requests a look while
+161 < 1  * it works) and its plan once, since the parse the engine read does not change.
+162 < 1  */
+163 < 1 export function followReader ({ exec = defaultExec, evidence, target, runs }) {
+164 < 1   const plans = new Map()
+165 < 1   return async () => {
+166 < 1     const out = []
+167 < 1     for (const run of runs) {
+168 < 1       const rec = await readRunRecord({ exec, evidence, target, run, liveFirst: true, plan: !plans.has(run) })
+169 < 1       if (rec === null) { out.push(null); continue }
+170 < 1       if (!plans.has(run) && rec.plan !== null) plans.set(run, rec.plan)
+171 < 1       out.push({ ...projectRun({ run, target, rows: rec.rows, status: rec.status, plan: plans.get(run) ?? null }), ref: rec.ref, live: rec.live })
+172 < 1     }
+173 < 1     return out
+174 < 1   }
+175 < 1 }
+176 < 1 
+177 < 1 /**
+178 < 1  * `--follow`: look every `everyMs`, print each timeline line not yet printed, and print one `!`
+179 < 1  * line when something looks wrong: a task claimed `quietMs` ago with nothing since, or no new line
+180 < 1  * from any asked run for `quietMs`. Each warning prints once until the thing it names changes.
+181 < 1  * Ends when every asked run's status page says it ended (one `== run-<N> <state>` line each, and
+182 < 1  * 0) or at `maxMs` (`== gave up` and 3).
+183 < 1  * `read` is `followReader`'s; `now`, `sleep` and `write` are the test's seams.
+184 < 1  */
+185 < 1 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+186 < 1   const start = now()
+187 < 1   const printed = new Map(runs.map((run) => [run, 0]))   // run -> the last log row printed
+188 < 1   const warned = new Set()
+189 < 1   let lastNewAt = start
+190 < 1   for (;;) {
+191 < 1     const looks = await read()
+192 < 1     const t = now()
+193 < 1     let fresh = 0
+194 < 1     looks.forEach((p, i) => {
+195 < 1       if (p === null) return
+196 < 1       const run = runs[i]
+197 < 1       for (const r of p.timeline) {
+198 < 1         if (r.n <= printed.get(run)) continue
+199 < 1         write(`  ${timeOf(r.at)} run-${run} ${(r.task === null ? 'run' : 'task ' + r.task).padEnd(10)} ${r.what}\n`)
+200 < 1         fresh += 1
+201 < 1       }
+202 < 1       printed.set(run, Math.max(printed.get(run), p.cursor))
+203 < 1       for (const task of p.tasks) {
+204 < 1         if (task.state !== 'claimed' || !task.lastAt) continue
+205 < 1         const key = `claim ${run} ${task.id} ${task.lastAt}`
+206 < 1         if (t - Date.parse(task.lastAt) >= quietMs && !warned.has(key)) {
+207 < 1           warned.add(key)
+208 < 1           write(`! run-${run} task ${task.id} ${task.last} ${Math.floor((t - Date.parse(task.lastAt)) / 60000)} min ago, and nothing since\n`)
+209 < 1         }
+210 < 1       }
+211 < 1     })
+212 < 1     if (fresh) lastNewAt = t
+213 < 1     const quietKey = `quiet ${lastNewAt}`
+214 < 1     if (t - lastNewAt >= quietMs && !warned.has(quietKey)) {
+215 < 1       warned.add(quietKey)
+216 < 1       write(`! no new line for ${Math.floor((t - lastNewAt) / 60000)} min\n`)
+217 < 1     }
+218 < 1     if (looks.every((p) => p !== null && ENDED.includes(p.state))) {
+219 < 1       for (const p of looks) write(`== run-${p.run} ${p.state}${p.phase ? `: ${p.phase}` : ''}${p.pr ? `  ${p.pr}` : ''}\n`)
+220 < 1       return 0
+221 < 1     }
+222 < 1     if (t - start >= maxMs) { write('== gave up\n'); return 3 }
+223 < 1     await sleep(everyMs)
+224 < 1   }
+150 < 1 }
+151 < 1 
+152 < 1 /** Every run with a live branch: `[{ target, run, branch }]`, `target` as `<owner>-<repo>`;
+153 < 1  *  with `target` given, only that target's. */
+154 < 1 export async function listLive ({ exec = defaultExec, evidence, target = null }) {
+155 < 1   const prefix = target === null ? 'live/' : `live/${targetSlug(target)}/`
+156 < 1   const res = await exec('gh', ['api', '--paginate', '--slurp', `repos/${evidence}/git/matching-refs/heads/${prefix}`])
+157 < 1   const pages = res.code === 0 ? jsonOf(res.stdout) : null
+158 < 1   const refs = Array.isArray(pages) ? pages.flat() : []
+159 < 1   const out = []
+160 < 1   for (const r of refs) {
+161 < 1     const m = /^refs\/heads\/(live\/(.+)\/run-([1-9][0-9]*))$/.exec(String(r && r.ref))
+162 < 1     if (m) out.push({ target: m[2], run: Number(m[3]), branch: m[1] })
+163 < 1   }
+164 < 1   return out.sort((a, b) => a.target.localeCompare(b.target) || a.run - b.run)
+165 < 1 }
+166 < 1 
+167 < 1 // ── The CLI ──────────────────────────────────────────────────────────────
+168 < 1 
+169 < 1 export function parseArgs (argv) {
+171 > 1   const a = { runs: [], target: null, evidence: null, since: 0, json: false, live: false, follow: false, quietMinutes: 10 }
+170 < 2   const a = { runs: [], target: null, evidence: null, since: 0, json: false, live: false }
+171 < 1   for (let i = 0; i < argv.length; i += 1) {
+172 < 1     const arg = argv[i]
+173 < 1     if (arg === '--json') a.json = true
+174 < 1     else if (arg === '--live') a.live = true
+176 > 1     else if (arg === '--follow') a.follow = true
+177 < 1     else if (arg === '--quiet') {
+178 < 1       const v = argv[++i]
+179 < 1       if (!/^[1-9][0-9]*$/.test(String(v))) fail(`--quiet must be a positive number of minutes, got ${JSON.stringify(v)}`)
+180 < 1       a.quietMinutes = Number(v)
+181 < 1     }
+175 < 1     else if (arg === '--run') {
+176 < 1       for (const part of String(argv[++i] ?? '').split(',')) {
+177 < 1         if (!/^[1-9][0-9]*$/.test(part.trim())) fail(`--run must be a positive integer, got ${JSON.stringify(part)}`)
+178 < 1         a.runs.push(Number(part.trim()))
+179 < 1       }
+180 < 1     } else if (arg === '--target') a.target = argv[++i] ?? null
+181 < 1     else if (arg === '--evidence-repo') a.evidence = argv[++i] ?? null
+182 < 1     else if (arg === '--since') {
+183 < 1       const v = argv[++i]
+184 < 1       if (!/^[0-9]+$/.test(String(v))) fail(`--since must be a non-negative integer, got ${JSON.stringify(v)}`)
+185 < 1       a.since = Number(v)
+186 < 1     } else fail(`unknown argument ${JSON.stringify(arg)}`)
+187 < 1   }
+188 < 1   for (const [name, v] of [['--target', a.target], ['--evidence-repo', a.evidence]]) {
+189 < 1     if (v !== null && !/^[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+$/.test(String(v))) fail(`${name} takes owner/repo, not ${JSON.stringify(v)}`)
+190 < 1   }
+191 < 1   if (!a.live && (a.runs.length === 0 || a.target === null)) fail('--run and --target are required (or --live)')
+193 > 1   if (a.follow && (a.live || a.json)) fail('--follow prints lines as they come: it takes neither --live nor --json')
+192 < 1   return a
+193 < 1 }
+194 < 1 
+196 > 1 export async function main (argv, { exec = defaultExec, configPath, write = (s) => process.stdout.write(s), sleep, now } = {}) {
+195 < 2 export async function main (argv, { exec = defaultExec, configPath, write = (s) => process.stdout.write(s) } = {}) {
+196 < 1   const args = parseArgs(argv)
+197 < 1   const evidence = args.evidence ?? await readEvidenceSetting(configPath ? { path: configPath } : {})
+198 < 1   if (!evidence) fail('no evidence repository: pass --evidence-repo <owner>/<repo> or set "evidence" in ~/.ultrapowers/fleet.json')
+199 < 1   if (args.live) {
+200 < 1     const live = await listLive({ exec, evidence, target: args.target })
+201 < 1     write(args.json ? `${JSON.stringify(live, null, 2)}\n` : `${live.map((r) => `${r.target} run-${r.run}`).join('\n') || 'no run has a live branch'}\n`)
+202 < 1     return
+204 > 1   }
+205 < 1   if (args.follow) {
+206 < 1     const read = followReader({ exec, evidence, target: args.target, runs: args.runs })
+207 < 1     write('== following (every 10 s; ! lines flag trouble)\n')
+208 < 1     const rc = await follow({ read, write, runs: args.runs, quietMs: args.quietMinutes * 60000, ...(sleep ? { sleep } : {}), ...(now ? { now } : {}) })
+209 < 1     if (rc) process.exitCode = rc
+210 < 1     return rc
+203 < 1   }
+204 < 1   const out = []
+205 < 1   for (const run of args.runs) {
+206 < 1     const rec = await readRunRecord({ exec, evidence, target: args.target, run })
+207 < 1     if (rec === null) fail(`no record for run ${run} of ${args.target} in ${evidence}`)
+208 < 1     out.push({ ...projectRun({ run, target: args.target, rows: rec.rows, status: rec.status, plan: rec.plan }), ref: rec.ref, live: rec.live })
+209 < 1   }
+210 < 1   write(args.json ? `${JSON.stringify(out, null, 2)}\n` : `${out.map((p) => renderRun(p, { since: args.since })).join('\n')}\n`)
+211 < 1 }
+212 < 1 
+213 < 1 if (process.argv[1] === fileURLToPath(import.meta.url)) runCli(main, process.argv.slice(2))
+214 < 1 

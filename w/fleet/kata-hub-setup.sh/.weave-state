@@ -1,0 +1,47 @@
+0 < 2 #!/usr/bin/env bash
+1 < 2 # fleet/kata-hub-setup.sh — the kata hub's first-boot setup script, as a template.
+2 < 2 #
+3 < 2 # `renderHubSetupScript` in fleet/kata-hub.mjs replaces the one `__KATA_UNIT__`
+4 < 2 # line below with the bytes of fleet/kata.service and hands the result to
+5 < 2 # `new --setup-script /dev/stdin` on that call's stdin. exe.dev stores a
+6 < 2 # rendered setup script as a property of the VM, so this file carries NO
+7 < 2 # secret — and no origin either: the `https_url` does not exist until `new` has
+8 < 2 # answered. The bearer, the daemon's `config.toml` and the restart that picks
+9 < 2 # them up are delivered over ssh afterwards; until then `ExecStartPre` fails
+10 < 2 # fast and the unit parks.
+11 < 2 set -euo pipefail
+12 < 2 exec >>"$HOME/kata-setup.log" 2>&1
+13 < 2 KATA_VERSION=0.18.0
+14 < 2 ASSET=kata_0.18.0_linux_amd64.tar.gz
+15 < 2 BASE=https://github.com/kenn-io/kata/releases/download/v0.18.0/
+16 < 2 printf 'installing kata %s\n' "$KATA_VERSION"
+17 < 2 work="$(mktemp -d)"
+18 < 2 cd "$work"
+19 < 2 
+20 < 2 # The binary, and only once the release's own sums agree.
+21 < 2 curl -fsSL -o SHA256SUMS "${BASE}SHA256SUMS"
+22 < 2 curl -fsSL -o "$ASSET" "${BASE}${ASSET}"
+23 < 2 grep " $ASSET$" SHA256SUMS | sha256sum -c -
+24 < 2 bin="$(tar -tzf "$ASSET" | grep -E '(^|/)kata$' | head -n 1)"
+25 < 2 tar -xzf "$ASSET"
+26 < 2 sudo -n install -m 0755 "$bin" /usr/local/bin/kata
+27 < 2 
+28 < 2 # KATA_HOME, owned by the user the unit runs as.
+29 < 2 sudo -n install -d -m 0750 -o exedev -g exedev /var/lib/kata
+30 < 2 
+31 < 2 # The unit, verbatim, in a quoted heredoc: the bytes arrive unexpanded.
+32 < 2 cat <<'KATA_UNIT_EOF' >kata.service
+33 < 2 __KATA_UNIT__
+34 < 2 KATA_UNIT_EOF
+35 < 2 sudo -n install -m 0644 kata.service /etc/systemd/system/kata.service
+36 < 2 sudo -n systemctl daemon-reload
+37 < 2 # The env file is not here yet, so `ExecStartPre` fails and the start does too.
+38 < 2 # That is the design — enabling is what matters, and the laptop's own
+39 < 2 # `systemctl restart kata.service` after it delivers the env is what brings the
+40 < 2 # daemon up. A failed start must not take this script down with it.
+41 < 2 sudo -n systemctl enable --now kata.service || true
+42 < 2 
+43 < 2 # The last two acts: the flag the laptop polls for, then this script itself.
+44 < 2 sudo -n touch /var/lib/kata/.setup-done
+45 < 2 sudo -n rm -f -- "$0"
+46 < 2 

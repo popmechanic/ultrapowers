@@ -1,0 +1,929 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 /**
+2 < 1  * fleet/doctor.mjs — "do you have a fleet?"
+3 < 1  *
+6 > 1  * The ten rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+5 > 2  * The eleven rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+4 < 2  * The ten rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
+5 < 1  * each red row names the `references/first-run.md` section that builds the
+6 < 1  * piece. This header does not restate them (#1444). Every row is a read:
+7 < 1  * running the doctor twice is the same as running it once.
+8 < 1  *
+9 < 1  * Built-ins only: the doctor runs on a user's laptop straight out of the
+10 < 1  * installed plugin cache, where no `node_modules` under `fleet/` has ever
+11 < 1  * existed, so every specifier here is `node:`-prefixed or a sibling fleet
+12 < 1  * module that is itself built-ins-only (the config readers come from
+13 < 1  * `./lobby.mjs`, one copy for both the doctor and the launcher).
+14 < 1  *
+15 < 1  * No token rows: no token is on any disk the doctor could stat. The Claude
+16 < 1  * subscription reaches a sandbox through the `claude-max` http-proxy, whose
+17 < 1  * bearer is injected at exe.dev's edge, and `integrations test claude-max` is
+18 < 1  * not a check for an http-proxy (measured 2026-09-04: it answers "test
+19 < 1  * connection is available for catalog and database integrations"), so the
+20 < 1  * bearer's presence in the listing is the edge-side truth the doctor can read.
+21 < 1  */
+22 < 1 
+23 < 1 import fsp from 'node:fs/promises'
+24 < 1 import path from 'node:path'
+25 < 1 import { fileURLToPath } from 'node:url'
+26 < 1 
+27 < 1 import {
+28 < 1   CLAUDE_INTEGRATION,
+29 < 1   DEFAULT_CONFIG_PATH,
+30 < 1   EXE_HOST,
+31 < 1   FLEET_DEFAULTS,
+32 < 1   FLEET_POLICY,
+33 < 1   FLEET_TAG,
+34 < 1   Refusal,
+35 < 1   VERBS_PATH,
+36 < 1   VERBS_RECORD,
+37 < 1   defaultExec,
+38 < 1   githubIntegrationFor,
+39 < 1   isSafeTarget,
+40 < 1   listIntegrations,
+41 < 1   loadFleetConfig,
+42 < 1   parseArgs,
+43 < 1   parseJson,
+44 < 1   parseMemoryGb,
+46 > 2   policyCell,
+45 < 1   readEvidenceSetting,
+46 < 1   readFleetJson,
+47 < 1   readPlanCapacity,
+48 < 1   runCli
+49 < 1 } from './lobby.mjs'
+50 < 1 
+53 > 1 /** The ten rows, in the order the doctor reports them. Each id is also a
+52 > 2 /** The eleven rows, in the order the doctor reports them. Each id is also a
+51 < 2 /** The ten rows, in the order the doctor reports them. Each id is also a
+52 < 1  *  `## ` heading in skills/ultrapowers/references/first-run.md. */
+53 < 1 export const ROW_IDS = Object.freeze([
+56 > 1   'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper'
+55 > 2   'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper'
+54 < 2   'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare'
+55 < 1 ])
+56 < 1 
+57 < 1 /** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
+58 < 1  *  every row id is its own heading. */
+59 < 1 const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
+60 < 1 
+61 < 1 /** The doctor's own directory: claude-token.mjs sits beside this file, and the
+62 < 1  *  doctor runs it rather than importing it, so its keychain access stays out of
+63 < 1  *  a process that has to start when nothing else in the fleet does. */
+64 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+65 < 1 const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
+66 < 1 
+67 < 1 /** The standing lobby reads, as the remote half of `ssh exe.dev "<remote>"`,
+68 < 1  *  in the order the doctor issues them; the three `claude-token.mjs` reads sit
+70 > 1  *  between the github and hub ones, then the `help` reads of the
+69 < 2  *  between the github and kata ones, then the `help` reads of the
+70 < 1  *  verb-drift row, one per verb of the record; together they are the only
+71 < 1  *  commands the doctor ever runs, every one through the exec seam
+72 < 1  *  `exec(cmd, argv)` — `ssh` or `node`, never a shell string.
+73 < 1  *
+75 > 1  *  `hubVm` is the `reaper` row's: the hub VM (`kata-hub`, the name it has had
+76 < 1  *  since it also ran the kata daemon) is the one thing the doctor asks `ls`
+77 < 1  *  about, since the remover is asked from it. */
+74 < 2  *  The last is the `kata` row's: the hub is the one thing the doctor asks `ls`
+75 < 2  *  about, every other row reading edge-side objects the listing already
+76 < 2  *  carries. */
+77 < 1 const READS = Object.freeze({
+78 < 1   whoami: 'whoami',
+79 < 1   github: 'integrations setup github --list',
+82 > 1   hubVm: 'ls kata-hub --json',
+81 > 2   kataVm: 'ls kata-hub --json',
+82 < 1   keys: 'ssh-key list --json'
+80 < 2   kataVm: 'ls kata-hub --json'
+81 < 1 })
+82 < 1 
+83 < 1 /** One lobby read: `ssh exe.dev "<remote>"`, answered whatever its exit code,
+84 < 1  *  so every row keeps the code it reports. */
+85 < 1 const lobbyRead = (exec, remote) => exec('ssh', [EXE_HOST, remote])
+86 < 1 
+87 < 1 /** One `claude-token.mjs` read. stderr joins stdout because claude-token logs
+88 < 1  *  its status line there. */
+89 < 1 async function tokenRead (exec, argv) {
+90 < 1   const res = await exec('node', [CLAUDE_TOKEN, ...argv])
+91 < 1   return { code: res.code, stdout: `${res.stdout ?? ''}${res.stderr ?? ''}` }
+92 < 1 }
+93 < 1 
+94 < 1 /** The bearer the edge injects, as the listing spells it. */
+95 < 1 const BEARER = 'Authorization:Bearer'
+96 < 1 
+97 < 1 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
+98 < 1 const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
+99 < 1 
+100 < 1 const parseCpus = (value) => (/^\d+$/.test(String(value ?? '').trim()) ? Number(value) : null)
+101 < 1 
+102 < 1 /**
+103 < 1  * The config file's default account: its top-level `account`, or null when the
+104 < 1  * file is absent, is not JSON, is not a JSON object, or names no account. The
+105 < 1  * launcher reads the same key to pick the keychain entry a run signs in with;
+106 < 1  * the doctor reads it only to ask whether the keychain holds that name.
+107 < 1  *
+108 < 1  * It travels beside `loadFleetConfig` rather than inside it: `result.config` is
+109 < 1  * exactly the two keys the doctor itself reads, and the account reaches
+110 < 1  * `doctor()` as its own option.
+111 < 1  */
+112 < 1 export async function fleetConfigAccount ({ path: configPath } = {}) {
+113 < 1   const account = (await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH()))?.account
+114 < 1   return typeof account === 'string' && account !== '' ? account : null
+115 < 1 }
+116 < 1 
+117 < 1 // ── exe-dev ──────────────────────────────────────────────────────────────────
+118 < 1 
+119 < 1 function exeDevRow (res) {
+120 < 1   const who = firstLine(res.stdout)
+121 < 1   if (res.code === 0 && who !== '') return row('exe-dev', 'ok', `signed in as ${who}`)
+122 < 1   return row('exe-dev', 'missing', `ssh exe.dev whoami answered code ${res.code} with no account name`)
+123 < 1 }
+124 < 1 
+125 < 1 // ── capacity ─────────────────────────────────────────────────────────────────
+126 < 1 
+127 < 1 /**
+128 < 1  * `billing plan --json` is one flat object with `max_cpus`, `max_memory_gb`,
+129 < 1  * `tier` and `plan`. The row reports two numbers side by side — the pool, and
+130 < 1  * the size one run asks for — and draws no conclusion from them, because
+131 < 1  * allocation on exe.dev is over-committable: 56 vCPU stood allocated against a
+132 < 1  * 16-vCPU plan and no run was ever refused (measured 2026-09-05). A pool
+133 < 1  * smaller than the ask is therefore a green row that says so, not a limit.
+134 < 1  *
+135 < 1  * Only a number the doctor could not read turns the row red: an unreadable
+136 < 1  * `billing plan --json`, or a `cpu`/`memory` it cannot parse. Both details name
+137 < 1  * `~/.ultrapowers/fleet.json`, the file that sets the size a run asks for.
+138 < 1  */
+139 < 1 /**
+140 < 1  * The pool `billing plan --json` answered, through the lobby's own reader:
+141 < 1  * `{ maxCpus, maxMemoryGb, tier }`, or null when the verb exited non-zero or
+142 < 1  * answered no numeric `max_cpus`. `readPlanCapacity` reads an absent
+143 < 1  * `max_memory_gb` as 0, which is a launch's business; the doctor reads it as no
+144 < 1  * pool, so `maxMemoryGb` is null unless the payload itself carries a number.
+145 < 1  */
+146 < 1 async function readPool (res) {
+147 < 1   if (res.code !== 0) return null
+148 < 1   let capacity
+149 < 1   try {
+150 < 1     capacity = await readPlanCapacity(async () => res)
+151 < 1   } catch {
+152 < 1     return null
+153 < 1   }
+154 < 1   const payload = parseJson(res.stdout)
+155 < 1   return {
+156 < 1     maxCpus: capacity.maxCpus,
+157 < 1     maxMemoryGb: typeof payload?.max_memory_gb === 'number' ? capacity.maxMemoryGb : null,
+158 < 1     tier: capacity.tier !== '' ? capacity.tier : String(payload?.plan ?? 'untiered')
+159 < 1   }
+160 < 1 }
+161 < 1 
+162 < 1 function poolRow (res, pool, config) {
+163 < 1   const askedCpu = parseCpus(config.cpu)
+164 < 1   const askedGb = parseMemoryGb(config.memory)
+165 < 1   if (askedCpu === null || askedGb === null) {
+166 < 1     return row(
+167 < 1       'capacity',
+168 < 1       'missing',
+169 < 1       `~/.ultrapowers/fleet.json asks for cpu ${config.cpu} / memory ${config.memory}, which is not <int> and <int>GB`
+170 < 1     )
+171 < 1   }
+172 < 1 
+173 < 1   if (pool === null || pool.maxMemoryGb === null) {
+174 < 1     return row(
+175 < 1       'capacity',
+176 < 1       'missing',
+177 < 1       `billing plan --json answered code ${res.code} with no readable pool — ~/.ultrapowers/fleet.json sets the size a run asks for`
+178 < 1     )
+179 < 1   }
+180 < 1 
+181 < 1   const described = `${pool.tier} pool ${pool.maxCpus} vCPU / ${pool.maxMemoryGb}GB`
+182 < 1   const asked = `${askedCpu} vCPU / ${askedGb}GB`
+183 < 1   return row('capacity', 'ok', `${described}; a run asks ${asked}`)
+184 < 1 }
+185 < 1 
+186 < 1 /** The two key names the doctor reads, as the row's detail spells them. */
+187 < 1 const READ_KEYS = Object.keys(FLEET_DEFAULTS)
+188 < 1 
+189 < 1 /** The names something outside the doctor reads, as the row's detail spells
+190 < 1  *  them: `account` picks the keychain entry a run signs in with, and
+191 < 1  *  `evidence` names the repository a run keeps its record in. They are the
+192 < 1  *  launcher's to read; the doctor only asks whether what they name is there. */
+193 < 1 const LAUNCHER_KEYS = Object.freeze(['account', 'evidence'])
+194 < 1 
+195 < 1 /** Every name the config file may carry: the two the doctor reads, and the
+196 < 1  *  ones the launcher does. A name outside this list is a key nothing reads. */
+197 < 1 const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
+198 < 1 
+199 < 1 /**
+200 < 1  * The pool arithmetic, plus what the config file's own key names say about it.
+201 < 1  *
+202 < 1  * `configKeys` is the file's own top-level key names (`readFleetJson`): null when there
+203 < 1  * is no file to read keys off, and otherwise every top-level name in it. A name
+204 < 1  * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
+205 < 1  * operator wrote a setting nothing consults, so the row is red until the file is
+206 < 1  * rewritten, and the detail names those keys by echoing the file rather than
+207 < 1  * spelling any of them here. `account` is not among them: the doctor never reads
+208 < 1  * it, but the launcher does, and the `accounts` row says whether what it names is
+209 < 1  * there. A file that omits one of the two the doctor does read is not wrong, only
+210 < 1  * silent, so the green detail says which default it fell back to.
+211 < 1  */
+212 < 1 function capacityRow (res, pool, config, configKeys = null) {
+213 < 1   const base = poolRow(res, pool, config)
+214 < 1   const keys = Array.isArray(configKeys) ? configKeys.filter((k) => typeof k === 'string') : null
+215 < 1   if (keys === null) return base
+216 < 1 
+217 < 1   const stale = keys.filter((key) => !CONFIG_KEYS.includes(key))
+218 < 1   if (stale.length > 0) {
+219 < 1     return row(
+220 < 1       'capacity',
+221 < 1       'missing',
+222 < 1       `~/.ultrapowers/fleet.json carries ${stale.join(', ')} — keys nothing reads; ` +
+223 < 1         `it reads ${READ_KEYS.join(' and ')} only, and the launcher reads ` +
+224 < 1         `${LAUNCHER_KEYS.join(' and ')}. ${base.detail}`
+225 < 1     )
+226 < 1   }
+227 < 1   if (base.status !== 'ok') return base
+228 < 1 
+229 < 1   const lacking = READ_KEYS.filter((key) => !keys.includes(key))
+230 < 1   const notes = lacking.map(
+231 < 1     (key) => ` (${key} not in ~/.ultrapowers/fleet.json — the default ${FLEET_DEFAULTS[key]})`
+232 < 1   )
+233 < 1   return notes.length === 0 ? base : row('capacity', 'ok', `${base.detail}${notes.join('')}`)
+234 < 1 }
+235 < 1 
+236 < 1 // ── integrations, read once for two rows ─────────────────────────────────────
+237 < 1 
+238 < 1 /**
+239 < 1  * `integrations list --json`, read through the lobby's own `listIntegrations`.
+240 < 1  * The doctor asks three questions of each object — does it exist, does it
+241 < 1  * carry the bearer, and is it attached to `tag:fleet` — and the lobby's reader
+242 < 1  * answers all three defensively (`bearer`, `tags`), so a field rename on
+243 < 1  * exe.dev's side does not turn a healthy fleet red for the wrong reason.
+244 < 1  *
+245 < 1  * Answers a Map of name → `{ name, tags, github, bearer, comment }`, or null
+246 < 1  * when the verb exited non-zero or its stdout is not a listing at all.
+247 < 1  * `comment` is the entry's own comment string or null: the credential tool
+248 < 1  * writes `account=<name>` into `claude-max`'s on every install, and the
+249 < 1  * `accounts` row reads the edge's account off it.
+250 < 1  */
+251 < 1 async function readIntegrations (res) {
+252 < 1   if (res.code !== 0) return null
+253 < 1   const payload = parseJson(res.stdout)
+254 < 1   if (!Array.isArray(payload) && !Array.isArray(payload?.integrations)) return null
+255 < 1   const out = new Map()
+256 < 1   for (const entry of await listIntegrations(async () => res)) {
+257 < 1     out.set(entry.name, {
+258 < 1       name: entry.name,
+259 < 1       tags: entry.tags,
+260 < 1       bearer: entry.bearer,
+261 < 1       comment: entry.comment
+262 < 1     })
+263 < 1   }
+264 < 1   return out
+265 < 1 }
+266 < 1 
+267 < 1 /** The fix for an integration no fleet VM is granted. */
+268 < 1 const attachFix = (name) => `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}"`
+269 < 1 
+270 < 1 /**
+271 < 1  * The one question every integration row asks: is the object `name` granted to
+272 < 1  * fleet VMs, i.e. attached to `tag:fleet` in `integrations list --json`?
+273 < 1  * Resolves null when it is, otherwise the row `id` reports: an absent object is
+274 < 1  * `ok` with `absentIsOk` (and `absentDetail`), `missing` without; an unattached
+275 < 1  * one is `missing`, naming `attachFix(name)`.
+276 < 1  */
+277 < 1 export function attachRowFor (name, { id, found, absentIsOk = false, absentDetail = null } = {}) {
+278 < 1   const have = found === null || found === undefined ? undefined : found.get(name)
+279 < 1   if (have === undefined) {
+280 < 1     return row(id, absentIsOk ? 'ok' : 'missing', absentDetail ?? `no ${name} integration at the edge`)
+281 < 1   }
+282 < 1   if (have.tags.includes(FLEET_TAG)) return null
+283 < 1   return row(id, 'missing', `${name} is not attached to ${FLEET_POLICY}, so no fleet VM is granted it — ${attachFix(name)}`)
+284 < 1 }
+285 < 1 // ── claude ───────────────────────────────────────────────────────────────────
+286 < 1 
+287 < 1 /**
+288 < 1  * `usage --json --no-rotate`'s first row, read for its own detail suffix: the
+289 < 1  * account's seven-day and five-hour windows when the row reads clean, or
+290 < 1  * `usage unread — <reason>` when it does not — a non-zero exit reads as
+291 < 1  * `usage answered code <code>`, an `unread: true` row as its own `reason`.
+292 < 1  * A read never rotates the token; that is the point of `--no-rotate`.
+293 < 1  */
+294 < 1 function usageSuffix (usageRes) {
+295 < 1   if (usageRes.code !== 0) {
+296 < 1     return `; usage unread — usage answered code ${usageRes.code}`
+297 < 1   }
+298 < 1   let parsed
+299 < 1   try {
+300 < 1     parsed = JSON.parse(usageRes.stdout)
+301 < 1   } catch {
+302 < 1     parsed = null
+303 < 1   }
+304 < 1   const first = Array.isArray(parsed) ? parsed[0] : undefined
+305 < 1   if (first === undefined || first.unread) {
+306 < 1     const reason = first?.reason ?? 'no readable JSON'
+307 < 1     return `; usage unread — ${reason}`
+308 < 1   }
+309 < 1   const { sevenDay, fiveHour } = first
+310 < 1   return `; 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}` +
+311 < 1     `; 5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+312 < 1 }
+313 < 1 
+314 < 1 /**
+315 < 1  * The bearer has to exist at the edge. Whether the object reaches a fleet VM
+316 < 1  * is the `integrations` row's question (its attachment), not this one's.
+317 < 1  *
+318 < 1  * claude-token's status line only decorates the row. Either outcome leaves the
+319 < 1  * status alone — the bearer is injected at the edge whether or not this laptop
+320 < 1  * still holds the refresh token — and only the detail differs. The usage
+321 < 1  * window reading rides beside it, appended to `detail` either way, so the
+322 < 1  * reading is visible whether or not the bearer is found.
+323 < 1  */
+324 < 1 function claudeRow (found, tokenRes, usageRes) {
+325 < 1   const suffix = usageSuffix(usageRes)
+326 < 1   if (found === null) {
+327 < 1     return row('claude', 'missing', `integrations list printed no readable JSON${suffix}`)
+328 < 1   }
+329 < 1   const have = found.get(CLAUDE_INTEGRATION)
+330 < 1   if (have === undefined || !have.bearer) {
+331 < 1     const why = have === undefined
+332 < 1       ? `no ${CLAUDE_INTEGRATION} integration at the edge`
+333 < 1       : `${CLAUDE_INTEGRATION} carries no ${BEARER} header`
+334 < 1     return row('claude', 'missing', `${why} — node fleet/claude-token.mjs login${suffix}`)
+335 < 1   }
+336 < 1   const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
+337 < 1     ? firstLine(tokenRes.stdout)
+338 < 1     : 'no refresh token in the keychain — the bearer will not be refreshed before a run'
+339 < 1   return row('claude', 'ok', `${CLAUDE_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
+340 < 1 }
+341 < 1 
+342 < 1 // ── accounts ─────────────────────────────────────────────────────────────────
+343 < 1 
+344 < 1 /** The command a laptop with no usable keychain entry runs. */
+345 < 1 const LOGIN = 'node fleet/claude-token.mjs login'
+346 < 1 
+347 < 1 /** The token the credential tool writes into `claude-max`'s comment on every
+348 < 1  *  install, so the edge itself records which account its bearer came from. */
+349 < 1 const ACCOUNT_TOKEN = 'account='
+350 < 1 
+351 < 1 /**
+352 < 1  * `claude-token.mjs accounts --json` prints one object per keychain entry —
+353 < 1  * `{ name, expiresAt, fresh }` — under the one service. Nothing secret is in
+354 < 1  * it: an expiry and a name, never a token.
+355 < 1  */
+356 < 1 function parseAccounts (res) {
+357 < 1   if (res.code !== 0) return null
+358 < 1   const parsed = parseJson(res.stdout)
+359 < 1   return Array.isArray(parsed) ? parsed : null
+360 < 1 }
+361 < 1 
+362 < 1 const accountName = (entry) => (entry && typeof entry.name === 'string' ? entry.name : '')
+363 < 1 
+364 < 1 const describeAccount = (entry) =>
+365 < 1   `${accountName(entry)} ${entry?.fresh === true ? 'fresh until' : 'expired'} ${String(entry?.expiresAt ?? '')}`
+366 < 1 
+367 < 1 /**
+368 < 1  * The account the edge carries, off `claude-max`'s comment: the value after
+369 < 1  * `account=` in the first whitespace-separated token that starts with it. Null
+370 < 1  * when the comment is prose with no such token — an install from before the
+371 < 1  * tool wrote one, which the next refresh records.
+372 < 1  */
+373 < 1 function edgeAccount (found) {
+374 < 1   const comment = found?.get(CLAUDE_INTEGRATION)?.comment
+375 < 1   if (typeof comment !== 'string') return null
+376 < 1   for (const word of comment.split(/\s+/)) {
+377 < 1     if (!word.startsWith(ACCOUNT_TOKEN)) continue
+378 < 1     const name = word.slice(ACCOUNT_TOKEN.length)
+379 < 1     return name === '' ? null : name
+380 < 1   }
+381 < 1   return null
+382 < 1 }
+383 < 1 
+384 < 1 /**
+385 < 1  * Which accounts this laptop holds, when each one expires, which of them the
+386 < 1  * edge is carrying, and — when `~/.ultrapowers/fleet.json` names one — whether
+387 < 1  * the keychain holds that name at all. An expired entry is not red: the
+388 < 1  * launcher refreshes before every run, and the bearer already lives at the
+389 < 1  * edge. An empty keychain is, because nothing can be refreshed from it.
+390 < 1  */
+391 < 1 function accountsRow (res, found, account) {
+392 < 1   const entries = parseAccounts(res)
+393 < 1   if (entries === null) {
+394 < 1     return row(
+395 < 1       'accounts',
+396 < 1       'missing',
+397 < 1       `claude-token.mjs accounts --json answered code ${res.code} with no JSON array of keychain entries — ${LOGIN}`
+398 < 1     )
+399 < 1   }
+400 < 1   if (entries.length === 0) {
+401 < 1     return row('accounts', 'missing', `the keychain holds no account — ${LOGIN}`)
+402 < 1   }
+403 < 1 
+404 < 1   const listed = entries.map(describeAccount).join(', ')
+405 < 1   const edge = edgeAccount(found)
+406 < 1   const carries = edge === null ? '; edge account unrecorded' : `; edge carries ${edge}`
+407 < 1   if (account !== null && !entries.map(accountName).includes(account)) {
+408 < 1     return row(
+409 < 1       'accounts',
+410 < 1       'missing',
+411 < 1       `~/.ultrapowers/fleet.json names ${account}, which no keychain entry carries — ` +
+412 < 1         `${listed}${carries} — ${LOGIN} --account ${account}`
+413 < 1     )
+414 < 1   }
+415 < 1   const named = account === null ? '' : `; fleet.json names ${account}`
+416 < 1   return row('accounts', 'ok', `${listed}${carries}${named}`)
+417 < 1 }
+418 < 1 
+419 < 1 // ── verb-drift ───────────────────────────────────────────────────────────────
+420 < 1 
+421 < 1 /** The only shape a verb name may take before it is interpolated into an ssh
+422 < 1  *  string. Any other key of the record is reported unreadable, never run. */
+423 < 1 const VERB = /^[a-z][a-z0-9 -]*$/
+424 < 1 
+425 < 1 /** The lobby's `Options:` block: two spaces, the flag, spaces, its description.
+426 < 1  *  `help <verb>` and `<verb> --help` print the same block (measured 2026-09-05),
+427 < 1  *  and `help …` is not a mutating verb, so this is the form the doctor asks. */
+428 < 1 const FLAG_LINE = /^[ \t]+(--[A-Za-z0-9-]+)/gm
+429 < 1 
+430 < 1 function helpFlags (stdout) {
+431 < 1   const flags = []
+432 < 1   for (const match of String(stdout ?? '').matchAll(FLAG_LINE)) {
+433 < 1     if (!flags.includes(match[1])) flags.push(match[1])
+434 < 1   }
+435 < 1   return flags
+436 < 1 }
+437 < 1 
+438 < 1 /**
+439 < 1  * Re-fetch `help <verb>` for every verb of the verb record (`VERBS_PATH`, or
+440 < 1  * `recordPath` so an exam drives the row from a fixture) and diff the live
+441 < 1  * flag set against the recorded one.
+442 < 1  *
+443 < 1  * `--help` answers text, not JSON — a `Command:` line, a description, an
+444 < 1  * optional `Usage:` line, an `Options:` block and an optional `Examples:` block
+445 < 1  * — so the diff unit is the flag set and the record stores flag names, not
+446 < 1  * prose. A verb the lobby no longer knows answers a line starting `No help
+447 < 1  * available for unrecognized command:` at exit 0, which is why a stdout with no
+448 < 1  * flag at all counts as unreadable whatever the exit code was.
+449 < 1  *
+450 < 1  * A drift is a finding, never a refusal: the caller decides what a finding is
+451 < 1  * worth. Only a record this cannot read at all answers `readable: false`.
+452 < 1  */
+453 < 1 export async function verbDrift ({ help, recordPath } = {}) {
+454 < 1   const target = recordPath ?? VERBS_PATH
+455 < 1   const unreadable = (why) => ({
+456 < 1     readable: false,
+457 < 1     capturedAt: null,
+458 < 1     findings: [],
+459 < 1     detail: `${VERBS_RECORD} ${why} — re-capture it from ssh exe.dev "help <verb>" output`
+460 < 1   })
+461 < 1 
+462 < 1   let text
+463 < 1   try {
+464 < 1     text = await fsp.readFile(target, 'utf8')
+465 < 1   } catch {
+466 < 1     return unreadable('is not there')
+467 < 1   }
+468 < 1   let record
+469 < 1   try {
+470 < 1     record = JSON.parse(text)
+471 < 1   } catch {
+472 < 1     return unreadable('is not JSON')
+473 < 1   }
+474 < 1   const verbs = record && typeof record === 'object' ? record.verbs : null
+475 < 1   if (!verbs || typeof verbs !== 'object' || Array.isArray(verbs)) {
+476 < 1     return unreadable('carries no verbs object')
+477 < 1   }
+478 < 1   const capturedAt = typeof record.capturedAt === 'string' ? record.capturedAt : null
+479 < 1 
+480 < 1   const names = Object.keys(verbs)
+481 < 1   const findings = []
+482 < 1   const segments = []
+483 < 1   for (const verb of names) {
+484 < 1     const recorded = Array.isArray(verbs[verb]) ? verbs[verb].filter((f) => typeof f === 'string') : []
+485 < 1 
+486 < 1     if (!VERB.test(verb)) {
+487 < 1       findings.push({ verb, appeared: [], vanished: [], unreadable: -1 })
+488 < 1       segments.push(`${verb}: help unreadable (code -1)`)
+489 < 1       continue
+490 < 1     }
+491 < 1 
+492 < 1     const res = await help(verb)
+493 < 1     const live = helpFlags(res?.stdout)
+494 < 1     if (res?.code !== 0 || live.length === 0) {
+495 < 1       const code = typeof res?.code === 'number' ? res.code : -1
+496 < 1       findings.push({ verb, appeared: [], vanished: [], unreadable: code })
+497 < 1       segments.push(`${verb}: help unreadable (code ${code})`)
+498 < 1       continue
+499 < 1     }
+500 < 1 
+501 < 1     const appeared = live.filter((flag) => !recorded.includes(flag))
+502 < 1     const vanished = recorded.filter((flag) => !live.includes(flag))
+503 < 1     if (appeared.length === 0 && vanished.length === 0) continue
+504 < 1     findings.push({ verb, appeared, vanished, unreadable: null })
+505 < 1     if (appeared.length > 0) segments.push(`${verb}: ${appeared.join(', ')} appeared`)
+506 < 1     if (vanished.length > 0) segments.push(`${verb}: ${vanished.join(', ')} vanished`)
+507 < 1   }
+508 < 1 
+509 < 1   const detail = segments.length === 0
+510 < 1     ? `${names.length} verbs match ${VERBS_RECORD} (captured ${capturedAt})`
+511 < 1     : `drift since ${capturedAt}: ${segments.join('; ')} — re-measure the behaviours with node fleet/tests/probe_exe_facts.mjs`
+512 < 1   return { readable: true, capturedAt, findings, detail }
+513 < 1 }
+514 < 1 
+515 < 1 /** A readable record is a green row whatever it found; an unreadable one is the
+516 < 1  *  only red, because then the doctor has nothing to compare the lobby against. */
+517 < 1 const verbDriftRow = (drift) => row('verb-drift', drift.readable ? 'ok' : 'missing', drift.detail)
+518 < 1 
+519 < 1 // ── github ───────────────────────────────────────────────────────────────────
+520 < 1 
+521 < 1 /**
+522 < 1  * `integrations setup github --list` has no `--json` (`--json` is a
+523 < 1  * flag-parsing error), so the row reads the two-line form it does print: a
+524 < 1  * `GitHub accounts:` header, then one indented account per line. No account
+525 < 1  * means the browser step has never been walked.
+526 < 1  */
+527 < 1 function githubAccounts (stdout) {
+528 < 1   const lines = String(stdout ?? '').split('\n')
+529 < 1   const header = lines.findIndex((line) => /accounts\s*:\s*$/i.test(line))
+530 < 1   const body = header === -1 ? lines : lines.slice(header + 1)
+531 < 1   const names = []
+532 < 1   for (const line of body) {
+533 < 1     if (!/^\s+\S/.test(line)) continue
+534 < 1     names.push(line.trim())
+535 < 1   }
+536 < 1   return names
+537 < 1 }
+538 < 1 
+539 < 1 function githubRow (res) {
+540 < 1   const accounts = res.code === 0 ? githubAccounts(res.stdout) : []
+541 < 1   if (accounts.length === 0) {
+542 < 1     return row(
+543 < 1       'github',
+544 < 1       'missing',
+545 < 1       `integrations setup github --list answered code ${res.code} with no account — ssh exe.dev integrations setup github walks the browser step`
+546 < 1     )
+547 < 1   }
+548 < 1   return row('github', 'ok', `GitHub accounts ${accounts.join(', ')}`)
+549 < 1 }
+550 < 1 
+551 < 1 // ── integrations ─────────────────────────────────────────────────────────────
+552 < 1 
+553 < 1 /** The names the row asks about: the bearer's object always, and the target's
+554 < 1  *  with `--target`, in this order. */
+555 < 1 function attachNames (target) {
+556 < 1   const names = [CLAUDE_INTEGRATION]
+557 < 1   if (target !== null) names.push(githubIntegrationFor(target))
+558 < 1   return names
+559 < 1 }
+560 < 1 
+561 < 1 /**
+562 < 1  * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
+563 < 1  * the tag `new --tag fleet` creates the VM with. The row is red for the FIRST
+564 < 1  * name that is not attached, naming the attach that fixes it, because a stranger
+565 < 1  * reading several failures at once cannot tell which one to run first. With
+566 < 1  * `--target`, the target's one object `gh-<owner>-<repo>` also has to exist, and
+567 < 1  * that is asked first.
+568 < 1  */
+569 < 1 function integrationsRow (found, target) {
+570 < 1   if (found === null) {
+571 < 1     return row('integrations', 'missing', 'integrations list printed no readable JSON')
+572 < 1   }
+573 < 1   if (target !== null) {
+574 < 1     const want = githubIntegrationFor(target)
+575 < 1     if (!found.has(want)) {
+576 < 1       return row('integrations', 'missing', `no ${want} integration for ${target} — node fleet/target.mjs ${target}`)
+577 < 1     }
+578 < 1   }
+579 < 1   const names = attachNames(target)
+580 < 1   for (const name of names) {
+581 < 1     if (!found.has(name)) continue // the claude row names a missing object
+582 < 1     const off = attachRowFor(name, { id: 'integrations', found })
+583 < 1     if (off !== null) return off
+584 < 1   }
+585 < 1   return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} attached to ${FLEET_POLICY}`)
+586 < 1 }
+587 < 1 
+588 < 1 // ── evidence ─────────────────────────────────────────────────────────────────
+589 < 1 
+590 < 1 /** The read that asks whether the evidence repository exists, as the argv of
+591 < 1  *  `exec('gh', …)`. */
+592 < 1 const evidenceRepoRead = (evidence) => ['api', `repos/${evidence}`]
+593 < 1 
+594 < 1 /**
+595 < 1  * The one-time setup that lets a run keep its record in the operator's own
+596 < 1  * evidence repository — whatever repository the run drives — walked in the
+597 < 1  * order an operator does it and stopped at the first miss, each naming its
+598 < 1  * fix: the key `evidence` in `~/.ultrapowers/fleet.json`; the repository
+599 < 1  * itself (`repoRes`, the answer of `gh api repos/<owner>/<repo>`, null when
+600 < 1  * there was no key to read); its `gh-<owner>-<repo>` integration in the
+601 < 1  * listing, then its attachment, judged by `attachRowFor`.
+602 < 1  */
+603 < 1 function evidenceRow (evidence, repoRes, found) {
+604 < 1   if (evidence === null) {
+605 < 1     return row(
+606 < 1       'evidence',
+607 < 1       'missing',
+608 < 1       'no evidence repository set — add "evidence": "<owner>/<repo>" to ~/.ultrapowers/fleet.json'
+609 < 1     )
+610 < 1   }
+611 < 1   if (repoRes === null || repoRes.code !== 0) {
+612 < 1     return row(
+613 < 1       'evidence',
+614 < 1       'missing',
+615 < 1       `gh api repos/${evidence} answered code ${repoRes?.code ?? 1} — gh repo create ${evidence} --private`
+616 < 1     )
+617 < 1   }
+618 < 1   if (found === null) {
+619 < 1     return row('evidence', 'missing', 'integrations list printed no readable JSON')
+620 < 1   }
+621 < 1   const name = githubIntegrationFor(evidence)
+622 < 1   if (!found.has(name)) {
+623 < 1     return row('evidence', 'missing', `no ${name} integration for ${evidence} — node fleet/target.mjs ${evidence}`)
+624 < 1   }
+625 < 1   const off = attachRowFor(name, { id: 'evidence', found })
+626 < 1   return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is attached to ${FLEET_POLICY}`)
+627 < 1 }
+628 < 1 
+630 > 1 // ── the hub VM ───────────────────────────────────────────────────────────────
+629 < 2 // ── kata ─────────────────────────────────────────────────────────────────────
+630 < 1 
+632 > 1 /** The one persistent VM of the fleet: the home of the VM remover. */
+633 < 1 const HUB_VM = 'kata-hub'
+631 < 2 /** The hub's VM, the integration that fronts it, and the one command that
+632 < 2  *  builds either. */
+633 < 2 const KATA_INTEGRATION = 'kata'
+634 < 2 const KATA_VM = 'kata-hub'
+635 < 2 const KATA_FIX = 'node fleet/kata-hub.mjs'
+636 < 1 
+637 < 1 /** `ssh exe.dev "ls kata-hub --json"` → the `kata-hub` row of `.vms[]`, or null.
+638 < 1  *  `.vms[]` only: `.shared_vms[]` are other people's machines. */
+640 > 1 function hubVmRow (res) {
+639 < 2 function kataVmRow (res) {
+640 < 1   if (!res || res.code !== 0) return null
+641 < 1   const parsed = parseJson(res.stdout)
+642 < 1   const rows = Array.isArray(parsed?.vms) ? parsed.vms : []
+644 > 1   return rows.find((entry) => entry?.vm_name === HUB_VM) ?? null
+643 < 2   return rows.find((entry) => entry?.vm_name === KATA_VM) ?? null
+644 < 1 }
+645 < 2 
+646 < 2 /**
+647 < 2  * The hub, in the order an operator fixes it: the object, its bearer, its
+648 < 2  * attachment, and then the VM behind it.
+649 < 2  */
+650 < 2 function kataRow (found, vmsRes) {
+651 < 2   const have = found === null ? undefined : found.get(KATA_INTEGRATION)
+652 < 2   if (have === undefined) {
+653 < 2     return row('kata', 'missing', `no ${KATA_INTEGRATION} http-proxy at the edge — ${KATA_FIX}`)
+654 < 2   }
+655 < 2   if (!have.bearer) {
+656 < 2     return row('kata', 'missing', `${KATA_INTEGRATION} carries no ${BEARER} header — ${KATA_FIX}`)
+657 < 2   }
+658 < 2   const off = attachRowFor(KATA_INTEGRATION, { id: 'kata', found })
+659 < 2   if (off !== null) return off
+660 < 2   const vm = kataVmRow(vmsRes)
+661 < 2   if (vm === null) {
+662 < 2     return row('kata', 'missing', `no ${KATA_VM} VM — ${KATA_FIX}`)
+663 < 2   }
+664 < 2   const status = typeof vm.status === 'string' && vm.status !== '' ? vm.status : 'unknown'
+665 < 2   return row(
+666 < 2     'kata',
+667 < 2     'ok',
+668 < 2     `${KATA_INTEGRATION} carries the bearer, attached to ${FLEET_POLICY}, and ${KATA_VM} is ${status}`
+669 < 2   )
+670 < 2 }
+671 < 2 
+673 > 2 /** `launch.kata.mode` of `fleet/policy.json`, read as the launcher reads it: `off` unless the cell says `on`. */
+674 < 2 const kataModeOf = () => policyCell(['launch', 'kata', 'mode'], ['off', 'on'])
+675 < 2 
+676 < 2 /** While no launch asks the hub, the hub is no prerequisite: the row is green and says why. */
+677 < 2 const kataOffRow = () => row(
+678 < 2   'kata',
+679 < 2   'ok',
+680 < 2   'not asked: launch.kata.mode is off in fleet/policy.json, so no launch reaches the kata hub (a run is read with fleet/run-read.mjs)'
+681 < 2 )
+682 < 1 
+672 < 1 // ── cloudflare ───────────────────────────────────────────────────────────────
+673 < 1 
+674 < 1 /** The deploy's credential: an http-proxy integration that forwards a
+675 < 1  *  Cloudflare API token, named the same as every other fleet integration. */
+676 < 1 const CLOUDFLARE_INTEGRATION = 'cloudflare'
+677 < 1 
+678 < 1 /**
+679 < 1  * The ninth row: cloudflare carries the deploy's credential at the edge, and
+680 < 1  * only a plan with a `**Publish:**` line needs it — so unlike every other row,
+681 < 1  * absent is `ok`, and present is judged by its attachment `tag:fleet`.
+682 < 1  */
+683 < 1 function cloudflareRow (found) {
+684 < 1   const off = attachRowFor(CLOUDFLARE_INTEGRATION, {
+685 < 1     id: 'cloudflare',
+686 < 1     found,
+687 < 1     absentIsOk: true,
+688 < 1     absentDetail: 'cloudflare integration absent — only a plan with a **Publish:** line needs it; ' +
+689 < 1       'first-run.md §cloudflare walks the token'
+690 < 1   })
+691 < 1   return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy attached to ${FLEET_POLICY}`)
+692 < 1 }
+693 < 1 
+695 > 1 // ── reaper ──
+696 < 1 
+697 < 1 /** The hub-only integration the hub's reaper removes a finished VM through, and the exe.dev key
+698 < 1  *  its bearer is. */
+699 < 1 const REAPER_INTEGRATION = 'lobby-rm'
+700 < 1 const REAPER_KEY = 'hub-reaper'
+701 < 1 const REAPER_SOON_DAYS = 14
+703 > 1 /** What the row asks the hub's remover, from the hub: to remove a VM that cannot exist. A working
+704 < 1  *  key answers that the VM is not found; a dead one answers `invalid token`. Nothing is removed. */
+705 < 1 export const REAPER_PROBE = "curl -sS -m 30 -X POST https://lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"
+702 < 1 
+703 < 1 /**
+704 < 1  * The eleventh row: the hub removes a finished run's VM through `lobby-rm`, whose bearer is an
+705 < 1  * exe.dev key named `hub-reaper`. That key expires, and an expired one fails without a sound: the
+706 < 1  * hub answers the VM 202 and removes nothing (the key expired 2026-10-30, and on 2026-11-13 the
+707 < 1  * hub's journal read `removed=False` for all 8 finished runs of the day; each VM waited for a
+708 < 1  * janitor run). Absent `lobby-rm` is `ok`: a finished VM then waits for the janitor by design.
+710 > 1  * Present, the row first asks the remover itself, from the hub (`probe`, the answer to
+711 < 1  * `REAPER_PROBE`): `invalid token` is red whatever the keys say, since a good key that never
+712 < 1  * reached the integration removes nothing either (2026-11-13: the key list read 364 days while the
+713 < 1  * remover still answered 401). Then it reads `ssh-key list --json` for the key named `hub-reaper…`
+714 < 1  * that lasts longest: red when there is none or it has expired, green with the days left otherwise.
+715 < 1  * A remover that could not be asked is said so in the detail and judged on the key alone.
+709 < 2  * Present, the row reads `ssh-key list --json` for the key named `hub-reaper…` that lasts longest:
+710 < 2  * red when there is none or it has expired, green with the days left otherwise.
+711 < 1  */
+713 > 1 function reaperRow (found, keysRes, now, probe = null) {
+712 < 2 function reaperRow (found, keysRes, now) {
+713 < 1   if (found === null || found === undefined || !found.has(REAPER_INTEGRATION)) {
+714 < 1     return row('reaper', 'ok', `no ${REAPER_INTEGRATION} integration — a finished run's VM waits for the janitor`)
+715 < 1   }
+717 > 1   const asked = probe !== null && probe.code === 0 && String(probe.stdout ?? '').trim() !== ''
+718 < 1   if (asked && /invalid token/i.test(probe.stdout)) {
+719 < 1     return row('reaper', 'missing', `the hub's remover answers \`invalid token\`: the key ${REAPER_INTEGRATION} holds is dead, so a finished VM is answered and not removed — bash fleet/reaper-key.sh renews it`)
+720 < 1   }
+721 < 1   const tested = asked ? '; the remover answered from the hub' : '; the remover was not asked (the hub was not reached)'
+722 < 1   const keyRow = reaperKeyRow(keysRes, now)
+723 < 1   return row('reaper', keyRow.status, keyRow.detail + (keyRow.status === 'ok' ? tested : ''))
+724 < 1 }
+725 < 1 
+726 < 1 /** The key half of the row: `{ status, detail }` from `ssh-key list --json`. */
+727 < 1 function reaperKeyRow (keysRes, now) {
+728 < 1   if (keysRes.code !== 0) return ({ status: 'missing', detail: `ssh-key list answered code ${keysRes.code}, so the ${REAPER_KEY} key is unread` })
+716 < 2   if (keysRes.code !== 0) return row('reaper', 'missing', `ssh-key list answered code ${keysRes.code}, so the ${REAPER_KEY} key is unread`)
+717 < 1   let keys = []
+718 < 1   try {
+719 < 1     const parsed = JSON.parse(keysRes.stdout)
+720 < 1     keys = Array.isArray(parsed?.ssh_keys) ? parsed.ssh_keys : []
+721 < 1   } catch { keys = [] }
+722 < 1   const mine = keys.filter((k) => typeof k?.name === 'string' && k.name.startsWith(REAPER_KEY))
+723 < 1   if (mine.length === 0) {
+725 > 1     return ({ status: 'missing', detail: `no exe.dev key named ${REAPER_KEY}: the hub cannot remove a finished run's VM` })
+724 < 2     return row('reaper', 'missing', `no exe.dev key named ${REAPER_KEY}: the hub cannot remove a finished run's VM`)
+725 < 1   }
+726 < 1   const until = (k) => (typeof k.expires_at === 'string' && k.expires_at !== '' ? Date.parse(k.expires_at) : Infinity)
+727 < 1   const best = mine.reduce((a, b) => (until(b) > until(a) ? b : a))
+729 > 1   if (until(best) === Infinity) return ({ status: 'ok', detail: `the key ${best.name} does not expire` })
+728 < 2   if (until(best) === Infinity) return row('reaper', 'ok', `the key ${best.name} does not expire`)
+729 < 1   const day = best.expires_at.slice(0, 10)
+730 < 1   if (!(until(best) > now)) {
+732 > 1     return ({ status: 'missing', detail: `the key ${best.name} expired ${day}: the hub answers a finished VM and removes nothing, so each waits for a janitor run` })
+731 < 2     return row('reaper', 'missing', `the key ${best.name} expired ${day}: the hub answers a finished VM and removes nothing, so each waits for a janitor run`)
+732 < 1   }
+733 < 1   const days = Math.floor((until(best) - now) / 86400000)
+735 > 1   return ({ status: 'ok', detail: `the key ${best.name} is good until ${day} (${days} days)${days < REAPER_SOON_DAYS ? ' — renew it soon' : ''}` })
+734 < 2   return row('reaper', 'ok', `the key ${best.name} is good until ${day} (${days} days)${days < REAPER_SOON_DAYS ? ' — renew it soon' : ''}`)
+735 < 1 }
+736 < 1 
+694 < 1 // ── the doctor ───────────────────────────────────────────────────────────────
+695 < 1 
+696 < 1 /**
+697 < 1  * Run every row against `config` and resolve `{ config, rows, verdict }`.
+698 < 1  * `exec(cmd, argv)` is the lobby's seam, resolving `{ code, stdout, stderr }`,
+699 < 1  * so a test drives the doctor with a stub. `target` is `owner/repo` or null; anything else is refused before any
+700 < 1  * read rather than interpolated into an ssh string.
+701 < 1  *
+702 < 1  * `configKeys` is the config file's own top-level key names — `readFleetJson`'s keys
+703 < 1  * for the same path `config` was loaded from, or null when there is no file.
+704 < 1  * It reaches the `capacity` row and nothing else: `result.config` stays exactly
+705 < 1  * the two keys the doctor reads.
+706 < 1  *
+707 < 1  * `account` is that file's own `account` — `fleetConfigAccount` for the same
+708 < 1  * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
+709 < 1  * overrides the verb record the `verb-drift` row reads.
+710 < 1  *
+711 < 1  * `evidence` is that file's own `evidence` — `readEvidenceSetting` for the same
+712 < 1  * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
+713 < 1  */
+714 < 1 export async function doctor ({
+718 > 1   config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now()
+717 > 2   config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now(),
+718 < 2   kataMode = kataModeOf()
+716 > 2   config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null, now = Date.now()
+715 < 2   config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null
+716 < 1 } = {}) {
+717 < 1   const cfg = { ...FLEET_DEFAULTS, ...(config ?? {}) }
+718 < 1   const run = exec ?? defaultExec
+719 < 1   const want = target === null || target === undefined ? null : String(target)
+720 < 1   if (want !== null && !isSafeTarget(want)) {
+721 < 1     throw new Error(`--target takes owner/repo, not ${JSON.stringify(want)}`)
+722 < 1   }
+723 < 1   const wantAccount = account === null || account === undefined ? null : String(account)
+724 < 1   const wantEvidence = evidence === null || evidence === undefined ? null : String(evidence)
+725 < 1   if (wantEvidence !== null && !isSafeTarget(wantEvidence)) {
+726 < 1     throw new Error(`evidence takes owner/repo, not ${JSON.stringify(wantEvidence)}`)
+727 < 1   }
+728 < 1 
+729 < 1   const read = (remote) => lobbyRead(run, remote)
+730 < 1   const whoami = await read(READS.whoami)
+731 < 1   // The lobby's own readers, each handed the answer already in hand so a
+732 < 1   // non-zero exit stays the code the row reports rather than a thrown error.
+733 < 1   const billing = await read('billing plan --json')
+734 < 1   const pool = await readPool(billing)
+735 < 1   const list = await read('integrations list --json')
+736 < 1   const found = await readIntegrations(list)
+737 < 1   const github = await read(READS.github)
+738 < 1   // The status read names the configured account (`fleet.json` `account`), never
+739 < 1   // the code's default: the keychain entries are named by email since 2026-09-11.
+740 < 1   const token = await tokenRead(run, wantAccount ? ['status', '--account', wantAccount] : ['status'])
+741 < 1   // The usage read carries `--account` before `--no-rotate`, unlike the token
+742 < 1   // read's trailing clause, and never rotates the token it reads.
+743 < 1   const usage = await tokenRead(run, wantAccount
+744 < 1     ? ['usage', '--json', '--account', wantAccount, '--no-rotate']
+745 < 1     : ['usage', '--json', '--no-rotate'])
+746 < 1   const accounts = await tokenRead(run, ['accounts', '--json'])
+747 < 1   // The hub's VM, then the evidence repository when a key names one.
+749 > 1   const hubVms = await read(READS.hubVm)
+748 < 2   const kataVms = await read(READS.kataVm)
+751 > 1   // The account's keys, for the one the hub's reaper removes VMs with, and the remover's own answer.
+750 > 2   // The account's keys, for the one the hub's reaper removes VMs with.
+751 < 1   const keys = await read(READS.keys)
+753 > 1   const hub = hubVmRow(hubVms)
+752 < 2   const hub = kataVmRow(kataVms)
+753 < 1   const reaperProbe = found && found.has(REAPER_INTEGRATION) && typeof hub?.ssh_dest === 'string' && hub.ssh_dest !== ''
+754 < 1     ? await run('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', hub.ssh_dest, REAPER_PROBE])
+755 < 1     : null
+749 < 1   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
+750 < 1   const drift = await verbDrift({
+751 < 1     help: (verb) => read(`help ${verb}`),
+752 < 1     recordPath: verbsPath
+753 < 1   })
+754 < 1 
+755 < 1   const rows = [
+756 < 1     exeDevRow(whoami),
+757 < 1     capacityRow(billing, pool, cfg, configKeys),
+758 < 1     claudeRow(found, token, usage),
+759 < 1     accountsRow(accounts, found, wantAccount),
+760 < 1     githubRow(github),
+761 < 1     integrationsRow(found, want),
+762 < 1     evidenceRow(wantEvidence, evidenceRepo, found),
+763 < 1     verbDriftRow(drift),
+765 > 2     kataMode === 'on' ? kataRow(found, kataVms) : kataOffRow(),
+764 < 2     kataRow(found, kataVms),
+766 > 1     cloudflareRow(found),
+768 > 1     reaperRow(found, keys, now, reaperProbe)
+767 < 2     reaperRow(found, keys, now)
+765 < 2     cloudflareRow(found)
+766 < 1   ]
+767 < 1   const verdict = rows.every((r) => r.status === 'ok') ? 'ready' : 'not-ready'
+768 < 1   return { config: cfg, rows, verdict }
+769 < 1 }
+770 < 1 
+771 < 1 // ── CLI ──────────────────────────────────────────────────────────────────────
+772 < 1 
+773 < 1 const PAD = Math.max(...['ok', 'missing'].map((s) => s.length))
+774 < 1 
+775 < 1 function renderRows (rows) {
+776 < 1   const out = []
+777 < 1   for (const r of rows) {
+778 < 1     out.push(`${r.status.padEnd(PAD)} ${r.id}  ${r.detail}`)
+779 < 1     if (r.status === 'missing') out.push(`    → references/first-run.md §${r.fix}`)
+780 < 1   }
+781 < 1   return out.join('\n')
+782 < 1 }
+783 < 1 
+784 < 1 /** A value flag's string, or null when absent or given bare. */
+785 < 1 const valueOf = (opt) => (typeof opt === 'string' ? opt : null)
+786 < 1 
+787 < 1 async function main (argv) {
+788 < 1   const { opts } = parseArgs(argv, { flags: ['json'] })
+789 < 1   const configPath = valueOf(opts.config) ?? DEFAULT_CONFIG_PATH()
+790 < 1   const config = await loadFleetConfig({ path: configPath })
+791 < 1   // The config file's own top-level key names — what the operator wrote, where
+792 < 1   // `config` is what the doctor reads — reach the `capacity` row alone; null
+793 < 1   // when there is no JSON object to carry keys.
+794 < 1   const written = await readFleetJson(configPath)
+795 < 1   const configKeys = written === null ? null : Object.keys(written)
+796 < 1   const account = await fleetConfigAccount({ path: configPath })
+797 < 1   const evidence = await readEvidenceSetting({ path: configPath })
+798 < 1   let result
+799 < 1   try {
+800 < 1     result = await doctor({ config, exec: defaultExec, target: valueOf(opts.target), configKeys, account, evidence })
+801 < 1   } catch (error) {
+802 < 1     throw new Refusal(error?.message ?? String(error))
+803 < 1   }
+804 < 1   process.stdout.write(
+805 < 1     opts.json === true ? `${JSON.stringify(result)}\n` : `${renderRows(result.rows)}\n`
+806 < 1   )
+807 < 1   process.exitCode = result.verdict === 'ready' ? 0 : 1
+808 < 1 }
+809 < 1 
+810 < 1 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+811 < 1 if (invokedPath === fileURLToPath(import.meta.url)) {
+812 < 1   await runCli(main, process.argv.slice(2))
+813 < 1 }
+814 < 1 

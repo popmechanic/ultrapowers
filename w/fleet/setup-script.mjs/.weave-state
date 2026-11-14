@@ -1,0 +1,199 @@
+0 < 1 /**
+1 < 1  * fleet/setup-script.mjs — the per-run first-boot setup script.
+2 < 1  *
+3 < 1  * exe.dev runs `--setup-script` exactly once, at first boot, as `exedev`, with
+4 < 1  * HOME/USER/PATH set and nothing else — no XDG_RUNTIME_DIR, passwordless
+5 < 1  * `sudo -n`, the file piped in as /dev/stdin and capped at 10 KiB. The image
+6 < 1  * already ships claude, gh, busybox, git, jq and python3; the delta this script
+8 > 1  * installs is exactly node, bun, celld and pytest. It also drops the two files a run
+7 < 2  * installs is exactly node, bun, celld and pytest — kata is the engine boot's to install, at the
+8 < 2  * version its own sha pins (#1190). It also drops the two files a run
+9 < 1  * needs — the bootstrap at /usr/local/lib/fleet/bootstrap.sh (root-owned, 0555)
+10 < 1  * and the unit template in the user's own systemd directory — waits for the
+11 < 1  * user bus, starts the run, and deletes itself.
+12 < 1  *
+13 < 1  * The run number is baked in as a literal: the script is generated per run and
+14 < 1  * reads no environment variable for it, so a box can never run someone else's
+15 < 1  * assignment because a unit file leaked an --env.
+16 < 1  */
+17 < 1 
+18 < 1 import fs from 'node:fs'
+19 < 1 import path from 'node:path'
+20 < 1 import { fileURLToPath } from 'node:url'
+21 < 1 
+22 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+23 < 1 
+24 < 1 /** exe.dev's ceiling for a `--setup-script` payload. */
+25 < 1 export const SETUP_SCRIPT_MAX_BYTES = 10240
+26 < 1 /** The fleet's own, tighter budget for the same payload: headroom under the
+27 < 1  *  platform's ceiling, so a growing bootstrap is noticed on the laptop before
+28 < 1  *  the lobby refuses it. */
+29 < 1 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
+30 < 1 export const NODE_VERSION = '24.22.1'
+31 < 1 export const BUN_VERSION = '1.4.4'
+32 < 1 export const CELLD_VERSION = '0.6.1'
+33 < 1 /**
+34 < 1  * The digest of celld's one x86_64 Linux asset, read on the laptop at the bump
+35 < 1  * (`shasum -a 256`, 2026-10-01, equal to the digest the release page lists);
+36 < 1  * the VM's own `sha256sum -c` at first boot is what refuses a mismatch.
+37 < 1  * A literal and not a sums file because the release carries neither: it ships
+38 < 1  * the three `.gz` assets and nothing else, and the attestation check needs a
+39 < 1  * token this sandbox deliberately does not hold — so the record is here, beside
+40 < 1  * bun's version, and it moves only when a human bumps CELLD_VERSION.
+41 < 1  */
+42 < 1 export const CELLD_SHA256 = '79a8253cff5d4e8a4a9f7a2611e393390f7fe9025f00e88467875b007c44866b'
+43 < 1 
+44 < 1 const NODE_TARBALL = `node-v${NODE_VERSION}-linux-x64.tar.xz`
+45 < 1 const NODE_URL = `https://nodejs.org/dist/v${NODE_VERSION}/${NODE_TARBALL}`
+46 < 1 const SHASUMS_URL = `https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt`
+47 < 1 const BUN_URL =
+48 < 1   `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip`
+49 < 1 const CELLD_ASSET = 'celld-x86_64-unknown-linux-gnu.gz'
+50 < 1 // Straight to /usr/local/bin (root-owned 0755, on PATH for `/bin/sh -c` — the
+51 < 1 // bun lesson), never through the vendor's own installer script, whose rollback
+52 < 1 // symlinks are worthless on a VM that lives for one run, and never under
+53 < 1 // /usr/local/lib/fleet, which is the immutable bootstrap's path.
+54 < 1 const CELLD_URL =
+55 < 1   `https://github.com/denoland/celld/releases/download/v${CELLD_VERSION}/${CELLD_ASSET}`
+56 < 1 
+57 < 1 const BOOTSTRAP_TAG = 'FLEET_BOOTSTRAP_EOF'
+58 < 1 const UNIT_TAG = 'FLEET_UNIT_EOF'
+59 < 1 
+60 < 1 /** The two files the script carries, as they sit beside this module. */
+61 < 1 export function readFleetFiles() {
+62 < 1   return {
+63 < 1     bootstrap: fs.readFileSync(path.join(HERE, 'fleet-bootstrap.sh'), 'utf8'),
+64 < 1     unit: fs.readFileSync(path.join(HERE, 'fleet-run@.service'), 'utf8'),
+65 < 1   }
+66 < 1 }
+67 < 1 
+68 < 1 // A quoted heredoc body: the bytes arrive unexpanded, so the only thing that can
+69 < 1 // go wrong is the delimiter appearing inside them. Say so rather than truncate.
+70 < 1 function heredocBody(tag, text) {
+71 < 1   const body = text.endsWith('\n') || text === '' ? text : `${text}\n`
+72 < 1   if (body.split('\n').includes(tag)) {
+73 < 1     throw new Error(`embedded file carries the heredoc delimiter ${tag} on a line of its own`)
+74 < 1   }
+75 < 1   return body
+76 < 1 }
+77 < 1 
+78 < 1 /** `<owner>/<repo>` — the only shape `evidence` may take, since it lands inside
+79 < 1  *  a single-quoted shell literal. */
+80 < 1 const EVIDENCE_REPO = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+$/
+81 < 1 
+82 < 1 /**
+83 < 1  * The setup script for one run. `bootstrap` and `unit` are carried verbatim;
+84 < 1  * `evidence` is the operator's evidence repository (#1395), written beside
+85 < 1  * them to `$HOME/fleet-evidence-repo`, where the boot reads it.
+86 < 1  */
+87 < 1 export function renderSetupScript({ run, evidence, bootstrap, unit }) {
+88 < 1   if (!/^[0-9]+$/.test(String(run))) throw new Error(`run must be digits, got ${run}`)
+89 < 1   if (typeof evidence !== 'string' || !EVIDENCE_REPO.test(evidence) || /\/\.\.?$/.test(evidence)) {
+90 < 1     throw new Error(`evidence must be <owner>/<repo>, got ${JSON.stringify(evidence ?? null)}`)
+91 < 1   }
+92 < 1 
+93 < 1   const script = `#!/usr/bin/env bash
+94 < 1 # fleet first-boot setup, generated for one run and thrown away by its own last
+95 < 1 # line. Installs the delta the image lacks, drops the bootstrap and the unit
+96 < 1 # template, then starts the run.
+97 < 1 set -euo pipefail
+98 < 1 RUN=${run}
+99 < 1 exec >>"$HOME/fleet-setup.log" 2>&1
+100 < 1 stamp() { printf '%s setup: %s\\n' "$(date -u +%Y-%m-%dT%H:%M:%S.%3NZ)" "$1"; }
+101 < 1 LIB="\${FLEET_LIB_DIR:-/usr/local/lib/fleet}"
+102 < 1 BUS="\${FLEET_USER_BUS:-/run/user/$(id -u)/bus}"
+103 < 1 BUS_WAIT="\${FLEET_BUS_WAIT_SECONDS:-60}"
+104 < 1 # The platform hands this script HOME/USER/PATH and nothing else, so systemd's
+105 < 1 # client has no address for the user bus and every --user call below would die
+106 < 1 # with "Failed to connect to bus" even once the socket is there. Pointed at the
+107 < 1 # socket this script waits for.
+108 < 1 XDG_RUNTIME_DIR="\${XDG_RUNTIME_DIR:-$(dirname "$BUS")}"
+109 < 1 DBUS_SESSION_BUS_ADDRESS="\${DBUS_SESSION_BUS_ADDRESS:-unix:path=$BUS}"
+110 < 1 export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+111 < 1 work="$(mktemp -d)"
+112 < 1 cd "$work"
+113 < 1 
+114 < 1 # The platform's setup unit starts ahead of user@.service, so the user bus may
+115 < 1 # not exist yet and a --user call would fail with "Failed to connect to bus".
+116 < 1 # The deadline is in seconds of wall clock, not a count of tries.
+117 < 1 stamp bus
+118 < 1 deadline=$(( $(date +%s%3N) + BUS_WAIT * 1000 ))
+119 < 1 while [ ! -S "$BUS" ]; do
+120 < 1   if [ "$(date +%s%3N)" -ge "$deadline" ]; then
+121 < 1     echo "setup: no user bus at $BUS"
+122 < 1     exit 1
+123 < 1   fi
+124 < 1   sleep 0.2
+125 < 1 done
+126 < 1 
+127 < 1 # The three fetches are latency-bound, so all start at once; each is its own
+128 < 1 # job, waited on by its own pid, so a failed curl or a bad sum still stops the
+129 < 1 # script under set -e.
+130 < 1 stamp fetch
+131 < 1 # node: nodejs.org only, and only once the release's own sums agree.
+132 < 1 ( curl -fsSL -o SHASUMS256.txt ${SHASUMS_URL}
+133 < 1 curl -fsSL -o ${NODE_TARBALL} ${NODE_URL}
+134 < 1 grep " ${NODE_TARBALL}$" SHASUMS256.txt | sha256sum -c -
+135 < 1 sudo -n tar -xJf ${NODE_TARBALL} -C /usr/local --strip-components=1 ) & node_pid=$!
+136 < 1 # bun: the pinned release, with bunx beside it.
+137 < 1 ( curl -fsSL -o bun.zip ${BUN_URL}
+138 < 1 unzip -q -o bun.zip
+139 < 1 sudo -n install -m 0755 bun-linux-x64/bun /usr/local/bin/bun
+140 < 1 sudo -n ln -sf bun /usr/local/bin/bunx ) & bun_pid=$!
+141 < 1 # celld: the pinned release, against the digest the plugin records.
+142 < 1 ( curl -fsSL -o ${CELLD_ASSET} ${CELLD_URL}
+143 < 1 echo '${CELLD_SHA256}  ${CELLD_ASSET}' | sha256sum -c -
+144 < 1 gzip -dc ${CELLD_ASSET} >celld
+145 < 1 sudo -n install -m 0755 celld /usr/local/bin/celld ) & celld_pid=$!
+146 < 1 wait "$node_pid"
+147 < 1 wait "$bun_pid"
+148 < 1 wait "$celld_pid"
+149 < 1 
+150 < 1 # pytest: the image's uv, every distribution pinned to what noble's packages shipped.
+151 < 1 stamp pytest
+152 < 1 sudo -n uv pip install --system --break-system-packages pytest==7.4.4 pytest-xdist==3.4.0 pluggy==1.4.0 packaging==24.0 iniconfig==1.1.1 execnet==2.0.0
+153 < 1 
+154 < 1 stamp files
+155 < 1 # Quoted heredocs: both files land as handed in, expanding nothing.
+156 < 1 cat <<'${BOOTSTRAP_TAG}' >bootstrap.sh
+157 < 1 ${heredocBody(BOOTSTRAP_TAG, bootstrap)}${BOOTSTRAP_TAG}
+158 < 1 sudo -n install -d -m 0755 "$LIB"
+159 < 1 sudo -n install -m 0555 bootstrap.sh "$LIB/bootstrap.sh"
+160 < 1 mkdir -p "$HOME/.config/systemd/user" "$HOME/.claude"
+161 < 1 cat <<'${UNIT_TAG}' >"$HOME/.config/systemd/user/fleet-run@.service"
+162 < 1 ${heredocBody(UNIT_TAG, unit)}${UNIT_TAG}
+163 < 1 printf '%s\\n' '${evidence}' >"$HOME/fleet-evidence-repo"
+164 < 1 printf '%s\\n' '{"env":{"CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS":"0"},"permissions":{"defaultMode":"bypassPermissions"}}' >"$HOME/.claude/settings.json"
+165 < 1 git config --global user.name fleet
+166 < 1 git config --global user.email fleet@exe.dev
+167 < 1 
+168 < 1 stamp daemon-reload
+169 < 1 systemctl --user daemon-reload
+170 < 1 # Credentials reach this box by their attachment tag:fleet, with no documented order
+171 < 1 # against this script; wait, bounded, until Reflection lists claude-max.
+172 < 1 stamp credentials
+173 < 1 for i in $(seq 1 30); do
+174 < 1   curl -fsS https://reflection.int.exe.xyz/integrations | grep -q '"claude-max"' && break
+175 < 1   sleep 2
+176 < 1 done
+177 < 1 stamp start
+178 < 1 systemctl --user start "fleet-run@$RUN.service"
+179 < 1 stamp done
+180 < 1 sudo -n rm -f -- "$0"
+181 < 1 `
+182 < 1 
+183 < 1   // The fleet's budget is the tighter of the two, so it is the one that fails
+184 < 1   // first and the one the message always names — a render over the platform's
+185 < 1   // ceiling is over the budget too, and a reader told only about 10240 would
+186 < 1   // think the payload had room it does not have.
+187 < 1   const bytes = Buffer.byteLength(script, 'utf8')
+188 < 1   if (bytes > SETUP_SCRIPT_BUDGET_BYTES) {
+189 < 1     const past = bytes > SETUP_SCRIPT_MAX_BYTES
+190 < 1       ? ` (and past the platform's ceiling of ${SETUP_SCRIPT_MAX_BYTES})`
+191 < 1       : ''
+192 < 1     throw new Error(
+193 < 1       `setup script is ${bytes} bytes; the fleet's budget is ${SETUP_SCRIPT_BUDGET_BYTES}${past}`)
+194 < 1   }
+195 < 1   return script
+196 < 1 }
+197 < 1 

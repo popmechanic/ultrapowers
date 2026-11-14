@@ -1,0 +1,690 @@
+0 < 1 /**
+1 < 1  * fleet/lobby.mjs — the laptop's half of the fleet, in one place.
+2 < 1  *
+3 < 1  * There is no orchestrator and no control VM. A run is a number N per target;
+4 < 1  * its VM is `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by `fleet-r<N>-*`.
+5 < 1  * Where its plan and record live (the operator's evidence repository; the
+6 < 1  * target receives only `ultra/integration-run-N`) is `fleet/CONTRACT.md`
+7 < 1  * section "The shape in one paragraph"; this file does not restate it.
+8 < 1  *
+9 < 1  * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
+10 < 1  * share: the exec seam, the config file, the name validators, the branch
+12 > 1  * names and the lobby readers.
+11 < 2  * names, the lobby readers, and the hub opened from its env file (`hubFromEnv`).
+12 < 1  * It runs from the installed plugin cache, so every specifier is
+14 > 1  * `node:`-prefixed, and there are no npm dependencies.
+13 < 2  * `node:`-prefixed or `./kata-client.mjs` (itself import-free), and there are
+14 < 2  * no npm dependencies.
+15 < 1  *
+16 < 1  * ## The exec seam
+17 < 1  *
+18 < 1  * One function, `exec(cmd, argv, options?)`, resolving `{ code, stdout, stderr }`
+19 < 1  * and never rejecting. It is `execFile`, never a shell string: nothing this
+20 < 1  * process builds is ever parsed by a local shell. `options.input` is the only
+21 < 1  * way a secret reaches a child — written to its stdin, never to its argv. The
+22 < 1  * exe.dev lobby still parses the remote half (`ssh exe.dev "new fleet-r7-… --json"`
+23 < 1  * is one argv element), so every value interpolated into that string is
+24 < 1  * validated first — `isSafeTarget`, `isFullSha`, `isRunNumber`, `isVmName` —
+25 < 1  * and the only quoted field (the assignment comment) is built exclusively from
+26 < 1  * validated parts.
+27 < 1  */
+28 < 1 
+29 < 1 import { execFile } from 'node:child_process'
+30 < 1 import { randomBytes } from 'node:crypto'
+32 > 2 import fs from 'node:fs'
+31 < 1 import fsp from 'node:fs/promises'
+32 < 1 import os from 'node:os'
+33 < 1 import path from 'node:path'
+34 < 1 import { fileURLToPath } from 'node:url'
+35 < 1 
+36 < 2 import { makeKataClient, sshTransport } from './kata-client.mjs'
+37 < 1 
+38 < 1 // ── Names and shas ──────────────────────────────────────────────────────────
+39 < 1 
+40 < 1 /** `owner/repo`: exactly one slash, each half a git-safe name that starts and
+41 < 1  *  ends with a letter or digit — the only shape that may be interpolated into
+42 < 1  *  an ssh string, so `..` and a dot-led half are refused. */
+43 < 1 const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
+44 < 1 export const isSafeTarget = (value) => typeof value === 'string' && TARGET.test(value)
+45 < 1 
+46 < 1 /** A git object name, as a pointer half. */
+47 < 1 export const isSafeSha = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value)
+48 < 1 
+49 < 1 /**
+50 < 1  * The stricter shape the assignment comment carries. An abbreviation would let
+51 < 1  * two clones resolve one `base=` differently — so `base=` and `engine=` are
+52 < 1  * full shas or nothing.
+53 < 1  */
+54 < 1 export const isFullSha = (value) => isSafeSha(value) && value.length === 40
+55 < 1 
+56 < 1 /** A run number: a positive decimal integer with no leading zero. */
+57 < 1 export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
+58 < 1 
+59 < 1 /**
+60 < 1  * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev does not
+61 < 1  * reserve a deleted name, but a name is still minted once per launch and never
+62 < 1  * derived from N alone — the run's durable identity is N, in the comment and in the
+63 < 1  * target's three branches; the VM name is only where it is running this time.
+64 < 1  */
+65 < 1 const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/
+66 < 1 
+67 < 1 const stamp = (date) => {
+68 < 1   const two = (n) => String(n).padStart(2, '0')
+69 < 1   return `${String(date.getUTCFullYear()).slice(2)}${two(date.getUTCMonth() + 1)}${two(date.getUTCDate())}${two(date.getUTCHours())}${two(date.getUTCMinutes())}`
+70 < 1 }
+71 < 1 
+72 < 1 export const vmNameFor = (run, now = new Date(), rand = randomBytes(2).toString('hex')) =>
+73 < 1   `fleet-r${run}-${stamp(now)}-${rand}`
+74 < 1 
+75 < 1 export const isVmName = (value) => typeof value === 'string' && VM_NAME.test(value)
+76 < 1 
+77 < 1 /** The run number a VM name carries, or null when the name is not a run's. */
+78 < 1 export const runOfVmName = (name) => {
+79 < 1   const match = VM_NAME.exec(String(name ?? ''))
+80 < 1   return match ? Number(match[1]) : null
+81 < 1 }
+82 < 1 
+83 < 1 /** The whole fleet, as the server-side `ls` pattern. */
+84 < 1 export const FLEET_PATTERN = 'fleet-r*'
+85 < 1 
+87 > 1 /** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name
+88 < 1  *  and of every evidence ref and folder a run has. */
+86 < 2 /** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name,
+87 < 2  *  and the name of the target's one kata hub project (every run against one target
+88 < 2  *  files into it; a name the hub already holds answers the existing project). */
+89 < 1 export const targetSlug = (target) => String(target).replace('/', '-')
+90 < 1 
+91 < 1 /**
+92 < 1  * The ONE GitHub integration a target has: `gh-<owner>-<repo>`, `--act-as-user`,
+93 < 1  * writable, attached per VM for the run's window. Named for the repository so
+94 < 1  * a plain `integrations list` shows two objects naming one repo without any
+95 < 1  * parsing — and two such objects on one VM is the fault the sandbox refuses
+96 < 1  * to boot into (measured 2026-09-03: the GitHub edge routes by repo path and
+97 < 1  * documents no tie-break between two integrations covering the same repo).
+98 < 1  */
+99 < 1 export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
+100 < 1 
+101 < 1 // ── The refs a run has on the target ────────────────────────────────────────
+102 < 1 
+103 < 1 /**
+104 < 1  * The one branch a run pushes to the target: the work it integrated. It is
+105 < 1  * transient: delete-on-merge drops it, and the janitor deletes the
+106 < 1  * closed-unmerged ones.
+107 < 1  */
+108 < 1 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
+109 < 1 
+110 < 1 /** The integration branch, with or without a `refs/heads/` head. */
+111 < 1 const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/integration-run-([1-9][0-9]*)$/
+112 < 1 
+113 < 1 /**
+114 < 1  * The run an integration branch carries, or null: `main`, a non-numeric tail
+115 < 1  * like `ultra/integration-run-x` and every other shape answer null. A run
+116 < 1  * number is never guessed.
+117 < 1  */
+118 < 1 export const runOfBranch = (ref) => {
+119 < 1   const text = String(ref ?? '')
+120 < 1   const match = RUN_BRANCH.exec(text)
+121 < 1   return match ? Number(match[1]) : null
+122 < 1 }
+123 < 1 
+124 < 1 // ── The evidence repository ─────────────────────────────────────────────────
+125 < 1 
+126 < 1 /**
+127 < 1  * The evidence repository is the operator's setting (#1395): the key
+128 < 1  * `evidence` (`<owner>/<repo>`) in `~/.ultrapowers/fleet.json`, overridden for
+129 < 1  * one launch by `--evidence-repo`. Nothing derives it from the target, and
+130 < 1  * there is no default. Pure: the override when it is a safe target, else
+131 < 1  * `config.evidence` when it is one, else null.
+132 < 1  */
+133 < 1 export const evidenceRepoFor = (config, override = null) => {
+134 < 1   if (isSafeTarget(override)) return override
+135 < 1   const setting = config?.evidence
+136 < 1   return isSafeTarget(setting) ? setting : null
+137 < 1 }
+138 < 1 
+139 < 1 /**
+140 < 1  * The one reader of the `evidence` key: its value, or null when the file is
+141 < 1  * absent, unreadable or not a JSON object, names no key, or names a value
+142 < 1  * `isSafeTarget` refuses. Beside `loadFleetConfig`, which stays the pool's.
+143 < 1  */
+144 < 1 export async function readEvidenceSetting ({ path: configPath } = {}) {
+145 < 1   const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
+146 < 1   return parsed === null ? null : evidenceRepoFor(parsed)
+147 < 1 }
+148 < 1 
+149 < 1 /**
+150 < 1  * A run's place in the evidence repository, keyed by the TARGET's slug
+151 < 1  * (collision-free across owners — `facebook/react` lands in
+152 < 1  * `runs/facebook-react/<N>/`):
+153 < 1  *
+154 < 1  *   `runs/<slug>/<N>`       the run's folder
+155 < 1  *   `live/<slug>/run-<N>`   the branch the run writes while it flies
+156 < 1  *   `<slug>/run-<N>`        the tag that outlives it
+157 < 1  */
+158 < 1 export const runFolderFor = (target, run) => `runs/${targetSlug(target)}/${run}`
+159 < 1 export const liveBranchFor = (target, run) => `live/${targetSlug(target)}/run-${run}`
+160 < 1 export const runTagFor = (target, run) => `${targetSlug(target)}/run-${run}`
+161 < 1 export const evidenceUrlFor = (repo) => `https://github.com/${repo}.git`
+162 < 1 /** Where the plan lands in a run's folder: the launcher commits it there and
+163 < 1  *  the janitor's duplicate check reads it back. */
+164 < 1 export const PLAN_FILE = 'plan.md'
+165 < 1 
+166 < 1 const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+167 < 1 
+168 < 1 /**
+169 < 1  * The run an evidence-repository ref carries for `target`, or null — the live
+170 < 1  * branch or the tag, with or without its `refs/heads/` / `refs/tags/` head.
+171 < 1  * The slug is matched literally and as a whole path segment, so a foreign
+172 < 1  * slug, a peeled `^{}` line and a non-numeric tail are all null.
+173 < 1  */
+174 < 1 export const runOfEvidenceRef = (target, ref) => {
+175 < 1   const slug = escapeRegex(targetSlug(target))
+176 < 1   const shape = new RegExp(
+177 < 1     `^(?:(?:refs/heads/)?live/${slug}/run-([1-9][0-9]*)|(?:refs/tags/)?${slug}/run-([1-9][0-9]*))$`
+178 < 1   )
+179 < 1   const match = shape.exec(String(ref ?? ''))
+180 < 1   return match ? Number(match[1] ?? match[2]) : null
+181 < 1 }
+182 < 1 
+183 < 1 // ── Constants the whole laptop side agrees on ───────────────────────────────
+184 < 1 
+185 < 1 export const EXE_HOST = 'exe.dev'
+186 < 1 export const FLEET_TAG = 'fleet'
+188 > 2 /** `fleet/policy.json`: every switch the laptop's fleet tools read, beside its readers. */
+189 < 2 export const POLICY_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
+190 < 2 
+191 < 2 /**
+192 < 2  * One cell of `fleet/policy.json`, named by its keys (`['launch', 'kata',
+193 < 2  * 'mode']`). The answer is always one of `allowed`: the cell's value when it
+194 < 2  * names one, else the first — so a file that cannot be read, or a cell nobody
+195 < 2  * recognises, is the default and never a refusal.
+196 < 2  */
+197 < 2 export function policyCell (keys, allowed, policyPath = POLICY_FILE) {
+198 < 2   try {
+199 < 2     let value = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
+200 < 2     for (const key of keys) value = value?.[key]
+201 < 2     return allowed.includes(value) ? value : allowed[0]
+202 < 2   } catch {
+203 < 2     return allowed[0]
+204 < 2   }
+205 < 2 }
+206 < 2 
+187 < 1 /** The attachment every fleet integration carries (`integrations attach <name> tag:fleet`): the tag a fleet VM is created with. */
+188 < 1 export const FLEET_POLICY = `tag:${FLEET_TAG}`
+189 < 1 /** The http-proxy integration that carries the Claude bearer at the edge. */
+190 < 1 export const CLAUDE_INTEGRATION = 'claude-max'
+191 < 1 export const ENGINE_REPO = 'popmechanic/ultrapowers'
+192 < 1 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
+193 < 1 /** The assignment comment's hard ceiling — exe.dev's `comment` field. */
+194 < 1 export const COMMENT_MAX_BYTES = 200
+195 < 1 /** The lobby-verb record: the flag set per lobby verb, captured from the live
+196 < 1  *  lobby and committed beside this file. `VERBS_RECORD` is how a message names it. */
+197 < 1 export const VERBS_RECORD = 'fleet/exe-verbs.json'
+198 < 1 export const VERBS_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'exe-verbs.json')
+199 < 1 
+200 < 1 // ── Config ──────────────────────────────────────────────────────────────────
+201 < 1 
+202 < 1 /**
+203 < 1  * The config file's two keys and their defaults — the size a run asks of the
+204 < 1  * plan's pool, and nothing else. An operator who followed the RUNBOOK needs no
+205 < 1  * `~/.ultrapowers/fleet.json` at all. `doctor.mjs` imports this literal, so
+206 < 1  * the doctor and the launcher read one config file with one set of defaults.
+207 < 1  */
+208 < 1 export const FLEET_DEFAULTS = Object.freeze({
+209 < 1   cpu: '8',
+210 < 1   memory: '16GB'
+211 < 1 })
+212 < 1 
+213 < 1 export const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
+214 < 2 
+215 < 2 // ── The kata hub, as the laptop knows it ────────────────────────────────────
+216 < 2 
+217 < 2 /** The one command that builds the hub, named by every refusal about it. */
+218 < 2 export const KATA_HUB_FIX = 'node fleet/kata-hub.mjs'
+219 < 2 
+220 < 2 /** Where `fleet/kata-hub.mjs` leaves the hub's address and bearer. */
+221 < 2 export const defaultKataEnvPath = () => path.join(os.homedir(), '.ultrapowers', 'kata-hub.env')
+222 < 2 
+223 < 2 /**
+224 < 2  * `~/.ultrapowers/kata-hub.env`, parsed: `{ url, token }` from its `KATA_URL=`
+225 < 2  * and `KATA_TOKEN=` lines, each `null` when the line is missing. The first
+226 < 2  * spelling of a key wins. Deciding what a missing line means is the caller's:
+227 < 2  * the launcher refuses, the janitor reads the target instead.
+228 < 2  */
+229 < 2 export function parseKataEnv (text) {
+230 < 2   const fields = {}
+231 < 2   for (const line of String(text ?? '').split('\n')) {
+232 < 2     const m = /^(KATA_URL|KATA_TOKEN)=(.*)$/.exec(line.trim())
+233 < 2     if (m && !(m[1] in fields)) fields[m[1]] = m[2].trim()
+234 < 2   }
+235 < 2   return { url: fields.KATA_URL || null, token: fields.KATA_TOKEN || null }
+236 < 2 }
+237 < 2 
+238 < 2 /** The host `ssh` reaches the hub at: the `KATA_URL`'s hostname, or null. */
+239 < 2 export const kataHostOf = (url) => {
+240 < 2   try {
+241 < 2     return new URL(String(url ?? '')).hostname || null
+242 < 2   } catch {
+243 < 2     return null
+244 < 2   }
+245 < 2 }
+246 < 2 
+247 < 2 /**
+248 < 2  * The hub, opened from its env file: read `kataEnvPath` (default
+249 < 2  * `defaultKataEnvPath()`), take its `KATA_URL`'s host, and build a kata client
+250 < 2  * for `actor` over `sshTransport` on that host. Resolves
+251 < 2  * `{ client, host, transport, dark }` and never throws on a missing or hostless
+252 < 2  * env: then `client`, `host` and `transport` are null and `dark` is the reason,
+253 < 2  * in the words every caller refuses or reports with.
+254 < 2  */
+256 > 2 export async function hubFromEnv ({ exec, actor, kataEnvPath, share = false } = {}) {
+255 < 2 export async function hubFromEnv ({ exec, actor, kataEnvPath } = {}) {
+256 < 2   const envPath = kataEnvPath ?? defaultKataEnvPath()
+257 < 2   const none = (dark) => ({ client: null, host: null, transport: null, dark })
+258 < 2   let text
+259 < 2   try {
+260 < 2     text = await fsp.readFile(envPath, 'utf8')
+261 < 2   } catch (error) {
+262 < 2     return none(`no kata hub env at ${envPath} (${error?.code ?? error?.message ?? error}) — ${KATA_HUB_FIX}`)
+263 < 2   }
+264 < 2   const env = parseKataEnv(text)
+265 < 2   const host = kataHostOf(env.url)
+266 < 2   if (host === null) {
+267 < 2     return none(`${envPath} names KATA_URL ${JSON.stringify(env.url)}, not a url with a host — ${KATA_HUB_FIX}`)
+268 < 2   }
+270 > 2   // `share`: the caller makes many requests (the board reader), so they ride one ssh connection,
+271 < 2   // its socket beside the env file (`%C` is ssh's own hash of the connection, so the path stays short)
+272 < 2   const control = share ? path.join(path.dirname(envPath), 'hub-%C') : undefined
+273 < 2   const transport = sshTransport({ sshHost: host, exec, control })
+269 < 2   const transport = sshTransport({ sshHost: host, exec })
+270 < 2   return { client: makeKataClient({ transport, actor }), host, transport, dark: null }
+271 < 2 }
+272 < 1 
+273 < 1 /**
+274 < 1  * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
+275 < 1  * file means all defaults; an unknown key is ignored; a key the file omits
+276 < 1  * stays at its default. The doctor reads the config through this function too.
+277 < 1  */
+278 < 1 export async function loadFleetConfig ({ path: configPath } = {}) {
+279 < 1   const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
+280 < 1   const config = { ...FLEET_DEFAULTS }
+281 < 1   for (const key of Object.keys(FLEET_DEFAULTS)) {
+282 < 1     if (typeof parsed?.[key] === 'string' && parsed[key] !== '') config[key] = parsed[key]
+283 < 1   }
+284 < 1   return config
+285 < 1 }
+286 < 1 
+287 < 1 /**
+288 < 1  * The one read of `~/.ultrapowers/fleet.json` (or `configPath`): the parsed
+289 < 1  * JSON object, or null when the file is absent, unreadable, not JSON, or not a
+290 < 1  * JSON object. Every reader of the file — the pool, the evidence key, the
+291 < 1  * doctor's key names and the default account — goes through it.
+292 < 1  */
+293 < 1 export async function readFleetJson (configPath) {
+294 < 1   try {
+295 < 1     const parsed = JSON.parse(await fsp.readFile(configPath, 'utf8'))
+296 < 1     return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+297 < 1   } catch {
+298 < 1     return null
+299 < 1   }
+300 < 1 }
+301 < 1 
+302 < 1 // ── The exec seam ───────────────────────────────────────────────────────────
+303 < 1 
+304 < 1 /**
+305 < 1  * The seam's real implementation: `execFile`, resolving, never a shell.
+306 < 1  *
+307 < 1  * `options.input` is written to the child's stdin and the stream is then
+308 < 1  * ended — a child that reads stdin to EOF (`cat`, `gh pr create --body-file -`)
+309 < 1  * must see one, or the promise never settles. Every other option is passed
+310 < 1  * through to `execFile`. Without `input` the child's stdin is left exactly as
+311 < 1  * `execFile` opened it.
+312 < 1  */
+313 < 1 export function defaultExec (cmd, argv = [], options = {}) {
+314 < 1   const { input, ...rest } = options ?? {}
+315 < 1   return new Promise((resolve) => {
+316 < 1     const child = execFile(
+317 < 1       cmd, argv, { maxBuffer: 32 * 1024 * 1024, ...rest },
+318 < 1       (error, stdout, stderr) => {
+319 < 1         if (!error) {
+320 < 1           resolve({ code: 0, stdout: String(stdout ?? ''), stderr: String(stderr ?? '') })
+321 < 1           return
+322 < 1         }
+323 < 1         resolve({
+324 < 1           code: typeof error.code === 'number' ? error.code : 1,
+325 < 1           stdout: String(stdout ?? ''),
+326 < 1           stderr: String(stderr ?? '') || String(error.message ?? error)
+327 < 1         })
+328 < 1       }
+329 < 1     )
+330 < 1     if (input !== undefined && child.stdin) {
+331 < 1       child.stdin.on('error', () => {})
+332 < 1       child.stdin.end(input)
+333 < 1     }
+334 < 1   })
+335 < 1 }
+336 < 1 
+337 < 1 /** Everything a command printed, in one string — what an error carries. */
+338 < 1 export const output = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
+339 < 1 
+340 < 1 /**
+341 < 1  * One lobby verb: `ssh exe.dev "<remote>"`, the remote half as ONE argv
+342 < 1  * element. A non-zero exit is a `LobbyError` carrying ALL of the output,
+343 < 1  * verbatim: exe.dev documents no error envelope, so nothing is parsed out and
+344 < 1  * nothing is dropped.
+345 < 1  *
+346 < 1  * `options.input` is handed to the seam as its third argument, so a verb that
+347 < 1  * must be fed a secret gets it on stdin and never in an argv a `ps` could read.
+348 < 1  * A verb with nothing to feed carries no third argument at all.
+349 < 1  */
+350 < 1 export async function lobby (exec, remote, { input } = {}) {
+351 < 1   const res = input === undefined
+352 < 1     ? await exec('ssh', [EXE_HOST, remote])
+353 < 1     : await exec('ssh', [EXE_HOST, remote], { input })
+354 < 1   if (res.code !== 0) {
+355 < 1     const verb = remote.split(/\s+/)[0]
+356 < 1     throw new LobbyError(`exe.dev ${verb} failed (exit ${res.code}):\n${output(res)}`)
+357 < 1   }
+358 < 1   return res
+359 < 1 }
+360 < 1 
+361 < 1 /** A git command against a checkout, through the same seam. */
+362 < 1 export const git = (exec, dir, argv) => exec('git', ['-C', dir, ...argv])
+363 < 1 
+364 < 1 // ── Refusals ────────────────────────────────────────────────────────────────
+365 < 1 
+366 < 1 /**
+367 < 1  * A refusal: one line naming why, exit 2, and — for the launcher — nothing on
+368 < 1  * exe.dev mutated. Distinguished from a failure (exit 1), which is a lobby verb
+369 < 1  * that ran and answered non-zero.
+370 < 1  */
+371 < 1 export class Refusal extends Error {
+372 < 1   constructor (message) {
+373 < 1     super(message)
+374 < 1     this.name = 'Refusal'
+375 < 1     this.exitCode = 2
+376 < 1   }
+377 < 1 }
+378 < 1 
+379 < 1 export const refuse = (message) => {
+380 < 1   throw new Refusal(message)
+381 < 1 }
+382 < 1 
+383 < 1 /** A verb that ran and failed: exit 1, its whole output in the message. */
+384 < 1 export class LobbyError extends Error {
+385 < 1   constructor (message) {
+386 < 1     super(message)
+387 < 1     this.name = 'LobbyError'
+388 < 1     this.exitCode = 1
+389 < 1   }
+390 < 1 }
+391 < 1 
+392 < 1 /** Run a CLI `main`, print a refusal or failure verbatim, set the exit code. */
+393 < 1 export async function runCli (main, argv) {
+394 < 1   try {
+395 < 1     await main(argv)
+396 < 1   } catch (error) {
+397 < 1     process.stderr.write(`${error?.message ?? error}\n`)
+398 < 1     process.exitCode = typeof error?.exitCode === 'number' ? error.exitCode : 1
+399 < 1   }
+400 < 1 }
+401 < 1 
+402 < 1 // ── Argument parsing ────────────────────────────────────────────────────────
+403 < 1 
+404 < 1 /**
+405 < 1  * `--key value`, `--key=value` and `--flag`. `flags` names the valueless ones;
+406 < 1  * everything else takes the next argv element. Unknown keys are kept, so each
+407 < 1  * CLI decides for itself what it refuses.
+408 < 1  */
+409 < 1 export function parseArgs (argv, { flags = [] } = {}) {
+410 < 1   const opts = {}
+411 < 1   const positional = []
+412 < 1   for (let i = 0; i < argv.length; i += 1) {
+413 < 1     const arg = argv[i]
+414 < 1     if (!arg.startsWith('--')) {
+415 < 1       positional.push(arg)
+416 < 1       continue
+417 < 1     }
+418 < 1     const body = arg.slice(2)
+419 < 1     const eq = body.indexOf('=')
+420 < 1     if (eq !== -1) {
+421 < 1       opts[body.slice(0, eq)] = body.slice(eq + 1)
+422 < 1       continue
+423 < 1     }
+424 < 1     if (flags.includes(body)) {
+425 < 1       opts[body] = true
+426 < 1       continue
+427 < 1     }
+428 < 1     const value = argv[i + 1]
+429 < 1     if (value === undefined || value.startsWith('--')) {
+430 < 1       opts[body] = true
+431 < 1       continue
+432 < 1     }
+433 < 1     opts[body] = value
+434 < 1     i += 1
+435 < 1   }
+436 < 1   return { opts, positional }
+437 < 1 }
+438 < 1 
+439 < 1 /** `15m` → 900000 ms. Accepts s/m/h/d; anything else answers null. */
+440 < 1 export function parseDuration (text) {
+441 < 1   const match = /^([0-9]+)([smhd])$/.exec(String(text ?? ''))
+442 < 1   if (!match) return null
+443 < 1   const unit = { s: 1000, m: 60000, h: 3600000, d: 86400000 }[match[2]]
+444 < 1   return Number(match[1]) * unit
+445 < 1 }
+446 < 1 
+447 < 1 // ── Reading what the lobby answers ──────────────────────────────────────────
+448 < 1 
+449 < 1 /** Parse a `--json` payload, tolerating a leading banner line. Null on failure. */
+450 < 1 export function parseJson (stdout) {
+451 < 1   const text = String(stdout ?? '').trim()
+452 < 1   if (text === '') return null
+453 < 1   try {
+454 < 1     return JSON.parse(text)
+455 < 1   } catch {
+456 < 1     // Some verbs print a line before the document; take from the first bracket.
+457 < 1     const start = text.search(/[[{]/)
+458 < 1     if (start === -1) return null
+459 < 1     try {
+460 < 1       return JSON.parse(text.slice(start))
+461 < 1     } catch {
+462 < 1       return null
+463 < 1     }
+464 < 1   }
+465 < 1 }
+466 < 1 
+467 < 1 const str = (value) => (typeof value === 'string' && value !== '' ? value : null)
+468 < 1 
+469 < 1 /**
+470 < 1  * `ssh exe.dev "ls '<pattern>' --json"` → the rows under `.vms[]`, and ONLY
+471 < 1  * those: `.shared_vms[]` are other people's machines, and reading every array
+472 < 1  * in the envelope is how run-69 counted a shared VM as fleet. The pattern is
+473 < 1  * matched server-side, so the fleet is `fleet-r*` and one run is `fleet-r<N>-*`.
+474 < 1  * `vm_name`, `ssh_dest`, `ssh_host`, `status` are documented; `comment` and
+475 < 1  * `tags` are not, so they are read as optional and are null when absent.
+476 < 1  */
+477 < 1 export async function listVms (exec, pattern = FLEET_PATTERN) {
+478 < 1   const res = await lobby(exec, `ls '${pattern}' --json`)
+479 < 1   const payload = parseJson(res.stdout)
+480 < 1   const rows = Array.isArray(payload?.vms) ? payload.vms : []
+481 < 1   return rows
+482 < 1     .map((row) => ({
+483 < 1       name: str(row?.vm_name),
+484 < 1       sshDest: str(row?.ssh_dest),
+485 < 1       sshHost: str(row?.ssh_host),
+486 < 1       status: str(row?.status),
+487 < 1       comment: str(row?.comment),
+488 < 1       tags: Array.isArray(row?.tags) ? row.tags : null
+489 < 1     }))
+490 < 1     .filter((row) => row.name)
+491 < 1 }
+492 < 1 
+493 < 1 /**
+494 < 1  * One attachment, normalised to `{ kind, value }` where `kind` is `vm` or
+495 < 1  * `tag`. The listing may spell it as a string (`"vm:fleet-r7-…"`, `"tag:fleet"`)
+496 < 1  * or as an object (`{type,name}`, `{vm}`, `{tag}`); all four are read.
+497 < 1  */
+498 < 1 function normaliseAttachment (entry) {
+499 < 1   if (typeof entry === 'string') {
+500 < 1     const [kind, ...rest] = entry.split(':')
+501 < 1     if (rest.length > 0 && (kind === 'vm' || kind === 'tag')) {
+502 < 1       return { kind, value: rest.join(':') }
+503 < 1     }
+504 < 1     return { kind: 'vm', value: entry }
+505 < 1   }
+506 < 1   if (entry && typeof entry === 'object') {
+507 < 1     if (typeof entry.vm === 'string') return { kind: 'vm', value: entry.vm }
+508 < 1     if (typeof entry.tag === 'string') return { kind: 'tag', value: entry.tag }
+509 < 1     const kind = entry.type === 'tag' ? 'tag' : entry.type === 'vm' ? 'vm' : null
+510 < 1     const value = str(entry.name) ?? str(entry.value) ?? str(entry.target)
+511 < 1     if (kind && value) return { kind, value }
+512 < 1   }
+513 < 1   return null
+514 < 1 }
+515 < 1 
+516 < 1 /** The bearer the edge injects, as the listing spells it (spaces ignored). */
+517 < 1 const BEARER = 'Authorization:Bearer'
+518 < 1 
+519 < 1 /** Does this entry carry the Authorization bearer the edge injects? The
+520 < 1  *  measured listing spells it in `config_summary`; a listing that spells it in
+521 < 1  *  `config.headers[]` instead says the same thing. */
+522 < 1 function hasBearer (entry) {
+523 < 1   const carries = (text) => typeof text === 'string' && text.replace(/\s+/g, '').includes(BEARER)
+524 < 1   if (carries(entry?.config_summary)) return true
+525 < 1   const headers = entry?.config?.headers
+526 < 1   return Array.isArray(headers) && headers.some(carries)
+527 < 1 }
+528 < 1 
+529 < 1 /**
+530 < 1  * `ssh exe.dev "integrations list --json"` →
+531 < 1  * `[{ name, repository, attachments, bearer, comment, tags }]`. `bearer` is
+532 < 1  * whether the entry carries the edge's Authorization bearer, `comment` its own
+533 < 1  * comment string or null (the credential tool writes `account=<name>` into
+534 < 1  * `claude-max`'s), and `tags` the tag names its attachments and its own `tags`
+535 < 1  * field name.
+536 < 1  */
+537 < 1 export async function listIntegrations (exec) {
+538 < 1   const res = await lobby(exec, 'integrations list --json')
+539 < 1   const payload = parseJson(res.stdout)
+540 < 1   const rows = Array.isArray(payload) ? payload
+541 < 1     : Array.isArray(payload?.integrations) ? payload.integrations : []
+542 < 1   return rows.map((row) => {
+543 < 1     const raw = row?.attachments ?? row?.attached ?? row?.attachedTo ?? row?.attached_to ??
+544 < 1       row?.targets ?? []
+545 < 1     const attachments = (Array.isArray(raw) ? raw : [raw]).map(normaliseAttachment).filter(Boolean)
+546 < 1     const tags = attachments.filter((a) => a.kind === 'tag').map((a) => a.value)
+547 < 1     for (const tag of Array.isArray(row?.tags) ? row.tags : []) {
+548 < 1       if (typeof tag === 'string' && !tags.includes(tag)) tags.push(tag)
+549 < 1     }
+550 < 1     return {
+551 < 1       name: str(row?.name) ?? str(row?.integration) ?? str(row?.id),
+552 < 1       repository: str(row?.repository) ?? str(row?.repo),
+553 < 1       attachments,
+554 < 1       bearer: hasBearer(row),
+555 < 1       comment: typeof row?.comment === 'string' ? row.comment : null,
+556 < 1       tags
+557 < 1     }
+558 < 1   }).filter((row) => row.name)
+559 < 1 }
+560 < 1 
+561 < 1 // ── The assignment comment ──────────────────────────────────────────────────
+562 < 1 
+563 < 1 /** The comment's seven keys, in the order the contract spells them. The
+564 < 1  *  launcher always writes `kind=flock` (an older boot reads a missing `kind=`
+565 < 1  *  as the retired factory); `hold` is optional, and a comment read back may
+566 < 1  *  lack `kind=` when an older launcher wrote it. */
+567 < 1 export const COMMENT_KEYS = Object.freeze([
+568 < 1   'run', 'plan', 'target', 'base', 'engine', 'kind', 'hold'
+569 < 1 ])
+570 < 1 
+571 < 1 /**
+572 < 1  * Build the assignment comment: single line, space-separated `key=value`, keys
+573 < 1  * in contract order, optional `kind=` before optional `hold=` last. Every
+574 < 1  * value has already been validated by the caller; nothing here can introduce a
+575 < 1  * quote or a space.
+576 < 1  */
+577 < 1 export function buildComment (fields) {
+578 < 1   return COMMENT_KEYS
+579 < 1     .filter((key) => fields[key] !== undefined && fields[key] !== null && fields[key] !== '')
+580 < 1     .map((key) => `${key}=${fields[key]}`)
+581 < 1     .join(' ')
+582 < 1 }
+583 < 1 
+584 < 1 /** Read a comment back into its fields. Unknown keys are kept; junk is ignored. */
+585 < 1 export function parseComment (text) {
+586 < 1   const fields = {}
+587 < 1   for (const token of String(text ?? '').trim().split(/\s+/)) {
+588 < 1     const eq = token.indexOf('=')
+589 < 1     if (eq <= 0) continue
+590 < 1     fields[token.slice(0, eq)] = token.slice(eq + 1)
+591 < 1   }
+592 < 1   return fields
+593 < 1 }
+594 < 1 
+595 < 1 // ── Reading the target's runs ───────────────────────────────────────────────
+596 < 1 
+597 < 1 /**
+598 < 1  * The highest run `target` has in the evidence repository: one `ls-remote`
+599 < 1  * over its live branches and tags (run from `repoDir`), the highest
+600 < 1  * `runOfEvidenceRef` or 0. A non-zero listing is a refusal, never a zero.
+601 < 1  */
+602 < 1 export async function highestRunInEvidence (exec, repoDir, evidenceRepo, target) {
+603 < 1   const slug = targetSlug(target)
+604 < 1   const url = evidenceUrlFor(evidenceRepo)
+605 < 1   const patterns = [`refs/heads/live/${slug}/run-*`, `refs/tags/${slug}/run-*`]
+606 < 1   const res = await git(exec, repoDir, ['ls-remote', url, ...patterns])
+607 < 1   if (res.code !== 0) {
+608 < 1     refuse(
+609 < 1       `git ls-remote ${url} ${patterns.map((p) => `'${p}'`).join(' ')} in ${repoDir} ` +
+610 < 1       `failed (exit ${res.code}):\n${output(res)}`
+611 < 1     )
+612 < 1   }
+613 < 1   let best = 0
+614 < 1   for (const line of String(res.stdout ?? '').split('\n')) {
+615 < 1     const ref = line.split('\t')[1]
+616 < 1     if (ref === undefined) continue
+617 < 1     const run = runOfEvidenceRef(target, ref.trim())
+618 < 1     if (run !== null && run > best) best = run
+619 < 1   }
+620 < 1   return best
+621 < 1 }
+622 < 1 
+623 < 1 // ── The plan's capacity ─────────────────────────────────────────────────────
+624 < 1 
+625 < 1 const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+626 < 1 
+627 < 1 /**
+628 < 1  * `16GB` and `16G` are 16. A bare `16` carries no unit and a fractional
+629 < 1  * `1.5GB` is not a whole number of gigabytes — both answer null rather than a
+630 < 1  * number a caller would then size a VM with.
+631 < 1  */
+632 < 1 export const parseMemoryGb = (text) => {
+633 < 1   const match = /^([1-9][0-9]*)\s*G(?:B)?$/i.exec(String(text ?? '').trim())
+634 < 1   return match ? Number(match[1]) : null
+635 < 1 }
+636 < 1 
+637 < 1 /**
+638 < 1  * `ssh exe.dev "billing plan --json"` → the four fields a launch sizes a VM
+639 < 1  * against. The payload (measured 2026-09-04) is one flat object with a dozen
+640 < 1  * keys; these four are read and the rest ignored, so a new key upstream is not
+641 < 1  * a failure here. A payload with no numeric `max_cpus` is a `LobbyError`
+642 < 1  * carrying the whole output: the verb answered, but not with a plan.
+643 < 1  */
+644 < 1 export async function readPlanCapacity (exec) {
+645 < 1   const res = await lobby(exec, 'billing plan --json')
+646 < 1   const payload = parseJson(res.stdout)
+647 < 1   const maxCpus = num(payload?.max_cpus)
+648 < 1   if (maxCpus === null) {
+649 < 1     throw new LobbyError(
+650 < 1       `exe.dev billing plan --json answered no numeric max_cpus:\n${output(res)}`
+651 < 1     )
+652 < 1   }
+653 < 1   return {
+654 < 1     maxCpus,
+655 < 1     maxMemoryGb: num(payload?.max_memory_gb) ?? 0,
+656 < 1     tier: str(payload?.tier) ?? '',
+657 < 1     plan: str(payload?.plan) ?? ''
+658 < 1   }
+659 < 1 }
+660 < 1 

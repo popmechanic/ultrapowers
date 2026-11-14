@@ -1,0 +1,122 @@
+0 < 1 ---
+1 < 1 paths:
+2 < 1   - "factory/**"
+3 < 1 ---
+4 < 1 
+5 < 1 # The engine: the Flock
+6 < 1 
+7 < 1 There is one engine, the Flock (`flock/engine.mjs`, map #1292). `fleet/fleet-bootstrap.sh`
+8 < 1 clones this repo at the launch's `--engine` sha and execs that checkout's `factory/boot.sh`,
+9 < 1 which always runs the Flock. The factory, the engine before it, was retired under map #1292
+10 < 1 rule 8; its rollback is a launch from a checkout made before the retirement. The directory
+11 < 1 keeps the name `factory/`. Models never run git.
+12 < 1 
+13 < 1 ## Shape
+14 < 1 
+15 < 1 - `boot.sh` prepares the clone, the plan, the verdict record and the evidence worktree, brings
+16 < 1   up the board, runs `flock/engine.mjs` as one transient unit under `RuntimeMaxSec` (one
+17 < 1   clock, #1144), then pushes the run's branch and hands the rest to `publish.mjs`: the pull
+18 < 1   request, the self-merge (catching up to a moved main) and the publish probe, run once after the
+19 < 1   engine exits, never inside it (#1441).
+20 < 1 - `flock/engine.mjs` is the run as a leaderless swarm: it seeds the board from the plan
+21 < 1   (`flock/plan.mjs`), runs an elastic pool of builder sessions that claim tasks, each on its
+22 < 1   own copy, keeps every copy's weave (`flock/weave.py` over the kernel's sha-pinned
+23 < 1   `vendor/manyana.py`), merges peers after each tool batch, and tests every published
+24 < 1   snapshot at the edge. A task is proved by its `Run:` probes and the plan's `Check:` lines;
+25 < 1   the Flock selects no existing tests. The run ends one commit ahead of `--base`.
+26 < 1 - `flock/catchup.mjs` catches a finished run up to a moved main: it joins the run's work onto
+27 < 1   the new main through the weave keeper and re-runs the plan's setup, probes and check with
+28 < 1   `ULTRA_BASE` set to the new main; on a conflict or a red check it leaves the run's commit
+29 < 1   alone, so the boot opens a draft.
+31 > 1 - Supporting modules: `flock/flock_board.mjs` (the board, in memory; its moves are rows in
+32 < 1   `events.jsonl`), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
+30 < 2 - Supporting modules: `flock/flock_board.mjs` (the board), `flock/kata_mirror.mjs` (board
+31 < 2   moves mirrored onto Kata), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
+32 < 1   `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
+34 > 1   wrapper, the weave keeper client, snapshot writes and `events.jsonl` rows the engine and the
+35 < 1   catch-up share), `flock/nogit/git` (the refusing git first on every builder's PATH),
+36 < 1   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body).
+33 < 2   wrapper, the weave keeper client, snapshot writes, `events.jsonl` rows and the `kata.json`
+34 < 2   address the engine, the catch-up and `board.mjs` share), `flock/nogit/git` (the refusing git first on every builder's PATH),
+35 < 2   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body),
+36 < 2   `audit.mjs` (a finished run's final computed row).
+38 > 1 - A builder that finds its task cannot be done as the plan is written, by any code, files an
+39 < 1   objection (`object`, row `objection`, policy `flock.objection.mode`): the task parks at once for
+40 < 1   the operator and is not handed round, and a run with nothing else left ends a draft whose reason
+41 < 1   is the objection (flock-baseline run-32, 2026-11-13: without it the task was given back three
+42 < 1   times and the run ended `deadlock`).
+37 < 1 - A builder's copy is a whole, current tree: every pull takes in every published change, and
+38 < 1   `flock.pulls.mode` (`flock/pulls.mjs`) narrows only what the builder is told of, a change outside
+39 < 1   its scope landing as a `pull` row marked `quiet` (flock-baseline run-10, 2026-11-13: a scope that
+40 < 1   held changes back starved a builder of a file its task needed, and the run ended a draft). A task
+41 < 1   reopened red is told of each same-spot insertion in its files, since the merge orders two
+42 < 1   insertions at one spot by their text.
+43 < 1 - Under `flock.main.mode = peer` a run follows the target's default branch (`absorbMain` in
+44 < 1   `flock/engine.mjs`: a look before the first builder opens, one every `flock.main.poll_seconds` by
+45 < 1   the clock, and one before a green settle):
+46 < 1   a moved main is published into the run as the peer `main` (keeper op `main`, row `main:moved`),
+47 < 1   its text reaching every copy through the pulls, a clash with a builder an ordinary conflict, and
+48 < 1   a path main and a builder each created apart a conflict too (`conflict:open` with `created: both`,
+49 < 1   policy `flock.main.created`; the kernel marks it adds-only and the union is two whole files one
+50 < 1   after the other, which two builders of one run still get, their probes both running on the join), and
+51 < 1   the run's base moves to the tip: `ULTRA_BASE`, the scope rule, each copy's git index and the
+52 < 1   landing commit read it, the setup runs again when main changed a manifest or lockfile, and the
+53 < 1   boot reads the moved base from `$RUN_DIR/base`. A move that cannot be taken in ends the following
+54 < 1   (`main:off`) and never the run; the publish's catch-up still meets a main that moves after the
+55 < 1   engine exits.
+56 < 1 - `flock/weave_store.py` is main's memory (the main-is-a-peer design; policy
+57 < 1   `flock.main.mode`: `peer`, `memory`, or the rollback `frozen`): one stored weave per tree of the default
+58 < 1   branch, on the target's ref `refs/ultrapowers/weave/v1`. The engine starts every copy from the
+59 < 1   entry of `--base`'s tree (keeper op `memory`, row `weave:memory`) and stores the landed commit's
+60 < 1   entry (`store`, row `weave:store`), its lines authored `@r<N>:<task>`; `catchup.mjs` joins the
+61 < 1   run's entry with the moved main's (`join`, then `settle`) and falls to the three-text join only
+62 < 1   for a path the store does not hold; `publish.mjs` pushes the ref before every merge request (row
+63 < 1   `weave:push`). None of it can fail a run. A tree's
+64 < 1   weave is built once and shared, never rebuilt from text where one is stored
+65 < 1   (two weaves of one text built by different routes merged back to it 0 times in 25, n=25 files,
+66 < 1   917 commits, 2026-11-12); a commit with no entry is replayed from the nearest stored ancestor,
+67 < 1   one commit at a time, so the recipe is never changed in place: a new recipe is a new ref version.
+68 < 1 
+69 < 1 ## Judgment and policy
+70 < 1 
+71 < 1 - **Every judgment is a question** in `factory/questions.json` (the engine's three `flock_*`
+72 < 1   sets, `flock_peer_settled` the second look before a draft for a line of main's read as lost; the authoring sets live beside ultrawrite, #1449), sent over
+73 < 1   `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
+74 < 1 - **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
+75 < 1   `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.
+76 < 1 
+78 > 1 ## No issue board
+77 < 2 ## Kata (the board)
+78 < 1 
+81 > 1 The engine and the boot write to no service: the kata hub left on 2026-11-13, and with it
+82 < 1 `board.mjs`, `flock/kata_mirror.mjs`, `audit.mjs` and the `kata:mirror`, `board:close`,
+83 < 1 `board:mark` and `run:audit` rows. A run's whole record is its evidence folder; a parked or failed
+84 < 1 run says so on its status page and nowhere else. Every `*.int.exe.xyz` host is `https://` (an http
+85 < 1 301, followed, turns a POST into a GET).
+80 > 2 - Since 2026-11-13 no run carries a Kata record: the launcher's `launch.kata.mode`
+81 < 2   (`fleet/policy.json`) is `off`, so the plan commit has no `kata.json`, the boot passes the engine
+82 < 2   no `--kata-*` flag and `board.mjs` records one `skipped: no kata.json to read` row. Everything
+83 < 2   below describes the rollback (`mode` `on`), which needs no engine change.
+79 < 2 - The board is the Kata 0.18 hub, written directly through `kata.int.exe.xyz`, where the edge
+80 < 2   injects the hub's bearer; the sandbox runs no kata daemon and no credential helper. The boot
+81 < 2   writes the plan commit's `kata.json` to `$FLEET_HOME/plans/<run>.kata.json` and, when it is
+82 < 2   there, passes the engine `--kata-url`, `--kata-json` and `--kata-actor`. The record is rows in
+83 < 2   `events.jsonl`.
+84 < 2 - `board.mjs` owns the run's close and marks (`boot.sh` only calls its CLI) and never fails a
+85 < 2   run; hub writes are never the run's failure, and the launcher's `hub.ping()` is the one gate.
+86 < 2 - **Seams:** every `*.int.exe.xyz` host is `https://` (an http 301, followed, turns a POST into
+87 < 2   a GET). A `done` close needs a ≥40-character message.
+88 < 2 - A byte-identical plan relaunched while its twin is live collides on the board (412, #1308);
+89 < 2   serialize them.
+90 < 1 
+91 < 1 ## Evidence
+92 < 1 
+93 < 1 The boot copies `events.jsonl` into the evidence worktree every tick only when the bytes
+94 < 1 differ (temp file + `mv`), and commits `status.json`, `plan.json` (the parse the engine read), `events.jsonl`, `engine.log`,
+95 < 1 `fleet-boot.log` and (when the setup script left one) `fleet-setup.log` to
+96 < 1 `live/<owner>-<repo>/run-<N>` in the operator's evidence repository (read from
+97 < 1 `$HOME/fleet-evidence-repo`, under `runs/<owner>-<repo>/<N>/`) every `FLEET_COMMIT_SECONDS`
+99 > 1 (default 10) and at each transition; at the end of every run it tags `<owner>-<repo>/run-<N>`,
+98 < 2 (default 60) and at each transition; at the end of every run it tags `<owner>-<repo>/run-<N>`,
+99 < 1 verifies it and deletes the live branch. No status server — git is the record.
+100 < 1 

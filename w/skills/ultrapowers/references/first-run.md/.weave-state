@@ -1,0 +1,499 @@
+0 < 1 # First run — one section per doctor row
+1 < 1 
+4 > 1 `node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
+3 > 2 `node <plugin-root>/fleet/doctor.mjs --json` answers with eleven rows in a fixed
+2 < 2 `node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
+3 < 1 order. Each row that is not `ok` has a section here, named for the row's `id`.
+4 < 1 A section says what the piece is, what the agent runs for you, what you do in a
+5 < 1 browser, and the two or three things a newcomer would not know. The commands are
+6 < 1 the ones in `fleet/RUNBOOK.md`; `fleet/CONTRACT.md` is the authority for every
+7 < 1 literal. Nothing here is a command a human has to type: the agent runs the
+8 < 1 commands and reads the answers back, and after each one it re-runs the doctor.
+9 < 1 
+10 < 1 ## exe-dev
+11 < 1 
+12 < 1 Every VM in the fleet lives on exe.dev, and the `exe.dev` SSH alias is how you
+13 < 1 create, list and delete them. This row is `missing` when the alias does not
+14 < 1 resolve or the account rejects the key — nothing below it can be checked until
+15 < 1 it answers.
+16 < 1 
+17 < 1 **In a browser:** sign up at exe.dev and register a public key on the account.
+18 < 1 
+19 < 1 **The agent runs** `ssh exe.dev whoami` — the command the doctor runs — and, if
+20 < 1 the alias is not in `~/.ssh/config` yet, adds it:
+21 < 1 
+22 < 1 ```
+23 < 1 Host *.exe.xyz exe.dev
+24 < 1   StrictHostKeyChecking accept-new
+25 < 1   IdentitiesOnly yes
+26 < 1   IdentityFile ~/.ssh/id_ed25519
+27 < 1 ```
+28 < 1 
+29 < 1 Three things a stranger will not know:
+30 < 1 
+31 < 1 - `exe.dev` is an SSH host entry, not a URL. Nothing here talks to a web API,
+32 < 1   and `IdentitiesOnly yes` is the line that keeps a laptop with many loaded
+33 < 1   keys from offering the wrong one first and being refused before it reaches
+34 < 1   this one.
+35 < 1 - The `*.exe.xyz` pattern matters as much as `exe.dev` itself: a run VM is
+36 < 1   reached over ssh at the `ssh_dest` that `ls --json` reports, and its status
+37 < 1   record is `runs/<owner>-<repo>/<N>/status.json` in the evidence repository
+38 < 1   (the `evidence` row below); there is no page.
+39 < 1 - **This key launches.** A second key registered with `ssh-key add --tag=fleet`
+40 < 1   sees and reaps only fleet-tagged VMs, and cannot bind a credential; that is
+41 < 1   the one for a machine that only reaps by hand, never the one that launches.
+42 < 1 
+43 < 1 Until this row is `ok`, expect every row below it to read `missing` too: they
+44 < 1 are all `ssh` commands, and without a working account none of them can land.
+45 < 1 Fix this row first and run the doctor again before touching the others.
+46 < 1 
+47 < 1 ## capacity
+48 < 1 
+49 < 1 Not a health check — arithmetic. `ssh exe.dev "billing plan --json"` reports
+50 < 1 the account's pool (`max_cpus`, `max_memory_gb`), and `~/.ultrapowers/fleet.json`
+51 < 1 says how large one run asks to be. The row reports both and limits neither: its
+52 < 1 green detail is the pool and the size one run asks for, in the shape
+53 < 1 `XLarge pool 16 vCPU / 64GB; a run asks 4 vCPU / 8GB`. It is `missing` only for
+54 < 1 an unreadable pool (`billing plan --json` failing or answering no numbers) or an
+55 < 1 unparseable config (`cpu` not an integer, `memory` not `<int>GB`). The agent
+56 < 1 writes the file with both keys explicitly — these are also the defaults, and a
+57 < 1 key nothing reads (one left by a fleet from before the lift) turns the row red
+58 < 1 until it is removed:
+59 < 1 
+60 < 1 ```json
+61 < 1 {
+62 < 1   "cpu": "8",
+63 < 1   "memory": "16GB"
+64 < 1 }
+65 < 1 ```
+66 < 1 
+67 < 1 The only other name the file may carry is the account key of the `accounts`
+68 < 1 row below; anything else is stale.
+69 < 1 
+70 < 1 **What one run actually asks for.** The ceiling is not the size: the launcher
+71 < 1 parses the plan and sizes the box to it. CPU is `min(cpu, 2 + ceil(W / 3))`
+72 < 1 off W, the widest set of tasks with no edge between them, and memory is
+73 < 1 `min(memory, 2 + W)` GB. (A browser term sized TinyApp runs by their state
+74 < 1 exams until cut three, 2026-09-22; it left with them and is owed on #1248.)
+75 < 1 
+76 < 1 **In a browser:** nothing, unless the answer is a bigger plan.
+77 < 1 
+78 < 1 **The agent runs** the doctor and, if the row is red, edits that file.
+79 < 1 
+80 < 1 Two things a newcomer would not know:
+81 < 1 
+82 < 1 - **Allocation on exe.dev is over-committable, and contention is the bound.**
+83 < 1   56 vCPU were allocated on the 16-vCPU plan and no `new` was refused, and on
+84 < 1   2026-09-05 six runs asking 24 vCPU ran concurrently — the pool is not a
+85 < 1   ceiling on how many runs are live at once. What bites is contention on the
+86 < 1   shared machine, and #667 is measuring where.
+87 < 1 - **`memory` is `<int>GB` or `<int>G`.** A bare number, or a fractional
+88 < 1   `1.5GB`, is unreadable and turns the row red before the pool is even
+89 < 1   consulted. A missing file means the defaults;
+90 < 1   a key nothing reads is named in the red detail, and the agent rewrites the
+91 < 1   file with the keys that are read.
+92 < 1 
+93 < 1 ## claude
+94 < 1 
+95 < 1 The Claude subscription reaches a sandbox as an exe.dev integration named
+96 < 1 `claude-max`: an http-proxy whose bearer is injected at the network edge. The
+97 < 1 VM never holds the token, never sees it, and cannot read it back. This row is
+98 < 1 `ok` when the object carries the bearer header; whether it is attached to
+99 < 1 `tag:fleet` is the `integrations` row's question.
+100 < 1 
+101 < 1 **In a browser:** claude.ai shows a consent page and then a code. Approve, and
+102 < 1 copy the code.
+103 < 1 
+104 < 1 **The agent runs:**
+105 < 1 
+106 < 1 ```bash
+107 < 1 node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard
+108 < 1 ```
+109 < 1 
+110 < 1 `--code-from-clipboard` is why you only copy: the tool reads the code off the
+111 < 1 clipboard rather than asking you to paste it into a terminal. It exchanges the
+112 < 1 code, keeps the refresh token in your login keychain, and sets the bearer on
+113 < 1 `claude-max` on stdin. Nothing is printed. The launcher refreshes it before
+114 < 1 every run.
+115 < 1 
+116 < 1 Three things this command hides:
+117 < 1 
+118 < 1 - **`--bearer=-` reads the token from stdin.** That is why the value is piped
+119 < 1   rather than typed: it never appears in a shell history, in an `--env`, in any
+120 < 1   argv, or in this conversation. Rotation is one
+121 < 1   `integrations edit claude-max --bearer=-` with a fresh token on stdin.
+122 < 1 - **Inject the bearer and nothing else.** The proxy forwards Claude Code's own
+123 < 1   headers, and an injected header of the same name replaces the client's
+124 < 1   (measured 2026-09-03), so an injected `anthropic-beta` list would destroy the
+125 < 1   flags the CLI sends. Two edit traps: `--clear-header` removes the bearer too,
+126 < 1   and any `integrations edit claude-max` should pass `--bearer=-` again in the
+127 < 1   same command; read the result from `integrations list --json`, never from a
+128 < 1   request made seconds after the edit.
+129 < 1 - **`claude-max` reaches a run by its attachment `tag:fleet`.** That is the
+130 < 1   `integrations` row's check, not this one's: since 2026-09-11 exe.dev refuses
+131 < 1   `new --integration`, so the one way a credential reaches a fleet VM is the
+132 < 1   object's tag attachment, and every fleet VM is created with that tag. The doctor's detail
+133 < 1   carries `claude-token`'s own status line too — a laptop with no refresh token
+134 < 1   in its keychain is a warning inside a green row, because the bearer already
+135 < 1   lives at the edge and only the next refresh needs the keychain.
+136 < 1 - **The row also carries the account's usage windows.** Beside the token
+137 < 1   status line, the detail shows the configured account's seven-day and
+138 < 1   five-hour utilization and reset times, read with `claude-token.mjs usage
+139 < 1   --json --no-rotate` — a read that never rotates the token.
+140 < 1 
+141 < 1 ## accounts
+142 < 1 
+143 < 1 One Claude account is one item in your login keychain, and every one of them
+144 < 1 lives under the same keychain service — the account name is what tells them
+145 < 1 apart. This row lists each item with its expiry, says which account the edge is
+146 < 1 carrying, and is `missing` when the keychain holds nothing at all, or when
+147 < 1 `~/.ultrapowers/fleet.json` names an account no keychain item carries. An
+148 < 1 expired item is not red: the launcher refreshes it before the run that uses it.
+149 < 1 
+150 < 1 **In a browser:** claude.ai's consent page again — once for each account you
+151 < 1 add, signed in as that account.
+152 < 1 
+153 < 1 **The agent runs** this to add a second account without moving the edge off the
+154 < 1 first:
+155 < 1 
+156 < 1 ```bash
+157 < 1 node <plugin-root>/fleet/claude-token.mjs login --code-from-clipboard \
+158 < 1   --account <name> --no-install
+159 < 1 ```
+160 < 1 
+161 < 1 then `node <plugin-root>/fleet/claude-token.mjs accounts` to list what the
+162 < 1 keychain holds, and `node <plugin-root>/fleet/claude-token.mjs usage` for the
+163 < 1 table of what each one has spent against its limits.
+164 < 1 
+165 < 1 To make an account the default for every run, the agent adds the `"account"`
+166 < 1 key to `~/.ultrapowers/fleet.json`:
+167 < 1 
+168 < 1 ```json
+169 < 1 {
+170 < 1   "cpu": "8",
+171 < 1   "memory": "16GB",
+172 < 1   "account": "<name>"
+173 < 1 }
+174 < 1 ```
+175 < 1 
+176 < 1 and the launcher's `--account <name>` overrides it for one run. Whichever wins,
+177 < 1 the install writes `account=<name>` into the `claude-max` integration's comment,
+178 < 1 which is where this row reads the edge's account from; an integration whose
+179 < 1 comment predates that says `edge account unrecorded`, and the next refresh
+180 < 1 records it.
+181 < 1 
+182 < 1 Three things a newcomer would not know:
+183 < 1 
+184 < 1 - **`--no-install` is the half that matters.** Without it, a login also sets
+185 < 1   the bearer on `claude-max`, which moves the edge onto the account you just
+186 < 1   added. With it, the exchange stops at the keychain: the new account is
+187 < 1   available to pick, and every run still goes out on the account the edge
+188 < 1   already carries.
+189 < 1 - **The refresh token rotates on every use.** A record copied to another laptop
+190 < 1   is dead the first time either machine refreshes, so there is no such thing as
+191 < 1   sharing one keychain item across two machines. Each machine logs in for
+192 < 1   itself; the accounts are the same, the items are not.
+193 < 1 - **Metering refreshes an item without touching the edge.** Reading `usage`
+194 < 1   spends a refresh and rewrites the keychain item, and it changes nothing about
+195 < 1   which account the edge carries. Switching accounts is per run and never
+196 < 1   mid-run: a sandbox is launched on one account and stays on it until it dies.
+197 < 1 
+198 < 1 ## github
+199 < 1 
+200 < 1 `ssh exe.dev "integrations setup github --list"` prints the GitHub accounts
+201 < 1 this exe.dev account has linked. No account means the browser step has never
+202 < 1 been walked, and every GitHub object below it would be created against nothing.
+203 < 1 
+204 < 1 **In a browser:** approve the GitHub app install for your account, and pick the
+205 < 1 repositories it may see.
+206 < 1 
+207 < 1 **The agent runs:**
+208 < 1 
+209 < 1 ```bash
+210 < 1 ssh exe.dev "integrations setup github"
+211 < 1 ```
+212 < 1 
+213 < 1 which opens the install — follow what it prints.
+214 < 1 
+215 < 1 Three things a newcomer would not know:
+216 < 1 
+217 < 1 - **`--list` has no `--json`.** Passing it is a flag-parsing error, so the
+218 < 1   doctor reads the two-line text form the command does print.
+219 < 1 - **This is the account link `--act-as-user` needs.** Until it exists, a run's
+220 < 1   pushes and its PR are authored by the installation bot rather than by you;
+221 < 1   the status page's `prAuthor` says which one you got.
+222 < 1 - **Keep it personal, not a team.** `--act-as-user` is unavailable on team
+223 < 1   integrations, so on an exe.dev team account every PR is authored by
+224 < 1   `exe-dev-github-integration[bot]` and nothing you do to the integration
+225 < 1   changes that. It is walked once per exe.dev account, not once per
+226 < 1   repository — the per-repository objects are the next row.
+227 < 1 
+228 < 1 ## integrations
+229 < 1 
+230 < 1 An exe.dev integration is a credential injected at the network edge: the VM
+231 < 1 sends an ordinary request to a `*.int.exe.xyz` host and the platform attaches
+232 < 1 the secret on the way out. Each integration is attached to VMs or tags, and a VM
+233 < 1 that matches an attachment is granted the credential. This row checks that every
+234 < 1 integration a run needs is attached to the fleet's tag, `tag:fleet`: `claude-max`, and one GitHub object per
+235 < 1 repository you drive, `gh-<owner>-<repo>`. A fleet VM is created with that tag,
+236 < 1 and that is the whole grant.
+237 < 1 
+238 < 1 **In a browser:** nothing.
+239 < 1 
+240 < 1 **The agent runs** this for each repository you drive, which creates the object
+241 < 1 attached to `tag:fleet`, or attaches an existing one that is not:
+242 < 1 
+243 < 1 ```bash
+244 < 1 node <plugin-root>/fleet/target.mjs <owner>/<repo>
+245 < 1 ```
+246 < 1 
+247 < 1 and, for any other object the doctor names as not attached, the fix it prints:
+248 < 1 
+249 < 1 ```bash
+250 < 1 ssh exe.dev "integrations attach <name> tag:fleet"
+251 < 1 ```
+252 < 1 
+253 < 1 `target.mjs` is one call underneath for a fresh object:
+254 < 1 
+255 < 1 ```bash
+256 < 1 ssh exe.dev "integrations add github --name gh-<owner>-<repo> \
+257 < 1   --repository <owner>/<repo> --act-as-user --attach tag:fleet"
+258 < 1 ```
+259 < 1 
+260 < 1 The doctor only asks about a target's object when you pass
+261 < 1 `--target <owner>/<repo>`, so a fleet with no targets yet is still `ready`.
+262 < 1 
+263 < 1 Three things this command hides:
+264 < 1 
+265 < 1 - **The tag attachment is the only grant.** Since 2026-09-11 exe.dev refuses
+266 < 1   `new --integration`, so nothing is attached per VM and the launcher's `new`
+267 < 1   names no integration. (exe.dev's short-lived attachment-policy model was
+268 < 1   rolled back; `integrations` has no `policy` verb, #1434.) The attachment is
+269 < 1   live: it reaches VMs already running with the tag.
+270 < 1 - **Never two GitHub integrations naming one repository on one VM.** exe.dev's
+271 < 1   GitHub edge routes by repo path and documents no tie-break between them
+272 < 1   (measured 2026-09-03), so the sandbox refuses to boot into that.
+273 < 1 - **`gh auth status` on a VM is meaningless.** The credential is at the edge,
+274 < 1   not on the box, and the edge proxies only that repository's own paths. A
+275 < 1   target with no object is a launch refusal, public repo or not: the clone
+276 < 1   would work and the push would not.
+277 < 1 
+278 < 1 ## evidence
+279 < 1 
+280 < 1 A run keeps its record — `runs/<owner>-<repo>/<N>/status.json` and the rest of
+281 < 1 its folder — in one repository of your own, the evidence repository, not in the
+282 < 1 repository it drives. Setting it up is done once. The row walks the three steps
+283 < 1 in order and stops at the first one still to do, naming its fix:
+284 < 1 
+285 < 1 1. **The key is set.** `~/.ultrapowers/fleet.json` carries
+286 < 1    `"evidence": "<owner>/<repo>"` (for example `popmechanic/fleet-evidence`).
+287 < 1    Fix: add that key to the file.
+288 < 1 2. **The repository exists.** The doctor asks `gh api repos/<owner>/<repo>`;
+289 < 1    anything but exit 0 is a repository still to make. Fix:
+290 < 1 
+291 < 1    ```bash
+292 < 1    gh repo create <owner>/<repo> --private
+293 < 1    ```
+294 < 1 
+295 < 1 3. **Its integration is attached to `tag:fleet`.** The evidence repository is
+296 < 1    reached from a fleet VM the way every repository is: through its own exe.dev
+297 < 1    integration `gh-<owner>-<repo>`, attached to `tag:fleet`. Fix:
+298 < 1 
+299 < 1    ```bash
+300 < 1    node <plugin-root>/fleet/target.mjs <owner>/<repo>
+301 < 1    ```
+302 < 1 
+303 < 1    An object that exists but is not attached gets `integrations attach <name>
+304 < 1    tag:fleet`, as in `## integrations`.
+305 < 1 
+306 < 1 **In a browser:** nothing, unless `gh` is not signed in on this laptop
+307 < 1 (`gh auth login`).
+308 < 1 
+309 < 1 Two things a stranger will not know:
+310 < 1 
+311 < 1 - **A foreign target still records to your repository.** A run on someone
+312 < 1   else's repository — one you can open a pull request against but never write
+313 < 1   a branch to — keeps its record in your own evidence repository all the same,
+314 < 1   under `runs/<their-owner>-<their-repo>/`. That is why the setting is yours and
+315 < 1   not the target's.
+316 < 1 - **Private is the point.** The record carries plans, transcripts and verdicts;
+317 < 1   `--private` keeps them yours.
+318 < 1 
+319 < 1 ## verb-drift
+320 < 1 
+321 < 1 `fleet/exe-verbs.json` is the flag set of every lobby verb the fleet drives,
+322 < 1 recorded verb by verb with the date it was captured. The doctor re-fetches
+323 < 1 `help <verb>` for each of them and diffs what the lobby prints
+324 < 1 today against what is recorded. A flag that appeared or vanished is a
+325 < 1 **finding** printed inside a green row — the lobby moving is news, not a
+326 < 1 failure, and nothing is refused over it. The row is `missing` only when the
+327 < 1 record itself cannot be read: absent, not JSON, or carrying no `verbs` object.
+328 < 1 
+329 < 1 **In a browser:** nothing. This row is about the lobby's own help text.
+330 < 1 
+331 < 1 **The agent runs** the doctor, and when the row reports a drift, re-captures the
+332 < 1 verbs it named:
+333 < 1 
+334 < 1 ```bash
+335 < 1 ssh exe.dev "help <verb>"
+336 < 1 ```
+337 < 1 
+338 < 1 and edits `fleet/exe-verbs.json` — the flag names out of that `Options:` block,
+339 < 1 in the verb's array — then bumps the file's `capturedAt` to today's date.
+340 < 1 
+341 < 1 Three things a newcomer would not know:
+342 < 1 
+343 < 1 - **The record stores flag names, not help text.** `help <verb>` prints prose —
+344 < 1   a `Command:` line, a description, an optional `Usage:` line, an `Options:`
+345 < 1   block, sometimes `Examples:` — and prose churns for reasons nobody needs to
+346 < 1   hear about. The diff unit is the set of `--flags` in the `Options:` block, so
+347 < 1   a reworded description is silent and a removed flag is not.
+348 < 1 - **`help <verb>` and `<verb> --help` print the same block.** The doctor asks
+349 < 1   the first form on purpose: `help …` runs nothing, while `new --help` starts
+350 < 1   with the `new` verb, and the fleet's own exams treat any line starting with a
+351 < 1   mutating verb as a launch.
+352 < 1 - **An unreadable answer is a finding too, not a red row.** A verb the lobby no
+353 < 1   longer recognises answers `No help available for unrecognized command:` at
+354 < 1   exit 0, and a verb whose name is not plain lower-case words is never sent to
+355 < 1   the lobby at all; both are reported as `help unreadable` inside the same green
+356 < 1   row, with the exit code that came back.
+357 < 1 
+358 < 2 ## kata
+359 < 2 
+361 > 2 Since 2026-11-13 no launch asks the kata hub (`launch.kata.mode` is `off` in
+362 < 2 `fleet/policy.json`), so this row is green without one and says
+363 < 2 `not asked: launch.kata.mode is off`; a run is read with `fleet/run-read.mjs`.
+364 < 2 The rest of this section applies only under the rollback, `mode` `on`.
+365 < 2 
+360 < 2 The fleet has one kata hub: a single persistent VM named `kata-hub` running the
+361 < 2 kata issue daemon, which every sandbox reaches through an `http-proxy --peer`
+362 < 2 integration named `kata` and which the laptop reaches over ssh. It is not part
+363 < 2 of any run. Its HTTPS front door is the daemon's port and nothing else: exe.dev
+364 < 2 fronts exactly one port per VM (`share port`), so any second browser service — the
+365 < 2 Viz page, for one — lives on a VM of its own. This row is `ok` when the `kata` integration carries a bearer at the
+366 < 2 edge, it is attached to `tag:fleet`, and `ls kata-hub --json` answers a
+367 < 2 `kata-hub` row; the detail says which of the three is missing.
+368 < 2 
+369 < 2 **In a browser:** nothing.
+370 < 2 
+371 < 2 **The agent runs** this once, and it is the whole build:
+372 < 2 
+373 < 2 ```bash
+374 < 2 node <plugin-root>/fleet/kata-hub.mjs
+375 < 2 ```
+376 < 2 
+377 < 2 It creates the VM with its first-boot setup script, pins the daemon's port with
+378 < 2 `share port kata-hub 8000`, reads the VM's own `https_url` off
+379 < 2 `ls kata-hub --json`, and creates the integration with a freshly minted bearer
+380 < 2 on stdin:
+381 < 2 
+382 < 2 ```bash
+383 < 2 printf '%s' "$KATA_TOKEN" | ssh exe.dev "integrations add http-proxy --name kata --target <https_url> --peer --bearer - --comment 'kata issue daemon on kata-hub' --attach tag:fleet"
+384 < 2 ```
+385 < 2 
+386 < 2 It then waits for first boot, delivers the daemon's config and env over ssh,
+387 < 2 waits for `systemctl is-active kata.service` to answer `active`, and only then
+388 < 2 writes `~/.ultrapowers/kata-hub.env` (mode 0600, `KATA_URL` and `KATA_TOKEN`).
+389 < 2 Running it again on a built hub prints `kata-hub already built` and touches
+390 < 2 nothing; running it on a half-built one resumes from where it stopped.
+391 < 2 
+392 < 2 Five things a newcomer would not know:
+393 < 2 
+394 < 2 - **Never prune the `peer-kata` ssh key.** `--peer` makes exe.dev generate a
+395 < 2   key pair server-side so a sandbox can reach the hub without holding anything;
+396 < 2   it shows up in `ssh-key list` as `peer-kata` and goes when the integration
+397 < 2   goes. A sweep that tidies unknown keys takes the fleet's hub down with it.
+398 < 2 - **The hub carries no tag at all.** The janitor lists `fleet-r*` and never
+399 < 2   sees it, and its comment — `kata hub — persistent service, do not reap` — is
+400 < 2   the second lock. Its 1 vCPU and 2 GB do come out of the same pool every
+401 < 2   wave's sandboxes are subtracted from, so the `capacity` row counts it.
+402 < 2 - **Never `cp` the hub, or any fleet VM, without `--copy-tags=false`.**
+403 < 2   `cp --copy-tags` is on by default, so a copy of a fleet VM inherits
+404 < 2   `tag:fleet` and is granted every credential the tag grants; a copy of the
+405 < 2   hub inherits its comment and its daemon.
+406 < 2 - **The bearer has exactly two homes.** `/etc/kata/kata.env` on the hub
+407 < 2   (`root:exedev`, mode 0640, delivered over ssh after first boot and never in
+408 < 2   the setup script) and `~/.ultrapowers/kata-hub.env` on this laptop, mode
+409 < 2   0600. No sandbox holds it: the edge injects it, and the sandbox-side URL is
+410 < 2   `https://kata.int.exe.xyz/<path>`. Rotation is one
+411 < 2   `integrations edit kata --bearer=-` with a fresh token on stdin, followed by
+412 < 2   the same token delivered to the hub's env file.
+413 < 2 - **A missing attachment is repaired with one command**, the fix the doctor
+414 < 2   prints:
+415 < 2 
+416 < 2 ```bash
+417 < 2 ssh exe.dev "integrations attach kata tag:fleet"
+418 < 2 ```
+419 < 2 
+420 < 1 ## cloudflare
+421 < 1 
+422 < 1 The deploy's credential, needed only by a plan that carries a `**Publish:**`
+423 < 1 line — most plans never do, so nothing here is needed until one does, and an
+424 < 1 absent `cloudflare` integration is a green row. It is a Cloudflare API token,
+425 < 1 reached the same way every other fleet credential is: an `http-proxy`
+426 < 1 integration whose bearer is injected at the network edge, never on a VM's disk
+427 < 1 or in an argv.
+428 < 1 
+429 < 1 **In a browser:** the Cloudflare dashboard's API Tokens page, "Create Token",
+430 < 1 the Workers template. Give it exactly three scopes: `Workers Scripts:Edit`,
+431 < 1 `Account Settings:Read`, `User Details:Read`. Copy the token it prints once.
+432 < 1 
+433 < 1 **The agent runs**, the token pasted by the operator on stdin and never on an
+434 < 1 argv:
+435 < 1 
+436 < 1 ```bash
+437 < 1 ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.cloudflare.com --bearer - --attach tag:fleet"
+438 < 1 ```
+439 < 1 
+440 < 1 Three things a newcomer would not know:
+441 < 1 
+442 < 1 - **The account id is not a secret.** It does not go on the integration at
+443 < 1   all: it lives in the target repository's `wrangler.jsonc`, as `account_id`,
+444 < 1   right beside the rest of the deploy's config.
+445 < 1 - **The sandbox never talks to `api.cloudflare.com` directly.** It reaches the
+446 < 1   API through the edge at `https://cloudflare.int.exe.xyz`, and `wrangler` is
+447 < 1   pointed there by the `CLOUDFLARE_API_BASE_URL` environment variable the box
+449 > 1   is launched with — the same shape as `typesafe`'s http-proxy.
+448 < 2   is launched with — the same shape as `kata`'s and `typesafe`'s http-proxies.
+449 < 1 - **This row is not part of the one-time walk.** Every other row is built once
+450 < 1   and stays built; `cloudflare` is the one the launcher checks fresh against
+451 < 1   each plan, refusing a `**Publish:**` plan that has no credential at the edge
+452 < 1   rather than a plan that will never ask for one.
+453 < 1 
+454 < 1 ## reaper
+455 < 1 
+456 < 1 A finished run's VM asks the hub to remove it, and the hub removes it through `lobby-rm`, an
+457 < 1 integration only the hub may use. Its bearer is an exe.dev key named `hub-reaper` that can do one
+458 < 1 thing, `rm`. The key expires, and an expired key fails without a sound: the hub answers the VM and
+460 > 1 removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row asks the
+461 < 1 remover itself, from the hub, and is red when it answers `invalid token`; it is also red when the
+462 < 1 key has expired or is gone, and says how many days a live one has left.
+459 < 2 removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row is
+460 < 2 red when that key has expired or is gone, and says how many days a live one has left.
+461 < 1 
+463 > 1 **The operator runs** one command, which types nothing and never prints the key:
+462 < 2 **The operator runs** both halves, so the key is never on an argv and never in the chat. The first
+463 < 2 prints the new key once; the second reads it on stdin:
+464 < 1 
+465 < 1 ```bash
+467 > 1 bash fleet/reaper-key.sh
+466 < 2 ssh exe.dev "ssh-key generate-api-key --label=hub-reaper-<year>-<month> --cmds=rm --exp=1y"
+467 < 1 ```
+468 < 1 
+470 > 1 It mints a new key that can only `rm` (labelled `hub-reaper-<date>-<time>`, good for one year), hands
+471 < 1 it to `lobby-rm` on stdin, then asks the remover from the hub to remove a VM that does not exist. It
+472 < 1 ends `WORKING` when the remover answers anything but `invalid token`, and lists the older keys that
+473 < 1 can then be deleted. Run it from a terminal or a Run button alike: nothing secret is shown.
+469 < 2 ```bash
+470 < 2 ssh exe.dev "integrations edit lobby-rm --bearer=-"
+471 < 2 ```
+472 < 1 
+473 < 1 Two things a newcomer would not know:
+474 < 1 
+475 < 1 - **The label is how the doctor finds the key, and exe.dev never reuses one.** A renewal under the
+476 < 1   old label is refused (`a key named "hub-reaper" already exists`, 2026-11-13), so each new key
+477 < 1   carries its month. Any label that begins `hub-reaper` is read, and the one that lasts longest is
+478 < 1   the one reported, so an expired key left in the list does no harm.
+479 < 1 - **A missing `lobby-rm` is a green row.** Without it a finished VM waits for the janitor, which is
+480 < 1   slower and never wrong; `fleet/RUNBOOK.md` §The hub's reaper installs it.
+481 < 1 

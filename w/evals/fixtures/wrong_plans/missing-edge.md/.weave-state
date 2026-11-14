@@ -1,0 +1,71 @@
+0 < 1 # Ledger: convert an amount written as text
+1 < 1 
+2 < 1 **Grammar:** claims-v1
+3 < 1 **Claim:** I open the pull request on flock-baseline and the ledger converts an amount written as text from one currency to another, and refuses a currency it does not know by name. (elicited)
+4 < 1 **Summary:** Two additions to the currency module: looking up a currency's rate, with a clear refusal for an unknown one, and converting an amount written as text.
+5 < 1 
+6 < 1 **Goal:** Add text conversion and a rate lookup to the currency module.
+7 < 1 **Tech Stack:** Python 3 + pytest. Run the suite with `python3 -m pytest -q -p no:cacheprovider` from the repository root.
+8 < 1 
+9 < 1 **Base:** `ledger/__init__.py`, `ledger/core.py`, `ledger/rates.py` and `tests/test_ledger.py` exist at BASE, `d668b2e720fc3bac33a919b364ec48d89d906e52` on flock-baseline's main.
+10 < 1 
+11 < 1 Spec: none.
+12 < 1 
+13 < 1 ## Global Constraints
+14 < 1 
+15 < 1 - Check: python3 -m pytest -q -p no:cacheprovider
+16 < 1 
+17 < 1 ---
+18 < 1 
+19 < 1 ### Task 1: Look up a currency's rate
+20 < 1 
+21 < 1 **Type:** implementation
+22 < 1 
+23 < 1 **Files:**
+24 < 1 - Modify: `ledger/rates.py`
+25 < 1 
+26 < 1 **Claim:** An operator looks up a currency's rate and is told by name when the currency is unknown. (derived)
+27 < 1 Machine: M1. `rate_of("EUR")` is exactly `90`. M2. `rate_of("XYZ")` raises `ValueError` whose message is exactly `unknown currency: XYZ`.
+28 < 1 
+29 < 1 **Authorized-by:** operator's pick, 2026-11-13
+30 < 1 
+31 < 1 **Interfaces:**
+32 < 1 - Consumes: nothing
+33 < 1 - Produces: `rate_of(code: str) -> int`
+34 < 1 
+35 < 1 **Context:** `rate_of(code)` answers `RATES[code]`, and raises `ValueError` for a code that is not in `RATES`.
+36 < 1 
+37 < 1 **Proof:**
+38 < 1 - Run: python3 -c "from ledger.rates import rate_of; assert rate_of('EUR') == 90" [M1]
+39 < 1 - Run: python3 -c "import pytest; from ledger.rates import rate_of; pytest.raises(ValueError, rate_of, 'XYZ').match('^unknown currency: XYZ$')" [M2]
+40 < 1 - Legs: (a) a known rate [M1]; (b) the refusal's message, byte for byte [M2].
+41 < 1 
+42 < 1 **Stale-if:**
+43 < 1 - path-absent: `ledger/rates.py`
+44 < 1 
+45 < 1 ### Task 2: Convert an amount written as text
+46 < 1 
+47 < 1 **Type:** implementation
+48 < 1 
+49 < 1 **Files:**
+50 < 1 - Modify: `ledger/rates.py`
+51 < 1 
+52 < 1 **Claim:** An operator converts an amount written as text from one currency to another. (derived)
+53 < 1 Machine: M1. `convert_text("10.00", "USD", "EUR")` is exactly `"9.00"`. M2. `convert_text("10.00", "USD", "XYZ")` raises `ValueError` whose message is exactly `unknown currency: XYZ`.
+54 < 1 
+55 < 1 **Authorized-by:** operator's pick, 2026-11-13
+56 < 1 
+57 < 1 **Interfaces:**
+58 < 1 - Consumes: nothing
+59 < 1 - Produces: `convert_text(amount: str, source: str, target: str) -> str`
+60 < 1 
+61 < 1 **Context:** `convert_text` reads the amount with `cents` from `ledger.core`, looks up both rates with `rate_of`, and answers `dollars` of `cents * rate_of(target) // rate_of(source)`.
+62 < 1 
+63 < 1 **Proof:**
+64 < 1 - Run: python3 -c "from ledger.rates import convert_text; assert convert_text('10.00', 'USD', 'EUR') == '9.00'" [M1]
+65 < 1 - Run: python3 -c "import pytest; from ledger.rates import convert_text; pytest.raises(ValueError, convert_text, '10.00', 'USD', 'XYZ').match('^unknown currency: XYZ$')" [M2]
+66 < 1 - Legs: (a) ten dollars in euros, to the cent [M1]; (b) the refusal's message for an unknown target, byte for byte [M2].
+67 < 1 
+68 < 1 **Stale-if:**
+69 < 1 - path-absent: `ledger/rates.py`
+70 < 1 

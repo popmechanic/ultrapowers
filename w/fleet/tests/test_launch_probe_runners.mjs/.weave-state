@@ -1,0 +1,189 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_launch_probe_runners.mjs — the launcher refuses a plan whose
+2 < 1  * `Run:` probe or `Check:` line calls a program the sandbox does not have,
+3 < 1  * before anything is pushed (#645, the 2026-09-22 plan).
+4 < 1  *
+5 < 1  * Three pure exports of `fleet/toolchain.mjs` and one launch:
+6 < 1  *
+7 < 1  *   (a) [M1] `probeWordsOf(line)` answers the command words of one shell
+8 < 1  *       line — the two example lines the plan pins, a regex alternation inside
+9 < 1  *       quotes (one program, not two), and a `$(…)` inside double quotes.
+10 < 1  *   (b) [M2] `SANDBOX_TOOLCHAIN` is frozen, carries the words the plan names
+11 < 1  *       and no duplicate; `toolchainViolations(compiled)` answers `1:cargo`,
+12 < 1  *       `2:go`, `check:make` in that order over the plan's fixture, and `[]`
+13 < 1  *       over a plan whose probes only use toolchain words.
+14 < 1  *   (c) [M3] a launch of a plan whose one task carries `proofRuns: ["cargo
+15 < 1  *       test"]` throws a `Refusal` (exit 2) whose message names `task 1`,
+16 < 1  *       `'cargo'` and the line, and the recorded exec calls carry no `git
+17 < 1  *       push`, no `ssh exe.dev new` and no `billing plan` — nothing was
+18 < 1  *       pushed and no lobby verb was issued.
+19 < 1  *
+20 < 1  * Hermetic in the shape of `test_launch_plan_path.mjs`: a stubbed lobby
+21 < 1  * (`makeExec`), a real temporary target with a bare origin (`makeTargetRepo`),
+22 < 1  * the compiler's fetch and every `python3` run stubbed. Imports only
+23 < 1  * `./_helpers.mjs` and `./_lobby_helpers.mjs` — a sim may not name a sibling
+24 < 1  * sim.
+25 < 1  */
+26 < 1 
+27 < 1 import assert from 'node:assert/strict'
+28 < 1 import fs from 'node:fs'
+29 < 1 import path from 'node:path'
+30 < 1 
+31 < 1 import * as launchModule from '../launch.mjs'
+32 < 1 import { probeWordsOf, toolchainViolations, SANDBOX_TOOLCHAIN } from '../toolchain.mjs'
+33 < 1 import { Refusal } from '../lobby.mjs'
+34 < 1 import { launchRules, launchWorkspace, makeExec, thrown } from './_lobby_helpers.mjs'
+35 < 1 
+36 < 1 const { launch } = launchModule
+37 < 1 
+38 < 1 const isFunction = (leg, name, value) => assert.equal(
+39 < 1   typeof value, 'function',
+40 < 1   `${leg} \`${name}\` must be exported by ${name === 'launch' ? 'fleet/launch.mjs' : 'fleet/toolchain.mjs'} — the task's Produces: names it`
+41 < 1 )
+42 < 1 
+43 < 1 // ══════════════════════════════════════════════════════════════════════════
+44 < 1 // (a) [M1] probeWordsOf
+45 < 1 // ══════════════════════════════════════════════════════════════════════════
+46 < 1 {
+47 < 1   isFunction('(a) [M1]', 'probeWordsOf', probeWordsOf)
+48 < 1   assert.deepEqual(
+49 < 1     probeWordsOf('out=$(python3 x.py 2>&1); rc=$?; test $rc -eq 2 && ! echo "$out" | grep -q "PLAN OK"'),
+50 < 1     ['python3', 'grep'],
+51 < 1     '(a) [M1] the first example: an assignment, a substitution, test, !, echo and a pipe'
+52 < 1   )
+53 < 1   assert.deepEqual(
+54 < 1     probeWordsOf('for p in a b; do node --check $p || exit 1; done | tr a b'),
+55 < 1     ['node', 'tr'],
+56 < 1     '(a) [M1] the second example: a for loop, do, ||, exit, done and a pipe'
+57 < 1   )
+58 < 1   assert.deepEqual(
+59 < 1     probeWordsOf('! grep -rnwE "a|b" factory | grep .'),
+60 < 1     ['grep', 'grep'],
+61 < 1     '(a) [M1] an alternation inside double quotes splits nothing'
+62 < 1   )
+63 < 1   assert.deepEqual(
+64 < 1     probeWordsOf('test "$(wc -l < f)" -eq 4 && echo "$(cargo --version)"'),
+65 < 1     ['wc', 'cargo'],
+66 < 1     '(a) [M1] a $( … ) inside double quotes still opens a command position'
+67 < 1   )
+68 < 1   assert.deepEqual(
+69 < 1     probeWordsOf('bash hooks/session_start.sh >/dev/null && python3 skills/x.py'),
+70 < 1     ['bash', 'python3'],
+71 < 1     '(a) [M1] a path argument is not a command word; a redirection is not one either'
+72 < 1   )
+73 < 1   assert.deepEqual(probeWordsOf(''), [], '(a) [M1] an empty line answers []')
+74 < 1 }
+75 < 1 
+76 < 1 // ══════════════════════════════════════════════════════════════════════════
+77 < 1 // (b) [M2] SANDBOX_TOOLCHAIN and toolchainViolations
+78 < 1 // ══════════════════════════════════════════════════════════════════════════
+79 < 1 {
+80 < 1   isFunction('(b) [M2]', 'toolchainViolations', toolchainViolations)
+81 < 1   assert.ok(Array.isArray(SANDBOX_TOOLCHAIN) && Object.isFrozen(SANDBOX_TOOLCHAIN),
+82 < 1     '(b) [M2] SANDBOX_TOOLCHAIN is a frozen array')
+83 < 1   const need = ['node', 'npm', 'npx', 'bun', 'bunx', 'celld', 'python3', 'pytest', 'git', 'gh', 'jq',
+84 < 1     'curl', 'bash', 'sh', 'env', 'timeout', 'xargs', 'find', 'grep', 'sed', 'awk', 'tr', 'cut',
+85 < 1     'sort', 'uniq', 'head', 'tail', 'wc', 'cat', 'tee', 'diff', 'cmp', 'comm', 'paste', 'seq',
+86 < 1     'expr', 'date', 'sleep', 'basename', 'dirname', 'readlink', 'realpath', 'mkdir', 'rmdir',
+87 < 1     'rm', 'cp', 'mv', 'ln', 'ls', 'touch', 'chmod', 'tar', 'gzip', 'unzip', 'sudo', 'install']
+88 < 1   const missing = need.filter((w) => !SANDBOX_TOOLCHAIN.includes(w))
+89 < 1   assert.deepEqual(missing, [], `(b) [M2] the toolchain carries every named word; missing: ${missing}`)
+90 < 1   assert.equal(new Set(SANDBOX_TOOLCHAIN).size, SANDBOX_TOOLCHAIN.length,
+91 < 1     '(b) [M2] no duplicate in the toolchain')
+92 < 1 
+93 < 1   const fixture = {
+94 < 1     waves: [
+95 < 1       [{ id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] }],
+96 < 1       [{ id: '2', proofRuns: ['go test ./...'] }]
+97 < 1     ],
+98 < 1     payload: { checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }] }
+99 < 1   }
+100 < 1   const v = toolchainViolations(fixture)
+101 < 1   assert.deepEqual(
+102 < 1     v.map((x) => `${x.task}:${x.word}`), ['1:cargo', '2:go', 'check:make'],
+103 < 1     '(b) [M2] one violation per (task, word), in document order, checks as task `check`'
+104 < 1   )
+105 < 1   assert.deepEqual(v[0], { task: '1', word: 'cargo', cmd: 'cargo test' },
+106 < 1     '(b) [M2] a violation carries task, word and the offending line')
+107 < 1   assert.deepEqual(
+108 < 1     toolchainViolations({
+109 < 1       waves: [[{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }]],
+110 < 1       payload: { checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }] }
+111 < 1     }),
+112 < 1     [],
+113 < 1     '(b) [M2] a plan whose probes and checks use only toolchain words answers []'
+114 < 1   )
+115 < 1   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no waves, no checks: []')
+116 < 1 }
+117 < 1 
+118 < 1 // ══════════════════════════════════════════════════════════════════════════
+119 < 1 // (c) [M3] the launch refuses before the push and before any lobby verb
+120 < 1 // ══════════════════════════════════════════════════════════════════════════
+121 < 1 {
+122 < 1   isFunction('(c) [M3]', 'launch', launch)
+123 < 1   const TARGET = 'acme/widgets'
+124 < 1   const GH = 'gh-acme-widgets'
+125 < 1   const ORIGIN_URL = `https://github.com/${TARGET}.git`
+126 < 1   const ENGINE = 'd'.repeat(40)
+127 < 1   const NOW = new Date('2026-09-22T12:00:00.000Z')
+128 < 1   const EVIDENCE = 'ops/evidence'
+129 < 1   const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
+130 < 1   const PLAN = '# a plan\n\nOne plan whose probe runs cargo.\n'
+131 < 1 
+132 < 1   // The compiled plan the stubbed parser answers: one task, one probe the
+133 < 1   // sandbox cannot run.
+134 < 1   const COMPILED = {
+135 < 1     launch_waves: [[{
+136 < 1       id: '1', title: 'task 1', files: ['src/a.rs'], depends_on: [],
+137 < 1       proofRuns: ['cargo test'], proofRunClauses: [['M1']], interfaces: { consumes: [], produces: [] }
+138 < 1     }]],
+139 < 1     dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
+140 < 1   }
+141 < 1 
+142 < 1   // The evidence repository's URL goes to its own bare; every other github.com
+143 < 1   // URL, and `origin`, to the target's. No engine rule: the refusal comes first.
+144 < 1   const ws = launchWorkspace({
+145 < 1     prefix: 'fleet-launch-probe-runners-',
+146 < 1     originUrl: ORIGIN_URL,
+147 < 1     seed: { 'README.md': '# target\n', 'src/a.rs': 'fn main() {}\n' },
+148 < 1     evidence: EVIDENCE,
+149 < 1     plan: null
+150 < 1   })
+151 < 1   const { repo } = ws
+152 < 1   fs.mkdirSync(path.join(repo.dir, 'plans'), { recursive: true })
+153 < 1   fs.writeFileSync(path.join(repo.dir, 'plans', 'a-plan.md'), PLAN)
+154 < 1 
+155 < 1   const exec = makeExec({ rules: launchRules({ repo, evidence: ws.evidence, gh: GH, compiled: COMPILED }) })
+156 < 1 
+157 < 1   const error = await thrown(() => launch({
+158 < 1     argv: ['plans/a-plan.md', '--target', TARGET, '--base', repo.base, '--repo', repo.dir, '--engine', ENGINE],
+159 < 1     exec,
+160 < 1     config: CAPPED,
+161 < 1     now: () => NOW,
+162 < 1     sleep: async () => {},
+164 > 1     refreshCredential: () => ({ ok: true })
+163 < 2     refreshCredential: () => ({ ok: true }),
+164 < 2     kata: null
+165 < 1   }))
+166 < 1 
+167 < 1   assert.ok(error instanceof Refusal,
+168 < 1     `(c) [M3] a Refusal. Got: ${error?.name}: ${error?.message}`)
+169 < 1   assert.equal(error.exitCode, 2, `(c) [M3] exit code 2. Got: ${error.exitCode}`)
+170 < 1   assert.equal(
+171 < 1     error.message,
+172 < 1     "launch: task 1: probe runner 'cargo' is not in the sandbox toolchain — cargo test",
+173 < 1     `(c) [M3] the message is one line naming the task, the word and the line. Got: ${JSON.stringify(error.message)}`
+174 < 1   )
+175 < 1   const lines = exec.calls.map((c) => c.line ?? `${c.cmd} ${c.argv.join(' ')}`)
+176 < 1   assert.ok(!exec.calls.some((c) => c.cmd === 'git' && c.argv.includes('push')),
+177 < 1     `(c) [M3] no git push was recorded. Calls: ${JSON.stringify(lines)}`)
+178 < 1   assert.ok(!lines.some((l) => /^ssh exe\.dev new /.test(l)),
+179 < 1     `(c) [M3] no new verb was issued (the launcher's help probes are not verbs). Calls: ${JSON.stringify(lines)}`)
+180 < 1   assert.ok(!lines.some((l) => /^ssh exe\.dev billing plan/.test(l)),
+181 < 1     `(c) [M3] the pool was never read: the refusal comes before it. Calls: ${JSON.stringify(lines)}`)
+182 < 1 
+183 < 1   ws.cleanup()
+184 < 1 }
+185 < 1 
+186 < 1 console.log('ALL TESTS PASSED')
+187 < 1 

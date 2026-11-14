@@ -1,0 +1,236 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_launch_duplicate.mjs — the exam for "The launcher refuses a
+2 < 1  * plan that is live on the target, names the run, and takes `--again`" (#1036).
+3 < 1  *
+4 < 1  * On 2026-09-15 the same plan was launched twice within a minute on
+5 < 1  * popmechanic/tinyapp-fixture (runs 10 and 11). The second launch re-answered
+6 < 1  * the first run's task issues on the hub and bumped their revision, and run-10
+7 < 1  * died at Setup with `kata-revision-mismatch`. The two launches carried
+8 < 1  * DIFFERENT `plan=` commits (the subject names the run) and ONE plan blob, so
+9 < 1  * "the same plan" is the plan text's git blob sha, never the comment's sha.
+10 < 1  *
+11 < 1  * Legs, each naming the Machine clause it comes from:
+12 < 1  *
+13 < 1  *   (a) [M1] one running row on the target whose live branch in the evidence
+14 < 1  *       repository, `live/<slug>/run-7`, holds this plan's bytes at
+15 < 1  *       `runs/<slug>/7/plan.md` — and nowhere else — and no record (empty
+16 < 1  *       `gh api`) — a Refusal (exit 2)
+17 < 1  *       naming run-7, the VM and `--again`, with nothing mutated and no push;
+18 < 1  *       the same with a `running` record;
+19 < 1  *   (b) [M2] the same fleet with `--again` — the launch resolves as run-8, one
+20 < 1  *       push, one `new`, `again` on the result and on the rendered line;
+21 < 1  *   (c) [M3] the same row whose record says `done` five minutes ago — no
+22 < 1  *       refusal, `again` empty (the VM is inside the janitor's hour and stays);
+23 < 1  *   (d) [M4] a row on another target with this plan, and a row on this target
+24 < 1  *       with a different plan — neither refuses;
+25 < 1  *   (e) [M5] `--again=1` is refused before any exec call; USAGE names the flag;
+26 < 1  *   (f) [M6] `janitor()` answers `runs` — one entry per assignment row, with
+27 < 1  *       `live`/`state` from the record and null when there is none;
+28 < 1  *   (g) [M7] is the plan's `Run:` greps over CONTRACT.md and RUNBOOK.md.
+29 < 1  *
+30 < 1  * The rig is the launch sims' shared one in `_lobby_helpers.mjs` (a sim may
+31 < 1  * not name a sibling sim): a local bare origin stands in for GitHub, every
+32 < 1  * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
+33 < 1  * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
+34 < 1  * (`compilerRule`).
+35 < 1  *
+36 < 1  * Kept at zero catches over 29 runs (#1264, 2026-09-24): the run-number check
+37 < 1  * runs on the laptop before any sandbox exists, and no fleet probe can launch
+38 < 1  * twice, so this sim is the only alarm for the race that killed run-10
+39 < 1  * (2026-09-15).
+40 < 1  */
+41 < 1 
+42 < 1 import assert from 'node:assert/strict'
+43 < 1 
+44 < 1 import { USAGE, launch, renderLaunch } from '../launch.mjs'
+45 < 1 import { janitor } from '../janitor.mjs'
+46 < 1 import { Refusal } from '../lobby.mjs'
+47 < 1 import {
+48 < 1   HELP_FROM_VERBS, NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
+49 < 1   answer, launchRules, launchWorkspace, makeExec, pushCalls, recordRule, sshRule,
+50 < 1   thrown, vmRow, vmsPayload
+51 < 1 } from './_lobby_helpers.mjs'
+52 < 1 
+53 < 1 const TARGET = 'popmechanic/smoke'
+54 < 1 const GH = 'gh-popmechanic-smoke'
+55 < 1 const ORIGIN_URL = `https://github.com/${TARGET}.git`
+56 < 1 const ENGINE = 'b'.repeat(40)
+57 < 1 const NOW = new Date('2026-09-16T03:20:00.000Z')
+58 < 1 const SLUG = 'popmechanic-smoke'
+59 < 1 const EVIDENCE = 'ops/evidence'
+60 < 1 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
+61 < 1 const OTHER_PLAN = '# a plan\n\nOne plan, and a trailing newline.\nAnd one more line.\n'
+62 < 1 const LIVE_VM = 'fleet-r7-2609160900-ab12'
+63 < 1 const OLD_VM = 'fleet-r6-2609160800-cd34'
+64 < 1 const FOREIGN_VM = 'fleet-r3-2609160700-ef56'
+65 < 1 
+66 < 1 // ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
+67 < 1 
+68 < 1 /** A status page as the contents API hands it back. */
+69 < 1 const page = (state, updatedAt) => answer({
+70 < 1   content: Buffer.from(JSON.stringify({ state, updatedAt })).toString('base64'),
+71 < 1   sha: 'x'
+72 < 1 })
+73 < 1 const RUNNING = page('running', NOW.toISOString())
+74 < 1 const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toISOString())
+75 < 1 
+76 < 1 /** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
+77 < 1 const readRules = ({ repo, evidence, rows, record }) =>
+78 < 1   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
+79 < 1 
+80 < 1 // ── The workspace: a target whose origin already carries plan branches ──────
+81 < 1 
+82 < 1 /** Commit `text` as `runs/<slug>/<n>/plan.md` on the evidence repository's
+83 < 1  *  `live/<slug>/run-<n>` — the only place the live run's plan is held; the sha. */
+84 < 1 const livePlan = (evidence, n, text) => evidence.seed(
+85 < 1   `refs/heads/live/${SLUG}/run-${n}`,
+86 < 1   { [`runs/${SLUG}/${n}/plan.md`]: text },
+87 < 1   `ultrapowers plan ${TARGET} run-${n}`
+88 < 1 )
+89 < 1 
+90 < 1 function workspace () {
+91 < 1   const ws = launchWorkspace({ prefix: 'fleet-launch-duplicate-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
+92 < 1   const run6 = livePlan(ws.evidence, 6, OTHER_PLAN)
+93 < 1   const run7 = livePlan(ws.evidence, 7, PLAN)
+94 < 1   return { ...ws, run6, run7 }
+95 < 1 }
+96 < 1 const comment = (n, plan, target, base) => `run=${n} plan=${plan} target=${target} base=${base} engine=${ENGINE}`
+97 < 1 const liveRow = (ws) => vmRow(LIVE_VM, { comment: comment(7, ws.run7, TARGET, ws.repo.base) })
+98 < 1 const oldRow = (ws) => vmRow(OLD_VM, { comment: comment(6, ws.run6, TARGET, ws.repo.base) })
+99 < 1 const foreignRow = (ws) => vmRow(FOREIGN_VM, { comment: comment(3, ws.run7, 'other/repo', ws.repo.base) })
+100 < 1 
+101 < 1 const argvFor = (ws, extra = []) => [
+102 < 1   ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir,
+103 < 1   '--engine', ENGINE, ...extra
+104 < 1 ]
+105 < 1 const launchIn = (ws, { exec, extra = [] }) => launch({
+106 < 1   argv: argvFor(ws, extra),
+107 < 1   exec,
+108 < 1   config: CAPPED,
+109 < 1   now: () => NOW,
+110 < 1   sleep: async () => {},
+112 > 1   refreshCredential: () => ({ ok: true })
+111 < 2   refreshCredential: () => ({ ok: true }),
+112 < 2   kata: null
+113 < 1 })
+114 < 1 const drive = async ({ rows, record, extra = [] }) => {
+115 < 1   const ws = workspace()
+116 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence, rows: rows(ws), record }) })
+117 < 1   let result = null
+118 < 1   let error = null
+119 < 1   try {
+120 < 1     result = await launchIn(ws, { exec, extra })
+121 < 1   } catch (e) {
+122 < 1     error = e
+123 < 1   }
+124 < 1   return { ws, exec, result, error }
+125 < 1 }
+126 < 1 
+127 < 1 // ── Reading the calls ───────────────────────────────────────────────────────
+128 < 1 
+129 < 1 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
+130 < 1 
+131 < 1 const assertRefused = (d, leg) => {
+132 < 1   assert.ok(d.error, `${leg} launch() rejected`)
+133 < 1   assert.equal(d.error.name, 'Refusal', `${leg} the rejection is a Refusal, got ${d.error.name}: ${d.error.message}`)
+134 < 1   assert.ok(d.error instanceof Refusal, `${leg} and an instance of Refusal`)
+135 < 1   assert.equal(d.error.exitCode, 2, `${leg} exit 2`)
+136 < 1   for (const needle of ['run-7', LIVE_VM, '--again']) {
+137 < 1     assert.ok(d.error.message.includes(needle), `${leg} the message names ${needle}: ${d.error.message}`)
+138 < 1   }
+139 < 1   assert.deepEqual(d.exec.mutating(), [], `${leg} nothing was mutated`)
+140 < 1   assert.deepEqual(pushCalls(d.exec), [], `${leg} and nothing was pushed`)
+141 < 1 }
+142 < 1 const assertLaunched = (d, leg) => {
+143 < 1   assert.equal(d.error, null, `${leg} launch() resolved: ${d.error?.message ?? ''}`)
+144 < 1   const pushes = pushCalls(d.exec)
+145 < 1   assert.ok(pushes.length >= 1, `${leg} a push was issued`)
+146 < 1   assert.ok(
+147 < 1     pushes.some((c) => c.argv.some((a) => String(a).endsWith(`refs/heads/live/${SLUG}/run-8`))),
+148 < 1     `${leg} and it pushed live/${SLUG}/run-8 (runs 6 and 7 are taken in the evidence repository)`
+149 < 1   )
+150 < 1   assert.ok(
+151 < 1     pushes.every((c) => c.argv.includes(`https://github.com/${EVIDENCE}.git`)),
+152 < 1     `${leg} every push went to the evidence repository, none to the target`
+153 < 1   )
+154 < 1   assert.equal(newVerbs(d.exec).length, 1, `${leg} exactly one \`new\` verb`)
+155 < 1 }
+156 < 1 
+157 < 1 // ── a. [M1] a live duplicate is refused before anything is pushed ───────────
+158 < 1 {
+159 < 1   const unrecorded = await drive({ rows: (ws) => [liveRow(ws)], record: NO_RECORD })
+160 < 1   assertRefused(unrecorded, '(a) [M1] no record yet —')
+161 < 1   unrecorded.ws.cleanup()
+162 < 1 
+163 < 1   const running = await drive({ rows: (ws) => [liveRow(ws)], record: RUNNING })
+164 < 1   assertRefused(running, '(a) [M1] a running record —')
+165 < 1   running.ws.cleanup()
+166 < 1 }
+167 < 1 
+168 < 1 // ── b. [M2] --again is the one way past it ──────────────────────────────────
+169 < 1 {
+170 < 1   const again = await drive({ rows: (ws) => [liveRow(ws)], record: NO_RECORD, extra: ['--again'] })
+171 < 1   assertLaunched(again, '(b) [M2]')
+172 < 1   assert.deepEqual(again.result.again, [{ run: 7, vm: LIVE_VM }], '(b) [M2] the result records the run it launched again beside')
+173 < 1   assert.ok(
+174 < 1     renderLaunch(again.result).split('\n').includes(`again run-7 ${LIVE_VM}`),
+175 < 1     '(b) [M2] and the launch line says so'
+176 < 1   )
+177 < 1   again.ws.cleanup()
+178 < 1 }
+179 < 1 
+180 < 1 // ── c. [M3] a run whose record says it ended never refuses ──────────────────
+181 < 1 {
+182 < 1   const ended = await drive({ rows: (ws) => [liveRow(ws)], record: DONE_5_MIN_AGO })
+183 < 1   assertLaunched(ended, '(c) [M3]')
+184 < 1   assert.deepEqual(ended.result.again, [], '(c) [M3] done five minutes ago, VM still up: not a duplicate')
+185 < 1   ended.ws.cleanup()
+186 < 1 }
+187 < 1 
+188 < 1 // ── d. [M4] another target, or another plan, is not a duplicate ─────────────
+189 < 1 {
+190 < 1   const others = await drive({ rows: (ws) => [foreignRow(ws), oldRow(ws)], record: NO_RECORD })
+191 < 1   assertLaunched(others, '(d) [M4]')
+192 < 1   assert.deepEqual(others.result.again, [], '(d) [M4] same plan on other/repo, other plan on this target: neither refuses')
+193 < 1   others.ws.cleanup()
+194 < 1 }
+195 < 1 
+196 < 1 // ── e. [M5] the flag takes no value, and is offered ─────────────────────────
+197 < 1 {
+198 < 1   const ws = workspace()
+199 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence, rows: [liveRow(ws)], record: NO_RECORD }) })
+200 < 1   const error = await thrown(() => launchIn(ws, { exec, extra: ['--again=1'] }))
+201 < 1   assert.ok(error instanceof Refusal, `(e) [M5] --again=1 is a Refusal, got ${error?.name}: ${error?.message}`)
+202 < 1   assert.equal(exec.calls.length, 0, '(e) [M5] and nothing was executed')
+203 < 1   assert.ok(USAGE.includes('[--again]'), '(e) [M5] USAGE offers [--again]')
+204 < 1   ws.cleanup()
+205 < 1 }
+206 < 1 
+207 < 1 // ── f. [M6] the janitor answers `runs` ──────────────────────────────────────
+208 < 1 {
+209 < 1   const ws = workspace()
+210 < 1   const rows = [
+211 < 1     liveRow(ws),
+212 < 1     vmRow('ultraviz', { comment: 'ultraviz — persistent viewer, do not reap' }),
+213 < 1     vmRow('fleet-r9-2609160900-0000', { comment: 'run=9 base=abc' })
+214 < 1   ]
+215 < 1   const janitorIn = async (record) => {
+216 < 1     const exec = makeExec({ rules: [sshRule("ls '", vmsPayload(rows)), recordRule(record), NO_REMOTE_OPS, NO_NETWORK_GIT] })
+218 > 1     return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW })
+217 < 2     return janitor({ argv: [], exec, config: CAPPED, evidence: EVIDENCE, now: () => NOW, kata: null })
+218 < 1   }
+219 < 1   const recorded = await janitorIn(RUNNING)
+220 < 1   assert.deepEqual(
+221 < 1     recorded.runs,
+222 < 1     [{ vm: LIVE_VM, run: 7, target: TARGET, plan: ws.run7, live: true, state: 'running' }],
+223 < 1     '(f) [M6] one entry: the assignment row, read live; the kept row and the target-less row are not in it'
+224 < 1   )
+225 < 1   const unrecorded = await janitorIn(NO_RECORD)
+226 < 1   assert.equal(unrecorded.runs.length, 1, '(f) [M6] the unrecorded row is still listed')
+227 < 1   assert.equal(unrecorded.runs[0].live, null, '(f) [M6] with live null')
+228 < 1   assert.equal(unrecorded.runs[0].state, null, '(f) [M6] and state null')
+229 < 1   ws.cleanup()
+230 < 1 }
+231 < 1 
+232 < 1 console.log('ALL TESTS PASSED')
+233 < 1 

@@ -1,0 +1,281 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """The hub's reaper (#1470): a fleet VM asks the hub to remove it.
+2 < 1 
+3 < 1 POST /reap from a fleet VM, body {"run": <int>, "target": "<owner>/<repo>"}.
+4 < 1 The caller is read from X-Exedev-Source-Vm, which the platform sets after
+5 < 1 stripping anything the caller sent. The hub removes only the VM that asked,
+7 > 1 and only once the run's evidence record says it ended done: the status page
+8 < 1 at the run's tag in the evidence repository. Standard library only.
+9 < 1 
+11 > 1 One setting, read from the unit's environment (/etc/reaper/reaper.env):
+12 < 1 REAPER_EVIDENCE_REPO, the evidence repository as <owner>/<repo>. Without it
+13 < 1 no record can be read and nothing is removed.
+10 < 2 Two settings, read from the unit's environment (/etc/reaper/reaper.env):
+11 < 2 REAPER_EVIDENCE_REPO, the evidence repository as <owner>/<repo>, and
+12 < 2 REAPER_RECORD, `evidence` (the default) or `kata`. `kata` is the rollback:
+13 < 2 the run issue on the hub's own kata, closed as done, as before 2026-11-13.
+6 < 2 and only once its kata run issue closed as done. Standard library only.
+7 < 1 """
+9 > 1 import base64
+8 < 1 import json
+9 < 1 import os
+10 < 1 import re
+11 < 1 import urllib.error
+12 < 1 import urllib.parse
+13 < 1 import urllib.request
+14 < 1 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+15 < 1 
+16 < 2 KATA_URL = "http://localhost:8000"
+18 > 1 # The GitHub integration attached to the hub: the edge routes by repository and adds the credential.
+19 < 1 GITHUB_URL = "https://github.int.exe.xyz/api/v3"
+17 < 1 # https: the plain http:// address answers 301.
+18 < 1 RM_URL = "https://lobby-rm.int.exe.xyz/exec"
+19 < 1 VM_RE = re.compile(r"^fleet-r([1-9][0-9]*)-")
+20 < 1 TARGET_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+22 > 2 RECORDS = ("evidence", "kata")
+23 < 1 # The calling boot waits five seconds for its answer; the one read stays under that.
+24 < 1 READ_SECONDS = 4
+21 < 1 
+22 < 1 
+24 > 1 def decide(source_vm, body, done):
+25 < 1     """Pure: return (status, vm); vm is named only on 202 and is the caller's own.
+26 < 1 
+27 < 1     `done` is what the record says of the run: True only when it ended done.
+28 < 1     """
+23 < 2 def decide(source_vm, body, issue):
+24 < 2     """Pure: return (status, vm); vm is named only on 202 and is the caller's own."""
+25 < 1     if not isinstance(source_vm, str) or not source_vm:
+26 < 1         return (403, None)
+27 < 1     vm = source_vm.split(".", 1)[0]
+28 < 1     m = VM_RE.match(vm)
+29 < 1     run = body.get("run") if isinstance(body, dict) else None
+30 < 1     if m is None or type(run) is not int or int(m.group(1)) != run:
+31 < 1         return (403, None)
+32 < 1     target = body.get("target")
+33 < 1     if not isinstance(target, str) or not TARGET_RE.match(target):
+34 < 1         return (400, None)
+36 > 1     if done is not True:
+35 < 2     if not isinstance(issue, dict) or issue.get("status") != "closed" or issue.get("closed_reason") != "done":
+36 < 1         return (409, None)
+37 < 1     return (202, vm)
+39 > 1 
+40 < 1 
+41 < 1 def status_done(status):
+42 < 1     """The evidence record: a status page whose state is done."""
+43 < 1     return isinstance(status, dict) and status.get("state") == "done"
+44 < 2 
+45 < 2 
+46 < 2 def issue_done(issue):
+47 < 2     """The rollback's record: a kata run issue closed as done."""
+48 < 2     return isinstance(issue, dict) and issue.get("status") == "closed" and issue.get("closed_reason") == "done"
+49 < 2 
+50 < 2 
+51 < 2 def record_of(value):
+52 < 2     """REAPER_RECORD as read: `kata` only when it says so, else `evidence`."""
+53 < 2     return value if value in RECORDS else RECORDS[0]
+54 < 1 
+55 < 1 
+56 < 1 def status_url(evidence, target, run):
+57 < 1     """The run's status page at its tag, and at nothing else: a tag that is not there is a 404."""
+58 < 1     slug = target.replace("/", "-", 1)
+59 < 1     path = urllib.parse.quote(f"runs/{slug}/{run}/status.json")
+60 < 1     ref = urllib.parse.quote(f"refs/tags/{slug}/run-{run}", safe="")
+61 < 1     return f"{GITHUB_URL}/repos/{evidence}/contents/{path}?ref={ref}"
+62 < 1 
+63 < 1 
+64 < 1 def status_of(raw):
+65 < 1     """The status page out of a contents answer: the raw file, or the base64 envelope. None for anything else."""
+66 < 1     try:
+67 < 1         data = json.loads(raw.decode("utf-8"))
+68 < 1         if isinstance(data, dict) and isinstance(data.get("content"), str) and data.get("encoding") == "base64":
+69 < 1             data = json.loads(base64.b64decode(data["content"]).decode("utf-8"))
+70 < 1     except Exception:
+71 < 1         return None
+72 < 1     return data if isinstance(data, dict) else None
+73 < 1 
+74 < 1 
+75 < 1 def read_status(evidence, target, run):
+76 < 1     """The run's status page at its tag in the evidence repository, or None: no repository set, no tag, no page."""
+77 < 1     if not isinstance(evidence, str) or not TARGET_RE.match(evidence):
+78 < 1         return None
+79 < 1     req = urllib.request.Request(
+80 < 1         status_url(evidence, target, run),
+81 < 1         headers={"Accept": "application/vnd.github.raw", "User-Agent": "fleet-reaper"},
+82 < 1     )
+83 < 1     try:
+84 < 1         with urllib.request.urlopen(req, timeout=READ_SECONDS) as resp:
+85 < 1             return status_of(resp.read())
+86 < 1     except urllib.error.HTTPError:
+87 < 1         return None
+38 < 1 
+39 < 1 
+40 < 1 def rm_succeeded(code, text):
+41 < 1     """A 2xx, or a VM already gone ("not found" in any case), is success."""
+42 < 1     if isinstance(code, int) and 200 <= code < 300:
+43 < 1         return True
+44 < 1     return "not found" in (text or "").lower()
+45 < 1 
+46 < 1 
+48 > 1 def answer_for(caller, raw, evidence, read=read_status):
+47 < 2 def _kata_get(path):
+48 < 2     req = urllib.request.Request(
+49 < 2         KATA_URL + path,
+50 < 2         headers={"Authorization": "Bearer " + os.environ.get("KATA_AUTH_TOKEN", "")},
+51 < 2     )
+52 < 2     with urllib.request.urlopen(req, timeout=10) as resp:
+53 < 2         return json.loads(resp.read().decode("utf-8"))
+54 < 2 
+55 < 2 
+56 < 2 def _items(data, key):
+57 < 2     if isinstance(data, list):
+58 < 2         return data
+59 < 2     if isinstance(data, dict):
+60 < 2         for k in (key, "items", "data"):
+61 < 2             if isinstance(data.get(k), list):
+62 < 2                 return data[k]
+63 < 2     return []
+64 < 2 
+65 < 2 
+66 < 2 def find_issue(target, run):
+67 < 2     """The run issue (metadata run, no task key) on the hub's kata, or None."""
+68 < 2     name = target.replace("/", "-")
+69 < 2     projects = _items(_kata_get("/api/v1/projects?limit=1000"), "projects")
+70 < 2     project = next((p for p in projects if isinstance(p, dict) and p.get("name") == name), None)
+71 < 2     if project is None:
+72 < 2         return None
+73 < 2     pid = urllib.parse.quote(str(project.get("id")), safe="")
+74 < 2     issues = _items(_kata_get(f"/api/v1/projects/{pid}/issues?limit=1000"), "issues")
+75 < 2     for issue in issues:
+76 < 2         if not isinstance(issue, dict):
+77 < 2             continue
+78 < 2         meta = issue.get("metadata")
+79 < 2         if isinstance(meta, dict) and type(meta.get("run")) is int and meta["run"] == run and "task" not in meta:
+80 < 2             return issue
+81 < 2     return None
+82 < 2 
+83 < 2 
+85 > 2 def run_done(record, evidence, target, run, read=read_status, find=find_issue):
+86 < 2     """What the chosen record says: True only when the run ended done."""
+87 < 2     if record == "kata":
+88 < 2         return issue_done(find(target, run))
+89 < 2     return status_done(read(evidence, target, run))
+90 < 2 
+91 < 2 
+92 < 2 def answer_for(caller, raw, record, evidence, read=read_status, find=find_issue):
+93 < 1     """One request, decided: (status, vm, run). No record is read for a wrong caller, body or target."""
+94 < 1     if not caller:
+95 < 1         return (403, None, None)
+96 < 1     try:
+97 < 1         body = json.loads(raw.decode("utf-8"))
+98 < 1     except Exception:
+99 < 1         return (400, None, None)
+100 < 1     run = body.get("run") if isinstance(body, dict) else None
+101 < 1     status, _ = decide(caller, body, True)
+102 < 1     if status != 202:
+103 < 1         return (status, None, run)
+105 > 1     status, vm = decide(caller, body, status_done(read(evidence, body["target"], run)))
+104 < 2     status, vm = decide(caller, body, run_done(record, evidence, body["target"], run, read, find))
+105 < 1     return (status, vm, run)
+106 < 1 
+107 < 1 
+84 < 1 def remove_vm(vm):
+85 < 1     """rm <vm> --json through the hub-only lobby-rm integration."""
+86 < 1     req = urllib.request.Request(RM_URL, data=f"rm {vm} --json".encode("utf-8"), method="POST")
+87 < 1     try:
+88 < 1         with urllib.request.urlopen(req, timeout=60) as resp:
+89 < 1             return rm_succeeded(resp.status, resp.read().decode("utf-8", "replace"))
+90 < 1     except urllib.error.HTTPError as e:
+91 < 1         try:
+92 < 1             text = e.read().decode("utf-8", "replace")
+93 < 1         except Exception:
+94 < 1             text = ""
+95 < 1         return rm_succeeded(e.code, text)
+96 < 1 
+97 < 1 
+98 < 1 class Handler(BaseHTTPRequestHandler):
+99 < 1     def log_message(self, *args):
+100 < 1         pass
+101 < 1 
+102 < 1     def _answer(self, status, payload):
+103 < 1         data = (json.dumps(payload) + "\n").encode("utf-8")
+104 < 1         self.send_response(status)
+105 < 1         self.send_header("Content-Type", "application/json")
+106 < 1         self.send_header("Content-Length", str(len(data)))
+107 < 1         self.send_header("Connection", "close")
+108 < 1         self.end_headers()
+109 < 1         self.wfile.write(data)
+110 < 1         self.wfile.flush()
+111 < 1 
+112 < 1     def _not_found(self):
+113 < 1         try:
+114 < 1             self._answer(404, {"status": 404})
+115 < 1         except Exception:
+116 < 1             pass
+117 < 1 
+118 < 1     do_GET = do_PUT = do_DELETE = do_PATCH = do_HEAD = do_OPTIONS = _not_found
+119 < 1 
+120 < 1     def do_POST(self):
+121 < 1         caller, run, status, vm, removed = None, None, 500, None, None
+123 > 2         record = record_of(os.environ.get("REAPER_RECORD"))
+122 < 1         try:
+123 < 1             if self.path.split("?", 1)[0] != "/reap":
+124 < 1                 status = 404
+125 < 1                 self._answer(404, {"status": 404})
+126 < 1                 return
+127 < 1             caller = self.headers.get("X-Exedev-Source-Vm")
+128 < 1             length = int(self.headers.get("Content-Length") or 0)
+129 < 1             raw = self.rfile.read(length) if length > 0 else b""
+132 > 1             status, vm, run = answer_for(caller, raw, os.environ.get("REAPER_EVIDENCE_REPO"))
+131 > 2             status, vm, run = answer_for(caller, raw, record, os.environ.get("REAPER_EVIDENCE_REPO"))
+130 < 2             if not caller:
+131 < 2                 status = 403
+132 < 2             else:
+133 < 2                 try:
+134 < 2                     body = json.loads(raw.decode("utf-8"))
+135 < 2                     parsed = True
+136 < 2                 except Exception:
+137 < 2                     body, parsed = None, False
+138 < 2                     status = 400
+139 < 2                 if parsed:
+140 < 2                     run = body.get("run") if isinstance(body, dict) else None
+141 < 2                     # Refuse a wrong caller or target before asking kata anything.
+142 < 2                     status, _ = decide(caller, body, {"status": "closed", "closed_reason": "done"})
+143 < 2                     if status == 202:
+144 < 2                         status, vm = decide(caller, body, find_issue(body["target"], run))
+145 < 1             self._answer(status, {"status": status, "vm": vm})
+146 < 1         except Exception as e:
+147 < 1             status, vm = 500, None
+148 < 1             try:
+149 < 1                 self._answer(500, {"status": 500, "error": type(e).__name__})
+150 < 1             except Exception:
+151 < 1                 pass
+152 < 1         finally:
+153 < 1             # Only after the answer is sent: remove the caller's own VM.
+154 < 1             try:
+155 < 1                 if status == 202 and vm:
+156 < 1                     try:
+157 < 1                         removed = remove_vm(vm)
+158 < 1                     except Exception:
+159 < 1                         removed = False
+162 > 1                 line = f"reap caller={caller} run={run} status={status}"
+161 > 2                 line = f"reap caller={caller} run={run} status={status} record={record}"
+160 < 2                 line = f"reap caller={caller} run={run} status={status}"
+161 < 1                 if status == 202:
+162 < 1                     line += f" vm={vm} removed={removed}"
+163 < 1                 print(line, flush=True)
+164 < 1             except Exception:
+165 < 1                 pass
+166 < 1 
+167 < 1 
+168 < 1 def main():
+170 > 1     # REAPER_PORT, never PORT: a name too common to trust in a shared environment file
+169 < 2     # REAPER_PORT, never PORT: the unit loads /etc/kata/kata.env, whose PORT=8000 is the daemon's own
+170 < 1     port = int(os.environ.get("REAPER_PORT", "8001"))
+171 < 1     server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+172 < 1     print(f"reaper listening on 0.0.0.0:{port}", flush=True)
+173 < 1     server.serve_forever()
+174 < 1 
+175 < 1 
+176 < 1 if __name__ == "__main__":
+177 < 1     main()
+178 < 1 

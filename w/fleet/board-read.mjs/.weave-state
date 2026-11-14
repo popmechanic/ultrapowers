@@ -1,0 +1,444 @@
+0 < 2 /**
+1 < 2  * fleet/board-read.mjs — one laptop command that names a run and prints its
+2 < 2  * tasks (state, latest note) and its event timeline, read off the hub through
+3 < 2  * the same ssh-curl door `fleet/janitor.mjs`'s `openHub` uses, with no token
+4 < 2  * on the command line (#1174, #876).
+5 < 2  *
+6 < 2  * `projectBoard` is the pure heart: two passes over the hub's own event rows
+7 < 2  * — the first learns each issue's run and title, the second projects only the
+8 < 2  * events of issues whose run is asked for. `renderBoard` turns that answer
+9 < 2  * into the CLI's text. `readBoard` (with `since` 0) reads the issues listing
+10 < 2  * to find the asked run's creation event by bisection, then pages
+11 < 2  * `client.events` from there to the feed's end and answers the projection
+12 < 2  * over everything read; with a `since` above `0` it pages from `since`
+13 < 2  * instead, unchanged. `parseBoardArgs` and
+14 < 2  * `main` are the CLI: argument parsing (with its own refusals) and the two
+15 < 2  * hub reads (list the projects, then the feed) through `fleet/kata-client.mjs`'s
+16 < 2  * transport, built exactly as the janitor builds it.
+17 < 2  */
+18 < 2 import path from 'node:path'
+19 < 2 import { fileURLToPath } from 'node:url'
+20 < 2 
+21 < 2 import { projectNamed, runIssueOf } from './kata-client.mjs'
+22 < 2 import {
+23 < 2   KATA_HUB_FIX,
+24 < 2   Refusal,
+25 < 2   defaultExec,
+26 < 2   defaultKataEnvPath,
+27 < 2   hubFromEnv,
+28 < 2   runCli,
+29 < 2   targetSlug
+30 < 2 } from './lobby.mjs'
+31 < 2 
+32 < 2 const fail = (message) => { throw new Refusal(`board-read: ${message}`) }
+33 < 2 
+34 < 2 // ── The projection ───────────────────────────────────────────────────────
+35 < 2 
+36 < 2 /** A diff's `from`/`to` value, spelled: `null` as `null`, an object with
+37 < 2  *  `JSON.stringify`, anything else with `String`. */
+38 < 2 const fmt = (value) => {
+39 < 2   if (value === null) return 'null'
+40 < 2   if (typeof value === 'object') return JSON.stringify(value)
+41 < 2   return String(value)
+42 < 2 }
+43 < 2 
+44 < 2 /** `<title>` → `{ name, title }`: `name` up to the first `:`, `title` the
+45 < 2  *  rest after `: `. */
+46 < 2 const splitTitle = (raw) => {
+47 < 2   const title = String(raw ?? '')
+48 < 2   const idx = title.indexOf(':')
+49 < 2   if (idx === -1) return { name: title, title: '' }
+50 < 2   return { name: title.slice(0, idx), title: title.slice(idx + 1).replace(/^ /, '') }
+51 < 2 }
+52 < 2 
+53 < 2 /**
+54 < 2  * Pure. Two passes over `events` (the hub's own rows: `event_id`, `type`,
+55 < 2  * `issue_short_id`, `actor`, `created_at`, `payload`). First: learn every
+56 < 2  * issue's run (`payload.metadata.run` on its `issue.created`, or
+57 < 2  * `payload.diff.run.to` on an `issue.metadata_updated`) and its title. Second:
+58 < 2  * project only the events of issues whose run is in `runs` — a `tasks` row
+59 < 2  * per attributed issue and a `timeline` row per attributed event that says
+60 < 2  * something. `cursor` is the last input row's `event_id`, `null` for an empty
+61 < 2  * input.
+62 < 2  */
+63 < 2 export function projectBoard (events, { runs } = {}) {
+64 < 2   const runSet = new Set((runs || []).map(Number))
+65 < 2   const rows = events || []
+66 < 2 
+67 < 2   // First pass: each issue's run and title.
+68 < 2   const info = new Map()
+69 < 2   for (const ev of rows) {
+70 < 2     const issue = ev.issue_short_id
+71 < 2     if (issue == null) continue
+72 < 2     if (!info.has(issue)) info.set(issue, { run: null, title: null })
+73 < 2     const entry = info.get(issue)
+74 < 2     if (ev.type === 'issue.created') {
+75 < 2       if (ev.payload && ev.payload.title !== undefined) entry.title = ev.payload.title
+76 < 2       const metaRun = ev.payload?.metadata?.run
+77 < 2       if (metaRun !== undefined && metaRun !== null) entry.run = Number(metaRun)
+78 < 2     } else if (ev.type === 'issue.metadata_updated') {
+79 < 2       const diff = ev.payload?.diff
+80 < 2       if (diff && Object.prototype.hasOwnProperty.call(diff, 'run')) {
+81 < 2         const to = diff.run?.to
+82 < 2         if (to !== undefined && to !== null) entry.run = Number(to)
+83 < 2       }
+84 < 2     }
+85 < 2   }
+86 < 2 
+87 < 2   // Second pass: only the events of issues whose run is asked for.
+88 < 2   const tasksMap = new Map()
+89 < 2   const timeline = []
+90 < 2   for (const ev of rows) {
+91 < 2     const issue = ev.issue_short_id
+92 < 2     if (issue == null) continue
+93 < 2     const entry = info.get(issue)
+94 < 2     if (!entry || entry.run === null || !runSet.has(entry.run)) continue
+95 < 2     const run = entry.run
+96 < 2     const { name, title } = splitTitle(entry.title)
+97 < 2 
+98 < 2     if (!tasksMap.has(issue)) {
+99 < 2       tasksMap.set(issue, { run, issue, name, title, state: 'filed', closed: null, lastAt: null, last: null })
+100 < 2     }
+101 < 2     if (ev.type === 'issue.created') continue
+102 < 2     const task = tasksMap.get(issue)
+103 < 2 
+104 < 2     if (ev.type === 'issue.metadata_updated') {
+105 < 2       const diff = ev.payload?.diff || {}
+106 < 2       for (const key of Object.keys(diff)) {
+107 < 2         if (key === 'run' || key === 'wave') continue
+108 < 2         const { from, to } = diff[key]
+109 < 2         const what = `${key} ${fmt(from)}->${fmt(to)}`
+110 < 2         timeline.push({ eventId: ev.event_id, at: ev.created_at, run, issue, name, what })
+111 < 2         if (key.endsWith('state')) task.state = to
+112 < 2         task.lastAt = ev.created_at
+113 < 2         task.last = what
+114 < 2       }
+115 < 2     } else if (ev.type === 'issue.commented') {
+116 < 2       const body = String(ev.payload?.body ?? '')
+117 < 2       const what = body.split('\n').slice(0, 3).join(' ').trim().slice(0, 120)
+118 < 2       timeline.push({ eventId: ev.event_id, at: ev.created_at, run, issue, name, what })
+119 < 2       // The Flock's board moves reach kata only as `factory/flock/kata_mirror.mjs`'s comments.
+120 < 2       // A release reads `<agent> released: <why>` since #1418; older runs posted `released: <why>`.
+121 < 2       // A task parked at its release cap reads `parked: <agent> released: <why>`.
+122 < 2       const move = /^(claimed|done) by |^(released|reopened|parked): |^\S+ (released): /.exec(body)
+123 < 2       if (move) task.state = move[1] || move[2] || move[3]
+124 < 2       task.lastAt = ev.created_at
+125 < 2       task.last = what
+126 < 2     } else if (ev.type === 'issue.closed') {
+127 < 2       const reason = ev.payload?.reason
+128 < 2       const what = `closed ${reason}`
+129 < 2       timeline.push({ eventId: ev.event_id, at: ev.created_at, run, issue, name, what })
+130 < 2       task.closed = reason
+131 < 2       task.lastAt = ev.created_at
+132 < 2       task.last = what
+133 < 2     }
+134 < 2     // Every other type (`issue.linked`, `issue.assigned`, `issue.labeled`,
+135 < 2     // `issue.snapshot`, `project.created`, …) is ignored.
+136 < 2   }
+137 < 2 
+138 < 2   const tasks = [...tasksMap.values()].sort((a, b) =>
+139 < 2     a.run - b.run || a.name.localeCompare(b.name, undefined, { numeric: true }))
+140 < 2 
+141 < 2   const cursor = rows.length === 0 ? null : rows[rows.length - 1].event_id
+142 < 2 
+143 < 2   return { tasks, timeline, cursor }
+144 < 2 }
+145 < 2 
+146 < 2 // ── Rendering ────────────────────────────────────────────────────────────
+147 < 2 
+148 < 2 const timeOf = (at) => at.slice(11, 19) + 'Z'
+149 < 2 
+150 < 2 /** The projection, as the operator reads it: `== now`, one line per task,
+151 < 2  *  `== events`, one line per timeline row, and the last line `cursor <n>`. */
+152 < 2 export function renderBoard (projection) {
+153 < 2   const lines = ['== now']
+154 < 2   for (const t of projection.tasks) {
+155 < 2     const state = t.closed ? `closed:${t.closed}` : t.state
+156 < 2     const time = t.lastAt ? timeOf(t.lastAt) : '-'
+157 < 2     lines.push(`  run-${t.run} ${t.name.padEnd(8)} ${state.padEnd(12)} last ${time}  ${t.title}`)
+158 < 2   }
+159 < 2   lines.push('== events')
+160 < 2   for (const r of projection.timeline) {
+161 < 2     lines.push(`  ${timeOf(r.at)} run-${r.run} ${r.name.padEnd(8)} ${r.what}`)
+162 < 2   }
+163 < 2   lines.push(`cursor ${projection.cursor === null ? 'none' : projection.cursor}`)
+164 < 2   return lines.join('\n')
+165 < 2 }
+166 < 2 
+167 < 2 // ── Reading the hub ──────────────────────────────────────────────────────
+168 < 2 
+169 < 2 /** The hub's own paging fact (`fleet/CONTRACT.md`'s `events-page` fact,
+170 < 2  *  re-measured at BASE): a page never holds more than this many rows,
+171 < 2  *  whatever `limit` a request asks for — a page short of this, or empty, is
+172 < 2  *  the feed's end. */
+173 < 2 const HUB_PAGE_SIZE = 100
+174 < 2 
+175 < 2 /**
+176 < 2  * `client.events(projectId, after)`, memoized on `after` for the lifetime of
+177 < 2  * one `readBoard` call — the bisection below asks about the same `after`
+178 < 2  * more than once, and the forward walk that follows it starts at the very
+179 < 2  * `after` the bisection just settled on.
+180 < 2  */
+181 < 2 const pager = (client, projectId, cache) => async (after) => {
+182 < 2   if (cache.has(after)) return cache.get(after)
+183 < 2   const page = await client.events(projectId, after)
+184 < 2   cache.set(after, page)
+185 < 2   return page
+186 < 2 }
+187 < 2 
+188 < 2 /**
+189 < 2  * The feed position of the earliest of `runs`' run issues' creation, found by
+190 < 2  * bisection over `after_id` on `created_at` (Context, `readBoard` starts at
+191 < 2  * the asked run's creation event): a page whose first row's `created_at` is
+192 < 2  * at or after `targetAt` is past the start, a page whose first row is
+193 < 2  * earlier is not, and an empty page is past the end. Answers the greatest
+194 < 2  * `after` whose page is still not past the start — the point a forward walk
+195 < 2  * from `after` is guaranteed to reach the target creation event.
+196 < 2  */
+197 < 2 async function findBoundary (fetchPage, targetAt) {
+198 < 2   const classify = async (after) => {
+199 < 2     const page = await fetchPage(after)
+200 < 2     const rows = page?.events || []
+201 < 2     if (rows.length === 0) return 'past-end'
+202 < 2     return rows[0].created_at < targetAt ? 'before' : 'at-or-after'
+203 < 2   }
+204 < 2 
+205 < 2   if (await classify(0) !== 'before') return 0
+206 < 2 
+207 < 2   // Doubling search for an `after` that is no longer before the start.
+208 < 2   let lo = 0
+209 < 2   let hi = 1
+210 < 2   while (await classify(hi) === 'before') {
+211 < 2     lo = hi
+212 < 2     hi *= 2
+213 < 2   }
+214 < 2 
+215 < 2   // Bisect the gap for the greatest `after` still before the start.
+216 < 2   while (hi - lo > 1) {
+217 < 2     const mid = Math.floor((lo + hi) / 2)
+218 < 2     if (await classify(mid) === 'before') lo = mid
+219 < 2     else hi = mid
+220 < 2   }
+221 < 2   return lo
+222 < 2 }
+223 < 2 
+224 < 2 /**
+225 < 2  * With `since` `0`: reads the issues listing, takes the asked runs' run
+226 < 2  * issues (the earliest `created_at` when several are asked — a `Refusal`
+227 < 2  * naming the run(s) when none is listed), finds that creation's feed
+228 < 2  * position by bisection, then pages `client.events` forward from there to
+229 < 2  * the feed's end (a page short of `HUB_PAGE_SIZE`, or empty). With `since`
+230 < 2  * above `0`: no listing, no bisection — pages forward from `since` the same
+231 < 2  * way. Either way, answers `projectBoard` over every row read; `cursor`
+232 < 2  * falls back to `since` when the projection's own is `null` (nothing read).
+233 < 2  */
+234 < 2 export async function readBoard ({ client, projectId, runs, since }) {
+236 > 2   const rows = await readRows({ client, projectId, runs, since })
+237 < 2   const projection = projectBoard(rows, { runs })
+238 < 2   return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
+239 < 2 }
+240 < 2 
+241 < 2 /** The feed rows `readBoard` projects: from the asked runs' creation with `since` `0`, else
+242 < 2  *  every row after `since`. */
+243 < 2 async function readRows ({ client, projectId, runs, since }) {
+235 < 2   const cache = new Map()
+236 < 2   const fetchPage = pager(client, projectId, cache)
+237 < 2 
+238 < 2   let start = since
+239 < 2   if (since === 0) {
+240 < 2     const listing = await client.listIssues(projectId)
+241 < 2     const issues = listing?.issues || []
+242 < 2     const runList = (runs || []).map(Number)
+243 < 2     const candidates = []
+244 < 2     for (const n of runList) {
+245 < 2       const issue = runIssueOf(issues, n, null)
+246 < 2       if (issue) candidates.push(issue)
+247 < 2     }
+248 < 2     if (candidates.length === 0) {
+249 < 2       fail(`no run issue for run ${runList.join(', ')} in project ${projectId}`)
+250 < 2     }
+251 < 2     candidates.sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+252 < 2     const targetAt = candidates[0].created_at
+253 < 2     start = await findBoundary(fetchPage, targetAt)
+254 < 2   }
+255 < 2 
+256 < 2   const events = []
+257 < 2   let after = start
+258 < 2   for (;;) {
+259 < 2     const page = await fetchPage(after)
+260 < 2     const rows = page?.events || []
+261 < 2     events.push(...rows)
+262 < 2     if (rows.length < HUB_PAGE_SIZE) break
+263 < 2     const nextAfter = page?.next_after_id
+264 < 2     if (nextAfter === after) break
+265 < 2     after = nextAfter
+266 < 2   }
+268 > 2   return events
+269 < 2 }
+270 < 2 
+271 < 2 /**
+272 < 2  * `--follow`'s reader: the first call reads the asked runs from their creation, and each later
+273 < 2  * call reads only the rows the feed gained since the last row held, projecting over all of them.
+274 < 2  * The rows are kept because a page read from a cursor cannot tell which run an issue belongs to:
+275 < 2  * the issues' creation rows, read once, answer that. Re-reading from the start each time cost
+276 < 2  * some thirty requests a refresh on a project with three hundred runs (2026-11-13, 36 s).
+277 < 2  */
+278 < 2 export function followReader ({ client, projectId, runs }) {
+279 < 2   let rows = null
+280 < 2   return async () => {
+281 < 2     if (rows === null) rows = await readRows({ client, projectId, runs, since: 0 })
+282 < 2     else if (rows.length) rows = rows.concat(await readRows({ client, projectId, runs, since: rows[rows.length - 1].event_id }))
+283 < 2     else rows = await readRows({ client, projectId, runs, since: 0 })
+284 < 2     return projectBoard(rows, { runs })
+285 < 2   }
+267 < 2   const projection = projectBoard(events, { runs })
+268 < 2   return { ...projection, cursor: projection.cursor === null ? since : projection.cursor }
+269 < 2 }
+270 < 2 
+271 < 2 // ── Following a run ──────────────────────────────────────────────────────
+272 < 2 
+273 < 2 const minutesSince = (fromIso, nowMs) => Math.floor((nowMs - Date.parse(fromIso)) / 60000)
+274 < 2 
+275 < 2 /**
+276 < 2  * `--follow`: re-read the run every `everyMs`, print each timeline row not yet
+277 < 2  * printed, and print one `!` line when something looks wrong — a task claimed
+278 < 2  * `quietMs` ago with no `done` since, or a run with no new row for `quietMs`.
+279 < 2  * Each warning prints once until the thing it names changes. Ends when every
+280 < 2  * asked run's own issue is closed (`== closed` and 0) or at `maxMs` (`== gave
+282 > 2  * up` and 3). `read` answers `projectBoard`'s shape over every row so far
+283 < 2  * (`followReader`). A row whose text begins `engine belief` prints with `!` in
+281 < 2  * up` and 3). `read` answers `projectBoard`'s shape; it re-reads from the start
+282 < 2  * each time, since a page read from a cursor cannot tell which run an issue
+283 < 2  * belongs to. A row whose text begins `engine belief` prints with `!` in
+284 < 2  * place of its first space. `now`, `sleep` and `write` are the test's seams.
+285 < 2  */
+286 < 2 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+287 < 2   const start = now()
+288 < 2   const seen = new Set()
+289 < 2   const warned = new Set()
+290 < 2   let lastNewAt = start
+291 < 2   for (;;) {
+292 < 2     const projection = await read()
+293 < 2     const fresh = projection.timeline.filter((r) => !seen.has(r.eventId))
+294 < 2     for (const r of fresh) {
+295 < 2       seen.add(r.eventId)
+296 < 2       // a surfaced engine belief reads like the other warnings
+297 < 2       const lead = r.what.startsWith('engine belief') ? '! ' : '  '
+298 < 2       write(`${lead}${timeOf(r.at)} run-${r.run} ${r.name.padEnd(8)} ${r.what}\n`)
+299 < 2     }
+300 < 2     if (fresh.length) lastNewAt = now()
+301 < 2     const t = now()
+302 < 2     // a task whose last row is a claim, older than the quiet window
+303 < 2     for (const task of projection.tasks) {
+304 < 2       if (task.closed || !task.last || !task.last.startsWith('claimed by ') || !task.lastAt) continue
+305 < 2       const key = `claim ${task.issue} ${task.lastAt}`
+306 < 2       if (t - Date.parse(task.lastAt) >= quietMs && !warned.has(key)) {
+307 < 2         warned.add(key)
+308 < 2         write(`! run-${task.run} ${task.name} ${task.last} ${minutesSince(task.lastAt, t)} min ago, and no done since\n`)
+309 < 2       }
+310 < 2     }
+311 < 2     const quietKey = `quiet ${lastNewAt}`
+312 < 2     if (t - lastNewAt >= quietMs && !warned.has(quietKey)) {
+313 < 2       warned.add(quietKey)
+314 < 2       write(`! no new row for ${Math.floor((t - lastNewAt) / 60000)} min\n`)
+315 < 2     }
+316 < 2     const runIssues = projection.tasks.filter((x) => x.name === `run-${x.run}` && runs.includes(x.run))
+317 < 2     if (runIssues.length === runs.length && runIssues.every((x) => x.closed)) { write('== closed\n'); return 0 }
+318 < 2     if (t - start >= maxMs) { write('== gave up\n'); return 3 }
+319 < 2     await sleep(everyMs)
+320 < 2   }
+321 < 2 }
+322 < 2 
+323 < 2 // ── The CLI ──────────────────────────────────────────────────────────────
+324 < 2 
+325 < 2 const POSITIVE_INT = /^[1-9][0-9]*$/
+326 < 2 const NON_NEGATIVE_INT = /^[0-9]+$/
+327 < 2 
+328 < 2 /**
+329 < 2  * `--run <N>` (repeats, and also takes `207,208`), `--target <owner>/<repo>`,
+330 < 2  * `--since <event_id>` (default `0`), `--json`, `--follow` and `--quiet <minutes>`
+331 < 2  * (default 10, what `--follow` calls too long without a done or a new row). A missing `--run` or
+332 < 2  * `--target`, a run that is not a positive integer, or a `--since` that is
+333 < 2  * not a non-negative integer is a `Refusal` beginning `board-read:`.
+334 < 2  */
+335 < 2 export function parseBoardArgs (argv) {
+336 < 2   const runs = []
+337 < 2   let target = null
+338 < 2   let since = 0
+339 < 2   let json = false
+340 < 2   let followOn = false
+341 < 2   let quietMinutes = 10
+342 < 2 
+343 < 2   for (let i = 0; i < argv.length; i += 1) {
+344 < 2     const arg = argv[i]
+345 < 2     if (arg === '--run') {
+346 < 2       const value = argv[i + 1]
+347 < 2       i += 1
+348 < 2       for (const part of String(value ?? '').split(',')) {
+349 < 2         const piece = part.trim()
+350 < 2         if (!POSITIVE_INT.test(piece)) fail(`--run must be a positive integer, got ${JSON.stringify(part)}`)
+351 < 2         runs.push(Number(piece))
+352 < 2       }
+353 < 2     } else if (arg === '--target') {
+354 < 2       target = argv[i + 1]
+355 < 2       i += 1
+356 < 2     } else if (arg === '--since') {
+357 < 2       const value = argv[i + 1]
+358 < 2       i += 1
+359 < 2       if (!NON_NEGATIVE_INT.test(String(value ?? ''))) {
+360 < 2         fail(`--since must be a non-negative integer, got ${JSON.stringify(value)}`)
+361 < 2       }
+362 < 2       since = Number(value)
+363 < 2     } else if (arg === '--json') {
+364 < 2       json = true
+365 < 2     } else if (arg === '--follow') {
+366 < 2       followOn = true
+367 < 2     } else if (arg === '--quiet') {
+368 < 2       const value = argv[i + 1]
+369 < 2       i += 1
+370 < 2       if (!POSITIVE_INT.test(String(value ?? ''))) fail(`--quiet must be a positive number of minutes, got ${JSON.stringify(value)}`)
+371 < 2       quietMinutes = Number(value)
+372 < 2     }
+373 < 2   }
+374 < 2 
+375 < 2   if (runs.length === 0) fail('--run is required')
+376 < 2   if (!target) fail('--target is required')
+377 < 2 
+378 < 2   return { runs, target, since, json, follow: followOn, quietMinutes }
+379 < 2 }
+380 < 2 
+381 < 2 /**
+382 < 2  * The CLI: reads the hub host from `kataEnvPath`, lists the projects, matches
+383 < 2  * `<owner>-<repo>`, reads the feed and writes the rendering (or, with
+384 < 2  * `--json`, `JSON.stringify(projection, null, 2)`).
+385 < 2  */
+386 < 2 export async function main (argv, { exec = defaultExec, kataEnvPath = defaultKataEnvPath(), write = (s) => process.stdout.write(s) } = {}) {
+387 < 2   const args = parseBoardArgs(argv)
+388 < 2 
+390 > 2   const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath, share: true })
+389 < 2   const { client, dark } = await hubFromEnv({ exec, actor: 'board-read', kataEnvPath })
+390 < 2   if (dark !== null) fail(dark)
+391 < 2 
+392 < 2   const projectName = targetSlug(args.target)
+393 < 2   const project = projectNamed(await client.listProjects(), projectName)
+394 < 2   if (project === null) {
+395 < 2     fail(`no hub project named ${JSON.stringify(projectName)} for target ${JSON.stringify(args.target)} — ${KATA_HUB_FIX}`)
+396 < 2   }
+397 < 2 
+398 < 2   if (args.follow) {
+400 > 2     const read = followReader({ client, projectId: project.id, runs: args.runs })
+399 < 2     const read = () => readBoard({ client, projectId: project.id, runs: args.runs, since: 0 })
+400 < 2     write('== following (every 10 s; ! lines flag trouble)\n')
+401 < 2     const rc = await follow({ read, write, runs: args.runs, quietMs: args.quietMinutes * 60000 })
+402 < 2     if (rc) process.exitCode = rc
+403 < 2     return rc
+404 < 2   }
+405 < 2   const projection = await readBoard({ client, projectId: project.id, runs: args.runs, since: args.since })
+406 < 2   write(args.json ? `${JSON.stringify(projection, null, 2)}\n` : `${renderBoard(projection)}\n`)
+407 < 2 }
+408 < 2 
+409 < 2 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+410 < 2 if (invokedPath === fileURLToPath(import.meta.url)) {
+411 < 2   await runCli(main, process.argv.slice(2))
+412 < 2 }
+413 < 2 

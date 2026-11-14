@@ -1,0 +1,53 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The objection sim: a builder that finds its task cannot be done as the plan is written says so,
+2 < 1 // and the task waits for the operator where a give-back would hand it round (the wrong-plans
+3 < 1 // reading, flock-baseline run-32, 2026-11-13). Two scripted Flock runs on a throwaway target
+4 < 1 // (_flock_helpers.mjs), one plan: task 1 writes a.txt, and task 2's session files an objection.
+5 < 1 //   on   (the repository's policy) task 2 is claimed once and parks at once: one `objection` row,
+6 < 1 //        one `task:parked` row marked `objected` with no give-backs, and the run ends a draft whose
+7 < 1 //        reason is the objection in the builder's words, which the pull-request body carries.
+8 < 1 //   off  (`--objection off`, the rollback) the same script is a give-back: task 2 is handed out
+9 < 1 //        three times, parks on its third, and the run ends `deadlock` with no objection row.
+10 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+11 < 1 import { spawnSync } from 'node:child_process'
+12 < 1 import path from 'node:path'
+13 < 1 import { simEnv } from './_helpers.mjs'
+14 < 1 import { REPO, flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
+15 < 1 
+16 < 1 const fail = (why) => { console.log(`OBJECTION FAILED: ${why}`); process.exit(1) }
+17 < 1 const assert = (ok, why) => { if (!ok) fail(why) }
+18 < 1 const WHY = 'task 2 pins the last line as B and says it equals what task 1 wrote, which is A: no code passes both'
+19 < 1 
+20 < 1 for (const MODE of ['on', 'off']) {
+21 < 1   const t = flockTarget({ 'a.txt': 'x\n', 'b.txt': 'y\n' })
+22 < 1   const plan = writePlan(t, {
+23 < 1     claim: 'a.txt carries A and b.txt carries B.', check: 'test -f a.txt',
+24 < 1     tasks: [
+25 < 1       task({ id: 1, title: 'Write A', files: ['Modify: `a.txt`'], claim: 'a.txt carries A.', stale: 'path-absent: `a.txt`', run: 'grep -q A a.txt' }),
+26 < 1       task({ id: 2, title: 'Write B', files: ['Modify: `b.txt`'], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
+27 < 1     ],
+28 < 1   })
+29 < 1   const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'A\n' }, '@object': { 2: WHY } }, args: MODE === 'off' ? ['--objection', 'off'] : [] })
+30 < 1   assert(r.rows, `${MODE}: no events.jsonl (engine exit ${r.code}): ${r.out.slice(-800)}`)
+31 < 1   const end = r.of('terminal').at(-1), claims = r.of('session:start').filter((x) => x.task === '2').length
+32 < 1   const parked = r.of('task:parked').filter((x) => x.task === '2'), objected = r.of('objection')
+33 < 1   assert(r.code !== 0 && end && end.pr === 'draft', `${MODE}: the run exited ${r.code} with ${JSON.stringify(end)}`)
+34 < 1   if (MODE === 'on') {
+35 < 1     assert(objected.length === 1 && objected[0].task === '2' && objected[0].reason === WHY, `on: the objection rows are ${JSON.stringify(objected)}`)
+36 < 1     assert(claims === 1, `on: task 2 was handed out ${claims} times, not once`)
+37 < 1     assert(parked.length === 1 && parked[0].objected === true && parked[0].releases === 0, `on: task 2's park rows are ${JSON.stringify(parked)}`)
+38 < 1     assert(end.why === `objection on task 2: ${WHY}`, `on: the run ended ${JSON.stringify(end.why)}`)
+39 < 1     assert(r.of('stall:objection').length === 1 && r.of('stall:deadlock').length === 0, `on: the stall rows are ${JSON.stringify(r.rows.filter((x) => String(x.kind).startsWith('stall:')).map((x) => x.kind))}`)
+40 < 1     const body = spawnSync('node', [path.join(REPO, 'factory', 'record.mjs'), 'pr-body', plan, '--events', path.join(t.RUN, 'events.jsonl')], { encoding: 'utf8', env: simEnv({ home: t.tmp }) }).stdout
+41 < 1     assert(body.includes(`**Draft:** objection on task 2: ${WHY}.`), `on: the pull-request body does not carry the objection: ${JSON.stringify(body.slice(-600))}`)
+42 < 1   } else {
+43 < 1     assert(objected.length === 0, `off: an objection row was written: ${JSON.stringify(objected)}`)
+44 < 1     assert(claims === 3, `off: task 2 was handed out ${claims} times, not three`)
+45 < 1     assert(parked.length === 1 && parked[0].releases === 3 && !parked[0].objected, `off: task 2's park rows are ${JSON.stringify(parked)}`)
+46 < 1     assert(end.why === 'deadlock: work left and nothing claimable', `off: the run ended ${JSON.stringify(end.why)}`)
+47 < 1   }
+48 < 1   t.done()
+49 < 1 }
+50 < 1 
+51 < 1 console.log('ALL TESTS PASSED')
+52 < 1 

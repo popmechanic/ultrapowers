@@ -1,0 +1,127 @@
+0 < 1 // factory/jev-client.mjs — the Jev client: one POST, no key, `null` on anything
+1 < 1 // that is not an answer.
+2 < 1 //
+3 < 1 // Jev is an exe.dev `http-proxy` integration named `typesafe` on the fleet
+5 > 1 // policy `tag:fleet`, the same shape as `claude-max`. From a fleet
+4 < 2 // policy `tag:fleet`, the same shape as `claude-max` and `kata`. From a fleet
+5 < 1 // VM the endpoint is `https://typesafe.int.exe.xyz/v1/systemone`, HTTPS only.
+6 < 1 // The request carries NO `Authorization` header of its own: the edge injects
+7 < 1 // the bearer, which is the whole reason a sandbox holding no TypeSafe
+8 < 1 // credential at all can still be answered — and the reason no key is on disk,
+9 < 1 // in `argv` or in any environment the boot sets. The optional `headers` is
+10 < 1 // for callers off the fleet (the laptop's authoring checks, which call
+11 < 1 // `api.typesafe.ai` directly with their own key); the fleet passes none.
+12 < 1 //
+14 > 1 // `fetchImpl` is
+13 < 2 // The shape is `httpTransport`'s (`fleet/kata-client.mjs`): `fetchImpl`
+14 < 1 // injected with `globalThis.fetch` as the default, `res.text()` and then a
+15 < 1 // parse — so a sim's fake reply needs only `status` and `text()`, and no sim
+16 < 1 // opens a socket.
+17 < 1 //
+18 < 1 // `ask` never throws and never retries. A 401, a 422 (a malformed question), a
+19 < 1 // 429, a 529, a timeout, a dead socket, a body that is not JSON: each is one
+20 < 1 // log line and a `null`, and the caller's row is simply absent. Jev answers no
+21 < 1 // fact, so nothing downstream is entitled to an answer.
+22 < 1 
+23 < 1 /** The one path. */
+24 < 1 export const JEV_PATH = '/v1/systemone'
+25 < 1 
+26 < 1 /** The model alias; the reply names the concrete version it used. */
+27 < 1 export const JEV_MODEL = 'jev-latest'
+28 < 1 
+29 < 1 /** One call's whole budget of wall clock. */
+30 < 1 export const JEV_TIMEOUT_MS = 10000
+31 < 1 
+32 < 1 /** The ceiling on a call's `state`, measured on that state's own JSON and
+33 < 1  *  checked BEFORE any request: ~32k tokens of context is the budget #1096
+34 < 1  *  names, and a state over it is a caller's bug, not the edge's. A state that
+35 < 1  *  exceeds it costs one log line and no call at all. */
+36 < 1 export const JEV_STATE_MAX_BYTES = 120000
+37 < 1 
+38 < 1 /** One question's answer off `ask`'s resolved `answers` (itself possibly
+39 < 1  *  `null`), as the row fields the record-only readings write: `choice` and
+40 < 1  *  `confidence` when they have their types, each `null` otherwise. */
+41 < 1 export const answerOf = (answers, key) => {
+42 < 1   const a = answers && answers[key]
+43 < 1   return {
+44 < 1     answer: a && typeof a.choice === 'string' ? a.choice : null,
+45 < 1     confidence: a && typeof a.confidence === 'number' ? a.confidence : null,
+46 < 1   }
+47 < 1 }
+48 < 1 
+49 < 1 /** A JSON document, or `null` when the answer carried none — an error body is
+50 < 1  *  frequently not JSON at all, and a parse that threw would turn the edge's
+51 < 1  *  `422` into this process's exception. */
+52 < 1 const parseJson = (text) => {
+53 < 1   const s = String(text == null ? '' : text)
+54 < 1   if (!s.trim()) return null
+55 < 1   try { return JSON.parse(s) } catch { return null }
+56 < 1 }
+57 < 1 
+58 < 1 const isObject = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v)
+59 < 1 
+60 < 1 /**
+61 < 1  * The client: `{ ask }` over one origin.
+62 < 1  *
+63 < 1  * `ask({ state, questions })` resolves the reply's `answers` object, or `null`.
+64 < 1  * `log` is called exactly once, with a string beginning `jev:`, on each lane
+65 < 1  * that resolves `null` — and not at all on the lane that answers.
+66 < 1  * `headers` is merged over the `content-type` header; with none, the request
+67 < 1  * carries exactly `{ 'content-type': 'application/json' }`.
+68 < 1  */
+69 < 1 export const makeJevClient = ({
+70 < 1   baseUrl,
+71 < 1   fetchImpl = globalThis.fetch,
+72 < 1   timeoutMs = JEV_TIMEOUT_MS,
+73 < 1   log = () => {},
+74 < 1   headers,
+75 < 1 } = {}) => {
+76 < 1   const origin = String(baseUrl == null ? '' : baseUrl).replace(/\/+$/, '')
+77 < 1   // One line, one `null`: the single exit every failure lane takes, so no lane
+78 < 1   // can log twice and none can log nothing.
+79 < 1   const refuse = (detail) => {
+80 < 1     try { log('jev: ' + detail) } catch { /* evidence, not control flow */ }
+81 < 1     return null
+82 < 1   }
+83 < 1   return {
+84 < 1     async ask ({ state, questions } = {}) {
+85 < 1       // The budget is on the state alone, and it is read before the socket:
+86 < 1       // an over-budget call is one the edge never sees.
+87 < 1       let body
+88 < 1       try {
+89 < 1         const stateBytes = JSON.stringify(state).length
+90 < 1         if (stateBytes > JEV_STATE_MAX_BYTES) {
+91 < 1           return refuse('state ' + stateBytes + ' bytes over the ' +
+92 < 1             JEV_STATE_MAX_BYTES + '-byte budget; no call made')
+93 < 1         }
+94 < 1         body = JSON.stringify({ state, model: JEV_MODEL, questions })
+95 < 1       } catch (e) {
+96 < 1         return refuse('state not serializable: ' + String((e && e.message) || e).slice(0, 200))
+97 < 1       }
+98 < 1       let status, text
+99 < 1       try {
+100 < 1         const res = await fetchImpl(origin + JEV_PATH, {
+101 < 1           method: 'POST',
+102 < 1           headers: { 'content-type': 'application/json', ...headers },
+103 < 1           body,
+104 < 1           // Whatever the error name a rejection carries — `AbortError` from
+105 < 1           // this signal included — it is the network lane below.
+106 < 1           signal: AbortSignal.timeout(timeoutMs),
+107 < 1         })
+108 < 1         status = res && res.status
+109 < 1         text = await res.text()
+110 < 1       } catch (e) {
+111 < 1         return refuse('call failed: ' + String((e && e.message) || e).slice(0, 200))
+112 < 1       }
+113 < 1       if (!(typeof status === 'number' && status >= 200 && status <= 299)) {
+114 < 1         return refuse('status ' + String(status))
+115 < 1       }
+116 < 1       const json = parseJson(text)
+117 < 1       if (!isObject(json) || !isObject(json.answers)) {
+118 < 1         return refuse('unreadable reply')
+119 < 1       }
+120 < 1       return json.answers
+121 < 1     },
+122 < 1   }
+123 < 1 }
+124 < 1 

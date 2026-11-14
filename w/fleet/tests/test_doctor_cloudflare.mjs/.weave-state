@@ -1,0 +1,159 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_doctor_cloudflare.mjs — the exam for "The doctor names the
+2 < 1  * cloudflare integration, the docs walk it, and the launcher refuses a
+3 < 1  * publishing plan without it" (#835).
+4 < 1  *
+5 < 1  * `doctor.mjs` gains a ninth row, `cloudflare`: the deploy's credential, an
+6 < 1  * http-proxy integration needed only by a plan with a `**Publish:**` line.
+7 < 1  * Unlike every other row, absent is green — most plans never publish. Present
+8 < 1  * is judged the way every integration is (#1434): its attachment `tag:fleet`
+9 < 1  * in `integrations list --json`.
+10 < 1  *
+11 < 1  * Legs, each naming the Machine clause it comes from:
+12 < 1  *
+15 > 1  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the ninth `cloudflare`,
+16 < 1  *       and `doctor()` answers ten rows in that same order.
+14 > 2  *   (a) [M1] `ROW_IDS` is exactly the eleven pinned ids, the tenth `cloudflare`,
+15 < 2  *       and `doctor()` answers eleven rows in that same order.
+13 < 2  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the tenth `cloudflare`,
+14 < 2  *       and `doctor()` answers ten rows in that same order.
+15 < 1  *   (b) [M2] with no `cloudflare` object in `integrations list --json`: the
+16 < 1  *       row is `ok`, and its detail contains `absent` and `Publish:`.
+17 < 1  *   (c) [M2] with the object present and attached to `tag:fleet`: `ok`.
+18 < 1  *   (d) [M2] with the object present and not attached to `tag:fleet`: the
+19 < 1  *       row is `missing`, and its detail names
+20 < 1  *       `integrations attach cloudflare tag:fleet`.
+21 < 1  *
+22 < 1  * (b)-(d) drive `doctor({ config, exec, configKeys, account })` in-process,
+23 < 1  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
+24 < 1  * by spaces) — the doctor's own `ssh exe.dev <remote>` reads (`READS` in
+25 < 1  * `fleet/doctor.mjs`) — answering
+26 < 1  * `integrations list --json` with the listing each leg needs and everything
+27 < 1  * unmatched — including every `help <verb>` read `verb-drift` issues — with
+28 < 1  * `{ code: 1, stdout: '' }`. Only the `cloudflare` row's outcome is asserted;
+29 < 1  * the other eight rows are left unasserted, per the task's own instruction.
+30 < 1  */
+31 < 1 
+32 < 1 import assert from 'node:assert/strict'
+33 < 1 
+34 < 1 import { doctor, ROW_IDS } from '../doctor.mjs'
+35 < 1 
+36 < 1 // ── the exec stub every leg shares ──────────────────────────────────────────
+37 < 1 
+38 < 1 /** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
+39 < 1  *  the command and its argv joined by spaces. */
+40 < 1 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
+41 < 1 /** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
+42 < 1 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
+43 < 1 
+44 < 1 const BASE_KNOWN = new Map([
+45 < 1   [lobbyKey('whoami'), { code: 1, stdout: '' }],
+46 < 1   [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
+47 < 1   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
+48 < 1   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
+49 < 1 ])
+50 < 1 
+51 < 1 /**
+52 < 1  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
+53 < 1  * `keyOf`), answering `integrations list --json` with `listStdout`, the shared base
+54 < 1  * table, and everything else — the token/accounts/usage reads and every
+55 < 1  * `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
+56 < 1  */
+57 < 1 function makeExec (listStdout) {
+58 < 1   const known = new Map([
+59 < 1     ...BASE_KNOWN,
+60 < 1     [lobbyKey('integrations list --json'), { code: 0, stdout: listStdout }]
+61 < 1   ])
+62 < 1   const calls = []
+63 < 1   const exec = async (command, argv) => {
+64 < 1     const cmd = keyOf(command, argv)
+65 < 1     calls.push(cmd)
+66 < 1     if (known.has(cmd)) return known.get(cmd)
+67 < 1     return { code: 1, stdout: '' }
+68 < 1   }
+69 < 1   exec.calls = calls
+70 < 1   return exec
+71 < 1 }
+72 < 1 
+73 < 1 const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare')
+74 < 1 
+75 < 1 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
+76 < 1 {
+79 > 1   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper']
+78 > 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper']
+77 < 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare']
+78 < 1   assert.deepEqual(
+79 < 1     [...ROW_IDS], want,
+82 > 1     `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+81 > 2     `(a) [M1] ROW_IDS is exactly the eleven pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+80 < 2     `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+81 < 1   )
+82 < 1 
+83 < 1   const exec = makeExec(JSON.stringify([]))
+84 < 1   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
+87 > 1   assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
+86 > 2   assert.equal(result.rows.length, 11, `(a) [M1] doctor() answers eleven rows — got ${result.rows.length}`)
+85 < 2   assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
+86 < 1   assert.deepEqual(
+87 < 1     result.rows.map((r) => r.id), want,
+88 < 1     `(a) [M1] doctor()'s rows are in ROW_IDS order — got: ${JSON.stringify(result.rows.map((r) => r.id))}`
+89 < 1   )
+90 < 1 }
+91 < 1 
+92 < 1 // ── (b) [M2] absent — ok, "absent" and "Publish:" in the detail ────────────
+93 < 1 {
+94 < 1   const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
+95 < 1   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
+96 < 1   const cloudflare = cloudflareRowOf(result)
+97 < 1   assert.ok(cloudflare, '(b) [M2] the result carries a cloudflare row')
+98 < 1   assert.equal(cloudflare.status, 'ok', `(b) [M2] absent is ok — got: ${JSON.stringify(cloudflare)}`)
+99 < 1   assert.ok(
+100 < 1     cloudflare.detail.includes('absent'),
+101 < 1     `(b) [M2] detail names "absent" — got: ${JSON.stringify(cloudflare.detail)}`
+102 < 1   )
+103 < 1   assert.ok(
+104 < 1     cloudflare.detail.includes('Publish:'),
+105 < 1     `(b) [M2] detail names "Publish:" — got: ${JSON.stringify(cloudflare.detail)}`
+106 < 1   )
+107 < 1 }
+108 < 1 
+109 < 1 // ── (c) [M2] present, attached to tag:fleet — ok ───────────────────────────
+110 < 1 {
+111 < 1   const listStdout = JSON.stringify([
+112 < 1     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },
+113 < 1     { name: 'cloudflare', config_summary: 'Authorization:Bearer cf', attachments: ['tag:fleet'] }
+114 < 1   ])
+115 < 1   const result = await doctor({ config: {}, exec: makeExec(listStdout), configKeys: null, account: null })
+116 < 1   const cloudflare = cloudflareRowOf(result)
+117 < 1   assert.equal(cloudflare.status, 'ok', `(c) [M2] present on tag:fleet is ok — got: ${JSON.stringify(cloudflare)}`)
+118 < 1 }
+119 < 1 
+120 < 1 // ── (d) [M2] present, not attached — missing, names the attach ──────────────
+121 < 1 {
+122 < 1   const listStdout = JSON.stringify([
+123 < 1     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },
+124 < 1     { name: 'cloudflare', config_summary: 'Authorization:Bearer cf', attachments: ['vm:one'] }
+125 < 1   ])
+126 < 1   const result = await doctor({ config: {}, exec: makeExec(listStdout), configKeys: null, account: null })
+127 < 1   const cloudflare = cloudflareRowOf(result)
+128 < 1   assert.equal(cloudflare.status, 'missing', `(d) [M2] present off tag:fleet is missing — got: ${JSON.stringify(cloudflare)}`)
+129 < 1   assert.ok(
+130 < 1     cloudflare.detail.includes('integrations attach cloudflare tag:fleet'),
+131 < 1     `(d) [M2] detail names the attach — got: ${JSON.stringify(cloudflare.detail)}`
+132 < 1   )
+133 < 1 }
+134 < 1 
+136 > 2 // ── (e) the kata row follows `launch.kata.mode` ─────────────────────────────
+137 < 2 {
+138 < 2   // No `kata` integration and no hub VM anywhere in this listing.
+139 < 2   const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
+140 < 2   const off = (await doctor({ config: {}, exec, configKeys: null, account: null })).rows.find((r) => r.id === 'kata')
+141 < 2   assert.equal(off.status, 'ok', `(e) with kata off (the policy file's default) a missing hub is not a red row — got: ${JSON.stringify(off)}`)
+142 < 2   assert.ok(off.detail.includes('launch.kata.mode is off'), `(e) and the detail says why — got: ${JSON.stringify(off.detail)}`)
+143 < 2   const on = (await doctor({ config: {}, exec, configKeys: null, account: null, kataMode: 'on' })).rows.find((r) => r.id === 'kata')
+144 < 2   assert.equal(on.status, 'missing', `(e) under the rollback the hub is a prerequisite again — got: ${JSON.stringify(on)}`)
+145 < 2   assert.ok(on.detail.includes('node fleet/kata-hub.mjs'), '(e) and the red names the command that builds it')
+146 < 2 }
+147 < 2 
+135 < 1 console.log('ALL TESTS PASSED')
+136 < 1 

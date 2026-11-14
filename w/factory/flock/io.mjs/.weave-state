@@ -1,0 +1,86 @@
+1 > 1 // The Flock's shared plumbing (#1439): the engine (engine.mjs) and the catch-up (catchup.mjs)
+2 < 1 // each wrote these once of their own.
+0 < 2 // The Flock's shared plumbing (#1439): the engine (engine.mjs), the catch-up (catchup.mjs) and the
+1 < 2 // boot's board CLI (../board.mjs) each wrote these once of their own.
+2 < 1 import { spawn, spawnSync } from 'node:child_process'
+3 < 1 import fs from 'node:fs'
+4 < 1 import path from 'node:path'
+5 < 1 import readline from 'node:readline'
+6 < 1 import { fileURLToPath } from 'node:url'
+7 < 1 
+8 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+9 < 1 
+10 < 1 // factory/policy.json's `flock` cells; undefined when the file is unreadable, so every reader takes its default
+11 < 1 export const POLICY_FLOCK = (() => { try { return JSON.parse(fs.readFileSync(path.join(HERE, '..', 'policy.json'), 'utf8')).flock } catch { return undefined } })()
+12 < 1 // One time limit per fact and for the plan's setup, read by the run and by its catch-up alike (#1448):
+13 < 1 // a fact that timed out red in the run cannot pass at catch-up on a looser limit.
+14 < 1 export const EXAM_MS = {
+15 < 1   fact: (POLICY_FLOCK?.exam?.fact_timeout_seconds ?? 60) * 1000,
+16 < 1   setup: (POLICY_FLOCK?.exam?.setup_timeout_seconds ?? 300) * 1000,
+17 < 1 }
+18 < 1 
+19 < 1 // the engine's commits and the catch-up's are authored `flock`
+20 < 1 const IDENTITY = ['-c', 'user.name=flock', '-c', 'user.email=flock@ultrapowers.invalid']
+21 < 1 
+22 < 1 // One git process in `dir`; its spawnSync result. A non-zero exit throws unless `ok`. `encoding`
+23 < 1 // defaults to utf8 ('buffer' for bytes); `identity` authors as flock; `env` replaces the environment.
+24 < 1 export function gitIn (dir, args, { encoding = 'utf8', ok = false, identity = false, env } = {}) {
+25 < 1   const r = spawnSync('git', [...(identity ? IDENTITY : []), '-C', dir, ...args], { encoding, env, maxBuffer: 256 * 1024 * 1024 })
+26 < 1   if (r.error) throw r.error
+27 < 1   if (r.status !== 0 && !ok) throw new Error(`git ${args.join(' ')} in ${dir} exited ${r.status}: ${r.stderr}`)
+28 < 1   return r
+29 < 1 }
+30 < 1 
+31 < 1 // A file's bytes as text: null stays null (absent), bytes that are not UTF-8 are undefined.
+32 < 1 const UTF8 = new TextDecoder('utf-8', { fatal: true })
+33 < 1 export const utf8 = (buf) => { if (buf === null) return null; try { return UTF8.decode(buf) } catch { return undefined } }
+34 < 1 
+35 < 1 // Writes each [path, content] under dir, a null content deleting the path.
+36 < 1 export function writeFiles (dir, entries) {
+37 < 1   for (const [p, content] of entries) {
+38 < 1     const f = path.join(dir, p)
+39 < 1     if (content === null) { fs.rmSync(f, { force: true }); continue }
+40 < 1     fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, content)
+41 < 1   }
+42 < 1 }
+43 < 1 // a weave snapshot's files ({files, exists}) as writeFiles entries
+44 < 1 export const snapshotEntries = (s) => Object.entries(s.files).map(([p, text]) => [p, s.exists[p] ? text : null])
+45 < 1 
+46 < 1 // The weave keeper (weave.py), one JSON request and one JSON answer per line, in order. `send`
+47 < 1 // resolves the answer as it came; once the keeper exits, every pending and later send rejects.
+48 < 1 export function startWeave () {
+49 < 1   const wp = spawn('python3', [path.join(HERE, 'weave.py')], { stdio: ['pipe', 'pipe', 'inherit'] })
+50 < 1   const waiting = []
+51 < 1   let closed = false
+52 < 1   const rl = readline.createInterface({ input: wp.stdout })
+53 < 1   rl.on('line', (l) => waiting.shift().resolve(JSON.parse(l)))
+54 < 1   rl.on('close', () => { closed = true; for (const w of waiting.splice(0)) w.reject(new Error('weave keeper exited')) })
+55 < 1   return {
+56 < 1     send: (o) => new Promise((resolve, reject) => {
+57 < 1       if (closed) return reject(new Error('weave keeper exited'))
+58 < 1       waiting.push({ resolve, reject }); wp.stdin.write(JSON.stringify(o) + '\n')
+59 < 1     }),
+60 < 1     end: () => wp.stdin.end(),
+61 < 1   }
+62 < 1 }
+63 < 1 
+64 < 1 // events.jsonl's rows in file order; a line that does not parse is skipped, and a missing or
+65 < 1 // empty file gives none
+66 < 1 export function readEventRows (file) {
+67 < 1   let text
+68 < 1   try { text = fs.readFileSync(file, 'utf8') } catch { return [] }
+69 < 1   const rows = []
+70 < 1   for (const line of text.split('\n')) {
+71 < 1     if (!line.trim()) continue
+72 < 1     try { rows.push(JSON.parse(line)) } catch { /* a torn line is skipped */ }
+73 < 1   }
+74 < 1   return rows
+75 < 1 }
+76 < 1 
+77 < 2 // a kata.json record's hub address: its integer project.id and non-empty run.uid, else null
+78 < 2 export function kataIds (doc) {
+79 < 2   const projectId = doc && doc.project && doc.project.id
+80 < 2   const runUid = doc && doc.run && doc.run.uid
+81 < 2   return Number.isInteger(projectId) && typeof runUid === 'string' && runUid ? { projectId, runUid } : null
+82 < 2 }
+83 < 1 

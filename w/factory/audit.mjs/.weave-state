@@ -1,0 +1,98 @@
+0 < 2 /**
+1 < 2  * factory/audit.mjs — the one computed row a finished run's record ends
+2 < 2  * with, naming what it should have and doesn't (#1167).
+3 < 2  *
+4 < 2  * Nine factory runs (189–196 and fixture 36) ended `done` without ever
+5 < 2  * closing their hub issue — and a skipped close and a successful one left
+6 < 2  * the same record: nothing. Absence is a fact code can compute, so this
+7 < 2  * module computes it: `auditRows` reads a run's own `events.jsonl` rows and
+8 < 2  * names every kind of row that a `done` run should carry and does not.
+9 < 2  *
+10 < 2  * `auditRows` judges nothing beyond that: a name is in `missing` or it
+11 < 2  * isn't. The CLI at the bottom is the boot's own last call — it must never
+12 < 2  * cost a run, so it always prints exactly one line and exits 0, even over a
+13 < 2  * file it can't read at all.
+14 < 2  */
+15 < 2 
+16 < 2 import { readEventRows } from './record.mjs'
+17 < 2 
+18 < 2 /** The `landing` rows' tasks, each task's id kept exactly once and in the
+19 < 2  *  order its first `landing` row arrived. */
+20 < 2 function landedTaskIds (rows) {
+21 < 2   const seen = new Set()
+22 < 2   const ids = []
+23 < 2   for (const row of rows) {
+24 < 2     if (row && row.kind === 'landing' && row.task != null) {
+25 < 2       const id = String(row.task)
+26 < 2       if (!seen.has(id)) {
+27 < 2         seen.add(id)
+28 < 2         ids.push(id)
+29 < 2       }
+30 < 2     }
+31 < 2   }
+32 < 2   return ids
+33 < 2 }
+34 < 2 
+35 < 2 /** Whether `code` is an HTTP code in the closed-succeeded range. */
+36 < 2 const isCloseCode = (code) => Number.isInteger(code) && code >= 200 && code <= 299
+37 < 2 
+38 < 2 /**
+39 < 2  * `auditRows(rows, { state, bound })` — the one `run:audit` object a
+40 < 2  * finished run's record ends with.
+41 < 2  *
+42 < 2  * For any `state` other than `'done'`, `missing` is always `[]` (M1): an
+43 < 2  * unfinished run has nothing yet to be missing.
+44 < 2  *
+45 < 2  * For `state: 'done'` with `bound: false`, `missing` is `[]` too: the
+46 < 2  * Flock writes one `landing` row per task and nothing else is asked of it.
+47 < 2  *
+48 < 2  * For `state: 'done'` with `bound: true`, in order:
+49 < 2  * `board:close task <id>` for every landed task with no `board:close` row
+50 < 2  * whose `what` is `task <id>` and whose `code` is an integer 200–299; then
+51 < 2  * `board:close run` under the same rule for `what: 'run'`. `bound` means
+52 < 2  * the run had a hub record (`kata.json`). With `bound: false` neither kind
+53 < 2  * is ever listed — a hubless run never had a close to miss.
+54 < 2  */
+55 < 2 export function auditRows (rows, { state, bound } = {}) {
+56 < 2   const safeRows = Array.isArray(rows) ? rows : []
+57 < 2   const missing = []
+58 < 2 
+59 < 2   if (state === 'done') {
+60 < 2     const landed = landedTaskIds(safeRows)
+61 < 2 
+62 < 2     if (bound) {
+63 < 2       const closedWhat = new Set()
+64 < 2       for (const row of safeRows) {
+65 < 2         if (row && row.kind === 'board:close' && isCloseCode(row.code)) {
+66 < 2           closedWhat.add(row.what)
+67 < 2         }
+68 < 2       }
+69 < 2       for (const id of landed) {
+70 < 2         if (!closedWhat.has(`task ${id}`)) missing.push(`board:close task ${id}`)
+71 < 2       }
+72 < 2       if (!closedWhat.has('run')) missing.push('board:close run')
+73 < 2     }
+74 < 2   }
+75 < 2 
+76 < 2   return { kind: 'run:audit', state, missing }
+77 < 2 }
+78 < 2 
+79 < 2 /** `node factory/audit.mjs <events.jsonl> <state> [--bound]` — one stdout
+80 < 2  *  line, `JSON.stringify` of `auditRows`'s answer, and exit 0 always. */
+81 < 2 function main (argv) {
+82 < 2   const args = argv.slice(2)
+83 < 2   const eventsPath = args[0]
+84 < 2   const state = args[1]
+85 < 2   const bound = args.includes('--bound')
+86 < 2 
+87 < 2   const rows = eventsPath ? readEventRows(eventsPath) : []
+88 < 2   const result = auditRows(rows, { state, bound })
+89 < 2   const line = { ts: new Date().toISOString(), ...result }
+90 < 2   process.stdout.write(JSON.stringify(line) + '\n')
+91 < 2   return 0
+92 < 2 }
+93 < 2 
+94 < 2 if (import.meta.main) { process.exitCode = main(process.argv) }
+95 < 2 
+96 < 2 export default { auditRows, main }
+97 < 2 

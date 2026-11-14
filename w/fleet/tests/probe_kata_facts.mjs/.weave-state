@@ -1,0 +1,693 @@
+0 < 2 // fleet/tests/probe_kata_facts.mjs — the fleet's 24 kata facts, re-read against
+1 < 2 // the live hub, one line per fact, each stamped with the version it was read on.
+2 < 2 //
+3 < 2 // NOT named test_*.mjs on purpose: `tests/test_fleet_suite.py` globs `test_*.mjs`,
+4 < 2 // so the suite never runs this and CI never needs a hub. It is a LIVE MEASUREMENT
+5 < 2 // (fleet/tests/PROBES.md) and is run by hand on the laptop, where the ssh seam to
+6 < 2 // the hub lives:
+7 < 2 //
+8 < 2 //     node fleet/tests/probe_kata_facts.mjs
+9 < 2 //
+10 < 2 // WHY IT EXISTS. What the fleet knows about kata is spread across #978, #979,
+11 < 2 // #993, CLAUDE.md's seams paragraph and the comments in `fleet/kata-client.mjs`,
+12 < 2 // and every one of those readings is a date — a hub upgrade can make any of them
+13 < 2 // false without a single test going red, because no test in the tree talks to a
+14 < 2 // hub. This probe is the one command that re-reads them all: run it on every kata
+15 < 2 // upgrade and before any plan that touches `fleet/kata-client.mjs`.
+16 < 2 //
+17 < 2 // NO BEARER ON THE LAPTOP. Every request rides `sshTransport` from
+18 < 2 // `fleet/kata-client.mjs` — `ssh <hub> curl …`, the bearer sourced on the hub by
+19 < 2 // the hub's own shell — exactly as the launcher and the janitor reach it. This
+20 < 2 // file reads `~/.ultrapowers/kata-hub.env` for ONE thing, the host of `KATA_URL`;
+21 < 2 // the secret on that file's other line is never read here and never enters an
+22 < 2 // argv. The sandbox cannot run this at all: it reaches the hub through the edge
+23 < 2 // with no credential of its own and cannot file a throwaway project.
+24 < 2 //
+25 < 2 // HOW A FACT IS SCORED. Each fact is a short list of request STEPS, each recorded
+26 < 2 // with the status the fleet last read. A step HOLDS when the status it answers is
+27 < 2 // in the same class as the recorded one — a 2xx where a 2xx was recorded, a 4xx
+28 < 2 // where a 4xx was recorded — so kata re-spelling a refusal 400 instead of 409 is
+29 < 2 // not reported as drift, while a refusal that became an acceptance (or the other
+30 < 2 // way round) is. That is the drift that costs the fleet a run. The bodies are
+31 < 2 // read too and echoed into the line, because the shape a fact names (a flat
+32 < 2 // dotted key, an `issue_uid`, a links row) is for the human reading the output;
+33 < 2 // the machine verdict stays on the statuses, which is the half a status-only
+34 < 2 // seam can judge without a second opinion about what the hub meant. A step the
+35 < 2 // transport could not answer at all (status 0, or a throw) makes its fact
+36 < 2 // UNREADABLE rather than drifted.
+37 < 2 //
+38 < 2 // THE THROWAWAY PROJECT. Everything is read inside `probe-kata-facts-<stamp>`,
+39 < 2 // created at the start and removed at the end by the very ladder the last fact
+40 < 2 // measures: close every issue the probe created, `DELETE` the project (the
+41 < 2 // archive), then the confirmed purge. A purge that fails is exit 2 and the last
+42 < 2 // line names the project id, so a hand run never leaves a project behind
+43 < 2 // silently.
+44 < 2 //
+45 < 2 // Exit: 0 every fact holds; 1 at least one drift (or an unreadable fact);
+46 < 2 // 2 the ping failed, or the cleanup left the project behind.
+47 < 2 
+48 < 2 import fs from 'node:fs'
+49 < 2 import path from 'node:path'
+50 < 2 import { fileURLToPath } from 'node:url'
+51 < 2 
+52 < 2 import { sshTransport } from '../kata-client.mjs'
+53 < 2 import { defaultKataEnvPath, parseKataEnv, defaultExec, kataHostOf } from '../lobby.mjs'
+54 < 2 
+55 < 2 /** Everything under one prefix, as `fleet/kata-client.mjs` spells it. */
+56 < 2 const API = '/api/v1'
+57 < 2 
+58 < 2 /** Who the mutations are filed as. Every mutation body carries it. */
+59 < 2 const DEFAULT_ACTOR = 'probe-kata-facts'
+60 < 2 
+61 < 2 /**
+62 < 2  * The evidence every `done` close carries — kata v0.17.2 refuses a `done` close
+63 < 2  * whose `evidence` is empty (`evidence required for reason=done`, #1023), and
+64 < 2  * the `test` shape is the one the engine already sends. One entry, on every
+65 < 2  * done close but the deliberately bare one `close-evidence-required` reads.
+66 < 2  */
+67 < 2 const EVIDENCE = Object.freeze([
+68 < 2   Object.freeze({ type: 'test', command: 'node fleet/tests/probe_kata_facts.mjs' }),
+69 < 2 ])
+70 < 2 
+71 < 2 /**
+72 < 2  * The 24 facts, in the order they are read. `says` is the reading the fleet
+73 < 2  * holds today — the sentence a drift line quotes back — and the ids are the
+74 < 2  * shared literal the hand-read rows in `fleet/RUNBOOK.md` carry row for row.
+75 < 2  */
+76 < 2 export const FACTS = Object.freeze([
+77 < 2   { id: 'ping-version',
+78 < 2     says: 'GET /api/v1/ping is 200 with a version string and needs no bearer' },
+79 < 2   { id: 'project-find-or-create',
+80 < 2     says: 'a second POST /api/v1/projects with an existing name is 200, the same project.id, created:false' },
+81 < 2   { id: 'project-by-id-only',
+82 < 2     says: 'GET /api/v1/projects/<name>/issues with the project NAME in the path is 400' },
+83 < 2   { id: 'create-replay',
+84 < 2     says: 'a create under an Idempotency-Key, replayed byte-identical, is 200 with the same issue.uid and the ORIGINAL revision' },
+85 < 2   { id: 'create-fingerprint-metadata',
+86 < 2     says: 'the same Idempotency-Key with a different metadata is 409 idempotency_mismatch naming the prior uid' },
+87 < 2   { id: 'create-duplicate-scorer',
+88 < 2     says: 'a second create with the same title, no key and no force_new, is 409 duplicate_candidates, and force_new:true is 200 (read 2026-09-15)' },
+89 < 2   { id: 'link-blocks-idempotent',
+90 < 2     says: 'the same {type:"blocks"} link twice is 200 both times with the same link.id' },
+91 < 2   { id: 'link-parent-replace',
+92 < 2     says: 'a second {type:"parent"} link is 409 parent_already_set, and replace:true is 200 and swaps the parent' },
+93 < 2   { id: 'link-types',
+94 < 2     says: '{type:"blocked_by"} is 400 — the accepted types are exactly parent, blocks, related' },
+95 < 2   { id: 'metadata-merge-if-match',
+96 < 2     says: 'a metadata patch under If-Match "rev-<revision>" merges per key, and a stale revision is 412 revision_conflict' },
+97 < 2   { id: 'metadata-dotted-flat',
+98 < 2     says: 'a patch {"work.state":"x"} reads back as the flat key metadata["work.state"], and metadata.work is absent' },
+99 < 2   { id: 'claim-if-unowned',
+100 < 2     says: 'claim {if_unowned:true} on an owned issue is 409 already_claimed with error.data.current_owner' },
+101 < 2   { id: 'unassign-key',
+102 < 2     says: 'unassign {expect_owner} is 400 naming expect_owner as unexpected — the documented key is expected_owner' },
+103 < 2   { id: 'close-evidence-required',
+104 < 2     says: 'a done close whose evidence is [] is 400 evidence required for reason=done, and the same body with one test entry is 200' },
+105 < 2   { id: 'close-message-40',
+106 < 2     says: 'a close whose message is 39 characters is refused with a 4xx, and the same body with 40 characters is 200' },
+107 < 2   { id: 'close-retry-protocol',
+108 < 2     says: 'a close under an Idempotency-Key with no retry_protocol is refused with a 4xx, and retry_protocol:"close-v1" is 200' },
+109 < 2   { id: 'close-superseded-evidence',
+110 < 2     says: 'reason:"superseded" with evidence:[{type:"superseded-by", ref:<uid>}] is 400' },
+111 < 2   { id: 'ready-unowned',
+112 < 2     says: 'GET /ready is 200 listing open issues with no open blocks predecessor; ?unowned=true drops an owned one and ?owner=<x> changes nothing' },
+113 < 2   { id: 'next-no-endpoint',
+114 < 2     says: 'GET /api/v1/projects/<id>/next is 404' },
+115 < 2   { id: 'labels-merge',
+116 < 2     says: 'the same label posted twice leaves the issue with that label once' },
+117 < 2   { id: 'events-issue-uid',
+118 < 2     says: 'GET /events is 200 and its issue.created rows carry issue_uid, while project.created carries none' },
+119 < 2   { id: 'issue-links-shape',
+120 < 2     says: 'GET /api/v1/issues/<uid> answers links as rows {id, type, from:{uid, short_id}, to:{uid, short_id}}' },
+121 < 2   { id: 'archive-actor-required',
+122 < 2     says: 'DELETE /api/v1/projects/<id> with no actor query parameter is 400 actor: required query parameter is missing' },
+123 < 2   { id: 'purge-ladder',
+124 < 2     says: 'purge with no header is 412 confirm_required, confirmed but unarchived is 409 project_not_archived, DELETE ?actor= with an open issue is refused, and after every close the archive DELETE ?actor= is 200' },
+125 < 2 ])
+126 < 2 
+127 < 2 // ── Small readings of an answer ─────────────────────────────────────────────
+128 < 2 
+129 < 2 const is2xx = (status) => status >= 200 && status < 300
+130 < 2 const is4xx = (status) => status >= 400 && status < 500
+131 < 2 
+132 < 2 /** The class a status is scored in: a recorded 409 and a read 400 are one
+133 < 2  *  reading of the same seam, a recorded 409 and a read 200 are not. */
+134 < 2 const statusClass = (status) => {
+135 < 2   if (is2xx(status)) return '2xx'
+136 < 2   if (is4xx(status)) return '4xx'
+137 < 2   return String(status)
+138 < 2 }
+139 < 2 
+140 < 2 /** The issue a mutation answered, as `fleet/kata-client.mjs` reads it, with the
+141 < 2  *  un-nested spelling tolerated so a hub that flattens one day still reads. */
+142 < 2 const issueOf = (json) => (json && (json.issue || json)) || {}
+143 < 2 const uidOf = (json) => {
+144 < 2   const uid = issueOf(json).uid
+145 < 2   return typeof uid === 'string' && uid ? uid : null
+146 < 2 }
+147 < 2 const revisionOf = (json) => {
+148 < 2   const rev = issueOf(json).revision
+149 < 2   return Number.isFinite(rev) ? rev : null
+150 < 2 }
+151 < 2 
+152 < 2 /** `2026-09-15` — the date every line is stamped with. */
+153 < 2 const stampDate = (now) => {
+154 < 2   const when = now instanceof Date ? now : new Date(now)
+155 < 2   return when.toISOString().slice(0, 10)
+156 < 2 }
+157 < 2 
+158 < 2 /** `probe-kata-facts-20260915-093312-a1b4`: the throwaway project's name, and
+159 < 2  *  the string the confirmed purge's header has to repeat. */
+160 < 2 const projectNameFor = (now) => {
+161 < 2   const when = now instanceof Date ? now : new Date(now)
+162 < 2   const iso = when.toISOString()
+163 < 2   const stamp = iso.slice(0, 10).replace(/-/g, '') + '-' + iso.slice(11, 19).replace(/:/g, '')
+164 < 2   const tail = Math.floor(Math.random() * 0x10000).toString(16).padStart(4, '0')
+165 < 2   return 'probe-kata-facts-' + stamp + '-' + tail
+166 < 2 }
+167 < 2 
+168 < 2 /** A close message of exactly `n` characters — 39 and 40 are the whole of the
+169 < 2  *  close-message fact, so they are cut from one string rather than counted by
+170 < 2  *  hand. */
+171 < 2 const CLOSE_TEXT = 'probe-kata-facts closed the throwaway issue it created for this reading of the hub'
+172 < 2 const closeMessage = (n) => CLOSE_TEXT.slice(0, n)
+173 < 2 
+174 < 2 // ── The probe ───────────────────────────────────────────────────────────────
+175 < 2 
+176 < 2 /**
+177 < 2  * Read all 24 facts against `transport` and write one line per fact through
+178 < 2  * `log`.
+179 < 2  *
+180 < 2  * `transport` is the seam `fleet/kata-client.mjs` defines — `request({method,
+181 < 2  * path, headers, body}) -> {status, json, body}` — used RAW rather than through
+182 < 2  * `makeKataClient`, because the client has no unassign, no archive and no purge,
+183 < 2  * and several facts here are refusals the client would throw on.
+184 < 2  *
+185 < 2  * Resolves `{ exit, version, results }`.
+186 < 2  */
+187 < 2 export const probeKataFacts = async ({
+188 < 2   transport,
+189 < 2   actor = DEFAULT_ACTOR,
+190 < 2   log = console.log,
+191 < 2   now = new Date(),
+192 < 2 } = {}) => {
+193 < 2   const date = stampDate(now)
+194 < 2 
+195 < 2   // One request. A transport that threw, or answered no status at all, comes
+196 < 2   // back as status 0 — an unreadable step, never a drift.
+197 < 2   const send = async ({ method, path: at, headers, body }) => {
+198 < 2     try {
+199 < 2       const res = await transport.request({ method, path: at, headers: headers || {}, body })
+200 < 2       const status = Number(res && res.status)
+201 < 2       return {
+202 < 2         status: Number.isFinite(status) ? status : 0,
+203 < 2         json: (res && res.json) || null,
+204 < 2         error: null,
+205 < 2       }
+206 < 2     } catch (err) {
+207 < 2       return { status: 0, json: null, error: err }
+208 < 2     }
+209 < 2   }
+210 < 2 
+211 < 2   const ping = await send({ method: 'GET', path: API + '/ping' })
+212 < 2   if (!is2xx(ping.status)) {
+213 < 2     log('kata hub unreachable — GET ' + API + '/ping answered ' + ping.status)
+214 < 2     return { exit: 2, version: null, results: [] }
+215 < 2   }
+216 < 2   const pingVersion = (ping.json && typeof ping.json.version === 'string' && ping.json.version)
+217 < 2     ? ping.json.version
+218 < 2     : 'unknown'
+219 < 2   log('kata ' + pingVersion + ' — read from GET ' + API + '/ping')
+220 < 2 
+221 < 2   const name = projectNameFor(now)
+222 < 2   const made = await send({ method: 'POST', path: API + '/projects', body: { name, actor } })
+223 < 2   const madeProject = (made.json && (made.json.project || made.json)) || {}
+224 < 2   const projectId = (madeProject.id === undefined || madeProject.id === null)
+225 < 2     ? name
+226 < 2     : String(madeProject.id)
+227 < 2 
+228 < 2   const projectsPath = API + '/projects/' + projectId
+229 < 2   const issuesPath = projectsPath + '/issues'
+230 < 2   const issuePath = (uid) => issuesPath + '/' + uid
+231 < 2 
+232 < 2   // Every create the probe files, in request order: the uid it answered, or null
+233 < 2   // when it was a refusal the fact expected. More creates than issues, always:
+234 < 2   // fact 4's replay answers an issue that already exists, and facts 5 and 6 file
+235 < 2   // creates the hub is recorded REFUSING. So the cleanup owes one close per uid
+236 < 2   // the hub actually named — `issues`, in the order the hub named them, each
+237 < 2   // once — which is M4's "one close per issue it created, and never fewer".
+238 < 2   const creates = []
+239 < 2   const issues = []
+240 < 2   let synthetic = 0
+241 < 2 
+242 < 2   /** A create request, recorded. `expect` is the status the fleet last read. */
+243 < 2   const create = async (title, { key, metadata, forceNew } = {}) => {
+244 < 2     const body = {
+245 < 2       title,
+246 < 2       body: 'Filed by ' + DEFAULT_ACTOR + ' against ' + name + '. Closed and purged by the same run.',
+247 < 2       actor,
+248 < 2       metadata: metadata || { probe: DEFAULT_ACTOR },
+249 < 2       links: [],
+250 < 2       ...(forceNew === undefined ? {} : { force_new: forceNew }),
+251 < 2     }
+252 < 2     const res = await send({
+253 < 2       method: 'POST',
+254 < 2       path: issuesPath,
+255 < 2       headers: key === undefined ? {} : { 'Idempotency-Key': String(key) },
+256 < 2       body,
+257 < 2     })
+258 < 2     const uid = uidOf(res.json)
+259 < 2     creates.push(uid)
+260 < 2     if (uid && !issues.includes(uid)) issues.push(uid)
+261 < 2     return res
+262 < 2   }
+263 < 2 
+264 < 2   /** The uid a step needs when the hub answered none: never `undefined` in a
+265 < 2    *  path, so a reading stays legible even against a half-answering hub. */
+266 < 2   const someUid = (uid) => {
+267 < 2     if (uid) return uid
+268 < 2     const known = creates.find((one) => !!one)
+269 < 2     if (known) return known
+270 < 2     synthetic += 1
+271 < 2     return 'probe-uid-' + synthetic
+272 < 2   }
+273 < 2 
+274 < 2   // The state the later facts read: the keyed issue, its revision, the force_new
+275 < 2   // issue, and the second parent target.
+276 < 2   const state = { uid: null, revision: 1, other: null, parent: null }
+277 < 2 
+278 < 2   /** One scored step: the request, and the status it was recorded answering. */
+279 < 2   const step = async (expect, spec) => {
+280 < 2     const res = await send(spec)
+281 < 2     return { expect, method: spec.method, path: spec.path, status: res.status, json: res.json }
+282 < 2   }
+283 < 2 
+284 < 2   // ── The 24 readings ───────────────────────────────────────────────────────
+285 < 2   //
+286 < 2   // Each reader answers `{ steps, note }`: the scored steps, and the half of the
+287 < 2   // reading that is the answer's SHAPE, echoed into the line for the human.
+288 < 2   // Setup that is not itself a fact — a scaffold issue, the first claim — is
+289 < 2   // sent here too but left out of `steps`.
+290 < 2 
+291 < 2   const READERS = {
+292 < 2     'ping-version': async () => ({
+293 < 2       steps: [{ expect: 200, method: 'GET', path: API + '/ping', status: ping.status, json: ping.json }],
+294 < 2       note: 'version ' + pingVersion,
+295 < 2     }),
+296 < 2 
+297 < 2     'project-find-or-create': async () => {
+298 < 2       const again = await step(200, { method: 'POST', path: API + '/projects', body: { name, actor } })
+299 < 2       const project = (again.json && (again.json.project || again.json)) || {}
+300 < 2       const sameId = project.id === undefined ? 'no id' : ('id ' + project.id)
+301 < 2       const created = again.json && 'created' in again.json ? String(again.json.created) : 'absent'
+302 < 2       return { steps: [again], note: sameId + ', created ' + created }
+303 < 2     },
+304 < 2 
+305 < 2     'project-by-id-only': async () => {
+306 < 2       const byName = await step(400, { method: 'GET', path: API + '/projects/' + name + '/issues' })
+307 < 2       return { steps: [byName], note: 'the name in the path' }
+308 < 2     },
+309 < 2 
+310 < 2     'create-replay': async () => {
+311 < 2       const title = name + ' — the keyed issue'
+312 < 2       const key = name + '-create-replay'
+313 < 2       const first = await create(title, { key })
+314 < 2       state.uid = uidOf(first.json) || someUid(null)
+315 < 2       state.revision = revisionOf(first.json) ?? 1
+316 < 2       const replay = await create(title, { key })
+317 < 2       const sameUid = uidOf(replay.json) === uidOf(first.json) ? 'same uid' : 'a different uid'
+318 < 2       const revision = revisionOf(replay.json)
+319 < 2       const sameRevision = revision === revisionOf(first.json)
+320 < 2         ? 'the original revision'
+321 < 2         : ('revision ' + revision)
+322 < 2       return {
+323 < 2         steps: [
+324 < 2           { expect: 200, method: 'POST', path: issuesPath, status: first.status, json: first.json },
+325 < 2           { expect: 200, method: 'POST', path: issuesPath, status: replay.status, json: replay.json },
+326 < 2         ],
+327 < 2         note: 'replay answered ' + sameUid + ' and ' + sameRevision,
+328 < 2       }
+329 < 2     },
+330 < 2 
+331 < 2     'create-fingerprint-metadata': async () => {
+332 < 2       const mismatch = await create(name + ' — the keyed issue', {
+333 < 2         key: name + '-create-replay',
+334 < 2         metadata: { probe: DEFAULT_ACTOR, fingerprint: 'moved' },
+335 < 2       })
+336 < 2       const error = (mismatch.json && mismatch.json.error) || {}
+337 < 2       return {
+338 < 2         steps: [{ expect: 409, method: 'POST', path: issuesPath, status: mismatch.status, json: mismatch.json }],
+339 < 2         note: 'error ' + (error.code || 'absent'),
+340 < 2       }
+341 < 2     },
+342 < 2 
+343 < 2     'create-duplicate-scorer': async () => {
+344 < 2       const title = name + ' — the keyed issue'
+345 < 2       const scored = await create(title)
+346 < 2       const forced = await create(title, { forceNew: true })
+347 < 2       state.other = uidOf(forced.json) || someUid(null)
+348 < 2       const error = (scored.json && scored.json.error) || {}
+349 < 2       return {
+350 < 2         steps: [
+351 < 2           { expect: 409, method: 'POST', path: issuesPath, status: scored.status, json: scored.json },
+352 < 2           { expect: 200, method: 'POST', path: issuesPath, status: forced.status, json: forced.json },
+353 < 2         ],
+354 < 2         note: 'error ' + (error.code || 'absent') + ', force_new answered ' + forced.status,
+355 < 2       }
+356 < 2     },
+357 < 2 
+358 < 2     'link-blocks-idempotent': async () => {
+359 < 2       const at = issuePath(someUid(state.uid)) + '/links'
+360 < 2       const body = { type: 'blocks', to_ref: someUid(state.other), actor }
+361 < 2       const first = await step(200, { method: 'POST', path: at, body })
+362 < 2       const again = await step(200, { method: 'POST', path: at, body })
+363 < 2       const idOf = (one) => (issueOf(one.json).link || (one.json && one.json.link) || {}).id
+364 < 2       const same = idOf(first) !== undefined && idOf(first) === idOf(again) ? 'the same link.id' : 'no link.id read'
+365 < 2       return { steps: [first, again], note: same }
+366 < 2     },
+367 < 2 
+368 < 2     'link-parent-replace': async () => {
+369 < 2       // The second parent needs somewhere else to point, and a create with a
+370 < 2       // title of its own is not the duplicate scorer's business.
+371 < 2       const target = await create(name + ' — the second parent', { forceNew: true })
+372 < 2       state.parent = uidOf(target.json) || someUid(null)
+373 < 2       const at = issuePath(someUid(state.uid)) + '/links'
+374 < 2       const first = await step(200, {
+375 < 2         method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.other), actor },
+376 < 2       })
+377 < 2       const second = await step(409, {
+378 < 2         method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.parent), actor },
+379 < 2       })
+380 < 2       const replaced = await step(200, {
+381 < 2         method: 'POST', path: at, body: { type: 'parent', to_ref: someUid(state.parent), actor, replace: true },
+382 < 2       })
+383 < 2       const error = (second.json && second.json.error) || {}
+384 < 2       return { steps: [first, second, replaced], note: 'error ' + (error.code || 'absent') + ' on the second' }
+385 < 2     },
+386 < 2 
+387 < 2     'link-types': async () => {
+388 < 2       const refused = await step(400, {
+389 < 2         method: 'POST',
+390 < 2         path: issuePath(someUid(state.uid)) + '/links',
+391 < 2         body: { type: 'blocked_by', to_ref: someUid(state.other), actor },
+392 < 2       })
+393 < 2       return { steps: [refused], note: 'blocked_by' }
+394 < 2     },
+395 < 2 
+396 < 2     'metadata-merge-if-match': async () => {
+397 < 2       const at = issuePath(someUid(state.uid)) + '/metadata'
+398 < 2       const ifMatch = (revision) => ({ 'If-Match': '"rev-' + revision + '"' })
+399 < 2       const first = await step(200, {
+400 < 2         method: 'POST', path: at, headers: ifMatch(state.revision), body: { actor, patch: { probe_first: 'a' } },
+401 < 2       })
+402 < 2       // Only what the hub itself said the revision now is: an answer carrying
+403 < 2       // none leaves the last one standing rather than guessing an increment,
+404 < 2       // because the next If-Match is the whole point of reading it back.
+405 < 2       state.revision = revisionOf(first.json) ?? state.revision
+406 < 2       const second = await step(200, {
+407 < 2         method: 'POST', path: at, headers: ifMatch(state.revision), body: { actor, patch: { probe_second: 'b' } },
+408 < 2       })
+409 < 2       state.revision = revisionOf(second.json) ?? state.revision
+410 < 2       const stale = await step(412, {
+411 < 2         method: 'POST', path: at, headers: ifMatch(state.revision - 1), body: { actor, patch: { probe_stale: 'c' } },
+412 < 2       })
+413 < 2       const merged = issueOf(second.json).metadata || {}
+414 < 2       const kept = ('probe_first' in merged && 'probe_second' in merged)
+415 < 2         ? 'both keys kept'
+416 < 2         : 'the merge is unreadable from the answer'
+417 < 2       const error = (stale.json && stale.json.error) || {}
+418 < 2       return { steps: [first, second, stale], note: kept + ', stale error ' + (error.code || 'absent') }
+419 < 2     },
+420 < 2 
+421 < 2     'metadata-dotted-flat': async () => {
+422 < 2       const dotted = await step(200, {
+423 < 2         method: 'POST',
+424 < 2         path: issuePath(someUid(state.uid)) + '/metadata',
+425 < 2         headers: { 'If-Match': '"rev-' + state.revision + '"' },
+426 < 2         body: { actor, patch: { 'work.state': 'probe' } },
+427 < 2       })
+428 < 2       state.revision = revisionOf(dotted.json) ?? state.revision
+429 < 2       const metadata = issueOf(dotted.json).metadata || {}
+430 < 2       const flat = ('work.state' in metadata) ? 'a flat key' : 'no flat key read'
+431 < 2       const nested = ('work' in metadata) ? ', and metadata.work is present' : ', and metadata.work is absent'
+432 < 2       return { steps: [dotted], note: flat + nested }
+433 < 2     },
+434 < 2 
+435 < 2     'claim-if-unowned': async () => {
+436 < 2       const at = issuePath(someUid(state.other)) + '/actions/claim'
+437 < 2       const body = { actor, if_unowned: true }
+438 < 2       await send({ method: 'POST', path: at, body })  // the owner the fact needs
+439 < 2       const owned = await step(409, { method: 'POST', path: at, body })
+440 < 2       const error = (owned.json && owned.json.error) || {}
+441 < 2       const who = (error.data && error.data.current_owner) || 'absent'
+442 < 2       return { steps: [owned], note: 'error ' + (error.code || 'absent') + ', current_owner ' + who }
+443 < 2     },
+444 < 2 
+445 < 2     'unassign-key': async () => {
+446 < 2       const refused = await step(400, {
+447 < 2         method: 'POST',
+448 < 2         path: issuePath(someUid(state.other)) + '/actions/unassign',
+449 < 2         body: { actor, expect_owner: actor },
+450 < 2       })
+451 < 2       return { steps: [refused], note: 'expect_owner' }
+452 < 2     },
+453 < 2 
+454 < 2     'close-evidence-required': async () => {
+455 < 2       const made = await create(name + ' — the bare-evidence close', { forceNew: true })
+456 < 2       const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
+457 < 2       const close = (evidence) => ({
+458 < 2         method: 'POST',
+459 < 2         path: at,
+460 < 2         body: { actor, reason: 'done', message: closeMessage(48), evidence, retry_protocol: 'close-v1' },
+461 < 2       })
+462 < 2       const bare = await step(400, close([]))
+463 < 2       const carried = await step(200, close(EVIDENCE))
+464 < 2       return { steps: [bare, carried], note: 'evidence [] then one test entry' }
+465 < 2     },
+466 < 2 
+467 < 2     'close-message-40': async () => {
+468 < 2       const made = await create(name + ' — the short-message close', { forceNew: true })
+469 < 2       const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
+470 < 2       const close = (message) => ({
+471 < 2         method: 'POST',
+472 < 2         path: at,
+473 < 2         body: { actor, reason: 'done', message, evidence: EVIDENCE, retry_protocol: 'close-v1' },
+474 < 2       })
+475 < 2       const short = await step(400, close(closeMessage(39)))
+476 < 2       const long = await step(200, close(closeMessage(40)))
+477 < 2       return { steps: [short, long], note: '39 characters then 40' }
+478 < 2     },
+479 < 2 
+480 < 2     'close-retry-protocol': async () => {
+481 < 2       const made = await create(name + ' — the keyed close', { forceNew: true })
+482 < 2       const at = issuePath(someUid(uidOf(made.json))) + '/actions/close'
+483 < 2       const headers = { 'Idempotency-Key': name + '-close-retry-protocol' }
+484 < 2       const body = { actor, reason: 'done', message: closeMessage(48), evidence: EVIDENCE }
+485 < 2       const bare = await step(400, { method: 'POST', path: at, headers, body })
+486 < 2       const named = await step(200, {
+487 < 2         method: 'POST', path: at, headers, body: { ...body, retry_protocol: 'close-v1' },
+488 < 2       })
+489 < 2       return { steps: [bare, named], note: 'the key without the protocol, then with it' }
+490 < 2     },
+491 < 2 
+492 < 2     'close-superseded-evidence': async () => {
+493 < 2       const made = await create(name + ' — the superseded close', { forceNew: true })
+494 < 2       const refused = await step(400, {
+495 < 2         method: 'POST',
+496 < 2         path: issuePath(someUid(uidOf(made.json))) + '/actions/close',
+497 < 2         body: {
+498 < 2           actor,
+499 < 2           reason: 'superseded',
+500 < 2           message: closeMessage(48),
+501 < 2           evidence: [{ type: 'superseded-by', ref: someUid(state.uid) }],
+502 < 2           retry_protocol: 'close-v1',
+503 < 2         },
+504 < 2       })
+505 < 2       return { steps: [refused], note: 'evidence carrying ref' }
+506 < 2     },
+507 < 2 
+508 < 2     'ready-unowned': async () => {
+509 < 2       const ready = await step(200, { method: 'GET', path: projectsPath + '/ready' })
+510 < 2       const unowned = await step(200, { method: 'GET', path: projectsPath + '/ready?unowned=true' })
+511 < 2       const owned = await step(200, { method: 'GET', path: projectsPath + '/ready?owner=' + encodeURIComponent(actor) })
+512 < 2       const rows = (one) => {
+513 < 2         const json = one.json || {}
+514 < 2         const list = Array.isArray(json) ? json : (json.issues || json.ready || json.items)
+515 < 2         return Array.isArray(list) ? list.length : 'unreadable'
+516 < 2       }
+517 < 2       return {
+518 < 2         steps: [ready, unowned, owned],
+519 < 2         note: rows(ready) + ' ready, ' + rows(unowned) + ' unowned, ' + rows(owned) + ' for owner=' + actor,
+520 < 2       }
+521 < 2     },
+522 < 2 
+523 < 2     'next-no-endpoint': async () => {
+524 < 2       const missing = await step(404, { method: 'GET', path: projectsPath + '/next' })
+525 < 2       return { steps: [missing], note: 'no /next endpoint' }
+526 < 2     },
+527 < 2 
+528 < 2     'labels-merge': async () => {
+529 < 2       const at = issuePath(someUid(state.uid)) + '/labels'
+530 < 2       const body = { actor, label: 'probe-kata-facts' }
+531 < 2       const first = await step(200, { method: 'POST', path: at, body })
+532 < 2       const again = await step(200, { method: 'POST', path: at, body })
+533 < 2       const labels = issueOf(again.json).labels
+534 < 2       const many = Array.isArray(labels)
+535 < 2         ? 'carried ' + labels.filter((one) => one === 'probe-kata-facts').length + ' time(s) in the answer'
+536 < 2         : 'no labels in the answer'
+537 < 2       return { steps: [first, again], note: 'the same label twice, ' + many }
+538 < 2     },
+539 < 2 
+540 < 2     'events-issue-uid': async () => {
+541 < 2       const events = await step(200, {
+542 < 2         method: 'GET', path: projectsPath + '/events?after_id=0&limit=1000',
+543 < 2       })
+544 < 2       const json = events.json || {}
+545 < 2       const rows = Array.isArray(json) ? json : (json.events || [])
+546 < 2       const created = Array.isArray(rows) ? rows.filter((row) => row && row.type === 'issue.created') : []
+547 < 2       const withUid = created.filter((row) => row && row.issue_uid !== undefined).length
+548 < 2       return { steps: [events], note: withUid + ' of ' + created.length + ' issue.created rows carry issue_uid' }
+549 < 2     },
+550 < 2 
+551 < 2     'issue-links-shape': async () => {
+552 < 2       const read = await step(200, { method: 'GET', path: API + '/issues/' + someUid(state.uid) })
+553 < 2       const links = issueOf(read.json).links
+554 < 2       const shaped = Array.isArray(links)
+555 < 2         ? links.filter((row) => row && row.type !== undefined &&
+556 < 2             row.from && row.from.uid !== undefined && row.to && row.to.uid !== undefined).length +
+557 < 2           ' of ' + links.length + ' rows carry {type, from.uid, to.uid}'
+558 < 2         : 'no links array in the answer'
+559 < 2       return { steps: [read], note: shaped }
+560 < 2     },
+561 < 2 
+562 < 2     // The ladder IS the cleanup, which is why it is read last. The confirmed
+563 < 2     // purge is deliberately NOT one of these steps: it is the removal, and
+564 < 2     // whether the project was left behind is an exit code and a last line, not
+565 < 2     // a fact about the hub's shape.
+566 < 2     'archive-actor-required': async () => {
+567 < 2       // Read while the issues are still open: the hub validates the missing
+568 < 2       // parameter before any state check, so the bare read is a 400 and not
+569 < 2       // the ladder's open-issue refusal.
+570 < 2       const refused = await step(400, { method: 'DELETE', path: projectsPath })
+571 < 2       return { steps: [refused], note: 'no actor query' }
+572 < 2     },
+573 < 2 
+574 < 2     'purge-ladder': async () => {
+575 < 2       const purgePath = projectsPath + '/actions/purge'
+576 < 2       const archivePath = projectsPath + '?actor=' + encodeURIComponent(actor)
+577 < 2       const bare = await step(412, { method: 'POST', path: purgePath, body: { actor } })
+578 < 2       const unarchived = await step(409, {
+579 < 2         method: 'POST', path: purgePath, headers: { 'X-Kata-Confirm': 'PURGE ' + name }, body: { actor },
+580 < 2       })
+581 < 2       const open = await step(400, { method: 'DELETE', path: archivePath })
+582 < 2 
+583 < 2       // One close per ISSUE THE HUB CREATED, naming each exactly once — a close
+584 < 2       // on an issue a fact already closed is filed all the same, so the block is
+585 < 2       // one close per issue whatever order the facts read in, and the archive
+586 < 2       // below is what reports a missed one.
+587 < 2       for (const uid of issues) {
+588 < 2         await send({
+589 < 2           method: 'POST',
+590 < 2           path: issuePath(uid) + '/actions/close',
+591 < 2           body: {
+592 < 2             actor,
+593 < 2             reason: 'done',
+594 < 2             message: closeMessage(48),
+595 < 2             evidence: EVIDENCE,
+596 < 2             retry_protocol: 'close-v1',
+597 < 2           },
+598 < 2         })
+599 < 2       }
+600 < 2 
+601 < 2       const archive = await step(200, { method: 'DELETE', path: archivePath })
+602 < 2       state.archived = is2xx(archive.status)
+603 < 2       const codeOf = (one) => ((one.json && one.json.error) || {}).code || 'absent'
+604 < 2       return {
+605 < 2         steps: [bare, unarchived, open, archive],
+606 < 2         note: codeOf(bare) + ' then ' + codeOf(unarchived) + ' then ' + codeOf(open) +
+607 < 2           ', ' + issues.length + ' closes for ' + creates.length + ' creates, then the archive',
+608 < 2       }
+609 < 2     },
+610 < 2   }
+611 < 2 
+612 < 2   const results = []
+613 < 2   let drift = 0
+614 < 2   let unreadable = 0
+615 < 2 
+616 < 2   for (const fact of FACTS) {
+617 < 2     const { steps, note } = await READERS[fact.id]()
+618 < 2     const missed = steps.find((one) => one.status === 0)
+619 < 2     const drifted = steps.find((one) => statusClass(one.status) !== statusClass(one.expect))
+620 < 2     const statuses = steps.map((one) => one.status).join(', ')
+621 < 2     let verdict = 'holds'
+622 < 2     let read = statuses + (note ? ' — ' + note : '')
+623 < 2     if (missed) {
+624 < 2       verdict = 'unreadable'
+625 < 2       unreadable += 1
+626 < 2       read = 'no answer to ' + missed.method + ' ' + missed.path
+627 < 2     } else if (drifted) {
+628 < 2       verdict = 'drift'
+629 < 2       drift += 1
+630 < 2       read = drifted.status + ' on ' + drifted.method + ' ' + drifted.path
+631 < 2     }
+632 < 2     const stamp = ' (kata ' + pingVersion + ', ' + date + ')'
+633 < 2     const line = verdict === 'holds'
+634 < 2       ? 'FACT ' + fact.id + ': holds — ' + read + stamp
+635 < 2       : (verdict === 'drift'
+636 < 2           ? 'FACT ' + fact.id + ': DRIFT — read ' + read + ', recorded ' + fact.says + stamp
+637 < 2           : 'FACT ' + fact.id + ': UNREADABLE — ' + read + ', recorded ' + fact.says + stamp)
+638 < 2     log(line)
+639 < 2     results.push({ id: fact.id, verdict, read, line })
+640 < 2   }
+641 < 2 
+642 < 2   log('PROBE: ' + FACTS.length + ' facts, ' + drift + ' drift, ' + unreadable + ' unreadable')
+643 < 2 
+644 < 2   // The last request of every run whose ping answered: the confirmed purge, the
+645 < 2   // header repeating the project's own name.
+646 < 2   const purge = await send({
+647 < 2     method: 'POST',
+648 < 2     path: projectsPath + '/actions/purge',
+649 < 2     headers: { 'X-Kata-Confirm': 'PURGE ' + name },
+650 < 2     body: { actor },
+651 < 2   })
+652 < 2 
+653 < 2   let exit = (drift > 0 || unreadable > 0) ? 1 : 0
+654 < 2   if (!is2xx(purge.status) || state.archived === false) {
+655 < 2     const named = projectId === name ? projectId : projectId + ' (' + name + ')'
+656 < 2     log('PROBE: project ' + named + ' left behind — POST ' + projectsPath +
+657 < 2       '/actions/purge answered ' + purge.status)
+658 < 2     exit = 2
+659 < 2   }
+660 < 2 
+661 < 2   return { exit, version: pingVersion, results }
+662 < 2 }
+663 < 2 
+664 < 2 // ── The hand run ────────────────────────────────────────────────────────────
+665 < 2 //
+666 < 2 // Guarded exactly as `fleet/janitor.mjs` guards its own, because the exam
+667 < 2 // imports this module: nothing below runs on an import, so an import files no
+668 < 2 // request, reads no environment file and exits no process.
+669 < 2 
+670 < 2 const main = async () => {
+671 < 2   const at = defaultKataEnvPath()
+672 < 2   let text = ''
+673 < 2   try {
+674 < 2     text = fs.readFileSync(at, 'utf8')
+675 < 2   } catch {
+676 < 2     process.stderr.write('probe_kata_facts: no ' + at + ' — run `node fleet/kata-hub.mjs` first\n')
+677 < 2     process.exit(2)
+678 < 2   }
+679 < 2   const sshHost = kataHostOf(parseKataEnv(text).url)
+680 < 2   if (!sshHost) {
+681 < 2     process.stderr.write('probe_kata_facts: no hub url in ' + at + '\n')
+682 < 2     process.exit(2)
+683 < 2   }
+684 < 2   const { exit } = await probeKataFacts({ transport: sshTransport({ sshHost, exec: defaultExec }) })
+685 < 2   process.exit(exit)
+686 < 2 }
+687 < 2 
+688 < 2 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+689 < 2 if (invokedPath === fileURLToPath(import.meta.url)) {
+690 < 2   await main()
+691 < 2 }
+692 < 2 

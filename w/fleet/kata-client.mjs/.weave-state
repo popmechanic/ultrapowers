@@ -1,0 +1,394 @@
+0 < 2 // fleet/kata-client.mjs — the one kata client, and the two ways a driver reaches
+1 < 2 // the hub (#913 §The prototype).
+2 < 2 //
+3 < 2 // Kata holds a run's STATE: one project per target, one issue per task, each task's
+4 < 2 // fact sheet in that issue's metadata, and every step the driver takes recorded
+5 < 2 // as a comment, a claim, a metadata patch or a close. It never holds the plan —
+6 < 2 // the plan is compiled from `.ultrapowers/plan.md` and nothing that reads the
+7 < 2 // plan consults kata.
+8 < 2 //
+9 < 2 // TWO TRANSPORTS, ONE CLIENT. The methods below know the API and nothing about
+10 < 2 // how a request travels; the transport knows how a request travels and nothing
+11 < 2 // about the API. That split is what lets the laptop and the sandbox share this
+12 < 2 // file while sharing no credential path at all:
+13 < 2 //
+14 < 2 //   httpTransport  the SANDBOX's. Plain `fetch` at the run's `kata.json` url,
+15 < 2 //                  and NO `Authorization` header of any kind — the exe.dev edge
+16 < 2 //                  injects the bearer, so the sandbox holds no kata token and
+17 < 2 //                  no worker environment can leak one.
+18 < 2 //   sshTransport   the LAPTOP's — the launcher's and the janitor's. One
+20 > 2 //                  `ssh <hub> curl …` per request (over one shared connection
+21 < 2 //                  when the caller names a `control` path), the bearer sourced on the hub
+19 < 2 //                  `ssh <hub> curl …` per request, the bearer sourced on the hub
+20 < 2 //                  from `/etc/kata/kata.env` by the hub's own shell. Shelley's
+21 < 2 //                  review deleted the laptop-side token: no secret is ever an
+22 < 2 //                  argv here, so the remote string carries the literal
+23 < 2 //                  `$KATA_AUTH_TOKEN` and never its value.
+24 < 2 //
+25 < 2 // The module imports nothing (`node:` or otherwise) and reads no `process.env`:
+26 < 2 // everything it needs — the url, the ssh host, the exec seam, the fetch — is
+27 < 2 // injected, which is also what lets a sim drive it against a loopback server.
+28 < 2 
+29 < 2 /** The bearer's name on the hub, quoted for the HUB's shell and never expanded
+30 < 2  *  here. It is the whole reason the remote is one string: the expansion happens
+31 < 2  *  where the secret lives. */
+32 < 2 const HUB_TOKEN_VAR = '$KATA_AUTH_TOKEN'
+33 < 2 
+34 < 2 /** Where kata listens on the hub itself. The ssh transport is already inside
+35 < 2  *  the hub's trust boundary, so it talks to the loopback listener directly
+36 < 2  *  rather than back out through the edge. */
+37 < 2 const HUB_ORIGIN = 'http://localhost:8000'
+38 < 2 
+39 < 2 /** Everything under one prefix, so a path below is the API path and nothing
+40 < 2  *  else has to be spelled twice. */
+41 < 2 const API = '/api/v1'
+42 < 2 
+43 < 2 /**
+44 < 2  * A request that answered non-2xx. It carries the four facts a reader needs to
+45 < 2  * tell a wrong path from a wrong body from a stale revision: `method`, `path`,
+46 < 2  * `status` and the answer's first 500 characters. The message repeats the
+47 < 2  * status, because the callers that branch on this error (the engine's 412 rule,
+48 < 2  * the launcher's refusals) put the message in front of a human.
+49 < 2  */
+50 < 2 export class KataError extends Error {
+51 < 2   constructor ({ method, path, status, body } = {}) {
+52 < 2     const head = String(body == null ? '' : body).slice(0, 500)
+53 < 2     super('kata: ' + String(method) + ' ' + String(path) + ' answered ' + String(status) +
+54 < 2       (head ? ': ' + head : ''))
+55 < 2     this.name = 'KataError'
+56 < 2     this.method = method
+57 < 2     this.path = path
+58 < 2     this.status = status
+59 < 2     this.body = head
+60 < 2   }
+61 < 2 }
+62 < 2 
+63 < 2 /** A JSON document, or null when the answer carried none — an error body is
+64 < 2  *  frequently not JSON at all, and a transport that threw on that would hide
+65 < 2  *  the status the caller actually needs. */
+66 < 2 const parseJson = (text) => {
+67 < 2   const s = String(text == null ? '' : text)
+68 < 2   if (!s.trim()) return null
+69 < 2   try { return JSON.parse(s) } catch { return null }
+70 < 2 }
+71 < 2 
+72 < 2 /**
+73 < 2  * The sandbox's transport: `fetch`, and no `Authorization` header at all.
+74 < 2  *
+75 < 2  * `fetchImpl` is injected so a sim can drive the whole client against a
+76 < 2  * loopback `http.createServer` that records what it was sent; in production it
+77 < 2  * is the platform's own `fetch`.
+78 < 2  */
+79 < 2 export const httpTransport = ({ url, fetchImpl = globalThis.fetch }) => {
+80 < 2   const origin = String(url == null ? '' : url).replace(/\/+$/, '')
+81 < 2   return {
+82 < 2     async request ({ method, path, headers, body }) {
+83 < 2       const hasBody = body !== undefined
+84 < 2       const init = {
+85 < 2         method,
+86 < 2         headers: {
+87 < 2           ...(hasBody ? { 'content-type': 'application/json' } : {}),
+88 < 2           ...(headers || {}),
+89 < 2         },
+90 < 2       }
+91 < 2       if (hasBody) init.body = JSON.stringify(body)
+92 < 2       const res = await fetchImpl(origin + path, init)
+93 < 2       const text = await res.text()
+94 < 2       return { status: res.status, json: parseJson(text), body: text }
+95 < 2     },
+96 < 2   }
+97 < 2 }
+98 < 2 
+99 < 2 /** A header value inside the double quotes the remote wraps it in. The hub's
+100 < 2  *  shell reads that string, so a quote, a backslash, a `$` or a backtick in a
+101 < 2  *  value has to arrive escaped — an `If-Match` value IS `"rev-4"`, quotes
+102 < 2  *  included, and is the reason this exists. */
+103 < 2 const shQuoteInner = (value) => String(value == null ? '' : value).replace(/(["\\$`])/g, '\\$1')
+104 < 2 
+105 < 2 /**
+106 < 2  * The laptop's transport: one `ssh` per request, `curl` on the hub.
+107 < 2  *
+108 < 2  * The remote is ONE argv element, built here and read by the hub's shell:
+109 < 2  * `set -a` + sourcing `/etc/kata/kata.env` puts the bearer in the environment
+110 < 2  * of the `exec curl` that follows, so the token is expanded on the hub and the
+111 < 2  * laptop's process table never holds it. `-w '\n%{http_code}'` is how the
+112 < 2  * status comes back through a seam that answers with bytes: the answer's last
+113 < 2  * line IS the status and everything above it is the JSON.
+114 < 2  *
+115 < 2  * `exec` is the caller's own seam (`(cmd, argv, options) -> {code, stdout,
+116 < 2  * stderr}`); the request body rides `options.input` — stdin, never an argv.
+118 > 2  *
+119 < 2  * `control`, when given, is an ssh ControlPath: every request then rides one
+120 < 2  * connection ssh keeps open for a minute after its last use. A fresh ssh hop
+121 < 2  * to the hub measured about 1 s and a shared one about 0.2 s (2026-11-13,
+122 < 2  * n=7 hops), and a board read with no cursor makes some thirty requests. A
+123 < 2  * request that got no status over the shared connection is made once more on
+124 < 2  * a connection of its own, so a stale socket costs a retry and never a read.
+117 < 2  */
+119 > 2 export const sshTransport = ({ sshHost, exec, control }) => ({
+118 < 2 export const sshTransport = ({ sshHost, exec }) => ({
+119 < 2   async request ({ method, path, headers, body }) {
+120 < 2     const hasBody = body !== undefined
+121 < 2     const parts = [
+122 < 2       'set -a; . /etc/kata/kata.env; exec curl -sS -X ' + String(method) +
+123 < 2         ' -H "Authorization: Bearer ' + HUB_TOKEN_VAR + '"',
+124 < 2     ]
+125 < 2     if (hasBody) parts.push('-H "content-type: application/json"')
+126 < 2     for (const [name, value] of Object.entries(headers || {})) {
+127 < 2       parts.push('-H "' + name + ': ' + shQuoteInner(value) + '"')
+128 < 2     }
+129 < 2     if (hasBody) parts.push('--data-binary @-')
+130 < 2     parts.push("-w '\\n%{http_code}'")
+131 < 2     parts.push(HUB_ORIGIN + path)
+132 < 2     const remote = parts.join(' ')
+134 > 2     const shared = control ? ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + String(control), '-o', 'ControlPersist=60'] : []
+135 < 2     const hop = (extra) => exec('ssh',
+136 < 2       ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', ...extra, String(sshHost), remote],
+133 < 2     const res = await exec('ssh',
+134 < 2       ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', String(sshHost), remote],
+135 < 2       { input: hasBody ? JSON.stringify(body) : '' })
+137 > 2     const read = (res) => {
+138 < 2       const out = String((res && res.stdout) || '')
+139 < 2       const cut = out.lastIndexOf('\n')
+140 < 2       const tail = (cut === -1 ? out : out.slice(cut + 1)).trim()
+141 < 2       return { res, out, text: cut === -1 ? '' : out.slice(0, cut), status: /^\d+$/.test(tail) ? Number(tail) : 0 }
+142 < 2     }
+143 < 2     let got = read(await hop(shared))
+144 < 2     if (got.status === 0 && shared.length) got = read(await hop([]))
+145 < 2     const { res, out, text, status } = got
+136 < 2     const out = String((res && res.stdout) || '')
+137 < 2     const cut = out.lastIndexOf('\n')
+138 < 2     const tail = (cut === -1 ? out : out.slice(cut + 1)).trim()
+139 < 2     const text = cut === -1 ? '' : out.slice(0, cut)
+140 < 2     const status = /^\d+$/.test(tail) ? Number(tail) : 0
+141 < 2     // A status that never arrived is an ssh or curl failure, not an API answer:
+142 < 2     // report it as a non-2xx carrying everything the seam printed, so the
+143 < 2     // KataError the client raises names what actually went wrong.
+144 < 2     if (status === 0) {
+145 < 2       return { status: 0, json: null, body: out + String((res && res.stderr) || '') }
+146 < 2     }
+147 < 2     return { status, json: parseJson(text), body: text }
+148 < 2   },
+149 < 2 })
+150 < 2 
+151 < 2 /** The issue fields a caller may read back, in the order the API documents
+152 < 2  *  them. Only the keys the answer actually carried are copied: a partial issue
+153 < 2  *  answers a partial projection rather than a shape padded with `undefined`.
+154 < 2  *  `links` is the issue's own edges — `{type, from, to}` rows as the hub
+155 < 2  *  answers them, each side carrying its `uid` and `short_id` — copied through
+156 < 2  *  untouched (#979): the driver reads them to learn that a worker filed
+157 < 2  *  `--blocked-by` against a sibling, and a projection that reshaped them would
+158 < 2  *  be a second opinion about what the hub said. An answer carrying none leaves
+159 < 2  *  the key absent, exactly as every other key here. */
+160 < 2 const ISSUE_KEYS = ['uid', 'revision', 'metadata', 'status', 'owner', 'project_id', 'links']
+161 < 2 /** A mutation's answer adds the issue's short id — `getIssue` is the projection
+162 < 2  *  the contract names and stays exactly the seven above. */
+163 < 2 const MUTATION_KEYS = ['uid', 'revision', 'short_id', 'metadata', 'status', 'owner', 'project_id']
+164 < 2 
+165 < 2 const project = (source, keys) => {
+166 < 2   const src = (source && typeof source === 'object') ? source : {}
+167 < 2   const out = {}
+168 < 2   for (const k of keys) {
+169 < 2     if (Object.prototype.hasOwnProperty.call(src, k)) out[k] = src[k]
+170 < 2   }
+171 < 2   return out
+172 < 2 }
+173 < 2 
+174 < 2 /**
+175 < 2  * The run's own issue, found by run and plan — open first, so a colliding
+176 < 2  * launch's abandoned issue (closed `wontfix` when its number was taken from
+177 < 2  * under it, #1036) is never read as the live run's (derived).
+178 < 2  *
+179 < 2  * Over the elements of `issues` whose `metadata.run` reads as the number
+180 < 2  * `run` and whose `metadata.task` is `undefined` (a task issue's own `run` is
+181 < 2  * never this), the first is answered by this preference, lowest tier first,
+182 < 2  * ties kept in listing order:
+183 < 2  *
+184 < 2  *   1. when `plan` is a string, an element whose `metadata.plan === plan`
+185 < 2  *      over every other element — a mismatched plan and an absent one tie at
+186 < 2  *      the next tier, so an element that names no plan is never excluded by
+187 < 2  *      this preference, only left where listing order and the tiers below
+188 < 2  *      put it;
+189 < 2  *   2. `status === 'open'` over `'closed'`;
+190 < 2  *   3. a closed element whose `closed_reason !== 'wontfix'` over one whose
+191 < 2  *      `closed_reason === 'wontfix'`.
+192 < 2  *
+193 < 2  * `null` when no element qualifies.
+194 < 2  */
+195 < 2 export const runIssueOf = (issues, run, plan) => {
+196 < 2   const list = Array.isArray(issues) ? issues : []
+197 < 2   const runNum = Number(run)
+198 < 2   const planStr = typeof plan === 'string' ? plan : null
+199 < 2   let best = null
+200 < 2   let bestScore = null
+201 < 2   for (const issue of list) {
+202 < 2     if (!issue || typeof issue !== 'object') continue
+203 < 2     const meta = issue.metadata
+204 < 2     if (!meta || typeof meta !== 'object') continue
+205 < 2     if (meta.task !== undefined) continue
+206 < 2     if (Number(meta.run) !== runNum) continue
+207 < 2     const planScore = (planStr !== null && meta.plan === planStr) ? 0 : 1
+208 < 2     const open = issue.status === 'open'
+209 < 2     const statusScore = open ? 0 : 1
+210 < 2     const closedReasonScore = (!open && issue.closed_reason === 'wontfix') ? 1 : 0
+211 < 2     const score = [planScore, statusScore, closedReasonScore]
+212 < 2     if (best === null || scoreLess(score, bestScore)) {
+213 < 2       best = issue
+214 < 2       bestScore = score
+215 < 2     }
+216 < 2   }
+217 < 2   return best
+218 < 2 }
+219 < 2 
+220 < 2 /** Lexicographic "strictly better" over the fixed-length tier arrays
+221 < 2  *  `runIssueOf` scores candidates with — used, rather than `<=`, so a tie
+222 < 2  *  keeps the earliest candidate in listing order. */
+223 < 2 const scoreLess = (a, b) => {
+224 < 2   for (let i = 0; i < a.length; i += 1) {
+225 < 2     if (a[i] < b[i]) return true
+226 < 2     if (a[i] > b[i]) return false
+227 < 2   }
+228 < 2   return false
+229 < 2 }
+230 < 2 
+231 < 2 /**
+232 < 2  * The project called `name` in a `listProjects()` answer, or null. A project
+233 < 2  * is addressed by its integer `id` alone, so an entry without one is no match.
+234 < 2  */
+235 < 2 export const projectNamed = (listing, name) =>
+236 < 2   (Array.isArray(listing?.projects) ? listing.projects : [])
+237 < 2     .find((p) => p?.name === name && Number.isInteger(p?.id)) ?? null
+238 < 2 
+239 < 2 /**
+240 < 2  * The client. Every method issues EXACTLY ONE request — nothing here polls,
+241 < 2  * retries or reads an issue back to confirm a write, because the driver's own
+242 < 2  * ordering is what the record is for: a step is on the hub before the driver
+243 < 2  * takes its next, and a step that did not land throws.
+244 < 2  *
+245 < 2  * `actor` rides the body of every mutation (the daemon runs in static-token
+246 < 2  * mode, where a mutation's actor is the body's) and never a GET.
+247 < 2  */
+248 < 2 export const makeKataClient = ({ transport, actor }) => {
+249 < 2   const send = async ({ method, path, body, headers }) => {
+250 < 2     const res = await transport.request({ method, path, headers: headers || {}, body })
+251 < 2     const status = res && res.status
+252 < 2     if (!(status >= 200 && status < 300)) {
+253 < 2       const raw = (res && res.body !== undefined)
+254 < 2         ? res.body
+255 < 2         : JSON.stringify((res && res.json) ?? null)
+256 < 2       throw new KataError({ method, path, status, body: raw })
+257 < 2     }
+258 < 2     return (res && res.json) || null
+259 < 2   }
+260 < 2   // Every mutation of an issue answers the issue kata left behind, so the
+261 < 2   // caller always holds the revision its NEXT `If-Match` needs without a read.
+262 < 2   const mutation = async (spec) => project((await send(spec) || {}).issue, MUTATION_KEYS)
+263 < 2   const issuesPath = (projectId) => API + '/projects/' + projectId + '/issues'
+264 < 2   const issuePath = (projectId, uid) => issuesPath(projectId) + '/' + uid
+265 < 2 
+266 < 2   return {
+267 < 2     ping: () => send({ method: 'GET', path: API + '/ping' }),
+268 < 2 
+269 < 2     createProject: async (name) => {
+270 < 2       const json = await send({ method: 'POST', path: API + '/projects', body: { name, actor } })
+271 < 2       return project((json || {}).project, ['id', 'uid', 'name', 'revision'])
+272 < 2     },
+273 < 2 
+274 < 2     // `Idempotency-Key` is what makes a relaunch of one plan file the SAME
+275 < 2     // issues rather than a second set: kata fingerprints the key with the
+276 < 2     // body, so the same key and byte-identical fields answer the issue that is
+277 < 2     // already there, and the same key with different fields is a 409
+278 < 2     // `idempotency_mismatch`. Metadata and initial links are in that
+279 < 2     // fingerprint — the create body a caller wants replayable carries only
+280 < 2     // what it can promise is stable.
+281 < 2     //
+282 < 2     // `forceNew` is the other 409's bypass: kata scores a create's title
+283 < 2     // against the project's OPEN issues and refuses `duplicate_candidates`
+284 < 2     // above a threshold it does not document (0.93 measured against a run
+285 < 2     // issue of the same plan H1, #1008). It rides the body as `force_new: true`
+286 < 2     // only when asked, so a create that is replayed under its key — a task's —
+287 < 2     // sends the body kata fingerprinted the first time and never a new field.
+288 < 2     createIssue: (projectId, { title, body, metadata, links, idempotencyKey, forceNew } = {}) =>
+289 < 2       mutation({ method: 'POST', path: issuesPath(projectId),
+290 < 2                  body: { title, body, actor, metadata, links,
+291 < 2                          ...(forceNew === undefined ? {} : { force_new: forceNew }) },
+292 < 2                  headers: idempotencyKey === undefined
+293 < 2                    ? {} : { 'Idempotency-Key': String(idempotencyKey) } }),
+294 < 2 
+295 < 2     // `replace` is the only way to move a `parent`: a second parent link is a
+296 < 2     // 409 `parent_already_set` whose hint is this flag, and `replace: true`
+297 < 2     // swaps it. It rides the body only when a caller asked for it, so a
+298 < 2     // `blocks` link — which is idempotent on its own — sends what it always did.
+299 < 2     link: (projectId, fromUid, { type, to_ref: toRef, replace } = {}) =>
+300 < 2       mutation({ method: 'POST', path: issuePath(projectId, fromUid) + '/links',
+301 < 2                  body: { type, to_ref: toRef, actor, ...(replace === undefined ? {} : { replace }) } }),
+302 < 2 
+303 < 2     getIssue: async (uid) => {
+304 < 2       const json = await send({ method: 'GET', path: API + '/issues/' + uid })
+305 < 2       return project((json || {}).issue, ISSUE_KEYS)
+306 < 2     },
+307 < 2 
+308 < 2     claim: (projectId, uid) =>
+309 < 2       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/actions/claim',
+310 < 2                  body: { actor, if_unowned: true } }),
+311 < 2 
+312 < 2     // `If-Match` is kata's own ETag spelling — the quotes are part of the value,
+313 < 2     // and a stale revision is a 412 the caller is expected to treat as a fatal
+314 < 2     // disagreement about what the record says. A writer with no revision to
+315 < 2     // claim (the janitor's death, re-driven pass after pass) passes `revision`
+316 < 2     // undefined and an `idempotencyKey` instead, so a re-drive is the same
+317 < 2     // patch; each header rides only when given.
+318 < 2     patchMetadata: (projectId, uid, patch, revision, { idempotencyKey } = {}) =>
+319 < 2       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/metadata',
+320 < 2                  body: { actor, patch },
+321 < 2                  headers: {
+322 < 2                    ...(revision === undefined ? {} : { 'If-Match': '"rev-' + revision + '"' }),
+323 < 2                    ...(idempotencyKey === undefined ? {} : { 'Idempotency-Key': String(idempotencyKey) })
+324 < 2                  } }),
+325 < 2 
+326 < 2     // A comment answers the comment kata stored, not the issue, so this reads
+327 < 2     // its receipt — `comment.uid` and `comment.created_at`, each null when
+328 < 2     // absent — rather than the issue projection every other mutation returns.
+329 < 2     // Kata keeps a comment's `Idempotency-Key` for 7 days, so a retried post
+330 < 2     // under the same key is the same comment.
+331 < 2     comment: async (projectId, uid, body, { idempotencyKey } = {}) => {
+332 < 2       const json = await send({ method: 'POST', path: issuePath(projectId, uid) + '/comments',
+333 < 2                                 body: { actor, body },
+334 < 2                                 headers: idempotencyKey === undefined
+335 < 2                                   ? {} : { 'Idempotency-Key': String(idempotencyKey) } })
+336 < 2       const c = (json && json.comment) || {}
+337 < 2       return { comment_uid: c.uid ?? null, created_at: c.created_at ?? null }
+338 < 2     },
+339 < 2 
+340 < 2     // One label onto an issue's own set. Kata merges rather than appends, so the
+341 < 2     // same label twice is the same label once — which is why this sends exactly
+342 < 2     // what `comment` sends and no `Idempotency-Key`: there is no second write to
+343 < 2     // make idempotent. `ref` is the issue uid, as everywhere else here.
+344 < 2     addLabel: (projectId, uid, label) =>
+345 < 2       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/labels',
+346 < 2                  body: { actor, label } }),
+347 < 2 
+348 < 2     // `retry_protocol` is not optional beside an `Idempotency-Key`: kata refuses
+349 < 2     // the pair's absence, and the key is what makes a re-driven close the same
+350 < 2     // close rather than a second one.
+351 < 2     close: (projectId, uid, { reason, message, evidence, idempotencyKey } = {}) =>
+352 < 2       mutation({ method: 'POST', path: issuePath(projectId, uid) + '/actions/close',
+353 < 2                  body: { actor, reason, message, evidence, retry_protocol: 'close-v1' },
+354 < 2                  headers: idempotencyKey === undefined
+355 < 2                    ? {} : { 'Idempotency-Key': String(idempotencyKey) } }),
+356 < 2 
+357 < 2     // The projects are addressed by integer `id` and nothing else — a name in
+358 < 2     // the path is a 400 — so a reader that knows only a run's project NAME
+359 < 2     // lists them and matches on `name` itself.
+360 < 2     listProjects: () =>
+361 < 2       send({ method: 'GET', path: API + '/projects?limit=1000' }),
+362 < 2 
+363 < 2     listIssues: (projectId) =>
+364 < 2       send({ method: 'GET', path: issuesPath(projectId) + '?limit=1000' }),
+365 < 2 
+366 < 2     events: (projectId, afterId) =>
+367 < 2       send({ method: 'GET',
+368 < 2              path: API + '/projects/' + projectId + '/events?after_id=' + afterId + '&limit=1000' }),
+369 < 2   }
+370 < 2 }
+371 < 2 

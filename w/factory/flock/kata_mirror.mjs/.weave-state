@@ -1,0 +1,85 @@
+0 < 2 // Mirror a Flock board's task moves onto Kata as comments, so `fleet/board-read.mjs` shows each
+1 < 2 // claim, release, reopen and close while the run is in flight, not only the closes at the end.
+2 < 2 //
+3 < 2 // mirrorBoard wraps claim, release, park, reopen and done on the board object in place and returns it.
+4 < 2 // Each comment starts after the board operation it mirrors has completed and is never awaited:
+5 < 2 // a slow or failing Kata never holds up or breaks the board. One task's comments go out one after
+6 < 2 // another, so Kata records them in board order. `onPost` hears every attempted post; `track`, when
+7 < 2 // given, receives each post's promise (settled or not, it never rejects) so a caller can let the
+8 < 2 // queue drain before it exits. Each post carries the Idempotency-Key `<runUid>:task:<id>:<n>` (or
+9 < 2 // `<runUid>:run:<n>` on the run issue), n counting that issue's posts from 1: the run uid is unique
+10 < 2 // on the hub, so two repositories at the same run number never share a key. A post is `ok` only
+11 < 2 // when the hub answered with the comment's uid: the record then holds the hub's receipt.
+12 < 2 //
+13 < 2 // It wraps post as well: every belief `about` the engine is commented on its task's issue, or on
+14 < 2 // the run issue `runUid` when it names no task with one, so a builder who finds the engine itself
+15 < 2 // wrong is seen on the board mid-run. Other beliefs post nothing.
+16 < 2 
+17 < 2 export function mirrorBoard (board, { kata, projectId, tasks = {}, onPost, track, runUid } = {}) {
+18 < 2   const orig = { claim: board.claim, release: board.release, park: board.park, reopen: board.reopen, done: board.done, post: board.post }
+19 < 2   const reopening = new Set()
+20 < 2   const tails = new Map()   // uid -> the last queued post for that issue
+21 < 2   const report = (rec) => { if (onPost) try { onPost(rec) } catch {} }
+22 < 2   const uidOf = (task) => task != null && Object.hasOwn(tasks, task) ? tasks[task] && tasks[task].uid : null
+23 < 2   const counts = new Map()  // key scope -> posts so far, for the next Idempotency-Key's n
+24 < 2   const post = (t, what, fallback) => {
+25 < 2     const task = t && t.id
+26 < 2     const own = uidOf(task)
+27 < 2     const uid = own || fallback
+28 < 2     if (!uid) { report({ task, what, ok: false, skipped: true }); return }
+29 < 2     const scope = own ? `task:${task}` : 'run'
+30 < 2     const n = (counts.get(scope) || 0) + 1
+31 < 2     counts.set(scope, n)
+32 < 2     const key = `${runUid}:${scope}:${n}`
+33 < 2     const send = () => {
+34 < 2       let p
+35 < 2       try { p = Promise.resolve(kata.comment(projectId, uid, what, { idempotencyKey: key })) } catch (e) { p = Promise.reject(e) }
+36 < 2       return p.then((r) => {
+37 < 2         const comment_uid = (r && r.comment_uid) ?? null, created_at = (r && r.created_at) ?? null
+38 < 2         report({ task, uid, what, key, ok: comment_uid != null, comment_uid, created_at })
+39 < 2       }, (e) => report({ task, uid, what, key, ok: false, error: String(e && e.message || e) }))
+40 < 2     }
+41 < 2     const q = (tails.get(uid) || Promise.resolve()).then(send)
+42 < 2     tails.set(uid, q)
+43 < 2     q.then(() => { if (tails.get(uid) === q) tails.delete(uid) })
+44 < 2     if (track) try { track(q) } catch {}
+45 < 2   }
+46 < 2 
+47 < 2   board.claim = async function (agent, ...rest) {
+48 < 2     const t = await orig.claim.call(this, agent, ...rest)
+49 < 2     if (t) post(t, 'claimed by ' + agent)
+50 < 2     return t
+51 < 2   }
+52 < 2   board.release = async function (t, why, ...rest) {
+53 < 2     const r = await orig.release.call(this, t, why, ...rest)
+54 < 2     if (!reopening.has(t)) post(t, String(why))
+55 < 2     return r
+56 < 2   }
+57 < 2   board.park = async function (t, why, ...rest) {
+58 < 2     const r = await orig.park.call(this, t, why, ...rest)
+59 < 2     post(t, 'parked: ' + why)
+60 < 2     return r
+61 < 2   }
+62 < 2   board.reopen = async function (t, why, ...rest) {
+63 < 2     reopening.add(t)
+64 < 2     let r
+65 < 2     try { r = await orig.reopen.call(this, t, why, ...rest) } finally { reopening.delete(t) }
+66 < 2     post(t, 'reopened: ' + why)
+67 < 2     return r
+68 < 2   }
+69 < 2   board.done = async function (t, ...rest) {
+70 < 2     const owner = t && t.owner
+71 < 2     const r = await orig.done.call(this, t, ...rest)
+72 < 2     post(t, 'done by ' + owner)
+73 < 2     return r
+74 < 2   }
+75 < 2   board.post = async function (b, ...rest) {
+76 < 2     const r = await orig.post.call(this, b, ...rest)
+77 < 2     if (b && b.about === 'engine') {
+78 < 2       post({ id: b.task }, `engine belief from ${b.by}: ${String(b.claim ?? '').slice(0, 300)}`, runUid)
+79 < 2     }
+80 < 2     return r
+81 < 2   }
+82 < 2   return board
+83 < 2 }
+84 < 2 

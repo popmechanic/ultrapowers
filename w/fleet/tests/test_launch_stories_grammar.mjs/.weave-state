@@ -1,0 +1,110 @@
+0 < 1 /**
+1 < 1  * A stories-v1 plan with a `## Numbers` section is refused at launch, before
+2 < 1  * the compiler runs: the fleet has no Numbers checker yet (story-planning,
+3 < 1  * after sub-project 2). A stories-v1 plan without one launches: its probes
+4 < 1  * are read by factory/stack/tinyapp/check.ts (2026-09-27).
+5 < 1  */
+6 < 1 import assert from 'node:assert/strict'
+7 < 1 import fs from 'node:fs'
+8 < 1 import path from 'node:path'
+9 < 1 
+10 < 1 import { launch } from '../launch.mjs'
+11 < 1 import { defaultExec } from '../lobby.mjs'
+12 < 1 import {
+13 < 1   answer, cleanup, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
+14 < 1 } from './_lobby_helpers.mjs'
+15 < 1 
+16 < 1 // The operator's evidence repository: an owner unlike the target's, its URL
+17 < 1 // routed to a local bare of its own.
+18 < 1 const EVIDENCE = 'ops/evidence'
+19 < 1 const EVIDENCE_URL = `https://github.com/${EVIDENCE}.git`
+20 < 1 const INTEGRATIONS = answer([
+21 < 1   { name: 'gh-o-r', attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'cloudflare', attachments: [] }
+22 < 1 ])
+23 < 1 const pointAt = (r, ev) => (x) => x === 'origin' ? r.origin : x === EVIDENCE_URL ? ev.bare : x
+24 < 1 
+25 < 1 const root = tempDir('stories-')
+26 < 1 const repo = makeTargetRepo({ root, files: { 'README.md': 'x\n' } })
+27 < 1 repo.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])
+28 < 1 const evidence = makeEvidenceRepo({ root, name: EVIDENCE })
+29 < 1 fs.writeFileSync(path.join(repo.dir, 'p.md'),
+30 < 1   '# todos\n\n**Grammar:** stories-v1\n**Stack:** tinyapp\n**Plan-id:** p1\n\n## Numbers\n\nsome numbers section\n')
+31 < 1 const exec = makeExec({
+32 < 1   rules: [
+33 < 1     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
+34 < 1       answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo, evidence)), o || {}) },
+35 < 1     sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
+36 < 1     sshRule('integrations list --json', INTEGRATIONS),
+37 < 1     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
+38 < 1     sshRule('ls ', vmsPayload([]))
+39 < 1   ]
+40 < 1 })
+41 < 1 const err = await thrown(() => launch({
+42 < 1   argv: ['p.md', '--target', 'o/r', '--base', repo.base, '--repo', repo.dir, '--engine', 'd'.repeat(40)],
+43 < 1   exec,
+44 < 1   config: { cpu: '2', memory: '4GB', evidence: EVIDENCE },
+45 < 1   now: () => new Date('2026-09-27T12:00:00Z'),
+46 < 1   sleep: async () => {},
+47 < 1   refreshCredential: () => ({ ok: true }),
+49 > 1   readUsage: () => ({ unread: true, reason: 'sim' })
+48 < 2   readUsage: () => ({ unread: true, reason: 'sim' }),
+49 < 2   kata: null
+50 < 1 }))
+51 < 1 cleanup(root)
+52 < 1 assert.ok(err !== null, 'launch must refuse a stories-v1 plan with a Numbers section')
+53 < 1 assert.equal(err.exitCode, 2)
+54 < 1 assert.match(String(err.message), /has a Numbers section; the fleet has no Numbers checker yet/)
+55 < 1 assert.ok(!exec.calls.some((c) => /python3/.test(c.line)), 'the plan is never compiled')
+56 < 1 
+57 < 1 // A claims-v1 plan that merely quotes `**Grammar:** stories-v1` inside a
+58 < 1 // fenced example is not refused with the stories message — the launcher
+59 < 1 // reads the plan header's own Grammar line, not any occurrence in the body.
+60 < 1 const root2 = tempDir('stories-fenced-')
+61 < 1 const repo2 = makeTargetRepo({ root: root2, files: { 'README.md': 'x\n' } })
+62 < 1 repo2.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])
+63 < 1 const evidence2 = makeEvidenceRepo({ root: root2, name: EVIDENCE })
+64 < 1 fs.writeFileSync(path.join(repo2.dir, 'p2.md'),
+65 < 1   [
+66 < 1     '# todos',
+67 < 1     '',
+68 < 1     '**Grammar:** claims-v1',
+69 < 1     '**Plan-id:** p1',
+70 < 1     '',
+71 < 1     'Example of a stories-v1 header, quoted for illustration:',
+72 < 1     '',
+73 < 1     '```',
+74 < 1     '**Grammar:** stories-v1',
+75 < 1     '```',
+76 < 1     '',
+77 < 1     '### Task 1: nothing',
+78 < 1     ''
+79 < 1   ].join('\n'))
+80 < 1 const exec2 = makeExec({
+81 < 1   rules: [
+82 < 1     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
+83 < 1       answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo2, evidence2)), o || {}) },
+84 < 1     sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
+85 < 1     sshRule('integrations list --json', INTEGRATIONS),
+86 < 1     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
+87 < 1     sshRule('ls ', vmsPayload([]))
+88 < 1   ]
+89 < 1 })
+90 < 1 const err2 = await thrown(() => launch({
+91 < 1   argv: ['p2.md', '--target', 'o/r', '--base', repo2.base, '--repo', repo2.dir, '--engine', 'd'.repeat(40)],
+92 < 1   exec: exec2,
+93 < 1   config: { cpu: '2', memory: '4GB', evidence: EVIDENCE },
+94 < 1   now: () => new Date('2026-09-27T12:00:00Z'),
+95 < 1   sleep: async () => {},
+96 < 1   refreshCredential: () => ({ ok: true }),
+98 > 1   readUsage: () => ({ unread: true, reason: 'sim' })
+97 < 2   readUsage: () => ({ unread: true, reason: 'sim' }),
+98 < 2   kata: null
+99 < 1 }))
+100 < 1 cleanup(root2)
+101 < 1 if (err2 !== null) {
+102 < 1   assert.doesNotMatch(String(err2.message), /is a stories-v1 plan/,
+103 < 1     'a fenced Grammar: stories-v1 example must not trip the stories refusal')
+104 < 1 }
+105 < 1 
+106 < 1 console.log('ALL TESTS PASSED')
+107 < 1 

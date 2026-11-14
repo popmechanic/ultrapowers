@@ -1,0 +1,1283 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 /**
+2 < 1  * fleet/launch.mjs — start one run. The whole client, on the laptop.
+3 < 1  *
+4 < 1  * The order of a launch — validate, read, refresh the credential, push the
+5 < 1  * plan to the evidence repository, then exactly one mutating lobby verb, `new`
+6 < 1  * — and every literal it uses are `fleet/CONTRACT.md` §Launch order and
+7 < 1  * §Literals; this header does not restate them (#1444). A refusal (exit 2)
+8 < 1  * happens before anything is created; a failure after that (exit 1) prints the
+9 < 1  * lobby's own words. Each phase's section comment below says why it is shaped
+10 < 1  * the way it is.
+11 < 1  */
+12 < 1 
+13 < 1 import fsp from 'node:fs/promises'
+14 < 1 import os from 'node:os'
+15 < 1 import path from 'node:path'
+16 < 1 import { spawnSync } from 'node:child_process'
+17 < 1 import { fileURLToPath } from 'node:url'
+18 < 1 
+19 < 2 import { fileRunOnHub } from './kata-file.mjs'
+20 < 1 
+21 < 1 import {
+22 < 1   COMMENT_MAX_BYTES,
+23 < 1   ENGINE_URL,
+24 < 1   EXE_HOST,
+25 < 1   FLEET_DEFAULTS,
+26 < 1   FLEET_TAG,
+27 < 1   LobbyError,
+28 < 1   PLAN_FILE,
+29 < 1   Refusal,
+30 < 1   buildComment,
+31 < 1   defaultExec,
+32 < 1   evidenceRepoFor,
+33 < 1   evidenceUrlFor,
+34 < 1   git,
+35 < 1   githubIntegrationFor,
+36 < 1   highestRunInEvidence,
+37 < 1   integrationBranchFor,
+38 < 1   isFullSha,
+39 < 1   isRunNumber,
+40 < 1   isSafeSha,
+41 < 1   isSafeTarget,
+42 < 1   isVmName,
+43 < 2   KATA_HUB_FIX,
+44 < 2   hubFromEnv,
+45 < 2   defaultKataEnvPath,
+46 < 1   listIntegrations,
+47 < 1   liveBranchFor,
+48 < 1   loadFleetConfig,
+49 < 1   lobby,
+50 < 1   output,
+51 < 1   parseArgs,
+52 < 1   parseMemoryGb,
+54 > 2   policyCell,
+53 < 1   readEvidenceSetting,
+54 < 1   readPlanCapacity,
+55 < 1   runCli,
+56 < 1   runFolderFor,
+57 < 1   vmNameFor
+58 < 1 } from './lobby.mjs'
+59 < 1 import { fleetConfigAccount } from './doctor.mjs'
+60 < 1 // The keychain entry a run signs in with when neither `--account` nor the
+61 < 1 // config names one, and the name rule: the credential tool's own, so the
+62 < 1 // launcher refuses a name it would refuse, before anything is executed.
+63 < 1 import { ACCOUNT_RE, DEFAULT_ACCOUNT } from './claude-token.mjs'
+64 < 1 import { preflight } from './janitor.mjs'
+65 < 1 import { readFleetFiles, renderSetupScript } from './setup-script.mjs'
+66 < 1 import { compilePlanForRun, fetchCompilerAt, verifyPlanCompiles } from './compiler.mjs'
+67 < 1 import { verifyPlanPins } from './plan-pins.mjs'
+68 < 1 import { toolchainViolations } from './toolchain.mjs'
+69 < 1 /** One string, so a docs check that reads the first `usage` literal sees every
+70 < 1  *  flag the launch line may carry. */
+71 < 1 export const USAGE = `usage: node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <40-hex>
+72 < 1                              [--repo <dir>] [--engine <40-hex>] [--hold] [--again]
+73 < 1                              [--cpu <n>] [--memory <n>GB]
+74 < 1                              [--account <name>]
+75 < 1                              [--evidence-repo <owner>/<repo>] [--json]`
+76 < 1 
+77 < 1 export const usage = () => USAGE
+78 < 1 
+79 < 1 /** The flag `new` may never carry: exe.dev refuses it, and each integration's
+80 < 1  *  attachment `tag:fleet` is what grants a fleet VM its credentials. */
+81 < 1 const NEW_INTEGRATION_FLAG = /(^|\s)--integration(=|\s|$)/
+82 < 1 
+83 < 1 /** The plan's gate record, committed beside it: the laptop's authoring census
+84 < 1  *  (`skills/ultrawrite/scripts/authoring_census.py --fetch`) reads it off the
+85 < 1  *  run's tag. No engine reads it; the census does. */
+86 < 1 const VERDICTS_FILE = 'gate-verdicts.json'
+87 < 1 
+88 < 1 /** Every flag the launcher reads; any other is refused before the plan is read. */
+89 < 1 const LAUNCH_FLAGS = [
+90 < 1   'account', 'again', 'base', 'cpu', 'engine', 'evidence-repo', 'hold', 'json', 'memory', 'repo', 'target'
+91 < 1 ]
+92 < 2 /** The third file of the plan commit: the run's kata record — the project, the
+93 < 2  *  run issue and one issue per task on the hub, each with the revision it had
+94 < 2  *  when the launcher last read it (#913). Written only when a hub is reached. */
+95 < 2 const KATA_FILE = 'kata.json'
+97 > 2 /**
+98 < 2  * Whether a launch asks the kata hub at all — the `launch.kata.mode` cell of
+99 < 2  * `fleet/policy.json`. `off`: the hub is not opened, not pinged and nothing is
+100 < 2  * filed on it, so the plan commit carries no `kata.json`; the sandbox writes
+101 < 2  * to Kata only when that file is there, so the engine and the boot write
+102 < 2  * nothing either. `on` is the rollback: every launch as before 2026-11-13.
+103 < 2  */
+104 < 2 export const KATA_MODES = Object.freeze(['off', 'on'])
+105 < 2 export const kataModeOf = (policyPath) => policyCell(['launch', 'kata', 'mode'], KATA_MODES, policyPath)
+96 < 2 /** The one command that builds the hub, and where `fleet/kata-hub.mjs` leaves
+97 < 2  *  the hub's address and bearer — both `fleet/lobby.mjs`'s, since the janitor
+98 < 2  *  reads the same file. */
+99 < 2 
+100 < 1 /**
+101 < 1  * What a base off the default branch is told to do. The parked branch is not
+102 < 1  * lost and nothing here takes a patch: decision 5 of #715 asks the operator to
+103 < 1  * re-drive that work as a plan on `main`, which is procedure and not a flag.
+104 < 1  */
+105 < 1 const BASE_OFF_MAIN_FIX =
+106 < 1   'relaunch from main; a parked branch is re-driven as a plan on main, not as a base'
+107 < 1 
+108 < 1 /** What a shallow launch checkout is told to do — by hand, never by the
+109 < 1  *  launcher: unshallowing an operator's clone is not a launch's business. */
+110 < 1 const SHALLOW_FIX = 'is a shallow clone — unshallow it by hand and relaunch'
+111 < 1 
+112 < 1 /**
+113 < 1  * How many `new` lines a launch may issue, and the window it sleeps in between
+114 < 1  * them. exe.dev does not reserve names, but a name is one incarnation — the run
+115 < 1  * number is the identity — so each attempt still mints its own.
+116 < 1  */
+117 < 1 const NEW_ATTEMPTS = 3
+118 < 1 const RETRY_MIN_MS = 1_000
+119 < 1 const RETRY_MAX_MS = 3_000
+120 < 1 
+121 < 1 const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+122 < 1 
+123 < 1 /** A positive decimal integer — what `--cpu` and the config's `cpu` must be. */
+124 < 1 const isPositiveInt = (value) => isRunNumber(value)
+125 < 1 
+126 < 1 /**
+127 < 1  * What `--memory` and the config's `memory` must be: `<int>GB`, the spelling
+128 < 1  * the lobby's `--memory` takes verbatim. `parseMemoryGb` also reads `16 G`,
+129 < 1  * which would put a space inside the `new` line, so the shape is pinned here
+130 < 1  * before the number is taken off it.
+131 < 1  */
+132 < 1 const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
+133 < 1 
+134 < 1 const GRAMMAR_LINE_RE = /^\*\*Grammar:\*\*\s*(\S+)\s*$/
+135 < 1 const TASK_HEADING_RE = /^### Task /
+136 < 1 const FENCE_LINE_RE = /^\s*```/
+137 < 1 
+138 < 1 /**
+139 < 1  * The plan header's own `**Grammar:**` line, read up to the first
+140 < 1  * `### Task ` heading and skipping anything inside a ``` fence — so a
+141 < 1  * claims-v1 plan that merely quotes `**Grammar:** stories-v1` in a fenced
+142 < 1  * example is read for what it is, not refused as one.
+143 < 1  */
+144 < 1 const planGrammar = (planText) => {
+145 < 1   let inFence = false
+146 < 1   for (const line of planText.split('\n')) {
+147 < 1     if (TASK_HEADING_RE.test(line)) break
+148 < 1     if (FENCE_LINE_RE.test(line)) { inFence = !inFence; continue }
+149 < 1     if (inFence) continue
+150 < 1     const m = GRAMMAR_LINE_RE.exec(line)
+151 < 1     if (m) return m[1]
+152 < 1   }
+153 < 1   return null
+154 < 1 }
+155 < 1 
+156 < 1 /**
+157 < 1  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
+158 < 1  * W, the task count of the compiled plan's widest wave, `cap` is the
+159 < 1  * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`).
+160 < 1  *
+161 < 1  *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
+162 < 1  *   memory = min(cap.memory, 2 + W) GB
+163 < 1  *
+164 < 1  * The two constants of the width formula are the run's own floor: an engine, a
+165 < 1  * fold and a publish live on the box whatever the plan is, and every
+166 < 1  * implementer beyond the first costs about a gigabyte and a third of a core
+167 < 1  * (RUNBOOK §Capacity). So a one-task plan gets `--cpu 3 --memory 3GB` and a
+168 < 1  * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
+169 < 1  * is what a run may ask for, never the size every run gets.
+170 < 1  *
+171 < 1  * `browsers` is true for a stories-v1 plan: a builder's checker runs Chromium
+172 < 1  * to prove its probes (state-probe runner, 2026-09-27), and a page costs
+173 < 1  * 0.7-1 GB on top of the implementer (#1087), so the memory term becomes
+174 < 1  * `max(6, ceil(2 + 1.25 * W))` GB instead of `2 + W`; `cpu` is unchanged.
+175 < 1  *
+176 < 1  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
+177 < 1  * takes verbatim; `cpu` is a decimal string for the same reason.
+178 < 1  */
+179 < 1 function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
+180 < 1   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
+181 < 1   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
+182 < 1   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
+183 < 1   // a stories-v1 builder runs its checks in Chromium (0.7-1 GB with a page, #1087)
+184 < 1   const wantGb = browsers ? Math.max(6, Math.ceil(2 + 1.25 * w)) : 2 + w
+185 < 1   return {
+186 < 1     cpu: String(Math.min(capCpu, 2 + Math.ceil(w / 3))),
+187 < 1     memory: `${Math.min(Number(capGb), wantGb)}GB`
+188 < 1   }
+189 < 1 }
+190 < 1 
+191 < 1 /**
+192 < 1  * The box one compiled payload asks for, and the two numbers it was read from.
+193 < 1  * Pure: `compiled` is what `compilePlanForRun` returns, `cpuCap`/`memoryCap`
+194 < 1  * are the fleet's ceiling, and `cpu`/`memory` are the launch line's overrides —
+195 < 1  * a named number wins outright whatever the plan is, and what it wins is the
+196 < 1  * cap value, which is where the launch line's own number already sits.
+197 < 1  *
+198 < 1  * W is floored at one: a payload with no waves launches nothing, and a box
+199 < 1  * below the one-task size would be a smaller answer than the smallest real
+200 < 1  * plan's.
+201 < 1  */
+202 < 1 function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
+203 < 1   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
+204 < 1   const w = Math.max(1, waves.reduce(
+205 < 1     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
+206 < 1   ))
+207 < 1   const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, compiled?.payload?.grammar === 'stories-v1')
+208 < 1   return {
+209 < 1     width: w,
+210 < 1     cpu: cpu === undefined ? sized.cpu : cpuCap,
+211 < 1     memory: memory === undefined ? sized.memory : memoryCap
+212 < 1   }
+213 < 1 }
+214 < 1 
+215 < 1 /**
+216 < 1  * The launcher's own header on the setup script the `new` verb carries on
+217 < 1  * stdin: W, the widest wave of the plan this box was cut for, and the size it
+218 < 1  * was cut to. Pure — the script comes back with one comment line inserted
+219 < 1  * under its shebang, nothing else moved.
+220 < 1  *
+221 < 1  * Why the script and not the assignment: the comment's keys are enumerated
+222 < 1  * twice, by `COMMENT_KEYS` in `fleet/lobby.mjs` and by `parse_assignment` in
+223 < 1  * `factory/boot.sh`, which fails the boot outright on a key it does not
+224 < 1  * know — so an eighth key has to land in both files in the same change or every
+225 < 1  * launch after it refuses to boot. Until one does, `width=` rides the other
+226 < 1  * half of the same verb, where it costs nothing: a comment in a first-boot
+227 < 1  * script, on the box, for whoever asks why this VM has these cores. The engine
+228 < 1  * does not read it.
+229 < 1  */
+230 < 1 function stampWidth (script, { width, cpu, memory }) {
+231 < 1   const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+232 < 1   const text = String(script ?? '')
+233 < 1   const firstLine = text.indexOf('\n')
+234 < 1   return firstLine < 0
+235 < 1     ? `${text}\n${note}\n`
+236 < 1     : `${text.slice(0, firstLine + 1)}${note}\n${text.slice(firstLine + 1)}`
+237 < 1 }
+238 < 1 
+239 < 1 /**
+240 < 1  * The four spellings a checkout's `origin` may carry for one GitHub target.
+241 < 1  * Anything else answers null, and the refusal names what it saw rather than
+242 < 1  * guessing a repository out of it.
+243 < 1  */
+244 < 1 const ORIGIN_SPELLINGS = Object.freeze([
+245 < 1   /^https:\/\/github\.com\/(.+?)(?:\.git)?\/?$/,
+246 < 1   /^git@github\.com:(.+?)(?:\.git)?\/?$/,
+247 < 1   /^ssh:\/\/git@github\.com\/(.+?)(?:\.git)?\/?$/
+248 < 1 ])
+249 < 1 
+250 < 1 function targetOfOriginUrl (url) {
+251 < 1   const text = String(url ?? '').trim()
+252 < 1   for (const pattern of ORIGIN_SPELLINGS) {
+253 < 1     const match = pattern.exec(text)
+254 < 1     if (match && isSafeTarget(match[1])) return match[1]
+255 < 1   }
+256 < 1   return null
+257 < 1 }
+258 < 1 
+259 < 1 /**
+260 < 1  * The checkout this file sits in. On the laptop that is the plugin cache
+261 < 1  * (`~/.claude/plugins/cache/ultrapowers/ultrapowers/<version>/`), whose `.git`
+262 < 1  * may or may not hold the engine sha — a cache without it is exactly the
+263 < 1  * `gh api` case of `fetchCompilerAt` (`./compiler.mjs`).
+264 < 1  */
+265 < 1 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+266 < 1 
+267 < 1 /**
+268 < 1  * The engine sha, when `--engine` was not given: the tip of the PUBLIC
+269 < 1  * ultrapowers repository, read with `git ls-remote`. The sandbox clones from
+270 < 1  * GitHub at `engine=`, so the only shas that can work are the ones GitHub
+271 < 1  * already has; a local `HEAD` is a sha the sandbox cannot fetch.
+272 < 1  */
+273 < 1 async function defaultEngineSha (exec) {
+274 < 1   const res = await exec('git', ['ls-remote', ENGINE_URL, 'HEAD'])
+275 < 1   if (res.code !== 0) {
+276 < 1     throw new Refusal(`engine: git ls-remote ${ENGINE_URL} HEAD failed:\n${output(res)}`)
+277 < 1   }
+278 < 1   const sha = String(res.stdout).trim().split(/\s+/)[0] ?? ''
+279 < 1   if (!isFullSha(sha)) {
+280 < 1     throw new Refusal(
+281 < 1       `engine: git ls-remote ${ENGINE_URL} HEAD answered no 40-hex sha (got ${JSON.stringify(sha.slice(0, 64))}); pass --engine <40-hex>`
+282 < 1     )
+283 < 1   }
+284 < 1   return sha
+285 < 1 }
+286 < 1 
+287 < 1 // The Claude Max access token lives at the edge and expires in hours; the
+288 < 1 // laptop holds the refresh token. Before a VM exists, rotate it if it is within
+289 < 1 // four hours of expiry — a run that outlives its bearer dies in the gate. The
+290 < 1 // tool holds instead of rotating when a listed fleet VM is still live, since a
+291 < 1 // refresh grant would revoke the access token every live run is using.
+292 < 1 // A laptop set up with `claude setup-token` (no keychain record) skips this.
+293 < 1 //
+294 < 1 // The account is the launch's, so the entry this rotates and installs is the
+295 < 1 // one the run signs in with — one entry, chosen per run and never mid-run.
+296 < 1 // `spawn` is the second argument for the exam's sake: a spy records the argv
+297 < 1 // and the real credential tool, and the keychain behind it, stay untouched.
+298 < 1 export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spawnSync) {
+299 < 1   const tool = new URL('./claude-token.mjs', import.meta.url).pathname
+300 < 1   const r = spawn(process.execPath, [tool, 'refresh', '--account', account], { encoding: 'utf8' })
+301 < 1   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`
+302 < 1   if (r.status === 0) {
+303 < 1     const held = out.split('\n').find((line) => line.startsWith('token: fresh until ') && line.endsWith('not rotated'))
+304 < 1     if (held !== undefined) return { ok: true, held, out }
+305 < 1     return { ok: true, out }
+306 < 1   }
+307 < 1   if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
+308 < 1   const refused = out.split('\n').find((line) => line.startsWith('token: expires '))
+309 < 1   if (refused !== undefined) return { ok: false, refused, out }
+310 < 1   return { ok: false, out }
+311 < 1 }
+312 < 1 
+313 < 1 // A launch on an account at or past this share of either its five-hour or its
+314 < 1 // seven-day window is refused before anything is pushed (#1114) — the
+315 < 1 // reading the release owes is how often a refused launch would have merged.
+316 < 1 export const USAGE_REFUSE_PCT = 95
+317 < 1 
+318 < 1 // The usage read that follows a held-or-fresh credential, before the plan
+319 < 1 // commit is pushed. `--no-rotate` (the same tool's `usage` verb) never mints
+320 < 1 // anything, so the read is safe immediately after `defaultRefreshCredential`
+321 < 1 // has just run or held. The sandbox itself cannot make this call — the proxy
+322 < 1 // answers `GET /api/oauth/usage` with 403 (CONTRACT §probe 3) — so a laptop
+323 < 1 // offline, or a keychain with no `accessToken`, answers `unread` here rather
+324 < 1 // than a refusal, and the launch proceeds.
+325 < 1 export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) {
+326 < 1   const tool = new URL('./claude-token.mjs', import.meta.url).pathname
+327 < 1   const r = spawn(process.execPath, [tool, 'usage', '--json', '--account', account, '--no-rotate'], { encoding: 'utf8' })
+328 < 1   if (r.status !== 0) {
+329 < 1     return { unread: true, reason: `claude-token usage --json exited ${r.status}: ${String(r.stderr ?? r.stdout ?? '').trim()}` }
+330 < 1   }
+331 < 1   let parsed
+332 < 1   try {
+333 < 1     parsed = JSON.parse(String(r.stdout ?? ''))
+334 < 1   } catch (error) {
+335 < 1     return { unread: true, reason: `claude-token usage --json answered unparseable stdout: ${error.message}` }
+336 < 1   }
+337 < 1   if (!Array.isArray(parsed) || parsed.length !== 1) {
+338 < 1     return { unread: true, reason: `claude-token usage --json answered no single-row array (got ${JSON.stringify(parsed)})` }
+339 < 1   }
+340 < 1   return parsed[0]
+341 < 1 }
+342 < 1 
+343 < 1 /**
+344 < 1  * The refusal for a publishing plan with no credential at the edge, or `null`
+345 < 1  * when nothing is wrong: a `compiled.payload.publish` object (the plan carries a
+346 < 1  * `**Publish:**` line) with no `cloudflare` row in `integrations`
+347 < 1  * (`listIntegrations`'s own rows, each carrying a `name`) is the one case
+348 < 1  * refused; a `compiled` with no `publish` at all — `null`, or absent because
+349 < 1  * it was parsed by a `plan_parse.py` from before that key existed — is not a
+350 < 1  * publishing plan and is never refused here, whatever `integrations` carries.
+351 < 1  */
+352 < 1 function publishRefusal ({ compiled, integrations }) {
+353 < 1   // The compile answers `{ stamp, payload, waves, edges }`, so the parse's `publish` is under
+354 < 1   // `payload`; reading `compiled.publish` alone found nothing and this never refused (#1331).
+355 < 1   const publish = compiled?.payload?.publish ?? compiled?.publish
+356 < 1   if (publish === null || publish === undefined || typeof publish !== 'object') return null
+357 < 1   const rows = Array.isArray(integrations) ? integrations : []
+358 < 1   if (rows.some((row) => row?.name === 'cloudflare')) return null
+359 < 1   return 'launch: the plan carries a **Publish:** line but the fleet has no cloudflare integration — ' +
+360 < 1     'the deploy would have no credential at the edge; first-run.md §cloudflare walks the token, then launch again'
+361 < 1 }
+362 < 1 
+363 < 1 /**
+364 < 1  * The path of the first `wrangler.jsonc` in the tree at `base` whose top-level
+365 < 1  * object carries an `assets` key, or `null` — always `null` for a plan with no
+366 < 1  * `**Publish:**` line (`compiled.payload.publish` not an object). A config that
+367 < 1  * does not parse is not a declaration of `assets` and is passed over.
+368 < 1  */
+369 < 1 async function assetsConfigAtBase ({ exec, repoDir, base, compiled }) {
+370 < 1   const publish = compiled?.payload?.publish ?? compiled?.publish
+371 < 1   if (publish === null || publish === undefined || typeof publish !== 'object') return null
+372 < 1   const listed = await git(exec, repoDir, ['ls-tree', '-r', '--name-only', base])
+373 < 1   if (listed.code !== 0) return null
+374 < 1   const paths = String(listed.stdout ?? '').split('\n').map((l) => l.trim())
+375 < 1     .filter((l) => l === 'wrangler.jsonc' || l.endsWith('/wrangler.jsonc'))
+376 < 1   for (const p of paths) {
+377 < 1     const shown = await git(exec, repoDir, ['show', `${base}:${p}`])
+378 < 1     if (shown.code !== 0) continue
+379 < 1     let config
+380 < 1     try {
+381 < 1       config = JSON.parse(stripJsonc(String(shown.stdout ?? '')))
+382 < 1     } catch {
+383 < 1       continue
+384 < 1     }
+385 < 1     if (config !== null && typeof config === 'object' && !Array.isArray(config) &&
+386 < 1         Object.prototype.hasOwnProperty.call(config, 'assets')) return p
+387 < 1   }
+388 < 1   return null
+389 < 1 }
+390 < 1 
+391 < 1 // JSONC to JSON: drops `//` and `/* */` comments and trailing commas, leaving
+392 < 1 // string contents (a `"$schema"` path, a URL with `//`) untouched.
+393 < 1 function stripJsonc (text) {
+394 < 1   let out = ''
+395 < 1   let i = 0
+396 < 1   while (i < text.length) {
+397 < 1     const c = text[i]
+398 < 1     if (c === '"') {
+399 < 1       let j = i + 1
+400 < 1       while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1
+401 < 1       out += text.slice(i, j + 1)
+402 < 1       i = j + 1
+403 < 1     } else if (c === '/' && text[i + 1] === '/') {
+404 < 1       while (i < text.length && text[i] !== '\n') i++
+405 < 1     } else if (c === '/' && text[i + 1] === '*') {
+406 < 1       const end = text.indexOf('*/', i + 2)
+407 < 1       i = end === -1 ? text.length : end + 2
+408 < 1     } else {
+409 < 1       out += c
+410 < 1       i++
+411 < 1     }
+412 < 1   }
+413 < 1   return out.replace(/,(\s*[}\]])/g, '$1')
+414 < 1 }
+415 < 1 
+416 < 1 // The refusal message for a usage window at or past `USAGE_REFUSE_PCT`, named
+417 < 1 // as the Machine spells it: the account, the window's label, its utilization
+418 < 1 // and its reset time, ending the same way every other pre-push refusal ends.
+419 < 1 function usageRefusal (account, label, window) {
+420 < 1   return `launch: ${account} is at ${window.utilization}% of its ${label} window (resets ${window.resetsAt}) — ` +
+421 < 1     'a run on it can only die; pick another with --account — no VM was created and nothing was pushed'
+422 < 1 }
+423 < 1 
+424 < 1 /**
+425 < 1  * The launch line's own shape, refused before the plan is read and before
+426 < 1  * anything executes. Answers the parsed flags and the plan path as given.
+427 < 1  */
+428 < 1 function validateArgs (argv) {
+429 < 1   const { opts, positional } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
+430 < 1   // `parseArgs` keeps unknown keys for each CLI to refuse for itself, so any
+431 < 1   // flag this launcher does not read — a typo, or one the retired factory
+432 < 1   // read (`--tier`, `--implementer-effort`, `--kind`) — is refused here,
+433 < 1   // before the plan is read and before anything executes.
+434 < 1   for (const name of Object.keys(opts)) {
+435 < 1     if (!LAUNCH_FLAGS.includes(name)) throw new Refusal(`launch: unknown flag --${name}`)
+436 < 1   }
+437 < 1 
+438 < 1   const planPath = positional[0]
+439 < 1   if (!planPath) throw new Refusal(`launch: a plan path is required\n${usage()}`)
+440 < 1   const target = opts.target
+441 < 1   if (!isSafeTarget(target)) {
+442 < 1     throw new Refusal(`launch: --target must be <owner>/<repo>, got ${JSON.stringify(target ?? null)}`)
+443 < 1   }
+444 < 1   if (!isFullSha(opts.base)) {
+445 < 1     throw new Refusal(`launch: --base must be a 40-hex commit sha, got ${JSON.stringify(opts.base ?? null)}`)
+446 < 1   }
+447 < 1   if (opts.engine !== undefined && !isFullSha(opts.engine)) {
+448 < 1     throw new Refusal(`launch: --engine must be a 40-hex commit sha, got ${JSON.stringify(opts.engine)}`)
+449 < 1   }
+450 < 1   // `--hold` is a bare flag, so `parseArgs` answers `true` for it and a string
+451 < 1   // for any `--hold=<value>` spelling. A string is a refusal here, before the
+452 < 1   // plan is read and before anything is executed: `hold=1` is the only value
+453 < 1   // the sandbox accepts, and a launch that meant to hold must not silently
+454 < 1   // become one that merges.
+455 < 1   if (opts.hold !== undefined && opts.hold !== true) {
+456 < 1     throw new Refusal(`launch: --hold takes no value, got ${JSON.stringify(opts.hold)}`)
+457 < 1   }
+458 < 1   // `--again` is the same shape: the one flag that launches a plan already
+459 < 1   // live on the target (#1036), and a value on it is a refusal before anything
+460 < 1   // is read.
+461 < 1   if (opts.again !== undefined && opts.again !== true) {
+462 < 1     throw new Refusal(`launch: --again takes no value, got ${JSON.stringify(opts.again)}`)
+463 < 1   }
+464 < 1   // `--account` reaches `claude-token.mjs refresh` as an argument and the
+465 < 1   // keychain as an item's account, so a name it would refuse is refused here,
+466 < 1   // before the first read — a launch that cannot name its entry has not yet
+467 < 1   // touched exe.dev or the target.
+468 < 1   if (opts.account !== undefined && (opts.account === true || !ACCOUNT_RE.test(opts.account))) {
+469 < 1     throw new Refusal(
+470 < 1       `launch: --account must be a name matching ${ACCOUNT_RE.source}, got ${JSON.stringify(opts.account === true ? null : opts.account)}`
+471 < 1     )
+472 < 1   }
+473 < 1   return { opts, planPath }
+474 < 1 }
+475 < 1 
+476 < 1 /**
+477 < 1  * The launch checkout is whole, names the target, and has `--base`. A shallow
+478 < 1  * checkout is refused first, before anything is read off the origin: its
+479 < 1  * history is truncated, so no `merge-base` it could answer says anything about
+480 < 1  * where `--base` sits. The launcher does not deepen it — an operator's clone
+481 < 1  * is theirs, and a launch is not the place to rewrite it.
+482 < 1  */
+483 < 1 async function checkCheckout ({ exec, repoDir, target, base }) {
+484 < 1   const shallow = await git(exec, repoDir, ['rev-parse', '--is-shallow-repository'])
+485 < 1   if (shallow.code === 0 && String(shallow.stdout ?? '').trim() === 'true') {
+486 < 1     throw new Refusal(
+487 < 1       `launch: --repo ${repoDir} ${SHALLOW_FIX}: a truncated history cannot answer whether --base ${base} is on ${target}'s default branch`
+488 < 1     )
+489 < 1   }
+490 < 1 
+491 < 1   const originUrl = await readOriginUrl({ exec, repoDir })
+492 < 1   const originTarget = targetOfOriginUrl(originUrl)
+493 < 1   if (originTarget !== target) {
+494 < 1     throw new Refusal(
+495 < 1       `launch: ${repoDir} has origin ${JSON.stringify(originUrl)}, which does not name ${target}`
+496 < 1     )
+497 < 1   }
+498 < 1 
+499 < 1   const baseCheck = await git(exec, repoDir, ['rev-parse', '--verify', `${base}^{commit}`])
+500 < 1   if (baseCheck.code !== 0) {
+501 < 1     throw new Refusal(
+502 < 1       `launch: ${repoDir} has no commit ${base}:\n${output(baseCheck)}`
+503 < 1     )
+504 < 1   }
+505 < 1 }
+506 < 1 
+507 < 1 /**
+508 < 1  * The base is on the target's default branch, or it is a refusal. The origin
+509 < 1  * names its own default branch and that branch's tip in one
+510 < 1  * `ls-remote --symref`; the fetch brings the tip's history into this checkout,
+511 < 1  * and `merge-base --is-ancestor` answers the question. Every one of the three
+512 < 1  * is a read of the target, and the only ref any of them writes is this
+513 < 1  * checkout's `refs/remotes/origin/<default>`: `HEAD`, the local branches and
+514 < 1  * the working tree are the operator's and stay as they were.
+515 < 1  */
+516 < 1 async function checkBaseOnDefault ({ exec, repoDir, target, base }) {
+517 < 1   const origin = await readDefaultBranch({ exec, repoDir })
+518 < 1   const fetched = await git(exec, repoDir, ['fetch', 'origin', origin.branch])
+519 < 1   // A fetch that answered non-zero is not itself the refusal — a checkout that
+520 < 1   // already has the tip needs nothing from it. What is fatal is not having the
+521 < 1   // tip afterward, because then no ancestry answer means anything.
+522 < 1   const hasTip = await git(exec, repoDir, ['cat-file', '-e', `${origin.tip}^{commit}`])
+523 < 1   if (hasTip.code !== 0) {
+524 < 1     throw new Refusal(
+525 < 1       `launch: ${repoDir} does not have ${target}'s ${origin.branch} tip ${origin.tip} — git fetch origin ${origin.branch} answered exit ${fetched.code}:\n${output(fetched)}`
+526 < 1     )
+527 < 1   }
+528 < 1   // git refreshes `refs/remotes/origin/<default>` on a fetch only when the line
+529 < 1   // named a configured remote and its refspec covers the branch; the launch's
+530 < 1   // one effect on the checkout should not depend on either, so the ref is
+531 < 1   // pointed at the tip the fetch just brought.
+532 < 1   if (fetched.code === 0) {
+533 < 1     await git(exec, repoDir, ['update-ref', `refs/remotes/origin/${origin.branch}`, origin.tip])
+534 < 1   }
+535 < 1   const ancestry = await git(exec, repoDir, ['merge-base', '--is-ancestor', base, origin.tip])
+536 < 1   if (ancestry.code !== 0) {
+537 < 1     throw new Refusal(
+538 < 1       `launch: --base ${base} is not on ${target}'s ${origin.branch} (tip ${origin.tip}) — ${BASE_OFF_MAIN_FIX}`
+539 < 1     )
+540 < 1   }
+541 < 1 }
+542 < 1 
+543 < 1 /**
+544 < 1  * What the parse says the fleet cannot run, refused as soon as a real
+545 < 1  * `compiled` object exists and before the credential, the push and the verb:
+546 < 1  * a publishing plan with no credential at the edge, a publishing plan whose
+547 < 1  * `wrangler.jsonc` declares `assets`, a probe runner the sandbox lacks, and a
+548 < 1  * box the pool cannot hold. `sizing` is `sizeFromCompile`'s second argument.
+549 < 1  */
+550 < 1 async function refuseUnlaunchable ({ exec, repoDir, base, compiled, integrations, sizing }) {
+551 < 1   // The credential a publishing plan needs at the edge (a plan with no
+552 < 1   // `**Publish:**` line, the common case, carries no `publish` key and is
+553 < 1   // never refused here), against the `integrations` this launch already read
+554 < 1   // for the GitHub check.
+555 < 1   const publishRefused = publishRefusal({ compiled, integrations })
+556 < 1   if (publishRefused !== null) {
+557 < 1     throw new Refusal(publishRefused)
+558 < 1   }
+559 < 1   // #1313: exe.dev's edge replaces `Authorization`, so wrangler's asset-upload
+560 < 1   // JWT is refused 401 (#1312) — a publishing plan against a target whose
+561 < 1   // `wrangler.jsonc` at --base declares `assets` can only die in
+562 < 1   // `publish:deploy`, after every task merged. Refused here, before the pool,
+563 < 1   // the credential and the push. Retires with #1312's pack step.
+564 < 1   const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base, compiled })
+565 < 1   if (assetsConfig !== null) {
+566 < 1     throw new Refusal(
+567 < 1       `launch: the plan carries a **Publish:** line but ${assetsConfig} at --base declares assets, ` +
+568 < 1       "and the edge refuses wrangler's asset upload (#1312) — add the pack step that serves the page " +
+569 < 1       'from the Worker and drop assets; no VM was created and nothing was pushed'
+570 < 1     )
+571 < 1   }
+572 < 1   // #645: a probe or check whose command word the sandbox lacks would exit 127
+573 < 1   // in its first second on the box, after the push and the `new`; read every
+574 < 1   // word against `SANDBOX_TOOLCHAIN` here, before the pool, the credential and
+575 < 1   // the push, and refuse by name.
+576 < 1   const missingRunners = toolchainViolations(compiled)
+577 < 1   if (missingRunners.length) {
+578 < 1     throw new Refusal(missingRunners.map(({ task, word, cmd }) =>
+579 < 1       `launch: task ${task}: probe runner '${word}' is not in the sandbox toolchain — ${cmd}`
+580 < 1     ).join('\n'))
+581 < 1   }
+582 < 1   const size = sizeFromCompile(compiled, sizing)
+583 < 1   const memoryGb = parseMemoryGb(size.memory)
+584 < 1 
+585 < 1   // One run must fit the plan's pool. Allocation is over-committable and
+586 < 1   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
+587 < 1   // contention bounds concurrency, and two plans at once is by design. The
+588 < 1   // parse does not move with N, so the widest wave, and the box it asks for,
+589 < 1   // are the same under every N.
+590 < 1   const capacity = await readPlanCapacity(exec)
+591 < 1   if (capacity.maxCpus < Number(size.cpu)) {
+592 < 1     throw new Refusal(
+593 < 1       `launch: --cpu ${size.cpu} does not fit the plan — billing plan --json says max_cpus ${capacity.maxCpus}`
+594 < 1     )
+595 < 1   }
+596 < 1   if (capacity.maxMemoryGb < memoryGb) {
+597 < 1     throw new Refusal(
+598 < 1       `launch: --memory ${size.memory} does not fit the plan — billing plan --json says max_memory_gb ${capacity.maxMemoryGb}`
+599 < 1     )
+600 < 1   }
+601 < 1 }
+602 < 1 
+603 < 1 /**
+604 < 1  * The credential, refreshed or held, then its usage read — right after the
+605 < 1  * refresh has just run or held, so the record is unexpired and `--no-rotate`
+606 < 1  * cannot mint anything. A row at or past the wall on either window is a
+607 < 1  * refusal before any push; an unread row is never a refusal (#1114). Answers
+608 < 1  * the refresh's own answer and the launch line's `usage:` line.
+609 < 1  */
+610 < 1 function readCredential ({ account, refreshCredential, readUsage }) {
+611 < 1   const cred = refreshCredential(account)
+612 < 1   if (cred.refused) {
+613 < 1     throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
+614 < 1   }
+615 < 1   if (!cred.ok) {
+616 < 1     throw new LobbyError(`launch: the Claude credential could not be refreshed — no VM was created\n${cred.out}`)
+617 < 1   }
+618 < 1 
+619 < 1   const usageRow = readUsage(account)
+620 < 1   if (usageRow.unread) {
+621 < 1     return { cred, usageLine: `usage: ${account} unread — ${usageRow.reason}` }
+622 < 1   }
+623 < 1   const { sevenDay, fiveHour } = usageRow
+624 < 1   if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
+625 < 1     throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
+626 < 1   }
+627 < 1   if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
+628 < 1     throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
+629 < 1   }
+630 < 1   const usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
+631 < 1     `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+632 < 1   return { cred, usageLine }
+633 < 1 }
+634 < 1 
+635 < 1 /**
+636 < 1  * Everything the launcher does, with the exec seam, the clock, the sleep and
+637 < 1  * the name's random half injected. Answers the launched run's record.
+638 < 1  *
+639 < 1  * The body parks the directory it fetched the compiler into on `held`, so the
+640 < 1  * temp tree is removed however the launch ends — the resolved run, a refusal
+641 < 1  * halfway down, or a throw from the lobby.
+642 < 1  */
+643 < 1 export async function launch (params) {
+644 < 1   const held = { compilerDir: null }
+645 < 1   try {
+646 < 1     return await launchBody({ ...params, held })
+647 < 1   } finally {
+648 < 1     if (held.compilerDir !== null) {
+649 < 1       await fsp.rm(held.compilerDir, { recursive: true, force: true })
+650 < 1     }
+651 < 1   }
+652 < 1 }
+653 < 1 
+654 < 1 async function launchBody ({
+655 < 1   argv, exec = defaultExec, config, now = () => new Date(), sleep = defaultSleep, rand,
+656 < 1   refreshCredential = defaultRefreshCredential, readUsage = defaultReadUsage,
+659 > 1   held
+658 > 2   kata, kataEnvPath = defaultKataEnvPath(), kataMode, held
+657 < 2   kata, kataEnvPath = defaultKataEnvPath(), held
+658 < 1 }) {
+659 < 1   // ── Local validation. Nothing has been executed at this point, and nothing
+660 < 1   //    will be until every one of these passes. ──────────────────────────────
+661 < 1   const { opts, planPath: givenPlanPath } = validateArgs(argv)
+662 < 1   const target = opts.target
+663 < 1 
+664 < 1   const settings = config ?? await loadFleetConfig()
+665 < 1   // Which keychain entry this run signs in with: the flag, else the config's
+666 < 1   // `account`, else the entry the first-run walk builds. `loadFleetConfig`
+667 < 1   // answers only the two keys the pool is sized from, so the file's account is
+668 < 1   // read by `fleetConfigAccount` — and only when no config was injected, so an
+669 < 1   // exam that hands `launch` a config never reads the laptop's own.
+670 < 1   let account = opts.account === undefined ? null : String(opts.account)
+671 < 1   if (account === null) {
+672 < 1     const named = config === undefined || config === null
+673 < 1       ? await fleetConfigAccount()
+674 < 1       : config.account
+675 < 1     account = typeof named === 'string' && named !== '' ? named : DEFAULT_ACCOUNT
+676 < 1   }
+677 < 1   // The evidence repository the run's record lives in (#1395): `--evidence-repo`
+678 < 1   // for this one launch, else the operator's `evidence` setting — read off the
+679 < 1   // injected config in a sim, else off the file. Nothing derives it from the
+680 < 1   // target, so a launch with neither is refused here, before anything is read.
+681 < 1   const evidenceFlag = opts['evidence-repo']
+682 < 1   if (evidenceFlag !== undefined && !isSafeTarget(evidenceFlag)) {
+683 < 1     throw new Refusal(
+684 < 1       `launch: --evidence-repo must be <owner>/<repo>, got ${JSON.stringify(evidenceFlag === true ? null : evidenceFlag)}`
+685 < 1     )
+686 < 1   }
+687 < 1   const evidenceSetting = config === undefined || config === null
+688 < 1     ? await readEvidenceSetting()
+689 < 1     : config.evidence
+690 < 1   const evidence = evidenceRepoFor({ evidence: evidenceSetting }, evidenceFlag ?? null)
+691 < 1   if (evidence === null) {
+692 < 1     throw new Refusal(
+693 < 1       'launch: no evidence repository — set "evidence": "<owner>/<repo>" in ~/.ultrapowers/fleet.json ' +
+694 < 1       'or pass --evidence-repo <owner>/<repo>; node fleet/doctor.mjs walks the one-time setup — ' +
+695 < 1       'no VM was created and nothing was pushed'
+696 < 1     )
+697 < 1   }
+698 < 2   // The hub, on the same branch the account takes: an injected
+699 < 2   // `kata` is the client (a fake in a sim; `null` means "no hub" outright); with
+700 < 2   // none injected and no injected config, the laptop's own `kata-hub.env` is
+701 < 2   // read and the client is built on it — one `ssh <hub> curl …` per request
+702 < 2   // through this launch's own `exec` seam, the bearer sourced ON the hub. A
+703 < 2   // config injected with no `kata` is a launch with no hub at all: no request
+704 < 2   // is made and the result's `kata` is null, which is what keeps every sim that
+705 < 2   // hands `launch` a config at its BASE behaviour. The env read is a refusal
+706 < 2   // that precedes every command.
+708 > 2   //
+709 < 2   // All of it under `launch.kata.mode` `on` alone. Under `off` — the default —
+710 < 2   // there is no hub: an injected client is not used, the env file is not
+711 < 2   // opened, and a laptop with no `kata-hub.env` launches all the same.
+712 < 2   const hubMode = KATA_MODES.includes(kataMode) ? kataMode : kataModeOf()
+707 < 2   let kataHost = null
+709 > 2   let hub = hubMode !== 'on' || kata === undefined ? null : kata
+710 < 2   if (hubMode === 'on' && kata === undefined && (config === undefined || config === null)) {
+708 < 2   let hub = kata === undefined ? null : kata
+709 < 2   if (kata === undefined && (config === undefined || config === null)) {
+710 < 2     const opened = await hubFromEnv({ exec, actor: 'launch', kataEnvPath })
+711 < 2     if (opened.dark !== null) throw new Refusal(`launch: ${opened.dark}`)
+712 < 2     hub = opened.client
+713 < 2     kataHost = opened.host
+714 < 2   }
+715 < 2   const kataUrl = hub === null ? null : (hub.url ?? kataHost)
+716 < 2 
+717 < 1   // The ceiling this run is sized under: `--cpu`/`--memory` when the launch
+718 < 1   // line carries them — an explicit value wins outright, and is then its own
+719 < 1   // ceiling — and otherwise the `fleet.json` pair, or `FLEET_DEFAULTS`. The
+720 < 1   // shape is refused here, before anything is executed, exactly as it always
+721 < 1   // was; the number the `new` verb ends up carrying is decided below, once the
+722 < 1   // compiled plan has said how wide it is.
+723 < 1   const cpuCap = String(opts.cpu ?? settings.cpu ?? FLEET_DEFAULTS.cpu)
+724 < 1   const memoryCap = String(opts.memory ?? settings.memory ?? FLEET_DEFAULTS.memory)
+725 < 1   if (!isPositiveInt(cpuCap)) {
+726 < 1     throw new Refusal(`launch: cpu must be a positive integer, got ${JSON.stringify(cpuCap)}`)
+727 < 1   }
+728 < 1   if (!isMemorySize(memoryCap)) {
+729 < 1     throw new Refusal(`launch: memory must be a whole number of gigabytes spelled <int>GB, got ${JSON.stringify(memoryCap)}`)
+730 < 1   }
+731 < 1 
+732 < 1   const repoDir = path.resolve(String(opts.repo ?? process.cwd()))
+733 < 1   // A relative plan path is read against `repoDir` — the target clone when
+734 < 1   // `--repo` is given, the working directory otherwise, which is what
+735 < 1   // `repoDir` already resolves to in that case — and an absolute path is left
+736 < 1   // as it is. Resolved once here, this same absolute path is what every
+737 < 1   // downstream read, refusal message and `python3` argv
+738 < 1   // carries, so the launcher and the children it spawns with `cwd: repoDir`
+739 < 1   // agree on which file `planPath` names.
+740 < 1   const planPath = path.resolve(repoDir, givenPlanPath)
+741 < 1 
+742 < 1   let planText
+743 < 1   try {
+744 < 1     planText = await fsp.readFile(planPath, 'utf8')
+745 < 1   } catch (error) {
+746 < 1     throw new Refusal(`launch: cannot read plan ${planPath}: ${error?.message ?? error}`)
+747 < 1   }
+748 < 1   if (planText.trim() === '') throw new Refusal(`launch: plan ${planPath} is empty`)
+749 < 1   let verdictsText = null
+750 < 1   try {
+751 < 1     verdictsText = await fsp.readFile(`${planPath.replace(/\.md$/, '')}.gate-verdicts.json`, 'utf8')
+752 < 1   } catch {
+753 < 1     verdictsText = null
+754 < 1   }
+755 < 1   // A stories-v1 plan's proof is state probes, run by factory/stack/tinyapp/check.ts
+756 < 1   // (state-probe runner, 2026-09-27); a Numbers probe has no checker yet.
+757 < 1   if (planGrammar(planText) === 'stories-v1' && /^## Numbers\s*$/m.test(planText)) {
+758 < 1     throw new Refusal(`launch: plan ${planPath} has a Numbers section; the fleet has no Numbers checker yet (story-planning, after sub-project 2)`)
+759 < 1   }
+760 < 1 
+761 < 1   // The comment's length does not depend on which sha the plan commit gets —
+762 < 1   // every sha is 40 hex — so the ceiling is checked here, before the world is
+763 < 1   // touched, with a placeholder standing in for `plan=`.
+764 < 1   const fields = {
+765 < 1     run: '0',
+766 < 1     plan: '0'.repeat(40),
+767 < 1     target,
+768 < 1     base: opts.base,
+769 < 1     engine: opts.engine ?? '0'.repeat(40),
+770 < 1     kind: KIND,
+771 < 1     hold: opts.hold === true ? '1' : undefined
+772 < 1   }
+773 < 1   const probeComment = buildComment(fields)
+774 < 1   if (Buffer.byteLength(probeComment, 'utf8') > COMMENT_MAX_BYTES) {
+775 < 1     throw new Refusal(
+776 < 1       `launch: assignment comment would be ${Buffer.byteLength(probeComment, 'utf8')} bytes, over the ${COMMENT_MAX_BYTES}-byte ceiling`
+777 < 1     )
+778 < 1   }
+779 < 1 
+780 < 1   // ── Reads. Still nothing mutated, on exe.dev or on the target. ────────────
+781 < 1   await checkCheckout({ exec, repoDir, target, base: opts.base })
+782 < 1 
+783 < 1   // The plan's hash pins are facts about `--base`, and the checkout has it now:
+784 < 1   // a stale one is found here, with local git reads only, before the first
+785 < 1   // `ls-remote` and long before anything is pushed or any lobby verb issued.
+786 < 1   await verifyPlanPins({ exec, repoDir, base: opts.base, planText })
+787 < 1 
+788 < 1   // ── The compiler this launch compiles with. The engine sha is settled first
+789 < 1   //    — `--engine` when the line pinned one, else whatever `main` is at — and
+790 < 1   //    the compiler is fetched AT IT, because that is the copy the sandbox's
+791 < 1   //    preflight will run. Both happen here, before the first compile and
+792 < 1   //    before anything is pushed: a sha that cannot answer a compiler is a
+793 < 1   //    refusal on the laptop, not an hour of VM time spent reaching one.
+794 < 1   //    `engineSource` rides along so the launch line can say whether the
+795 < 1   //    operator chose this engine or the launcher caught it.
+796 < 1   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
+797 < 1   const engine = opts.engine ?? await defaultEngineSha(exec)
+798 < 1   const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT, stories: planGrammar(planText) === 'stories-v1' })
+799 < 1   if (held !== undefined) held.compilerDir = compiler.dir
+800 < 1 
+801 < 1   // ... and the plan compiles against that same tree, or nothing is launched.
+802 < 1   const baseFacts = await verifyPlanCompiles({
+803 < 1     exec, repoDir, base: opts.base, planPath, planText, compilerPath: compiler.scriptPath
+804 < 1   })
+805 < 1 
+806 < 1   // ── The base is on the target's default branch, or it is a refusal.
+807 < 1   await checkBaseOnDefault({ exec, repoDir, target, base: opts.base })
+808 < 1 
+809 < 1   // One `integrations list --json`, asked for the target's GitHub object.
+810 < 1   const integrations = await listIntegrations(exec)
+811 < 1   const githubName = githubIntegrationFor(target)
+812 < 1   if (!integrations.some((row) => row.name === githubName)) {
+813 < 1     throw new Refusal(
+814 < 1       `launch: no ${githubName} integration — the sandbox could still clone a public ${target} from github.com, but could not push its branch or open its PR. Build it once: node fleet/target.mjs ${target}`
+815 < 1     )
+816 < 1   }
+817 < 1   // ... and the evidence repository's, which is where the run writes its record.
+818 < 1   const evidenceGithubName = githubIntegrationFor(evidence)
+819 < 1   if (!integrations.some((row) => row.name === evidenceGithubName)) {
+820 < 1     throw new Refusal(
+821 < 1       `launch: no ${evidenceGithubName} integration — the run could not write its record to the evidence repository ${evidence}. ` +
+822 < 1       `Build it once: node fleet/target.mjs ${evidence} (node fleet/doctor.mjs walks the setup) — no VM was created and nothing was pushed`
+823 < 1     )
+824 < 1   }
+825 < 1 
+826 < 2   // ── The hub answers, or nothing is launched. One `ping` right after the
+827 < 2   //    integrations read and before the reap: a hub that is dark is a run
+828 < 2   //    that would park at boot on `kata unreachable`, so the laptop refuses it
+829 < 2   //    here, before a plan branch or a VM exists.
+830 < 2   if (hub !== null) {
+831 < 2     try {
+832 < 2       await hub.ping()
+833 < 2     } catch (error) {
+834 < 2       throw new Refusal(`launch: the kata hub at ${kataUrl} did not answer its ping — ${error?.message ?? error}; nothing was pushed and no VM was created (${KATA_HUB_FIX} rebuilds it)`)
+835 < 2     }
+836 < 2   }
+837 < 2 
+838 < 1   // ── The reap and the duplicate check (#1036), before the run number is
+839 < 1   //    read: `janitor.mjs`'s `preflight`.
+840 < 1   const { reaped, reapError, again } = await preflight({
+842 > 1     exec, now, evidence, repoDir, target, planText, again: opts.again
+841 < 2     exec, now, hub, evidence, repoDir, target, planText, again: opts.again
+842 < 1   })
+843 < 1 
+844 < 1   // The N this launch asks for: one past the highest the evidence repository
+845 < 1   // carries for this target *now*, which another launch can
+846 < 1   // take between this read and the push; the push is where it is settled.
+847 < 1   const inEvidence = await highestRunInEvidence(exec, repoDir, evidence, target)
+848 < 1   const firstRun = inEvidence + 1
+849 < 1 
+850 < 1   // ── The parse. Exactly one, here, before the `new` verb — everything
+852 > 1   //    downstream reads it: the VM's size and what a fresh sandbox must run.
+853 < 1   //    `plan_parse.py`'s output does not move with the run number; the stamp
+854 < 1   //    is only a label.
+851 < 2   //    downstream reads it: the VM's size, and the tasks and edges
+852 < 2   //    `fileRunOnHub` files on the hub. `plan_parse.py`'s output does not move
+853 < 2   //    with the run number, so a bumped push files the same parse under N+1;
+854 < 2   //    the stamp is only a label.
+855 < 1   const firstCompiled = await compilePlanForRun({
+856 < 1     exec, repoDir, planPath, stamp: `run-${firstRun}`, compilerPath: compiler.parserPath
+857 < 1   })
+858 < 1   const sizing = { cpuCap, memoryCap, cpu: opts.cpu, memory: opts.memory }
+859 < 1   await refuseUnlaunchable({
+860 < 1     exec, repoDir, base: opts.base, compiled: firstCompiled, integrations, sizing
+861 < 1   })
+862 < 1   const { cred, usageLine } = readCredential({ account, refreshCredential, readUsage })
+863 < 1 
+864 < 1   // ── The plan commit, pushed to the evidence repository before the VM exists. Plumbing
+865 < 1   //    against a temporary index, so the operator's index and working tree are
+866 < 1   //    never touched. The push is also what reserves the run number, so the N
+867 < 1   //    the launch ends up with is the one that got through — see `pushPlan`.
+868 < 1   const commands = []
+869 < 2   // The hub's half of each push attempt: the target's project, the issues
+870 < 2   // filed under THIS N, the record read back — and, on a bump, the run-N issue
+871 < 2   // CLOSED before N+1 is filed. Nothing is destroyed: the task issues are the
+872 < 2   // repository's and the same idempotency keys answer them again, so a bump
+873 < 2   // refiles them under the new run issue rather than purging a project that
+874 < 2   // holds the target's whole history.
+875 < 2   const kataCall = async (method, fn) => {
+876 < 2     try {
+877 < 2       return await fn()
+878 < 2     } catch (error) {
+879 < 2       throw new LobbyError(`launch: kata ${method} failed — ${error?.message ?? error}; no plan branch was pushed and no VM was created`)
+880 < 2     }
+881 < 2   }
+882 < 2   const kataStep = hub === null
+883 < 2     ? null
+884 < 2     : async (n, compiled) => {
+885 < 2         const record = await fileRunOnHub({
+886 < 2           hub, call: kataCall, planText, target, base: opts.base, n, compiled
+887 < 2         })
+888 < 2         return { text: `${JSON.stringify(record, null, 2)}\n`, record }
+889 < 2       }
+890 < 2   // A number that was taken, said on the run issue it was filed under. `wontfix`
+891 < 2   // is the reason a run that never existed deserves, and the message names the
+892 < 2   // number so a reader of the target's one project can tell an abandoned
+893 < 2   // attempt from a run that failed.
+894 < 2   const kataBump = hub === null
+895 < 2     ? null
+896 < 2     : (record, taken, next) => kataCall('close', () => hub.close(record.project.id, record.run.uid, {
+897 < 2         reason: 'wontfix',
+898 < 2         message: `run-${taken} was taken in the evidence repository before this plan commit could be pushed; ` +
+899 < 2           `this launch refiles the same tasks under run-${next}.`
+900 < 2       }))
+901 < 1   const plan = await pushPlan({
+902 < 1     exec,
+903 < 1     repoDir,
+904 < 1     target,
+905 < 1     evidence,
+906 < 1     base: opts.base,
+907 < 1     run: firstRun,
+908 < 1     planText,
+909 < 1     verdictsText,
+910 < 1     commands,
+911 < 1     reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
+912 < 2     kataStep,
+913 < 2     kataBump,
+914 < 1     compiled: firstCompiled
+915 < 1   })
+916 < 1   const run = plan.run
+917 < 1   const liveBranch = plan.branch
+918 < 1   const planSha = plan.sha
+919 < 1   // The size and the width the verb carries, read off the parse the push
+920 < 1   // filed — the same parse under every N.
+921 < 1   const { width, cpu, memory } = sizeFromCompile(plan.compiled, sizing)
+922 < 1 
+923 < 1   // ── The one mutating lobby verb. ──────────────────────────────────────────
+924 < 1   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
+925 < 1   const script = stampWidth(
+926 < 1     renderSetupScript({ run: String(run), evidence, ...readFleetFiles() }),
+927 < 1     { width, cpu, memory }
+928 < 1   )
+929 < 1   // No `--integration` on the verb: the run's credentials — `claude-max` and the
+930 < 1   // target's object — reach the box by the
+931 < 1   // attachment `tag:fleet` each of them carries, so `--tag fleet` is the
+932 < 1   // grant. exe.dev refuses the flag outright since 2026-09-11, and a line that
+933 < 1   // carried it would fail every launch at `new`; hence the guard, which
+934 < 1   // refuses before the verb is issued rather than after the lobby does.
+935 < 1   const remoteFor = (vm) => {
+936 < 1     const remote = `new --name ${vm} --tag ${FLEET_TAG} --comment '${comment}'` +
+937 < 1       ` --cpu ${cpu} --memory ${memory} --setup-script /dev/stdin --json`
+938 < 1     if (NEW_INTEGRATION_FLAG.test(remote)) {
+939 < 1       throw new Refusal(`launch: the \`new\` verb must not carry --integration — exe.dev refuses it since 2026-09-11; integrations reach a fleet VM by their attachment tag:${FLEET_TAG}`)
+940 < 1     }
+941 < 1     return remote
+942 < 1   }
+943 < 1 
+944 < 1   const minted = new Set()
+945 < 1   const failures = []
+946 < 1   let vm = null
+947 < 1   for (let attempt = 1; attempt <= NEW_ATTEMPTS; attempt += 1) {
+948 < 1     let name = vmNameFor(run, now(), rand)
+949 < 1     while (minted.has(name)) name = vmNameFor(run, now())
+950 < 1     if (!isVmName(name)) {
+951 < 1       throw new Refusal(`launch: minted VM name ${JSON.stringify(name)} is not fleet-r<N>-<yymmddHHMM>-<4 hex>`)
+952 < 1     }
+953 < 1     minted.add(name)
+954 < 1     const remote = remoteFor(name)
+955 < 1     commands.push(remote)
+956 < 1     try {
+957 < 1       await lobby(exec, remote, { input: script })
+958 < 1       vm = name
+959 < 1       break
+960 < 1     } catch (error) {
+961 < 1       failures.push(`attempt ${attempt} of ${NEW_ATTEMPTS} (${name}):\n${error?.message ?? error}`)
+962 < 1       if (attempt === NEW_ATTEMPTS) {
+963 < 1         throw new LobbyError(
+964 < 1           `launch: exe.dev refused \`new\` on all ${NEW_ATTEMPTS} attempts; run ${run}'s plan is on ${liveBranch} of ${evidence}\n${failures.join('\n')}`
+965 < 1         )
+966 < 1       }
+967 < 1       await sleep(retryDelay())
+968 < 1     }
+969 < 1   }
+970 < 1 
+971 < 1   return {
+972 < 1     run,
+973 < 1     runId: `run-${run}`,
+974 < 1     vm,
+975 < 1     comment,
+976 < 1     plan: planSha,
+977 < 1     // Where the run's record lives: the operator's evidence repository, and
+978 < 1     // the live branch this launch pushed the plan to there.
+979 < 1     evidence,
+980 < 1     liveBranch,
+981 < 1     integrationBranch: integrationBranchFor(run),
+982 < 1     target,
+983 < 1     base: opts.base,
+984 < 1     engine,
+985 < 1     engineSource,
+986 < 1     // The sha the compiler was fetched at — the same one `engine=` carries, so
+987 < 1     // the launch line says outright which `plan_check.py` decided this plan
+988 < 1     // was launchable.
+989 < 1     compiler: engine,
+990 < 1     // The account is the run's, but never the assignment's: `parse_assignment`
+991 < 1     // on the VM refuses a comment key it does not know, and neither
+992 < 1     // `COMMENT_KEYS` nor `buildComment` spells `account`. It lives here and on
+993 < 1     // the launch line instead.
+994 < 1     account,
+995 < 1     // The usage line, read after the refresh and before any push (#1114) —
+996 < 1     // carried on `renderLaunch` directly after `account=`.
+997 < 1     usage: usageLine,
+998 < 1     // The hold line from `defaultRefreshCredential`, when the credential tool
+999 < 1     // held rather than rotated because a listed fleet VM is still live — carried
+1000 < 1     // onto the launch line so a launch beside live runs says so.
+1001 < 1     ...(cred.held === undefined ? {} : { token: cred.held }),
+1002 < 2     // The hub's record of this run — `{url, project, run, tasks}`, the same
+1003 < 2     // object the plan commit carries as `.ultrapowers/kata.json` — or null for
+1004 < 2     // a launch that reached no hub.
+1005 < 2     kata: plan.kata,
+1006 < 1     github: githubName,
+1007 < 1     cpu,
+1008 < 1     memory,
+1009 < 1     // W, the widest wave of the parsed plan: what `cpu` and `memory` were
+1010 < 1     // sized to. It is not an assignment key — `COMMENT_KEYS` in
+1011 < 1     // `fleet/lobby.mjs` spells seven and `parse_assignment` on the VM fails on an
+1012 < 1     // eighth — so it rides the setup script's header instead (`stampWidth`),
+1013 < 1     // where it is a record and not a switch.
+1014 < 1     width,
+1015 < 1     launchedAt: now().toISOString(),
+1016 < 1     commands,
+1017 < 1     reaped,
+1018 < 1     reapError,
+1019 < 1     again,
+1020 < 1     // What the compiler read off the tree at `--base` about this plan (#896):
+1021 < 1     // printed by the launch line, never a refusal.
+1022 < 1     baseFacts
+1023 < 1   }
+1024 < 1 }
+1025 < 1 
+1026 < 1 /** A whole number of milliseconds in [RETRY_MIN_MS, RETRY_MAX_MS]. */
+1027 < 1 const retryDelay = () =>
+1028 < 1   RETRY_MIN_MS + Math.floor(Math.random() * (RETRY_MAX_MS - RETRY_MIN_MS + 1))
+1029 < 1 
+1030 < 1 /** The `origin` URL of the checkout a launch runs against, or a refusal. */
+1031 < 1 async function readOriginUrl ({ exec, repoDir }) {
+1032 < 1   const res = await git(exec, repoDir, ['remote', 'get-url', 'origin'])
+1033 < 1   if (res.code !== 0) {
+1034 < 1     throw new Refusal(
+1035 < 1       `launch: --repo ${repoDir} is not a git checkout with an origin remote:\n${output(res)}`
+1036 < 1     )
+1037 < 1   }
+1038 < 1   return String(res.stdout ?? '').trim()
+1039 < 1 }
+1040 < 1 
+1041 < 1 /**
+1042 < 1  * The origin's default branch and the sha it points at, off one `ls-remote
+1043 < 1  * --symref origin HEAD`. That prints two lines — `ref: refs/heads/<name>\tHEAD`
+1044 < 1  * and `<sha>\tHEAD` — and the name comes off the first, the tip off the second.
+1045 < 1  * A branch name is used in later git lines, so it is pinned to the shape a
+1046 < 1  * branch has; anything the launcher cannot read is a refusal, because guessing
+1047 < 1  * `main` here is exactly the guess this check exists to stop making.
+1048 < 1  */
+1049 < 1 async function readDefaultBranch ({ exec, repoDir }) {
+1050 < 1   const res = await git(exec, repoDir, ['ls-remote', '--symref', 'origin', 'HEAD'])
+1051 < 1   if (res.code !== 0) {
+1052 < 1     throw new Refusal(
+1053 < 1       `launch: git ls-remote --symref origin HEAD in ${repoDir} failed (exit ${res.code}):\n${output(res)}`
+1054 < 1     )
+1055 < 1   }
+1056 < 1   let branch = null
+1057 < 1   let tip = null
+1058 < 1   for (const line of String(res.stdout ?? '').split('\n')) {
+1059 < 1     const symref = /^ref:\s+refs\/heads\/(\S+)\s+HEAD$/.exec(line.trim())
+1060 < 1     if (symref) branch ??= symref[1]
+1061 < 1     const head = /^([0-9a-f]{40})\s+HEAD$/.exec(line.trim())
+1062 < 1     if (head) tip ??= head[1]
+1063 < 1   }
+1064 < 1   if (branch === null || tip === null || !/^[A-Za-z0-9][A-Za-z0-9._\-/]*$/.test(branch)) {
+1065 < 1     throw new Refusal(
+1066 < 1       `launch: git ls-remote --symref origin HEAD named no default branch and tip:\n${output(res)}`
+1067 < 1     )
+1068 < 1   }
+1069 < 1   return { branch, tip }
+1070 < 1 }
+1071 < 1 
+1072 < 1 /**
+1073 < 1  * The plan commit: a commit with NO parent whose tree is the run's folder
+1074 < 1  * alone — `runs/<slug>/<N>/plan.md`, and `gate-verdicts.json` when the plan
+1076 > 1  * has a sibling `.gate-verdicts.json` —
+1075 < 2  * has a sibling `.gate-verdicts.json`, and `kata.json` when a hub is reached —
+1076 < 1  * built entirely with plumbing against a temporary (empty) index file, in the
+1077 < 1  * target clone's object store. Nothing of `<base>`'s tree is read into it: it
+1078 < 1  * is pushed to the evidence repository, which holds no copy of the product.
+1079 < 1  * The operator's own index and working tree are never read and never written,
+1080 < 1  * so a launch from a dirty checkout is as safe as one from a clean one.
+1081 < 1  *
+1082 < 1  * A local git failure here is still a refusal: exe.dev has seen nothing but
+1083 < 1  * reads, and neither the target nor the evidence repository has anything new.
+1084 < 1  */
+1086 > 1 async function commitPlan ({ exec, repoDir, target, base, run, planText, verdictsText = null }) {
+1085 < 2 async function commitPlan ({ exec, repoDir, target, base, run, planText, verdictsText = null, kataText = null }) {
+1086 < 1   const indexDir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-plan-'))
+1087 < 1   const env = { ...process.env, GIT_INDEX_FILE: path.join(indexDir, 'index') }
+1088 < 1   const plumb = async (argv, options = {}) => {
+1089 < 1     const res = await exec('git', ['-C', repoDir, ...argv], { env, ...options })
+1090 < 1     if (res.code !== 0) {
+1091 < 1       throw new Refusal(`launch: git ${argv.join(' ')} failed (exit ${res.code}):\n${output(res)}`)
+1092 < 1     }
+1093 < 1     return String(res.stdout ?? '').trim()
+1094 < 1   }
+1095 < 1   try {
+1096 < 1     const folder = runFolderFor(target, run)
+1097 < 1     const entries = [[`${folder}/${PLAN_FILE}`, planText]]
+1098 < 1     if (verdictsText !== null) entries.push([`${folder}/${VERDICTS_FILE}`, verdictsText])
+1099 < 2     if (kataText !== null) entries.push([`${folder}/${KATA_FILE}`, kataText])
+1100 < 1     for (const [rel, text] of entries) {
+1101 < 1       const blob = await plumb(['hash-object', '-w', '--stdin'], { input: text })
+1102 < 1       if (!isSafeSha(blob)) {
+1103 < 1         throw new Refusal(`launch: git hash-object answered ${JSON.stringify(blob)}, not an object name`)
+1104 < 1       }
+1105 < 1       await plumb(['update-index', '--add', '--cacheinfo', `100644,${blob},${rel}`])
+1106 < 1     }
+1107 < 1     const tree = await plumb(['write-tree'])
+1108 < 1     if (!isSafeSha(tree)) {
+1109 < 1       throw new Refusal(`launch: git write-tree answered ${JSON.stringify(tree)}, not an object name`)
+1110 < 1     }
+1111 < 1     const sha = await plumb(['commit-tree', tree, '-m', `ultrapowers plan ${target} run-${run} base ${base}`])
+1112 < 1     if (!isFullSha(sha)) {
+1113 < 1       throw new Refusal(`launch: git commit-tree answered ${JSON.stringify(sha)}, not a 40-hex sha`)
+1114 < 1     }
+1115 < 1     return sha
+1116 < 1   } finally {
+1117 < 1     await fsp.rm(indexDir, { recursive: true, force: true })
+1118 < 1   }
+1119 < 1 }
+1120 < 1 
+1121 < 1 /** How many plan pushes one launch makes before it refuses. */
+1122 < 1 const PUSH_ATTEMPTS = 3
+1123 < 1 
+1124 < 1 /**
+1125 < 1  * The plan commit, pushed — and the run number, reserved by that push rather
+1126 < 1  * than by the read that proposed it. Two launches started in the same second
+1127 < 1  * on one target read the same highest N and pick the same N+1; the ref is the
+1128 < 1  * only thing that can tell them apart, so the loser of the push is the one
+1129 < 1  * that takes the next number.
+1130 < 1  *
+1131 < 1  * So a refused push is re-read before it is believed: `highestRunInEvidence` —
+1132 < 1  * the same read the number came from, the target's live branches *and* tags in
+1133 < 1  * the evidence repository in one `ls-remote` — says whether a ref for the N
+1134 < 1  * just tried appeared. If it did, the refusal was
+1135 < 1  * a race: the launch takes reading + 1, builds a *fresh* plan commit for that
+1136 < 1  * N (the subject carries the number, so the old sha cannot be re-pushed under
+1137 < 1  * a new name) and pushes again. If it did not, nothing raced us — the evidence
+1138 < 1  * repository refused this push on its own terms, a pre-receive hook or a lost credential,
+1139 < 1  * and a second push would be refused the same way — so it is refused at once,
+1140 < 1  * with the push's own output. Git's words are never parsed: the target's refs
+1141 < 1  * decide, not the wording of a rejection line.
+1142 < 1  *
+1143 < 1  * The parse does not move with the number: `compiled` is the launch's one
+1145 > 1  * parse, and it rides back out on `compiled` for the verb to size the box from.
+1144 < 2  * parse, filed on the hub under whichever N the push wins, and it rides back
+1145 < 2  * out on `compiled` for the verb to size the box from.
+1146 < 1  *
+1147 < 1  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
+1148 < 1  * text a single refused push has always carried — with ` after <n> tries` when
+1149 < 1  * more than one was made.
+1150 < 1  */
+1151 < 1 async function pushPlan ({
+1153 > 1   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread, compiled = null
+1152 < 2   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread,
+1153 < 2   kataStep = null, kataBump = null, compiled = null
+1154 < 1 }) {
+1155 < 1   const url = evidenceUrlFor(evidence)
+1156 < 1   let n = run
+1157 < 1   for (let attempt = 1; attempt <= PUSH_ATTEMPTS; attempt += 1) {
+1158 < 1     const branch = liveBranchFor(target, n)
+1160 > 1     const sha = await commitPlan({ exec, repoDir, target, base, run: n, planText, verdictsText })
+1159 < 2     // The hub is filed for THIS N before the commit is built: a bump closes
+1160 < 2     // the run issue it filed and files N+1's instead. The project is the
+1161 < 2     // target's and outlives every number, so a bump destroys nothing.
+1162 < 2     const filed = kataStep === null ? null : await kataStep(n, compiled)
+1163 < 2     const sha = await commitPlan({
+1164 < 2       exec, repoDir, target, base, run: n, planText, verdictsText, kataText: filed === null ? null : filed.text
+1165 < 2     })
+1166 < 1     const pushArgv = ['-C', repoDir, 'push', url, `${sha}:refs/heads/${branch}`]
+1167 < 1     commands.push(`git ${pushArgv.join(' ')}`)
+1168 < 1     const push = await exec('git', pushArgv)
+1169 < 1     if (push.code === 0) {
+1171 > 1       return { run: n, sha, branch, compiled }
+1170 < 2       return { run: n, sha, branch, compiled, kata: filed === null ? null : filed.record }
+1171 < 1     }
+1172 < 1 
+1173 < 1     const refusal = () =>
+1174 < 1       new Refusal(
+1175 < 1         `launch: git push ${url} ${sha}:refs/heads/${branch} failed` +
+1176 < 1         `${attempt > 1 ? ` after ${attempt} tries` : ''} (exit ${push.code}):\n${output(push)}`
+1177 < 1       )
+1178 < 1     if (attempt === PUSH_ATTEMPTS) throw refusal()
+1179 < 1     const highest = await reread()
+1180 < 1     if (highest < n) throw refusal()
+1181 < 2     const taken = n
+1182 < 1     n = highest + 1
+1183 < 2     if (filed !== null) await kataBump(filed.record, taken, n)
+1184 < 1   }
+1185 < 1 }
+1186 < 1 
+1187 < 1 /**
+1188 < 1  * An unpinned engine, named as the tip it is. Only the unpinned case is
+1189 < 1  * annotated: a pinned sha is one the operator typed, and the assignment comment
+1190 < 1  * already prints `engine=<sha>` either way, so there is nothing a `(pinned)`
+1191 < 1  * line would tell them. #636 asks for exactly this — that the tip stop passing
+1192 < 1  * for a choice.
+1193 < 1  *
+1194 < 1  * The annotation is a rendered line, never part of the comment: the comment's
+1195 < 1  * text is pinned byte-for-byte, and a run reading it must not have to strip
+1196 < 1  * prose off the sha.
+1197 < 1  */
+1198 < 1 const engineLine = (result) =>
+1199 < 1   result.engineSource === 'main-tip'
+1200 < 1     ? `engine=${result.engine} (main tip; pass --engine <40-hex> to pin)`
+1201 < 1     : null
+1202 < 1 
+1203 < 1 /**
+1204 < 1  * The lines a launched run prints: its id, its VM, where to watch, what it was
+1205 < 1  * told, one line per VM this launch's reap removed, which keychain entry it
+1206 < 1  * signed in with — and, when nobody
+1207 < 1  * pinned one, which engine it happens to have caught, then the `compiler=<sha>`
+1208 < 1  * the two compiles were run from. A launch that reaped nothing prints no reap
+1209 < 1  * line at all.
+1210 < 1  *
+1211 < 1  * `compiler=` sits between the engine line and the fact lines, never among
+1212 < 1  * them: the `STALE fact:`, `GREEN-AT-BASE fact:` and
+1213 < 1  * `AUTHORING fact:` entries are the LAST lines of the launch text, which is
+1214 < 1  * what an operator reads down to.
+1215 < 1  *
+1216 < 1  * `account=` is a rendered line and never part of the comment: the comment is
+1217 < 1  * the assignment the VM parses, and a key it does not know kills the run at
+1218 < 1  * boot. The two launches that differ only in `--account` build the same
+1219 < 1  * comment byte for byte and differ on this line.
+1220 < 1  */
+1221 < 1 /**
+1222 < 1  * The engine every launch boots: the Flock, the one engine left since the
+1223 < 1  * factory's retirement (map #1292 rule 8). The comment still names it on every
+1224 < 1  * launch: an older boot reads a missing `kind=` as the factory.
+1225 < 1  */
+1226 < 1 const KIND = 'flock'
+1227 < 1 
+1228 < 1 export const renderLaunch = (result) => [
+1229 < 1   result.runId,
+1230 < 1   result.vm,
+1231 < 1   result.comment,
+1232 < 1   ...(result.reaped ?? []).map((vm) => `reaped ${vm}`),
+1233 < 1   ...(result.again ?? []).map((d) => `again run-${d.run} ${d.vm}`),
+1234 < 1   result.account === undefined ? null : `account=${result.account}`,
+1235 < 1   result.usage === undefined ? null : result.usage,
+1236 < 1   result.token === undefined ? null : result.token,
+1237 < 2   result.kata ? `kata=${result.kata.project.name} ${Object.keys(result.kata.tasks).length} tasks` : null,
+1238 < 1   engineLine(result),
+1239 < 1   result.compiler === undefined || result.compiler === null ? null : `compiler=${result.compiler}`,
+1240 < 1   ...(result.baseFacts ?? [])
+1241 < 1 ].filter((line) => line !== null).join('\n')
+1242 < 1 
+1243 < 1 async function main (argv) {
+1244 < 1   const { opts } = parseArgs(argv, { flags: ['json', 'hold', 'again'] })
+1245 < 1   const result = await launch({ argv })
+1246 < 1   process.stdout.write(opts.json ? `${JSON.stringify(result)}\n` : `${renderLaunch(result)}\n`)
+1247 < 1 }
+1248 < 1 
+1249 < 1 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+1250 < 1 if (invokedPath === fileURLToPath(import.meta.url)) {
+1251 < 1   await runCli(main, process.argv.slice(2))
+1252 < 1 }
+1253 < 1 

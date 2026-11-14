@@ -1,0 +1,45 @@
+0 < 1 # Ledger: convert several amounts at once
+1 < 1 
+2 < 1 **Grammar:** claims-v1
+3 < 1 **Claim:** I open the pull request on flock-baseline and the ledger converts a list of amounts from one currency to another in one call. (elicited)
+4 < 1 **Summary:** One addition to the currency module: converting a list of amounts at once.
+5 < 1 
+6 < 1 **Goal:** Add list conversion to the currency module.
+7 < 1 **Tech Stack:** Python 3 + pytest. Run the suite with `python3 -m pytest -q -p no:cacheprovider` from the repository root.
+8 < 1 
+9 < 1 **Base:** `ledger/__init__.py`, `ledger/core.py`, `ledger/rates.py` and `tests/test_ledger.py` exist at BASE, `d668b2e720fc3bac33a919b364ec48d89d906e52` on flock-baseline's main.
+10 < 1 
+11 < 1 Spec: none.
+12 < 1 
+13 < 1 ## Global Constraints
+14 < 1 
+15 < 1 - Check: python3 -m pytest -q -p no:cacheprovider
+16 < 1 
+17 < 1 ---
+18 < 1 
+19 < 1 ### Task 1: Convert several amounts
+20 < 1 
+21 < 1 **Type:** implementation
+22 < 1 
+23 < 1 **Files:**
+24 < 1 - Modify: `ledger/rates.py`
+25 < 1 
+26 < 1 **Claim:** An operator converts a list of amounts in whole cents from one currency to another. (derived)
+27 < 1 Machine: M1. `convert_many([1000, 250], "USD", "EUR")` is exactly `[900, 225]`. M2. `sum(convert_many([1000, 250], "USD", "EUR"))` is exactly `1135`.
+28 < 1 
+29 < 1 **Authorized-by:** operator's pick, 2026-11-13
+30 < 1 
+31 < 1 **Interfaces:**
+32 < 1 - Consumes: nothing
+33 < 1 - Produces: `convert_many(amounts: list[int], source: str, target: str) -> list[int]`
+34 < 1 
+35 < 1 **Context:** `convert_many` applies the module's `convert(cents, source, target)` to each amount, in order.
+36 < 1 
+37 < 1 **Proof:**
+38 < 1 - Run: python3 -c "from ledger.rates import convert_many; assert convert_many([1000, 250], 'USD', 'EUR') == [900, 225]" [M1]
+39 < 1 - Run: python3 -c "from ledger.rates import convert_many; assert sum(convert_many([1000, 250], 'USD', 'EUR')) == 1135" [M2]
+40 < 1 - Legs: (a) the converted list [M1]; (b) its sum [M2].
+41 < 1 
+42 < 1 **Stale-if:**
+43 < 1 - path-absent: `ledger/rates.py`
+44 < 1 

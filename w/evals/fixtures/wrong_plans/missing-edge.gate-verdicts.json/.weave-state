@@ -1,0 +1,72 @@
+0 < 1 {
+1 < 1   "tasks": {
+2 < 1     "1": {
+3 < 1       "hash": "98d09a0c88c05319e23fc10da0d94b504f52fde5ef8493f0f97866d4f1dbb26d",
+4 < 1       "verdict": "pass",
+5 < 1       "reason": "the known rate and the refusal's exact message each have a leg that would fail if false",
+6 < 1       "gate_rounds": [
+7 < 1         {
+8 < 1           "hash": "98d09a0c88c05319e23fc10da0d94b504f52fde5ef8493f0f97866d4f1dbb26d",
+9 < 1           "agent": "pass",
+10 < 1           "jev": "pass",
+11 < 1           "clauses": [
+12 < 1             {
+13 < 1               "id": "M1",
+14 < 1               "fact": 0.96,
+15 < 1               "caught": 0.99
+16 < 1             },
+17 < 1             {
+18 < 1               "id": "M2",
+19 < 1               "fact": 0.96,
+20 < 1               "caught": 0.99
+21 < 1             }
+22 < 1           ],
+23 < 1           "contradiction": 0.03,
+24 < 1           "pinned": null,
+25 < 1           "reading": {
+26 < 1             "caught": "caught_v2",
+27 < 1             "own_files": "dropped"
+28 < 1           }
+29 < 1         }
+30 < 1       ]
+31 < 1     },
+32 < 1     "2": {
+33 < 1       "hash": "816885cc171696a03ee5b56ed1787cf4fd9749d79dc36eb34c3da1eba5961b58",
+34 < 1       "verdict": "pass",
+35 < 1       "reason": "the converted text and the refusal's exact message each have a leg that would fail if false",
+36 < 1       "gate_rounds": [
+37 < 1         {
+38 < 1           "hash": "816885cc171696a03ee5b56ed1787cf4fd9749d79dc36eb34c3da1eba5961b58",
+39 < 1           "agent": "pass",
+40 < 1           "jev": "pass",
+41 < 1           "clauses": [
+42 < 1             {
+43 < 1               "id": "M1",
+44 < 1               "fact": 0.98,
+45 < 1               "caught": 0.99
+46 < 1             },
+47 < 1             {
+48 < 1               "id": "M2",
+49 < 1               "fact": 0.96,
+50 < 1               "caught": 0.99
+51 < 1             }
+52 < 1           ],
+53 < 1           "contradiction": 0.06,
+54 < 1           "pinned": null,
+55 < 1           "reading": {
+56 < 1             "caught": "caught_v2",
+57 < 1             "own_files": "dropped"
+58 < 1           }
+59 < 1         }
+60 < 1       ]
+61 < 1     }
+62 < 1   },
+63 < 1   "tally": {
+64 < 1     "dispatched": 2,
+65 < 1     "rejected": 0,
+66 < 1     "rounds": 1,
+67 < 1     "base": "d668b2e",
+68 < 1     "history": []
+69 < 1   }
+70 < 1 }
+71 < 1 

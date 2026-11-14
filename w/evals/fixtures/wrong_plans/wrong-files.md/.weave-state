@@ -1,0 +1,44 @@
+0 < 1 # Ledger: print a report from the command line
+1 < 1 
+2 < 1 **Grammar:** claims-v1
+3 < 1 **Claim:** I open the pull request on flock-baseline and `python3 -m ledger` prints the report of the ledger text it is given on standard input. (elicited)
+4 < 1 **Summary:** One addition: the ledger can be run as a command that reads ledger text and prints its report.
+5 < 1 
+6 < 1 **Goal:** Let the ledger run as a command.
+7 < 1 **Tech Stack:** Python 3 + pytest. Run the suite with `python3 -m pytest -q -p no:cacheprovider` from the repository root.
+8 < 1 
+9 < 1 **Base:** `ledger/__init__.py`, `ledger/core.py`, `ledger/rates.py` and `tests/test_ledger.py` exist at BASE, `d668b2e720fc3bac33a919b364ec48d89d906e52` on flock-baseline's main.
+10 < 1 
+11 < 1 Spec: none.
+12 < 1 
+13 < 1 ## Global Constraints
+14 < 1 
+15 < 1 - Check: python3 -m pytest -q -p no:cacheprovider
+16 < 1 
+17 < 1 ---
+18 < 1 
+19 < 1 ### Task 1: Run the ledger as a command
+20 < 1 
+21 < 1 **Type:** implementation
+22 < 1 
+23 < 1 **Files:**
+24 < 1 - Modify: `ledger/core.py`
+25 < 1 
+26 < 1 **Claim:** An operator pipes ledger text into `python3 -m ledger` and reads its report. (derived)
+27 < 1 Machine: M1. `python3 -m ledger`, given `2026-09-01,cash,-12.50,coffee` on standard input, prints a last line that begins with the word `total` and a space, and ends `-12.50`.
+28 < 1 
+29 < 1 **Authorized-by:** operator's pick, 2026-11-13
+30 < 1 
+31 < 1 **Interfaces:**
+32 < 1 - Consumes: nothing
+33 < 1 - Produces: none
+34 < 1 
+35 < 1 **Context:** The command reads all of standard input and prints the module's `report(text)`.
+36 < 1 
+37 < 1 **Proof:**
+38 < 1 - Run: printf '2026-09-01,cash,-12.50,coffee\n' | python3 -m ledger | tail -1 | grep -q '^total .*-12\.50$' [M1]
+39 < 1 - Legs: (a) the command's last line for a one-entry ledger [M1].
+40 < 1 
+41 < 1 **Stale-if:**
+42 < 1 - path-absent: `ledger/core.py`
+43 < 1 

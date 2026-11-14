@@ -1,0 +1,286 @@
+0 < 1 ```
+1 < 1 _  _ _    ___ ____ ____ ___  ____ _ _ _ ____ ____ ____
+2 < 1 |  | |     |  |__/ |__| |__] |  | | | | |___ |__/ [__
+3 < 1 |__| |___  |  |  \ |  | |    |__| |_|_| |___ |  \ ___]
+4 < 1 ```
+5 < 1 
+6 < 1 **Give your Superpowers Ultrapowers.**
+7 < 1 
+8 < 1 Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, reviewed work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
+9 < 1 
+10 < 1 ## Ambition is expensive
+11 < 1 
+12 < 1 Have you ever asked Claude to do ambitious work and blown through your five-hour token budget before it
+13 < 1 finished? (If you haven't, you're not trying hard enough;)
+14 < 1 
+15 < 1 Frontier models invite bigger asks. "Product people" love this. You can finally think at the scale
+16 < 1 of the whole feature, the whole idea, the whole business, instead of the next function. But pointing a frontier model
+17 < 1 at a huge body of work and saying "build it" is the most expensive way to get it done. The frontier
+18 < 1 model writes every line, reviews itself, and drags one ever-growing transcript the whole way. You
+19 < 1 max out your subscription-subsidized tokens, and the work still isn't finished.
+20 < 1 
+21 < 1 ## Spend your frontier model where it counts
+22 < 1 
+23 < 1 ultrapowers makes ambition affordable by using your frontier model only where it changes the
+24 < 1 outcome.
+25 < 1 
+26 < 1 - **Your frontier model plans.** It thinks hard, once, and writes each task as a contract — what
+27 < 1   the task must be true of, and the proof that decides it — never a script of steps to retype.
+28 < 1 - **Cheaper models build.** A contract that exact leaves the builder no invention to do about
+29 < 1   *what* to deliver, so a cheaper model does it well.
+30 < 1 - **Your frontier model checks the work.** Quality is the one place it never cuts corners.
+31 < 1 - **Each task stays out of your main session.** You don't re-pay for one giant, ballooning
+32 < 1   transcript.
+33 < 1 - **It won't over-spend.** If a plan won't benefit from the heavy parallel machinery, ultrapowers
+34 < 1   tells you to use a lighter tool instead.
+35 < 1 
+36 < 1 Honest caveat: the parallel-and-review machinery *can* cost more than a plain sequential run — it's
+37 < 1 running extra reviewers and isolated build environments. What it saves you from is what you'd reach
+38 < 1 for otherwise: asking one frontier model to build the whole thing directly. Against that, the
+39 < 1 savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to waste your tokens.
+40 < 1 
+41 < 1 ## What you get
+42 < 1 
+43 < 1 **1. Affordable ambition.** You don't pay frontier prices to write boilerplate. Your frontier model
+44 < 1 plans and checks; cheaper models do the building in between.
+45 < 1 
+46 < 1 **2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
+47 < 1 counts — so you don't have to read the code yourself. You make one approval at the
+48 < 1 end, on the finished result, instead of signing off on code you can't (or don't want to) judge.
+49 < 1 
+50 < 1 **3. Faster finishes.** (Sometimes.) When the plan allows, independent work runs at the same time instead of one
+51 < 1 piece after another, so big work lands sooner. That's the cherry, not the headline.
+52 < 1 
+53 < 1 ## Where Superpowers fits
+54 < 1 
+55 < 1 [Superpowers](https://github.com/obra/superpowers) is a popular Claude Code skill that gives Claude a disciplined way to build software:
+56 < 1 brainstorm the idea, write a plan, execute it, review it. It's excellent — but it builds one task
+57 < 1 at a time, and it keeps you in the loop the whole way.
+58 < 1 
+59 < 1 Superpowers is an optional companion, not a requirement: brainstorming and its practice skills pair
+60 < 1 well with ultrapowers, but plan authoring is ultrapowers' own — the `ultrawrite` skill writes the
+61 < 1 plan. Bring a spec (however you arrived at it) and ultrapowers takes it from there. Same discipline,
+62 < 1 less babysitting.
+63 < 1 
+64 < 1 ## What it adds
+65 < 1 
+66 < 1 - **It recommends the right tool for the job — even when that's not ultrapowers.** Hand it a plan
+67 < 1   and it sizes up the work. If a lighter, sequential path would do the job better, it says so.
+68 < 1   Honesty is a feature.
+69 < 1 - **It shapes plans to run side by side.** When you plan with it, it structures the work so
+70 < 1   independent pieces can run at once later.
+71 < 1 - **It runs the build between two checkpoints, not twenty.** You approve the plan. It does the work.
+72 < 1   You approve the finished result. No signing off on every step in between.
+73 < 1 - **The plan is still readable by anything else.** A claims-v1 plan has no steps to follow, but a
+74 < 1   sequential executor can implement task-by-task from contract plus proof.
+75 < 1 
+76 < 1 ## When to use it — and when not
+77 < 1 
+78 < 1 Reach for ultrapowers on big, ambitious plans with independent pieces — the kind where parallel
+79 < 1 work and independent review pay off.
+80 < 1 
+81 < 1 Skip it for small or tightly-connected plans, where the work has to happen in order anyway. There,
+82 < 1 a plain sequential run is the better tool — and ultrapowers will tell you so rather than spin up
+83 < 1 machinery you don't need.
+84 < 1 
+85 < 1 In field use the human surface compresses to exactly the designed touchpoints:
+86 < 1 on a recent 7-task production run the operator's entire involvement was the
+87 < 1 planning decisions and one physical-world check no tooling could reach
+88 < 1 (confirming an email landed in a personal inbox) — everything between launch
+89 < 1 and the pre-merge gate ran autonomously, and the operator's unrelated
+90 < 1 work-in-progress was restored byte-for-byte.
+91 < 1 
+92 < 1 ## How it works
+93 < 1 
+94 < 1 ultrapowers runs on an exe.dev fleet you provision — the plugin is the client, and there is one
+95 < 1 engine, the Flock (`factory/flock/engine.mjs`). `/ultrapowers <plan-path>` publishes your approved
+96 < 1 plan and starts a run on a disposable sandbox of its own; every builder, every probe, every merge
+97 < 1 and every check execute there. Nothing builds, tests, or merges on your machine. When the run ends, the sandbox
+98 < 1 opens the pull request on the repository you ran in — ready if its own checks ended green, a draft
+99 < 1 otherwise — with the evidence linked in its body. If main moved while the run worked, the sandbox
+100 < 1 first joins the run's work onto the new main (`factory/flock/catchup.mjs`) and re-runs the plan's
+101 < 1 probes and checks there; only then does it merge its own pull request. A conflict or a red check
+102 < 1 leaves that pull request open and unmerged for you.
+103 < 1 
+104 < 1 The clearest way to see what it does is to zoom in — the whole plan, then one task.
+105 < 1 
+106 < 1 ### The whole plan, at a distance
+107 < 1 
+108 < 1 Here's a question that sounds simple and isn't: in any plan, which work has to happen in order — and
+109 < 1 which doesn't?
+110 < 1 
+111 < 1 We do things one after another out of habit, and because a single worker can only hold one task at a
+112 < 1 time. But most of that sequence is an illusion. You can't paint a wall before it's built; that order
+113 < 1 is real, forced by the work itself. Two *different* walls, though? Two crews raise them at the same
+114 < 1 time, and nothing in the world objects. The only thing that genuinely makes one task wait for another
+115 < 1 is **dependency** — one task needing something another produces. Everything else only looks sequential
+116 < 1 because we're used to one pair of hands.
+117 < 1 
+118 < 1 Take away the false order and you're left with the real skeleton of the job: a web of *this must come
+119 < 1 before that*. It's smaller than the to-do list makes it look. And it has an exact shape.
+120 < 1 
+121 < 1 That shape has a name — a **directed acyclic graph**. *Directed*, because every arrow points from a
+122 < 1 task to the task that depends on it. *Acyclic*, because nothing can depend on itself, even the long way
+123 < 1 around a loop; if it could, the work could never start. Draw each "must-come-before" as an arrow and
+124 < 1 your plan stops being a list and becomes a map. Tasks with no path between them can run side by side.
+125 < 1 The depth of the graph is how long the work really takes; its width is how much can happen at once.
+126 < 1 
+127 < 1 <p align="center">
+128 < 1   <img src="docs/assets/dag.gif" width="840" alt="An approved plan drawn as a directed acyclic graph. A single plan node fans out into independent tasks; dependency arrows cross between them, each task waiting only for what it needs; everything fans back into one merged pull request. Arrows point from a task to the work that depends on it.">
+129 < 1 </p>
+130 < 1 
+131 < 1 ultrapowers reads your approved plan and derives exactly this graph — from the files each task
+132 < 1 touches and the probes each task runs, not from a list you write — then runs it as a **pool**: every
+133 < 1 task whose dependencies have landed is started at once, and a task that needs another starts the
+134 < 1 moment that one lands. There is no round to wait for; the shape of the work is the only clock.
+135 < 1 
+136 < 1 ### Zoom in: one task's life
+137 < 1 
+138 < 1 Pick any one of those circles. Up close, it isn't a dot — it's a claim on a shared board.
+139 < 1 
+140 < 1 The run is a **flock** of builder agents with no leader. Each builder claims a task from the board and
+141 < 1 works on its own copy of the repository, only from the task's contract — what must be true afterwards,
+142 < 1 and the proof that decides it. Between tool calls, each copy takes in what its peers have published
+143 < 1 through a content-level merge, so a task that reads what another task wrote builds against it as it
+144 < 1 lands, not after a round. The pool grows and shrinks with the work that is claimable.
+145 < 1 
+146 < 1 Work is **measured**, not reviewed: a task is done when its own `Run:` probes pass on the builder's
+147 < 1 copy, and every published snapshot is tested at the edge with the run-wide `Check:` lines. A judge
+148 < 1 reads only what a probe cannot see, and never blocks a task.
+149 < 1 
+150 < 1 If main moved while the run worked, the sandbox **catches the run up**: it joins the run's work onto
+151 < 1 the new main through the same merge and re-runs the plan's setup, probes and checks there. A conflict
+152 < 1 or a red check leaves a draft pull request instead.
+153 < 1 
+154 < 1 ### It doesn't improvise
+155 < 1 
+156 < 1 The engine that runs all of this is committed and frozen at the sha the launch names; it never writes
+157 < 1 a fresh version of itself at runtime. Same plan in, same structure out. And every run happens in a
+158 < 1 sandbox that exists only for that run — nothing it does can touch your checkout, and nothing it
+159 < 1 leaves behind survives it except the evidence it pushed.
+160 < 1 
+161 < 1 None of this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
+162 < 1 dependency graphs, clean clones, content merges, disposable sandboxes — each doing one small job well.
+163 < 1 
+164 < 1 ## TinyApp screens
+165 < 1 
+166 < 1 A TinyApp's screens come out in the look of [1st-Pouf](https://github.com/moji2002/1st-pouf), a
+167 < 1 small open-source component set by Mojtaba Beheshti, used here under its MIT licence and kept
+168 < 1 exactly as its author published it. Nobody writes page code for a screen: each one is a short
+169 < 1 description of which pieces it shows and which action each button runs. The run checks every
+170 < 1 screen itself and catches a button that is missing or wired to the wrong action before you see it.
+171 < 1 
+172 < 1 ## See it before you sign
+173 < 1 
+174 < 1 While a TinyApp is being planned, you see its real screen in Claude's Browser pane, not a
+175 < 1 mock-up. Jev offers two or three arrangements of it, built only from what the app can actually
+176 < 1 do, and you pick the one you like. Then you pin notes on any part of it in Comment mode — click
+177 < 1 a button or drag a box around an area and say what should change — and watch each story play
+178 < 1 out on it. What you sign is the screen the fleet starts building from.
+179 < 1 
+180 < 1 ## Get started
+181 < 1 
+182 < 1 Four steps, once each. All of it happens inside Claude Code: the agent does the work and asks you to
+183 < 1 choose. The only things it cannot do for you are the consents that are yours to give in a browser.
+184 < 1 
+185 < 1 ### 1. Install the plugin
+186 < 1 
+187 < 1 From inside Claude Code:
+188 < 1 
+189 < 1 ```
+190 < 1 /plugin marketplace add popmechanic/ultrapowers
+191 < 1 /plugin install ultrapowers@ultrapowers
+192 < 1 ```
+193 < 1 
+194 < 1 **Superpowers is optional.** ultrapowers authors and runs plans on its own. Install Superpowers
+195 < 1 alongside it if you want its brainstorming and practice skills as companions.
+196 < 1 
+197 < 1 ### 2. `/ultrapowers setup`
+198 < 1 
+199 < 1 Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
+201 > 1 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper` — and fixes every red row with you,
+200 < 2 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
+201 < 1 offering each choice as options rather than asking you to invent an answer. Setup is safe to
+202 < 1 re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
+203 < 1 
+204 < 1 **Your evidence repository.** Every run's plan and record live in one private repository of your
+205 < 1 own, never in the repository being built — so you can run on someone else's repository too. The
+206 < 1 `evidence` row walks its one-time setup in three steps: name it in `~/.ultrapowers/fleet.json` as
+207 < 1 `"evidence": "<owner>/<repo>"` (a launch can override it with `--evidence-repo <owner>/<repo>`),
+208 < 1 create it with `gh repo create <owner>/<repo> --private`, and give the fleet its integration with
+209 < 1 `node fleet/target.mjs <owner>/<repo>`. A run on `<owner>/<repo>` then leaves its record in that
+210 < 1 repository's `runs/<owner>-<repo>/<N>/`, at the tag `<owner>-<repo>/run-<N>`.
+211 < 1 
+212 < 1 Three browser consents are yours to give, because only you can give them. You sign up at exe.dev and
+213 < 1 add your ssh key; you approve the GitHub app on your account; you approve ultrapowers on claude.ai,
+214 < 1 which hands back a single code, copied to your clipboard, where the agent picks it up. Everything else setup
+215 < 1 does itself.
+216 < 1 
+217 < 1 **What a run costs.** A run bills your Claude Max subscription through an edge proxy, plus one
+218 < 1 exe.dev VM for the hours the run is up.
+219 < 1 
+220 < 1 ### 3. Write the plan
+221 < 1 
+222 < 1 Authoring needs no fleet and no account. A session begins with one sentence — what you will be
+223 < 1 able to see or do after the run — and there are three places that sentence comes from:
+224 < 1 
+225 < 1 - **An issue you filed.** The common start. Write what should be true afterwards, in your own words,
+226 < 1   then ask for the `ultrawrite` skill and name the issue: that sentence becomes the plan's Claim,
+227 < 1   quoted, and you confirm it rather than write it again.
+228 < 1 - **An idea you can spec in one sitting.** Ask for `ultrawrite` and it asks you scenario questions —
+229 < 1   *after this run, what can you see that you couldn't before?* — with two or three concrete options
+230 < 1   to pick from. If you have [Superpowers](https://github.com/obra/superpowers) installed, its
+231 < 1   brainstorming skill is a good companion here; it ends by handing off to `ultrawrite`.
+232 < 1 - **A foggy program, many sessions.** Chart it first (a map of decision tickets); each destination
+233 < 1   is a spec that `ultrawrite` takes unchanged.
+234 < 1 
+235 < 1 Whichever way you arrive, `ultrawrite` writes a claims-v1 plan — each task a contract and the proof
+236 < 1 that decides it, no steps to retype. You read that plan and approve it. That is the first of your
+237 < 1 two checkpoints.
+238 < 1 
+239 < 1 ### 4. Build
+240 < 1 
+241 < 1 In the repository you want built, run `/ultrapowers <plan-path>`. The plan rides to the sandbox on
+242 < 1 your evidence repository's `live/<owner>-<repo>/run-<N>` branch, and the run happens there: the
+243 < 1 builders, the probes, the merges, the checks. Watch it or walk away.
+244 < 1 
+245 < 1 At the end you get the finished result: the sandbox opens the pull request on that repository —
+246 < 1 ultrapowers itself is just one such repository, and `ultra/integration-run-<N>` is the only branch a
+247 < 1 run ever pushes to it. Its body carries the gate receipt and links the run's record in your
+248 < 1 evidence repository. The pull request merges itself on the run's own evidence — once its own gate is
+249 < 1 green and main has not moved off the tip it caught up to. Launch with `--hold` and the
+250 < 1 pull request stays open instead — your second checkpoint, yours to merge or close. A run the gate
+251 < 1 parked leaves a draft pull request, and the sandbox merges nothing after a park: acknowledge it by
+252 < 1 hand — mark it ready, `gh pr update-branch <N>` if it is behind main, `gh pr merge --squash <N>`.
+253 < 1 Either way the run is over and the sandbox is gone.
+254 < 1 
+255 < 1 ### One hazard: keep the GitHub integration personal
+256 < 1 
+257 < 1 `--act-as-user` is unavailable on team integrations. On an exe.dev *team* account that means every
+258 < 1 pull request a run opens is authored by `exe-dev-github-integration[bot]` rather than by you, and
+259 < 1 nothing downstream can undo it. Set the fleet up on your personal exe.dev account, and if setup
+260 < 1 offers you a choice of accounts, the GitHub integration has to stay personal.
+261 < 1 
+262 < 1 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
+263 < 1 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
+264 < 1 and [`skills/ultrapowers/references/`](skills/ultrapowers/references/).
+265 < 1 
+266 < 1 ## The intent tray
+267 < 1 
+268 < 1 When Claude has a screen ready for you to look at, it opens the intent tray beside the chat (its
+269 < 1 tool for that is `show_screen`). The tray is where you tell Claude what you want from that screen:
+270 < 1 pick a version, add notes, and send them all back with one press.
+271 < 1 
+272 < 1 A band above the prompt carries three buttons: **Add note** (`n`), **Send** (`s`) and **Clear**
+273 < 1 (`c`). Click a button, or press its letter once the band has focus (`ctrl+x tab`). The band shows
+274 < 1 only while the tray holds a screen, pick or note, and Send and Clear empty it. In the pane the
+275 < 1 note box takes typing, so click a version, Send or Clear there. `/tray` opens the
+276 < 1 tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands everything —
+277 < 1 your pick first, then each note in the order you added it — to Claude as one message.
+278 < 1 
+279 < 1 A preview page can leave picks and notes for the tray too: it writes them, one JSON object per
+280 < 1 line, to `.ultrapowers/feedback.jsonl` in the session's working directory, and the tray takes them
+281 < 1 in as if you had made them.
+282 < 1 
+283 < 1 The tray needs Claude Code `2.1.287` or later.
+284 < 1 

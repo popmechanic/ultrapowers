@@ -1,0 +1,450 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_factory_publish.mjs — the exam for "the boot deploys after
+2 < 1  * its merge, checks the live URL, rolls back on red, and records it" (#835).
+3 < 1  *
+4 < 1  * The rig is `bootRig({ plan, stubs })` from `./_boot_helpers.mjs` (moved
+5 < 1  * there this task, since `test_sims_are_hermetic.mjs` forbids one sim naming
+6 < 1  * another and this file needs the same boot rig `test_factory_boot.mjs`
+7 < 1  * uses). The fixture plan is `FIXTURE_PLAN` plus three header lines right
+8 < 1  * after `**Closes:** #1222`:
+9 < 1  *
+10 < 1  *   **Publish:** bun run --cwd server deploy
+11 < 1  *   **Verify:** bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL
+12 < 1  *   **Rollback:** bunx --cwd server wrangler rollback --yes
+13 < 1  *
+14 < 1  * Two new stubs, `bun` and `bunx`, ride alongside the base stub set: they
+15 < 1  * read a `$HOME/publish-case` marker (`green`/`red`/`deploy-failed`, written
+16 < 1  * by this exam before the boot ever starts) to decide what the deploy and
+17 < 1  * verify commands answer, dump their own environment to
+18 < 1  * `$HOME/publish-env-<verb>.txt` (deploy/verify/rollback), and append one
+19 < 1  * line to `$HOME/rollback-calls` each time `wrangler rollback` runs.
+20 < 1  *
+21 < 1  * Legs, each naming the Machine clause it measures:
+22 < 1  *
+23 < 1  *   (a) [M2, M6] the green case: deploy prints a workers.dev url and exits 0,
+24 < 1  *       verify exits 0 — events.jsonl carries publish:deploy then
+25 < 1  *       publish:verify (both exit 0) and no rollback row; publish.json is
+26 < 1  *       exactly the green shape; no row's own JSON ever carries the stubs'
+27 < 1  *       stdout text; the deploy and verify commands both saw the Cloudflare
+28 < 1  *       env vars, and only the verify probe saw `ULTRA_PUBLISH_URL`;
+29 < 1  *       status.json's phase is the exact "...and the app is published" text;
+30 < 1  *       and publish.json, publish-deploy.log and publish-verify.log sit in
+31 < 1  *       `runs/o-r/<N>/` at the run's tag `o-r/run-<N>` in the evidence
+32 < 1  *       repository (#1395).
+33 < 1  *
+34 < 1  *   (b) [M3] the red case: deploy is green, verify exits 1 — events.jsonl
+35 < 1  *       carries deploy, verify{exit:1}, exactly one rollback{exit:0} row;
+36 < 1  *       publish.json published is false with verify.exit 1 and
+37 < 1  *       rollback.exit 0; the rollback call log carries exactly one line;
+38 < 1  *       status.json state is "done" and phase names the rollback.
+39 < 1  *
+40 < 1  *   (c) [M4] the deploy-failed case: deploy exits 1 and prints no url — only
+41 < 1  *       one publish:deploy{exit:1,url:null} row, no verify/rollback rows;
+42 < 1  *       publish.json is url null, verify null, rollback null; phase names
+43 < 1  *       the deploy failure; no rollback call log and no verify env dump ever
+44 < 1  *       appear (the verify probe never ran).
+45 < 1  *
+46 < 1  *   (d) [M5] a plan with no `**Publish:**` line at all (plain `FIXTURE_PLAN`):
+47 < 1  *       no `publish:*` row beyond `publish:pr`; no `publish.json` committed
+48 < 1  *       to the evidence tree.
+49 < 1  *
+50 < 1  *   (e) [M1] a deploy past its time budget: the engine's `factory/policy.json`
+51 < 1  *       carries `publish.probe.timeout_seconds` 2 and the deploy stub sleeps
+52 < 1  *       10 s before printing its url — the publish:deploy row reads exit 124
+53 < 1  *       and url null, the phase names the failed deploy, and the verify probe
+54 < 1  *       never ran.
+55 < 1  *
+56 < 1  * Every boot is `spawn`ed and awaited (`runBootAsync`), the same asynchronous
+57 < 1  * shape `test_factory_boot.mjs` and `test_factory_preflight.mjs` use, so the
+58 < 1  * in-process proxy stub server's own event loop is never blocked by a
+59 < 1  * synchronous child. Every spawned process gets `env: simEnv({ bin, home,
+60 < 1  * env })`; nothing is ever passed `process.env` directly.
+61 < 1  */
+62 < 1 
+63 < 1 import assert from 'node:assert/strict'
+64 < 1 import fs from 'node:fs'
+65 < 1 import os from 'node:os'
+66 < 1 import path from 'node:path'
+67 < 1 
+68 < 1 import { bootRig, FIXTURE_PLAN, ENGINE_SHA, MERGE_SHA } from './_boot_helpers.mjs'
+69 < 1 
+70 < 1 const PUBLISH_FIXTURE_PLAN = FIXTURE_PLAN.replace(
+71 < 1   '**Closes:** #1222\n\n## Global Constraints',
+72 < 1   [
+73 < 1     '**Closes:** #1222',
+74 < 1     '**Publish:** bun run --cwd server deploy',
+75 < 1     '**Verify:** bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL',
+76 < 1     '**Rollback:** bunx --cwd server wrangler rollback --yes',
+77 < 1     '',
+78 < 1     '## Global Constraints'
+79 < 1   ].join('\n')
+80 < 1 )
+81 < 1 assert.notEqual(
+82 < 1   PUBLISH_FIXTURE_PLAN, FIXTURE_PLAN,
+83 < 1   'the publish fixture plan actually carries the three new Publish/Verify/Rollback header lines'
+84 < 1 )
+85 < 1 
+86 < 1 const BUN_STUB = `#!/bin/sh
+87 < 1 verb="other"
+88 < 1 case "$*" in
+89 < 1   *"run --cwd server deploy"*) verb="deploy" ;;
+90 < 1   *"converge-live.ts"*) verb="verify" ;;
+91 < 1 esac
+92 < 1 env > "$HOME/publish-env-$verb.txt"
+93 < 1 case_val="green"
+94 < 1 [ -f "$HOME/publish-case" ] && case_val="$(cat "$HOME/publish-case")"
+95 < 1 if [ "$verb" = "deploy" ]; then
+96 < 1   [ "$case_val" = "slow" ] && sleep 10
+97 < 1   if [ "$case_val" = "deploy-failed" ]; then
+98 < 1     echo "fixture: deploy failed" 1>&2
+99 < 1     exit 1
+100 < 1   fi
+101 < 1   echo "Deployed fixture-worker triggers"
+102 < 1   echo "https://fixture.example.workers.dev"
+103 < 1   exit 0
+104 < 1 elif [ "$verb" = "verify" ]; then
+105 < 1   if [ "$case_val" = "red" ]; then
+106 < 1     echo "fixture: verify failed" 1>&2
+107 < 1     exit 1
+108 < 1   fi
+109 < 1   echo "fixture: verify ok"
+110 < 1   exit 0
+111 < 1 fi
+112 < 1 exit 0
+113 < 1 `
+114 < 1 
+115 < 1 const BUNX_STUB = `#!/bin/sh
+116 < 1 verb="other"
+117 < 1 case "$*" in
+118 < 1   *"wrangler rollback"*) verb="rollback" ;;
+119 < 1 esac
+120 < 1 env > "$HOME/publish-env-$verb.txt"
+121 < 1 if [ "$verb" = "rollback" ]; then
+122 < 1   echo "$*" >> "$HOME/rollback-calls"
+123 < 1   echo "fixture: rolled back"
+124 < 1   exit 0
+125 < 1 fi
+126 < 1 exit 0
+127 < 1 `
+128 < 1 
+129 < 1 const PUBLISH_RIG = bootRig({ plan: PUBLISH_FIXTURE_PLAN, stubs: { bun: BUN_STUB, bunx: BUNX_STUB } })
+130 < 1 const PLAIN_RIG = bootRig({ plan: FIXTURE_PLAN })
+131 < 1 const { git } = PUBLISH_RIG
+132 < 1 
+133 < 1 const proxyServer = await PUBLISH_RIG.makeProxyServer()
+134 < 1 const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
+135 < 1 
+136 < 1 /** One full `bash factory/boot.sh boot` run of `rig`'s bound fixture plan,
+137 < 1  *  marking `markCase` in `$HOME/publish-case` (when given) before the boot
+138 < 1  *  ever starts, and running `afterEngine(engineDir)` (when given) right after
+139 < 1  *  the engine directory is built. Returns the handles a case's own assertions
+140 < 1  *  need. */
+141 < 1 async function runCase (rig, runN, markCase, afterEngine) {
+142 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), `fleet-publish-${runN}-`))
+143 < 1   const home = path.join(root, 'home')
+144 < 1   const bin = path.join(root, 'bin')
+145 < 1   fs.mkdirSync(home, { recursive: true })
+146 < 1   fs.mkdirSync(bin, { recursive: true })
+147 < 1   rig.writeGitConfig(home)
+148 < 1   if (markCase) fs.writeFileSync(path.join(home, 'publish-case'), markCase)
+149 < 1 
+150 < 1   const { originDir, evidenceDir, base, plan } = rig.buildOrigin(root, runN)
+151 < 1   rig.wireEvidence(home, evidenceDir)
+152 < 1   rig.git(root, ['clone', originDir, path.join(home, 'target')])
+153 < 1   const engineDir = rig.buildEngineDir(home, ENGINE_SHA)
+154 < 1   if (afterEngine) afterEngine(engineDir)
+155 < 1   rig.writeStubs(bin, { claudeAuth: 'oauth' })
+156 < 1 
+157 < 1   const env = {
+158 < 1     ...rig.baseEnv(PROXY_URL),
+159 < 1     FLEET_ASSIGNMENT: rig.assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+160 < 1     MERGE_SHA
+161 < 1   }
+162 < 1 
+163 < 1   const res = await rig.runBootAsync({ bin, home, env })
+164 < 1   return { res, root, home, bin, originDir, evidenceDir, base, plan }
+165 < 1 }
+166 < 1 
+167 < 1 // The run's record is its folder `runs/o-r/<N>/` at its tag `o-r/run-<N>` in the evidence repository.
+168 < 1 function readEvidence (evidenceDir, runN, p) {
+169 < 1   return git(evidenceDir, ['show', `o-r/run-${runN}:runs/o-r/${runN}/${p}`])
+170 < 1 }
+171 < 1 
+172 < 1 function evidenceRunDirEntries (evidenceDir, runN) {
+173 < 1   return git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
+174 < 1     .split('\n').filter((p) => p.startsWith(`runs/o-r/${runN}/`))
+175 < 1 }
+176 < 1 
+177 < 1 // ── (a) [M2, M6] the green case ───────────────────────────────────────────
+178 < 1 
+179 < 1 {
+180 < 1   const runN = '601'
+181 < 1   const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'green')
+182 < 1   assert.equal(
+183 < 1     res.code, 0,
+184 < 1     `(a) [M2] the green publish case exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+185 < 1   )
+186 < 1 
+187 < 1   const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
+188 < 1   assert.equal(status.state, 'done', '(a) [M2] status.json state is "done"')
+189 < 1   assert.equal(
+190 < 1     status.phase, 'the pull request was merged and the app is published',
+191 < 1     '(a) [M2] status.json phase is exactly "the pull request was merged and the app is published"'
+192 < 1   )
+193 < 1 
+194 < 1   const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+195 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+196 < 1   const nonLanding = rows.filter((r) => r.kind !== 'landing')
+197 < 1   assert.deepEqual(
+198 < 1     nonLanding.map((r) => r.kind),
+200 > 1     ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify'],
+201 < 1     `(a) [M2] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, publish:deploy, publish:verify in order, no rollback row — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+199 < 2     ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify', 'board:close', 'run:audit'],
+200 < 2     `(a) [M2] events.jsonl's non-landing kinds are exactly publish:pr, weave:push, merge, publish:deploy, publish:verify, board:close, run:audit in order, no rollback row — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+201 < 1   )
+202 < 1 
+203 < 1   const deployRow = rows.find((r) => r.kind === 'publish:deploy')
+204 < 1   const verifyRow = rows.find((r) => r.kind === 'publish:verify')
+205 < 1   assert.equal(deployRow.exit, 0, '(a) [M2] the publish:deploy row carries exit 0')
+206 < 1   assert.equal(verifyRow.exit, 0, '(a) [M2] the publish:verify row carries exit 0')
+207 < 1   assert.equal(deployRow.url, 'https://fixture.example.workers.dev', '(a) [M2] the publish:deploy row names the deployed url')
+208 < 1   assert.equal(verifyRow.url, deployRow.url, '(a) [M2] the publish:verify row names the same url')
+209 < 1   assert.equal(deployRow.cmd, 'bun run --cwd server deploy', "(a) [M2] the publish:deploy row names the plan's own deploy command")
+210 < 1   assert.equal(
+211 < 1     verifyRow.cmd, 'bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL',
+212 < 1     "(a) [M2] the publish:verify row names the plan's own verify command literally — $ULTRA_PUBLISH_URL unexpanded (the shell that expands it is the probe's own, not the row)"
+213 < 1   )
+214 < 1 
+215 < 1   // [M6] no row's own JSON line ever carries the stubs' stdout text.
+216 < 1   assert.ok(!eventsText.includes('Deployed fixture-worker triggers'), "(a) [M6] events.jsonl never embeds the deploy stub's stdout")
+217 < 1   assert.ok(!eventsText.includes('fixture: verify ok'), "(a) [M6] events.jsonl never embeds the verify stub's stdout")
+218 < 1 
+219 < 1   const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
+220 < 1   assert.deepEqual(
+221 < 1     publishJson,
+222 < 1     {
+223 < 1       url: 'https://fixture.example.workers.dev',
+224 < 1       published: true,
+225 < 1       deploy: { cmd: 'bun run --cwd server deploy', exit: 0, ms: deployRow.ms },
+226 < 1       verify: { cmd: 'bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL', exit: 0, ms: verifyRow.ms },
+227 < 1       rollback: null
+228 < 1     },
+229 < 1     `(a) [M2] publish.json is exactly the green shape — got ${JSON.stringify(publishJson)}`
+230 < 1   )
+231 < 1 
+232 < 1   assert.ok(
+233 < 1     !fs.existsSync(path.join(home, 'rollback-calls')),
+234 < 1     '(a) [M2] no rollback call log exists — bunx wrangler rollback was never invoked'
+235 < 1   )
+236 < 1 
+237 < 1   const runDirEntries = evidenceRunDirEntries(evidenceDir, runN).slice().sort()
+238 < 1   assert.deepEqual(
+239 < 1     runDirEntries,
+240 < 1     [
+241 < 1       `runs/o-r/${runN}/engine.log`,
+242 < 1       `runs/o-r/${runN}/events.jsonl`,
+243 < 1       `runs/o-r/${runN}/fleet-boot.log`,
+244 < 1       `runs/o-r/${runN}/plan.json`,
+245 < 1       `runs/o-r/${runN}/plan.md`,
+246 < 1       `runs/o-r/${runN}/publish-deploy.log`,
+247 < 1       `runs/o-r/${runN}/publish-verify.log`,
+248 < 1       `runs/o-r/${runN}/publish.json`,
+249 < 1       `runs/o-r/${runN}/status.json`
+250 < 1     ],
+251 < 1     `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three and the boot log — got ${JSON.stringify(runDirEntries)}`
+252 < 1   )
+253 < 1 
+254 < 1   // [M6] both probe commands ran in the target checkout under the
+255 < 1   // Cloudflare env vars; only the verify probe also carries ULTRA_PUBLISH_URL.
+256 < 1   const deployEnv = fs.readFileSync(path.join(home, 'publish-env-deploy.txt'), 'utf8')
+257 < 1   const verifyEnv = fs.readFileSync(path.join(home, 'publish-env-verify.txt'), 'utf8')
+258 < 1   for (const [label, envText] of [['deploy', deployEnv], ['verify', verifyEnv]]) {
+259 < 1     assert.ok(
+260 < 1       envText.includes('CLOUDFLARE_API_BASE_URL=https://cloudflare.int.exe.xyz/client/v4'),
+261 < 1       `(a) [M6] the ${label} probe env carries CLOUDFLARE_API_BASE_URL`
+262 < 1     )
+263 < 1     assert.ok(
+264 < 1       envText.includes('CLOUDFLARE_API_TOKEN=placeholder'),
+265 < 1       `(a) [M6] the ${label} probe env carries CLOUDFLARE_API_TOKEN`
+266 < 1     )
+267 < 1   }
+268 < 1   assert.ok(!deployEnv.includes('ULTRA_PUBLISH_URL='), '(a) [M2] the deploy env carries no ULTRA_PUBLISH_URL — only the verify probe gets it')
+269 < 1   assert.ok(
+270 < 1     verifyEnv.includes(`ULTRA_PUBLISH_URL=${deployRow.url}`),
+271 < 1     '(a) [M2] the verify probe env carries ULTRA_PUBLISH_URL set to the deployed url'
+272 < 1   )
+273 < 1 }
+274 < 1 
+275 < 1 // ── (b) [M3] the red case: verify red, one rollback ───────────────────────
+276 < 1 
+277 < 1 {
+278 < 1   const runN = '602'
+279 < 1   const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'red')
+280 < 1   assert.equal(
+281 < 1     res.code, 0,
+282 < 1     `(b) [M3] the red publish case still exits 0 (a live check going red never fails the boot) — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+283 < 1   )
+284 < 1 
+285 < 1   const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
+286 < 1   assert.equal(status.state, 'done', '(b) [M3] status.json state is "done"')
+287 < 1   assert.equal(
+288 < 1     status.phase, 'the pull request was merged; the live check was red and the deploy was rolled back',
+289 < 1     '(b) [M3] status.json phase is exactly the rolled-back text'
+290 < 1   )
+291 < 1 
+292 < 1   const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+293 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+294 < 1   const nonLanding = rows.filter((r) => r.kind !== 'landing')
+295 < 1   assert.deepEqual(
+296 < 1     nonLanding.map((r) => r.kind),
+298 > 1     ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify', 'publish:rollback'],
+297 < 2     ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'publish:verify', 'publish:rollback', 'board:close', 'run:audit'],
+298 < 1     `(b) [M3] events.jsonl carries deploy, verify, exactly one rollback row, in order — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+299 < 1   )
+300 < 1 
+301 < 1   const verifyRow = rows.find((r) => r.kind === 'publish:verify')
+302 < 1   assert.equal(verifyRow.exit, 1, '(b) [M3] the publish:verify row carries exit 1')
+303 < 1 
+304 < 1   const rollbackRows = rows.filter((r) => r.kind === 'publish:rollback')
+305 < 1   assert.equal(rollbackRows.length, 1, `(b) [M3] exactly one publish:rollback row — got ${rollbackRows.length}`)
+306 < 1   assert.equal(rollbackRows[0].exit, 0, '(b) [M3] the rollback row carries exit 0')
+307 < 1   assert.equal(
+308 < 1     rollbackRows[0].cmd, 'bunx --cwd server wrangler rollback --yes',
+309 < 1     "(b) [M3] the rollback row names the plan's own rollback command"
+310 < 1   )
+311 < 1 
+312 < 1   const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
+313 < 1   assert.equal(publishJson.published, false, '(b) [M3] publish.json published is false')
+314 < 1   assert.equal(publishJson.verify.exit, 1, '(b) [M3] publish.json verify.exit is 1')
+315 < 1   assert.equal(publishJson.rollback.exit, 0, '(b) [M3] publish.json rollback.exit is 0')
+316 < 1   assert.equal(
+317 < 1     publishJson.rollback.cmd, 'bunx --cwd server wrangler rollback --yes',
+318 < 1     "(b) [M3] publish.json rollback.cmd is the plan's own rollback command"
+319 < 1   )
+320 < 1 
+321 < 1   const rollbackCalls = fs.readFileSync(path.join(home, 'rollback-calls'), 'utf8').split('\n').filter((l) => l !== '')
+322 < 1   assert.equal(
+323 < 1     rollbackCalls.length, 1,
+324 < 1     `(b) [M3] the rollback call log carries exactly one line — got ${JSON.stringify(rollbackCalls)}`
+325 < 1   )
+326 < 1 }
+327 < 1 
+328 < 1 // ── (c) [M4] the deploy-failed case ───────────────────────────────────────
+329 < 1 
+330 < 1 {
+331 < 1   const runN = '603'
+332 < 1   const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'deploy-failed')
+333 < 1   assert.equal(
+334 < 1     res.code, 0,
+335 < 1     `(c) [M4] the deploy-failed publish case still exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+336 < 1   )
+337 < 1 
+338 < 1   const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
+339 < 1   assert.equal(
+340 < 1     status.phase, 'the pull request was merged; the deploy failed',
+341 < 1     '(c) [M4] status.json phase is exactly "the pull request was merged; the deploy failed"'
+342 < 1   )
+343 < 1 
+344 < 1   const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+345 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+346 < 1   const nonLanding = rows.filter((r) => r.kind !== 'landing')
+347 < 1   assert.deepEqual(
+348 < 1     nonLanding.map((r) => r.kind),
+350 > 1     ['publish:pr', 'weave:push', 'merge', 'publish:deploy'],
+349 < 2     ['publish:pr', 'weave:push', 'merge', 'publish:deploy', 'board:close', 'run:audit'],
+350 < 1     `(c) [M4] events.jsonl carries exactly one publish:deploy row and no verify/rollback rows — got ${JSON.stringify(nonLanding.map((r) => r.kind))}`
+351 < 1   )
+352 < 1   const deployRow = rows.find((r) => r.kind === 'publish:deploy')
+353 < 1   assert.equal(deployRow.exit, 1, '(c) [M4] the deploy row carries exit 1')
+354 < 1   assert.equal(deployRow.url, null, '(c) [M4] the deploy row carries url null')
+355 < 1 
+356 < 1   const publishJson = JSON.parse(readEvidence(evidenceDir, runN, 'publish.json'))
+357 < 1   assert.deepEqual(
+358 < 1     publishJson,
+359 < 1     {
+360 < 1       url: null,
+361 < 1       published: false,
+362 < 1       deploy: { cmd: 'bun run --cwd server deploy', exit: 1, ms: publishJson.deploy.ms },
+363 < 1       verify: null,
+364 < 1       rollback: null
+365 < 1     },
+366 < 1     `(c) [M4] publish.json is exactly url null, verify null, rollback null — got ${JSON.stringify(publishJson)}`
+367 < 1   )
+368 < 1 
+369 < 1   assert.ok(!fs.existsSync(path.join(home, 'rollback-calls')), '(c) [M4] no rollback call log exists')
+370 < 1   assert.ok(!fs.existsSync(path.join(home, 'publish-env-verify.txt')), '(c) [M4] the verify probe never ran')
+371 < 1 }
+372 < 1 
+373 < 1 // ── (d) [M5] no **Publish:** line at all ──────────────────────────────────
+374 < 1 
+375 < 1 {
+376 < 1   const runN = '604'
+377 < 1   const { res, evidenceDir } = await runCase(PLAIN_RIG, runN)
+378 < 1   assert.equal(
+379 < 1     res.code, 0,
+380 < 1     `(d) [M5] the no-Publish-line case exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+381 < 1   )
+382 < 1 
+383 < 1   const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+384 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+385 < 1   const publishRows = rows.filter((r) => r.kind.startsWith('publish:') && r.kind !== 'publish:pr')
+386 < 1   assert.equal(
+387 < 1     publishRows.length, 0,
+388 < 1     `(d) [M5] events.jsonl carries no publish:* row beyond publish:pr — got ${JSON.stringify(publishRows.map((r) => r.kind))}`
+389 < 1   )
+390 < 1 
+391 < 1   const runDirEntries = evidenceRunDirEntries(evidenceDir, runN)
+392 < 1   assert.ok(
+393 < 1     !runDirEntries.some((p) => p.endsWith('/publish.json')),
+394 < 1     `(d) [M5] no publish.json is committed to the evidence tree — got ${JSON.stringify(runDirEntries)}`
+395 < 1   )
+396 < 1 }
+397 < 1 
+398 < 1 // ── (e) [M1] a deploy past its time budget ────────────────────────────────
+399 < 1 
+400 < 1 {
+401 < 1   const runN = '605'
+402 < 1   // The engine's policy.json becomes a real file with a 2 s probe budget.
+403 < 1   // publish.mjs reads the policy.json beside its own resolved path, and node
+404 < 1   // resolves a symlinked main to the checkout's copy, so publish.mjs becomes a
+405 < 1   // real copy too (its `./record.mjs` and `flock/` still resolve through the
+406 < 1   // engine's symlinks).
+407 < 1   const withShortBudget = (engineDir) => {
+408 < 1     const policyPath = path.join(engineDir, 'factory', 'policy.json')
+409 < 1     const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))
+410 < 1     policy.publish.probe.timeout_seconds = 2
+411 < 1     fs.unlinkSync(policyPath)
+412 < 1     fs.writeFileSync(policyPath, JSON.stringify(policy, null, 2) + '\n')
+413 < 1     const publishPath = path.join(engineDir, 'factory', 'publish.mjs')
+414 < 1     const publishText = fs.readFileSync(publishPath, 'utf8')
+415 < 1     fs.unlinkSync(publishPath)
+416 < 1     fs.writeFileSync(publishPath, publishText)
+417 < 1   }
+418 < 1   const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'slow', withShortBudget)
+419 < 1   assert.equal(
+420 < 1     res.code, 0,
+421 < 1     `(e) [M1] the slow-deploy publish case still exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+422 < 1   )
+423 < 1 
+424 < 1   const eventsText = readEvidence(evidenceDir, runN, 'events.jsonl')
+425 < 1   const rows = eventsText.split('\n').filter((l) => l.trim() !== '').map((l) => JSON.parse(l))
+426 < 1   const deployRows = rows.filter((r) => r.kind === 'publish:deploy')
+427 < 1   assert.equal(deployRows.length, 1, `(e) [M1] exactly one publish:deploy row — got ${deployRows.length}`)
+428 < 1   assert.equal(deployRows[0].exit, 124, `(e) [M1] the deploy row carries exit 124 — got ${JSON.stringify(deployRows[0])}`)
+429 < 1   assert.equal(deployRows[0].url, null, '(e) [M1] the deploy row carries url null')
+430 < 1 
+431 < 1   const status = JSON.parse(readEvidence(evidenceDir, runN, 'status.json'))
+432 < 1   assert.equal(
+433 < 1     status.phase, 'the pull request was merged; the deploy failed',
+434 < 1     '(e) [M1] status.json phase is exactly "the pull request was merged; the deploy failed"'
+435 < 1   )
+436 < 1 
+437 < 1   assert.ok(!rows.some((r) => r.kind === 'publish:verify'), '(e) [M1] no publish:verify row')
+438 < 1   assert.ok(!fs.existsSync(path.join(home, 'publish-env-verify.txt')), '(e) [M1] the verify probe never ran')
+439 < 1   console.log('ok (e) a deploy past its budget exits 124')
+440 < 1 }
+441 < 1 
+442 < 1 proxyServer.close()
+443 < 1 
+444 < 1 console.log('ALL TESTS PASSED')
+445 < 1 

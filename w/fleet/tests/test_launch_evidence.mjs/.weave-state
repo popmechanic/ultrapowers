@@ -1,0 +1,296 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_launch_evidence.mjs — the exam for "The launcher pushes the
+2 < 1  * plan to the operator's evidence repository" (#1395).
+3 < 1  *
+4 < 1  * The run's record lives in the operator's evidence repository — the setting
+5 < 1  * `evidence` in `~/.ultrapowers/fleet.json`, or `--evidence-repo` for one
+6 < 1  * launch — and the launch writes nothing to the product repository. Legs:
+7 < 1  *
+8 < 1  *   (a) [M1] a launch on `o/r` with the setting `ops/evidence`, whose plan has
+9 < 1  *       a sibling gate record, pushes exactly one commit, to
+10 < 1  *       `refs/heads/live/o-r/run-1` of `ops/evidence`: parentless, its tree
+11 < 1  *       exactly `runs/o-r/1/plan.md` and `runs/o-r/1/gate-verdicts.json`, its
+12 < 1  *       message naming `o/r` and the base sha; the target's refs are the same
+13 < 1  *       after the launch as before it;
+14 < 1  *   (b) [M2] with the evidence repository holding `refs/tags/o-r/run-4` and
+15 < 1  *       `refs/heads/live/o-r/run-6`, a launch without `--run` takes run 7;
+16 < 1  *   (c) [M3] neither the setting nor `--evidence-repo`: refused naming
+17 < 1  *       `evidence`, `~/.ultrapowers/fleet.json` and `node fleet/doctor.mjs`,
+18 < 1  *       nothing pushed and no `new`;
+19 < 1  *   (e) [M5] `integrations list` naming `gh-o-r` and not `gh-ops-evidence`:
+20 < 1  *       refused naming `gh-ops-evidence`, nothing pushed and no `new`;
+21 < 1  *   (f) [M6] `--evidence-repo ops/other` over the setting `ops/evidence`: the
+22 < 1  *       plan commit goes to `ops/other`, the setup script the `new` verb
+23 < 1  *       carries names `ops/other`, and the `new` verb's comment carries no
+24 < 1  *       `evidence=` token either way.
+25 < 1  *
+26 < 1  * The rig: two local bares stand in for GitHub — the target's origin and the
+27 < 1  * evidence repository (`makeEvidenceRepo`, `main` seeded) — every lobby verb
+28 < 1  * and `gh api` is answered by the seam, and the compiler is stubbed. No socket
+29 < 1  * is opened.
+30 < 1  */
+31 < 1 
+32 < 1 import assert from 'node:assert/strict'
+33 < 1 import { spawnSync } from 'node:child_process'
+34 < 1 import fs from 'node:fs'
+36 > 2 import os from 'node:os'
+35 < 1 import path from 'node:path'
+36 < 1 
+39 > 1 import { launch } from '../launch.mjs'
+38 > 2 import { kataModeOf, launch } from '../launch.mjs'
+37 < 2 import { launch } from '../launch.mjs'
+38 < 1 import { EXE_HOST, Refusal } from '../lobby.mjs'
+39 < 1 import {
+40 < 1   PLAN, commentOf, gitEnv, launchRules, launchWorkspace, makeEvidenceRepo, makeExec, pushCalls
+41 < 1 } from './_lobby_helpers.mjs'
+42 < 1 
+43 < 1 const TARGET = 'o/r'
+44 < 1 const SLUG = 'o-r'
+45 < 1 const GH = 'gh-o-r'
+46 < 1 const ORIGIN_URL = `https://github.com/${TARGET}.git`
+47 < 1 const EVIDENCE = 'ops/evidence'
+48 < 1 const OTHER = 'ops/other'
+49 < 1 const ENGINE = 'c'.repeat(40)
+50 < 1 const NOW = new Date('2026-09-30T12:00:00.000Z')
+51 < 1 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
+52 < 1 const RECORD = '{"tasks": {}, "tally": {"dispatched": 0}}\n'
+53 < 1 
+54 < 1 // ── The seam's rules ────────────────────────────────────────────────────────
+55 < 1 
+56 < 1 const ALL_INTEGRATIONS = [
+57 < 1   { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] },
+58 < 1   { name: 'gh-ops-other', attachments: [] }, { name: 'claude-max', attachments: [] }
+59 < 1 ]
+60 < 1 
+61 < 1 const readRules = ({ ws, integrations = ALL_INTEGRATIONS }) =>
+62 < 1   launchRules({ engine: ENGINE, repo: ws.repo, evidence: [ws.evidence, ws.other], integrations })
+63 < 1 
+64 < 1 // ── The workspace: a target, two evidence repositories, a plan and its record ─
+65 < 1 
+66 < 1 function workspace () {
+67 < 1   const ws = launchWorkspace({ prefix: 'fleet-launch-evidence-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
+68 < 1   const { root, repo } = ws
+69 < 1   const other = makeEvidenceRepo({ root, name: OTHER })
+70 < 1   fs.writeFileSync(path.join(path.dirname(ws.planPath), 'a-plan.gate-verdicts.json'), RECORD)
+71 < 1   const targetRefs = () => {
+72 < 1     const res = spawnSync('git', ['--git-dir', repo.origin, 'for-each-ref', '--format=%(refname) %(objectname)'],
+73 < 1       { encoding: 'utf8', env: gitEnv() })
+74 < 1     return res.stdout
+75 < 1   }
+76 < 1   return { ...ws, other, targetRefs }
+77 < 1 }
+78 < 1 
+81 > 1 const drive = async (ws, { extra = [], config = CAPPED, integrations } = {}) => {
+80 > 2 const drive = async (ws, { extra = [], config = CAPPED, integrations, kata = null, kataMode } = {}) => {
+79 < 2 const drive = async (ws, { extra = [], config = CAPPED, integrations } = {}) => {
+80 < 1   const exec = makeExec({ rules: readRules({ ws, integrations }) })
+81 < 1   let result = null
+82 < 1   let error = null
+83 < 1   try {
+84 < 1     result = await launch({
+85 < 1       argv: [ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir, '--engine', ENGINE, ...extra],
+86 < 1       exec,
+87 < 1       config,
+88 < 1       now: () => NOW,
+89 < 1       sleep: async () => {},
+90 < 1       refreshCredential: () => ({ ok: true }),
+92 > 1       readUsage: () => ({ unread: true, reason: 'sim' })
+91 < 2       readUsage: () => ({ unread: true, reason: 'sim' }),
+93 > 2       kata,
+94 < 2       ...(kataMode === undefined ? {} : { kataMode })
+92 < 2       kata: null
+93 < 1     })
+94 < 1   } catch (e) {
+95 < 1     error = e
+96 < 1   }
+97 < 1   return { exec, result, error }
+98 < 1 }
+99 < 1 
+100 < 1 const newCalls = (exec) => exec.calls.filter((c) =>
+101 < 1   c.cmd === 'ssh' && c.argv[0] === EXE_HOST && String(c.argv[1] ?? '').startsWith('new '))
+102 < 1 const added = (before, after) => Object.fromEntries(Object.entries(after).filter(([ref, sha]) => before[ref] !== sha))
+103 < 1 
+104 < 1 const assertRefusedClean = (d, leg, needles) => {
+105 < 1   assert.ok(d.error instanceof Refusal, `${leg} a Refusal, got ${d.error?.name}: ${d.error?.message}`)
+106 < 1   assert.equal(d.error.exitCode, 2, `${leg} exit 2`)
+107 < 1   for (const needle of needles) {
+108 < 1     assert.ok(d.error.message.includes(needle), `${leg} the message names ${needle}: ${d.error.message}`)
+109 < 1   }
+110 < 1   assert.deepEqual(pushCalls(d.exec).map((c) => c.line), [], `${leg} nothing was pushed`)
+111 < 1   assert.deepEqual(newCalls(d.exec).map((c) => c.line), [], `${leg} no \`new\` was issued`)
+112 < 1   assert.deepEqual(d.exec.mutating(), [], `${leg} no mutating lobby verb at all`)
+113 < 1 }
+114 < 1 
+115 < 1 // ══════════════════════════════════════════════════════════════════════════
+116 < 1 // (a) [M1] one parentless commit on the evidence live branch, nothing on the target
+117 < 1 // ══════════════════════════════════════════════════════════════════════════
+118 < 1 {
+119 < 1   const ws = workspace()
+120 < 1   const targetBefore = ws.targetRefs()
+121 < 1   const evidenceBefore = ws.evidence.refs()
+122 < 1   const d = await drive(ws)
+123 < 1   assert.equal(d.error, null, `(a) [M1] the launch resolves: ${d.error?.message ?? ''}`)
+124 < 1   assert.equal(d.result.run, 1, '(a) [M1] an empty evidence repository and target: run 1')
+125 < 1 
+126 < 1   const pushes = pushCalls(d.exec)
+127 < 1   assert.equal(pushes.length, 1, `(a) [M1] exactly one push: ${JSON.stringify(pushes.map((c) => c.line))}`)
+128 < 1   assert.ok(pushes[0].argv.includes(`https://github.com/${EVIDENCE}.git`),
+129 < 1     `(a) [M1] the push goes to ${EVIDENCE}: ${pushes[0].line}`)
+130 < 1 
+131 < 1   const newRefs = added(evidenceBefore, ws.evidence.refs())
+132 < 1   assert.deepEqual(Object.keys(newRefs), [`refs/heads/live/${SLUG}/run-1`],
+133 < 1     '(a) [M1] the evidence repository gained exactly the live branch, and main is untouched')
+134 < 1   const sha = newRefs[`refs/heads/live/${SLUG}/run-1`]
+135 < 1   assert.equal(sha, d.result.plan, '(a) [M1] the live branch holds the plan commit the comment names')
+136 < 1 
+137 < 1   const parents = ws.evidence.git(['rev-list', '--parents', '-n', '1', sha]).split(' ')
+138 < 1   assert.deepEqual(parents, [sha], `(a) [M1] the commit has no parent: ${parents.join(' ')}`)
+139 < 1   const tree = ws.evidence.git(['ls-tree', '-r', '--name-only', sha]).split('\n').sort()
+140 < 1   assert.deepEqual(tree, [`runs/${SLUG}/1/gate-verdicts.json`, `runs/${SLUG}/1/plan.md`],
+141 < 1     '(a) [M1] its tree is exactly the run folder\'s two files')
+142 < 1   assert.equal(ws.evidence.git(['show', `${sha}:runs/${SLUG}/1/plan.md`]), PLAN.trim(), '(a) [M1] the plan, as written')
+143 < 1   assert.equal(ws.evidence.git(['show', `${sha}:runs/${SLUG}/1/gate-verdicts.json`]), RECORD.trim(),
+144 < 1     '(a) [M1] the gate record, as written')
+145 < 1   const message = ws.evidence.git(['log', '-1', '--format=%B', sha])
+146 < 1   assert.ok(message.includes(TARGET), `(a) [M1] the message names ${TARGET}: ${message}`)
+147 < 1   assert.ok(message.includes(ws.repo.base), `(a) [M1] the message names the base sha: ${message}`)
+148 < 1 
+149 < 1   assert.equal(ws.targetRefs(), targetBefore, '(a) [M1] the target\'s refs are the same after the launch as before it')
+150 < 1   assert.equal(d.result.evidence, EVIDENCE, '(a) [M1] the record names the evidence repository')
+151 < 1   assert.equal(d.result.liveBranch, `live/${SLUG}/run-1`, '(a) [M1] and the live branch')
+152 < 1   assert.equal(d.result.planBranch, undefined, '(a) [M1] the record carries no planBranch')
+153 < 1   assert.equal(d.result.evidenceBranch, undefined, '(a) [M1] nor an evidenceBranch')
+154 < 1   ws.cleanup()
+155 < 1 }
+156 < 1 
+157 < 1 // ══════════════════════════════════════════════════════════════════════════
+158 < 1 // (b) [M2] run 7 over an evidence tag at 4 and a live branch at 6
+159 < 1 // ══════════════════════════════════════════════════════════════════════════
+160 < 1 {
+161 < 1   const ws = workspace()
+162 < 1   ws.evidence.seed(`refs/tags/${SLUG}/run-4`, { [`runs/${SLUG}/4/plan.md`]: 'four\n' })
+163 < 1   ws.evidence.seed(`refs/heads/live/${SLUG}/run-6`, { [`runs/${SLUG}/6/plan.md`]: 'six\n' })
+164 < 1   // Another target's higher run is not this target's.
+165 < 1   ws.evidence.seed('refs/heads/live/o-other/run-40', { 'runs/o-other/40/plan.md': 'other\n' })
+166 < 1   const d = await drive(ws)
+167 < 1   assert.equal(d.error, null, `(b) [M2] the launch resolves: ${d.error?.message ?? ''}`)
+168 < 1   assert.equal(d.result.run, 7, `(b) [M2] run 7, got ${d.result.run}`)
+169 < 1   assert.ok(ws.evidence.refs()[`refs/heads/live/${SLUG}/run-7`], '(b) [M2] live/o-r/run-7 was pushed')
+170 < 1   ws.cleanup()
+171 < 1 }
+172 < 1 
+173 < 1 // ══════════════════════════════════════════════════════════════════════════
+174 < 1 // (c) [M3] neither the setting nor the flag: refused, nothing pushed, no `new`
+175 < 1 // ══════════════════════════════════════════════════════════════════════════
+176 < 1 {
+177 < 1   const ws = workspace()
+178 < 1   const d = await drive(ws, { config: { cpu: '6', memory: '8GB' } })
+179 < 1   assertRefusedClean(d, '(c) [M3]', ['evidence', '~/.ultrapowers/fleet.json', 'node fleet/doctor.mjs'])
+180 < 1   ws.cleanup()
+181 < 1 }
+182 < 1 
+183 < 1 // ══════════════════════════════════════════════════════════════════════════
+184 < 1 // (e) [M5] no integration for the evidence repository
+185 < 1 // ══════════════════════════════════════════════════════════════════════════
+186 < 1 {
+187 < 1   const ws = workspace()
+188 < 1   const d = await drive(ws, {
+189 < 1     integrations: [{ name: GH, attachments: [] }, { name: 'claude-max', attachments: [] }]
+190 < 1   })
+191 < 1   assertRefusedClean(d, '(e) [M5]', ['gh-ops-evidence'])
+192 < 1   ws.cleanup()
+193 < 1 }
+194 < 1 
+195 < 1 // ══════════════════════════════════════════════════════════════════════════
+196 < 1 // (f) [M6] --evidence-repo takes the push and the setup script; no evidence= anywhere
+197 < 1 // ══════════════════════════════════════════════════════════════════════════
+198 < 1 {
+199 < 1   const ws = workspace()
+200 < 1   const evidenceBefore = ws.evidence.refs()
+201 < 1   const otherBefore = ws.other.refs()
+202 < 1   const d = await drive(ws, { extra: ['--evidence-repo', OTHER] })
+203 < 1   assert.equal(d.error, null, `(f) [M6] the launch resolves: ${d.error?.message ?? ''}`)
+204 < 1   const pushes = pushCalls(d.exec)
+205 < 1   assert.equal(pushes.length, 1, '(f) [M6] one push')
+206 < 1   assert.ok(pushes[0].argv.includes(`https://github.com/${OTHER}.git`), `(f) [M6] to ${OTHER}: ${pushes[0].line}`)
+207 < 1   assert.deepEqual(Object.keys(added(otherBefore, ws.other.refs())), [`refs/heads/live/${SLUG}/run-1`],
+208 < 1     `(f) [M6] ${OTHER} gained the live branch`)
+209 < 1   assert.deepEqual(ws.evidence.refs(), evidenceBefore, `(f) [M6] ${EVIDENCE} is untouched`)
+210 < 1   assert.equal(d.result.evidence, OTHER, '(f) [M6] the record names the override')
+211 < 1 
+212 < 1   const news = newCalls(d.exec)
+213 < 1   assert.equal(news.length, 1, '(f) [M6] one `new`')
+214 < 1   const script = String(news[0].options?.input ?? '')
+215 < 1   assert.ok(script.split('\n').includes(`printf '%s\\n' '${OTHER}' >"$HOME/fleet-evidence-repo"`),
+216 < 1     `(f) [M6] the setup script on the \`new\` verb's stdin names ${OTHER}`)
+217 < 1   assert.ok(!script.includes(`'${EVIDENCE}'`), `(f) [M6] and not the setting ${EVIDENCE}`)
+218 < 1   const comment = commentOf(news[0])
+219 < 1   assert.ok(comment, '(f) [M6] the `new` verb carries a comment')
+220 < 1   assert.ok(!/(^|\s)evidence=/.test(comment), `(f) [M6] the comment carries no evidence= token: ${comment}`)
+221 < 1   ws.cleanup()
+222 < 1 
+223 < 1   const plain = workspace()
+224 < 1   const p = await drive(plain)
+225 < 1   assert.equal(p.error, null, `(f) [M6] the plain launch resolves: ${p.error?.message ?? ''}`)
+226 < 1   const plainNew = newCalls(p.exec)[0]
+227 < 1   assert.ok(!/(^|\s)evidence=/.test(commentOf(plainNew) ?? ''),
+228 < 1     `(f) [M6] nor does the plain launch's comment: ${commentOf(plainNew)}`)
+229 < 1   assert.ok(String(plainNew.options?.input ?? '').includes(`'${EVIDENCE}' >"$HOME/fleet-evidence-repo"`),
+230 < 1     `(f) [M6] the plain launch's setup script names the setting ${EVIDENCE}`)
+231 < 1   plain.cleanup()
+232 < 1 
+233 < 1   // A malformed override is refused before anything is executed.
+234 < 1   const bad = workspace()
+235 < 1   const b = await drive(bad, { extra: ['--evidence-repo', 'not a repo'] })
+236 < 1   assert.ok(b.error instanceof Refusal, `(f) [M6] a malformed --evidence-repo is a Refusal: ${b.error?.message}`)
+237 < 1   assert.ok(b.error.message.includes('--evidence-repo'), '(f) [M6] naming the flag')
+238 < 1   assert.equal(b.exec.calls.length, 0, '(f) [M6] and nothing was executed')
+239 < 1   bad.cleanup()
+240 < 1 }
+241 < 1 
+243 > 2 // ══════════════════════════════════════════════════════════════════════════
+244 < 2 // (g) the kata switch: off by default, and the hub is then never asked
+245 < 2 // ══════════════════════════════════════════════════════════════════════════
+246 < 2 {
+247 < 2   // A hub that is down: every call is counted and throws.
+248 < 2   const downHub = () => {
+249 < 2     const calls = []
+250 < 2     const client = new Proxy({ url: 'https://hub.example' }, {
+251 < 2       get: (obj, name) => name in obj ? obj[name] : async (...args) => { calls.push([name, ...args]); throw new Error('connect ECONNREFUSED') }
+252 < 2     })
+253 < 2     return { client, calls }
+254 < 2   }
+255 < 2 
+256 < 2   assert.equal(kataModeOf(), 'off', '(g) the repository\'s own fleet/policy.json says launch.kata.mode is off')
+257 < 2   const cell = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-policy-')), 'policy.json')
+258 < 2   fs.writeFileSync(cell, JSON.stringify({ launch: { kata: { mode: 'on' } } }))
+259 < 2   assert.equal(kataModeOf(cell), 'on', '(g) the rollback is the cell saying on')
+260 < 2   fs.writeFileSync(cell, JSON.stringify({ launch: { kata: { mode: 'maybe' } } }))
+261 < 2   assert.equal(kataModeOf(cell), 'off', '(g) a value nobody knows is off')
+262 < 2   fs.rmSync(path.dirname(cell), { recursive: true, force: true })
+263 < 2 
+264 < 2   // Off (the default): a hub that is down does not stop the launch, is not asked,
+265 < 2   // and the plan commit carries no kata.json for the sandbox to write by.
+266 < 2   const ws = workspace()
+267 < 2   const off = downHub()
+268 < 2   const d = await drive(ws, { kata: off.client })
+269 < 2   assert.equal(d.error, null, `(g) with kata off a down hub does not refuse the launch: ${d.error?.message ?? ''}`)
+270 < 2   assert.deepEqual(off.calls, [], '(g) and the hub is not asked at all')
+271 < 2   assert.equal(d.result.kata, null, '(g) the record names no hub')
+272 < 2   const tree = ws.evidence.git(['ls-tree', '-r', '--name-only', d.result.plan]).split('\n').sort()
+273 < 2   assert.deepEqual(tree, [`runs/${SLUG}/1/gate-verdicts.json`, `runs/${SLUG}/1/plan.md`], '(g) the plan commit holds no kata.json')
+274 < 2   assert.equal(newCalls(d.exec).length, 1, '(g) the VM is created')
+275 < 2   ws.cleanup()
+276 < 2 
+277 < 2   // On (the rollback): the hub is the gate again — one ping, and a hub that
+278 < 2   // does not answer refuses the launch before anything is pushed.
+279 < 2   const ws2 = workspace()
+280 < 2   const on = downHub()
+281 < 2   const r = await drive(ws2, { kata: on.client, kataMode: 'on' })
+282 < 2   assertRefusedClean(r, '(g) rollback:', ['did not answer its ping'])
+283 < 2   assert.deepEqual(on.calls.map((c) => c[0]), ['ping'], '(g) rollback: the hub was asked once')
+284 < 2   ws2.cleanup()
+285 < 2 }
+286 < 2 
+242 < 1 console.log('ALL TESTS PASSED')
+243 < 1 

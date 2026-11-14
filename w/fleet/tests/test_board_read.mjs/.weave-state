@@ -1,0 +1,653 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_board_read.mjs — the exam for `fleet/board-read.mjs`: one
+2 < 2  * laptop command that names a run and prints its tasks (state, latest note)
+3 < 2  * and its event timeline, read off the hub through the same ssh-curl door the
+4 < 2  * janitor uses, with no token on the command line (#1174, #876).
+5 < 2  *
+6 < 2  * This file is the Proof's `Test:`, written whole at the path the Proof names.
+7 < 2  * Every relative import is written for THIS directory: `../` is the
+8 < 2  * repository's `fleet/`, `./` is `fleet/tests/`.
+9 < 2  *
+10 < 2  * The Machine clauses under test, restated so a reader can map every
+11 < 2  * assertion back to the contract:
+12 < 2  *
+13 < 2  *   M1 — `projectBoard(events, { runs })` is pure. Over the 31-row fixture
+14 < 2  *        with `runs: [207]`, `tasks` is exactly three rows in order (`zdbs`
+15 < 2  *        `run-207`, `06tw` `task 1`, `vwnn` `task 2`); no row of `tasks` or
+16 < 2  *        `timeline` carries an issue outside run 207 or 206; `runs: [206,
+17 < 2  *        207]` gives five task rows.
+18 < 2  *   M2 — each `tasks` row carries `run`, `issue`, `name`, `title`, `state`,
+19 < 2  *        `closed`, `lastAt`, `last`, with the fixture's three rows' values
+20 < 2  *        pinned.
+21 < 2  *   M3 — `timeline` is 14 rows in feed order for `runs: [207]`, each row's
+22 < 2  *        shape and four pinned rows' contents.
+23 < 2  *   M4 — `cursor` is the last input row's `event_id` regardless of `runs`,
+24 < 2  *        and `null` over an empty input, alongside empty `tasks`/`timeline`.
+25 < 2  *   M5 — `renderBoard(projection)` renders task lines, timeline lines, the
+26 < 2  *        `== now` / `== events` banners in order, and a final `cursor <n>`
+27 < 2  *        line.
+28 < 2  *   M6 — `readBoard({ client, projectId, runs, since })` pages
+29 < 2  *        `client.events` until a short page, and answers the projection over
+30 < 2  *        every row read, falling back to `since` when the projection's
+31 < 2  *        `cursor` is `null`.
+32 < 2  *   M7 — `parseBoardArgs(argv)` and `main(argv, { exec, kataEnvPath, write })`:
+33 < 2  *        argument parsing and its refusals, and the CLI's two-request ssh
+34 < 2  *        round trip with no token in any argv.
+35 < 2  *
+36 < 2  * The legs, in the order they run here:
+37 < 2  *
+38 < 2  *   (a) [M1] the fixture's three-row / five-row `tasks` shape.
+39 < 2  *   (b) [M2] the `tasks` row fields, pinned.
+40 < 2  *   (c) [M3] the `timeline` rows, pinned.
+41 < 2  *   (d) [M4] `cursor`, and the empty-input shape.
+42 < 2  *   (e) [M5] `renderBoard`'s lines.
+43 < 2  *   (f) [M6] `readBoard`'s paging and fallback.
+44 < 2  *   (g) [M7] `parseBoardArgs` and `main`.
+45 < 2  *
+46 < 2  * Nothing here spawns a real process: `main`'s `exec` is a recording fake
+47 < 2  * answering the ssh-curl shape (`{ code, stdout: json + '\n' + status,
+48 < 2  * stderr }`) that `fleet/kata-client.mjs`'s `sshTransport` expects, chosen by
+49 < 2  * which path the remote argv element names — never a shell, never a socket.
+50 < 2  * The env file `main` reads lives under a `mkdtemp` of `os.tmpdir()`, and
+51 < 2  * `write` collects into a plain string. Assumed of the code under test: it
+52 < 2  * builds its client exactly as `fleet/janitor.mjs`'s `openHub` does — one ssh
+53 < 2  * call per hub request, the literal `$KATA_AUTH_TOKEN` in the remote and
+54 < 2  * never a token value in any argv element — so this exam checks that shape
+55 < 2  * rather than importing `sshTransport`/`makeKataClient` itself; the task names
+56 < 2  * `fleet/board-read.mjs` as the only module this exam may import.
+57 < 2  */
+58 < 2 import assert from 'node:assert/strict'
+59 < 2 import fs from 'node:fs/promises'
+60 < 2 import os from 'node:os'
+61 < 2 import path from 'node:path'
+62 < 2 
+63 < 2 /** The deliverable, imported dynamically: a tree without it reports the
+64 < 2  *  ABSENT MODULE as an assertion of leg (a) rather than dying at load with
+65 < 2  *  no leg named at all. */
+66 < 2 let mod = null
+67 < 2 let importError = null
+68 < 2 try {
+69 < 2   mod = await import('../board-read.mjs')
+70 < 2 } catch (error) {
+71 < 2   importError = error
+72 < 2 }
+73 < 2 assert.ok(importError === null,
+74 < 2   '(a) [M1] `fleet/board-read.mjs` is importable — the module this task creates. Got: ' +
+75 < 2   String(importError && (importError.message || importError)))
+76 < 2 const { projectBoard, renderBoard, readBoard, parseBoardArgs, main } = mod
+77 < 2 for (const [name, fn] of Object.entries({ projectBoard, renderBoard, readBoard, parseBoardArgs, main })) {
+78 < 2   assert.equal(typeof fn, 'function', '(a) [M1] `' + name + '` is exported as a function')
+79 < 2 }
+80 < 2 
+81 < 2 // ══════════════════════════════════════════════════════════════════════════
+82 < 2 // The fixture — the hub's own event shape, as given in Context, verbatim.
+83 < 2 // ══════════════════════════════════════════════════════════════════════════
+84 < 2 
+85 < 2 const row = (event_id, type, issue_short_id, actor, created_at, payload) =>
+86 < 2   ({ event_id, type, issue_short_id, actor, created_at, payload })
+87 < 2 
+88 < 2 const FIXTURE = [
+89 < 2   row(100, 'issue.created', 'zdbs', 'launch', '2026-09-21T23:58:00.100Z',
+90 < 2     { title: 'run-207: A fold red names its fold', body: '', metadata: { run: 207, target: 'popmechanic/ultrapowers' } }),
+91 < 2   row(101, 'issue.created', '06tw', 'launch', '2026-09-21T23:58:04.000Z',
+92 < 2     { title: 'task 1: The judge reads one question', body: '', metadata: { task: '1', plan: 'p' } }),
+93 < 2   row(102, 'issue.metadata_updated', '06tw', 'launch', '2026-09-21T23:58:05.000Z',
+94 < 2     { diff: { wave: { from: null, to: 1 }, run: { from: null, to: 207 } } }),
+95 < 2   row(103, 'issue.linked', '06tw', 'launch', '2026-09-21T23:58:06.000Z',
+96 < 2     { type: 'parent', to_short_id: 'zdbs' }),
+97 < 2   row(104, 'issue.created', 'vwnn', 'launch', '2026-09-21T23:58:08.000Z',
+98 < 2     { title: 'task 2: A fold round', body: '', metadata: { task: '2', plan: 'p' } }),
+99 < 2   row(105, 'issue.metadata_updated', 'vwnn', 'launch', '2026-09-21T23:58:09.000Z',
+100 < 2     { diff: { run: { from: null, to: 207 }, wave: { from: null, to: 1 } } }),
+101 < 2   row(106, 'issue.created', 'g9xy', 'launch', '2026-09-21T23:58:20.000Z',
+102 < 2     { title: 'run-206: A Check red at base', metadata: { run: 206 } }),
+103 < 2   row(107, 'issue.created', 'z5hh', 'launch', '2026-09-21T23:58:21.000Z',
+104 < 2     { title: 'task 1: Checks at base', metadata: { task: '1', plan: 'q' } }),
+105 < 2   row(108, 'issue.metadata_updated', 'z5hh', 'launch', '2026-09-21T23:58:22.000Z',
+106 < 2     { diff: { run: { from: null, to: 206 }, wave: { from: null, to: 1 } } }),
+107 < 2   row(109, 'issue.metadata_updated', 'z5hh', 'factory', '2026-09-21T23:59:00.000Z',
+108 < 2     { diff: { 'factory.state': { from: null, to: 'dispatched' } } }),
+109 < 2   row(110, 'issue.metadata_updated', '06tw', 'factory', '2026-09-21T23:59:01.000Z',
+110 < 2     { diff: { 'factory.state': { from: null, to: 'dispatched' } } }),
+111 < 2   row(111, 'issue.metadata_updated', 'vwnn', 'factory', '2026-09-21T23:59:02.000Z',
+112 < 2     { diff: { 'factory.state': { from: null, to: 'dispatched' } } }),
+113 < 2   row(112, 'issue.snapshot', '06tw', 'federation', '2026-09-21T23:59:03.000Z', { snapshot: true }),
+114 < 2   row(113, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:01:10.000Z',
+115 < 2     { body: '[note]\nWrote fleet/tests/test_factory_fold_round.mjs, exam for foldRound.\nCurrently red.\nA fourth line that is not shown.' }),
+116 < 2   row(114, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:01:20.000Z',
+117 < 2     { body: '[exam-note]\nThe exam is written.' }),
+118 < 2   row(115, 'issue.commented', '06tw', 'factory', '2026-09-22T00:02:00.000Z',
+119 < 2     { body: '[note]\nWrote the judge exam.' }),
+120 < 2   row(116, 'issue.commented', '06tw', 'factory', '2026-09-22T00:03:00.000Z',
+121 < 2     { body: '[landing]\nexit 0\nALL TESTS PASSED\n\nclaim: 0.73' }),
+122 < 2   row(117, 'issue.metadata_updated', '06tw', 'factory', '2026-09-22T00:03:01.000Z',
+123 < 2     { diff: { 'factory.state': { from: 'dispatched', to: 'adopted' } } }),
+124 < 2   row(118, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:04:00.000Z',
+125 < 2     { body: '[landing]\nexit 1\nAssertionError: expected 2 got 3' }),
+126 < 2   row(119, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:04:30.000Z',
+127 < 2     { body: '[finding:minor]\nThe module stays pure.' }),
+128 < 2   row(120, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:05:00.000Z',
+129 < 2     { body: '[fold-red]\nnode fleet/tests/test_factory_fold_round.mjs exit 1' }),
+130 < 2   row(121, 'issue.assigned', 'vwnn', 'factory', '2026-09-22T00:05:01.000Z', { owner: 'factory' }),
+131 < 2   row(122, 'issue.metadata_updated', 'vwnn', 'factory', '2026-09-22T00:06:11.000Z',
+132 < 2     { diff: { 'factory.state': { from: 'dispatched', to: 'adopted' } } }),
+133 < 2   row(123, 'issue.commented', 'z5hh', 'factory', '2026-09-22T00:06:30.000Z', { body: '[landing]\nexit 0' }),
+134 < 2   row(124, 'issue.closed', 'z5hh', 'sandbox:run-206', '2026-09-22T00:06:40.000Z',
+135 < 2     { reason: 'done', message: 'run-206 task 1 done' }),
+136 < 2   row(125, 'issue.closed', 'g9xy', 'sandbox:run-206', '2026-09-22T00:06:41.000Z',
+137 < 2     { reason: 'done', message: 'run-206 done' }),
+138 < 2   row(126, 'issue.commented', '06tw', 'factory', '2026-09-22T00:07:00.000Z', { body: 'plain text, no bracket' }),
+139 < 2   row(127, 'issue.closed', '06tw', 'sandbox:run-207', '2026-09-22T00:09:00.000Z',
+140 < 2     { reason: 'done', message: 'run-207 task 1 done' }),
+141 < 2   row(128, 'issue.labeled', 'vwnn', 'exam:2@run-207', '2026-09-22T00:09:10.000Z', { label: 'needs-review' }),
+142 < 2   row(129, 'issue.commented', 'nrun', 'probe', '2026-09-22T00:09:20.000Z', { body: '[note]\norphan: never attributed' }),
+143 < 2   row(130, 'issue.metadata_updated', 'zdbs', 'janitor', '2026-09-22T00:10:00.000Z',
+144 < 2     { diff: { 'work.state': { from: null, to: 'failed' } } })
+145 < 2 ]
+146 < 2 assert.equal(FIXTURE.length, 31, 'the fixture itself has 31 rows, as Context describes')
+147 < 2 
+148 < 2 // ══════════════════════════════════════════════════════════════════════════
+149 < 2 // (a) [M1] the fixture's `tasks` shape
+150 < 2 // ══════════════════════════════════════════════════════════════════════════
+151 < 2 
+152 < 2 const p207 = projectBoard(FIXTURE, { runs: [207] })
+153 < 2 
+154 < 2 assert.deepEqual(p207.tasks.map((t) => t.issue), ['zdbs', '06tw', 'vwnn'],
+155 < 2   '(a) [M1] `runs: [207]`: `tasks` is exactly the three rows `zdbs`, `06tw`, `vwnn`, in ' +
+156 < 2   'that order; got ' + JSON.stringify(p207.tasks.map((t) => t.issue)))
+157 < 2 assert.deepEqual(p207.tasks.map((t) => t.name), ['run-207', 'task 1', 'task 2'],
+158 < 2   '(a) [M1] their `name`s are `run-207`, `task 1`, `task 2` in that order; got ' +
+159 < 2   JSON.stringify(p207.tasks.map((t) => t.name)))
+160 < 2 assert.equal(p207.tasks[0].title, 'A fold red names its fold',
+161 < 2   '(a) [M1] the `zdbs` row\'s `title` is `A fold red names its fold`; got ' +
+162 < 2   JSON.stringify(p207.tasks[0].title))
+163 < 2 
+164 < 2 const strayIssues = ['z5hh', 'g9xy', 'nrun']
+165 < 2 for (const stray of strayIssues) {
+166 < 2   assert.ok(!p207.tasks.some((t) => t.issue === stray),
+167 < 2     '(a) [M1] no `tasks` row carries issue ' + JSON.stringify(stray) + ' when `runs: [207]`')
+168 < 2   assert.ok(!p207.timeline.some((t) => t.issue === stray),
+169 < 2     '(a) [M1] no `timeline` row carries issue ' + JSON.stringify(stray) + ' when `runs: [207]`')
+170 < 2 }
+171 < 2 
+172 < 2 const p206207 = projectBoard(FIXTURE, { runs: [206, 207] })
+173 < 2 assert.equal(p206207.tasks.length, 5,
+174 < 2   '(a) [M1] `runs: [206, 207]`: `tasks` has five rows; got ' + p206207.tasks.length)
+175 < 2 
+176 < 2 // ══════════════════════════════════════════════════════════════════════════
+177 < 2 // (b) [M2] the `tasks` row fields
+178 < 2 // ══════════════════════════════════════════════════════════════════════════
+179 < 2 
+180 < 2 const TASK_KEYS = ['run', 'issue', 'name', 'title', 'state', 'closed', 'lastAt', 'last']
+181 < 2 for (const t of p207.tasks) {
+182 < 2   for (const key of TASK_KEYS) {
+183 < 2     assert.ok(Object.prototype.hasOwnProperty.call(t, key),
+184 < 2       '(b) [M2] every `tasks` row carries `' + key + '`; row ' + JSON.stringify(t.issue) + ' is ' +
+185 < 2       JSON.stringify(t))
+186 < 2   }
+187 < 2 }
+188 < 2 
+189 < 2 const byIssue = (list, issue) => list.find((t) => t.issue === issue)
+190 < 2 const tw06 = byIssue(p207.tasks, '06tw')
+191 < 2 assert.equal(tw06.state, 'adopted', '(b) [M2] `06tw`\'s `state` is `adopted`; got ' + JSON.stringify(tw06.state))
+192 < 2 assert.equal(tw06.closed, 'done', '(b) [M2] `06tw`\'s `closed` is `done`; got ' + JSON.stringify(tw06.closed))
+193 < 2 assert.equal(tw06.lastAt, '2026-09-22T00:09:00.000Z',
+194 < 2   '(b) [M2] `06tw`\'s `lastAt` is `2026-09-22T00:09:00.000Z`; got ' + JSON.stringify(tw06.lastAt))
+195 < 2 assert.equal(tw06.last, 'closed done', '(b) [M2] `06tw`\'s `last` is `closed done`; got ' + JSON.stringify(tw06.last))
+196 < 2 
+197 < 2 const vwnn = byIssue(p207.tasks, 'vwnn')
+198 < 2 assert.equal(vwnn.state, 'adopted', '(b) [M2] `vwnn`\'s `state` is `adopted`; got ' + JSON.stringify(vwnn.state))
+199 < 2 assert.equal(vwnn.closed, null, '(b) [M2] `vwnn`\'s `closed` is `null`; got ' + JSON.stringify(vwnn.closed))
+200 < 2 assert.equal(vwnn.last, 'factory.state dispatched->adopted',
+201 < 2   '(b) [M2] `vwnn`\'s `last` is `factory.state dispatched->adopted`; got ' + JSON.stringify(vwnn.last))
+202 < 2 
+203 < 2 const zdbs = byIssue(p207.tasks, 'zdbs')
+204 < 2 assert.equal(zdbs.state, 'failed', '(b) [M2] `zdbs`\'s `state` is `failed`; got ' + JSON.stringify(zdbs.state))
+205 < 2 assert.equal(zdbs.closed, null, '(b) [M2] `zdbs`\'s `closed` is `null`; got ' + JSON.stringify(zdbs.closed))
+206 < 2 
+207 < 2 // ══════════════════════════════════════════════════════════════════════════
+208 < 2 // (c) [M3] the `timeline` rows
+209 < 2 // ══════════════════════════════════════════════════════════════════════════
+210 < 2 
+211 < 2 assert.equal(p207.timeline.length, 14,
+212 < 2   '(c) [M3] `timeline` has exactly 14 rows for `runs: [207]`; got ' + p207.timeline.length)
+213 < 2 
+214 < 2 for (let i = 1; i < p207.timeline.length; i += 1) {
+215 < 2   assert.ok(p207.timeline[i].eventId > p207.timeline[i - 1].eventId,
+216 < 2     '(c) [M3] `timeline` is in feed order — `eventId` strictly ascending; row ' + i +
+217 < 2     ' is ' + JSON.stringify(p207.timeline[i].eventId) + ' after ' +
+218 < 2     JSON.stringify(p207.timeline[i - 1].eventId))
+219 < 2 }
+220 < 2 
+221 < 2 const TIMELINE_KEYS = ['eventId', 'at', 'run', 'issue', 'name', 'what']
+222 < 2 for (const key of TIMELINE_KEYS) {
+223 < 2   assert.ok(Object.prototype.hasOwnProperty.call(p207.timeline[0], key),
+224 < 2     '(c) [M3] a `timeline` row carries `' + key + '`; first row is ' + JSON.stringify(p207.timeline[0]))
+225 < 2 }
+226 < 2 
+227 < 2 const first = p207.timeline[0]
+228 < 2 assert.equal(first.eventId, 110, '(c) [M3] the first `timeline` row\'s `eventId` is 110; got ' + JSON.stringify(first.eventId))
+229 < 2 assert.equal(first.issue, '06tw', '(c) [M3] the first `timeline` row\'s `issue` is `06tw`; got ' + JSON.stringify(first.issue))
+230 < 2 assert.equal(first.what, 'factory.state null->dispatched',
+231 < 2   '(c) [M3] the first `timeline` row\'s `what` is `factory.state null->dispatched`; got ' + JSON.stringify(first.what))
+232 < 2 
+233 < 2 const ev113 = p207.timeline.find((r) => r.eventId === 113)
+234 < 2 assert.ok(ev113, '(c) [M3] `timeline` carries a row for event 113')
+235 < 2 assert.equal(ev113.at, '2026-09-22T00:01:10.000Z',
+236 < 2   '(c) [M3] event 113\'s `at` is `2026-09-22T00:01:10.000Z`; got ' + JSON.stringify(ev113.at))
+237 < 2 assert.equal(ev113.run, 207, '(c) [M3] event 113\'s `run` is 207; got ' + JSON.stringify(ev113.run))
+238 < 2 assert.equal(ev113.name, 'task 2', '(c) [M3] event 113\'s `name` is `task 2`; got ' + JSON.stringify(ev113.name))
+239 < 2 assert.equal(ev113.what,
+240 < 2   '[note] Wrote fleet/tests/test_factory_fold_round.mjs, exam for foldRound. Currently red.',
+241 < 2   '(c) [M3] event 113\'s `what` is exactly the first three lines joined, trimmed; got ' + JSON.stringify(ev113.what))
+242 < 2 
+243 < 2 const ev127 = p207.timeline.find((r) => r.eventId === 127)
+244 < 2 assert.ok(ev127, '(c) [M3] `timeline` carries a row for event 127')
+245 < 2 assert.equal(ev127.what, 'closed done', '(c) [M3] event 127\'s `what` is `closed done`; got ' + JSON.stringify(ev127.what))
+246 < 2 
+247 < 2 const last = p207.timeline[p207.timeline.length - 1]
+248 < 2 assert.equal(last.eventId, 130, '(c) [M3] the last `timeline` row\'s `eventId` is 130; got ' + JSON.stringify(last.eventId))
+249 < 2 assert.equal(last.what, 'work.state null->failed',
+250 < 2   '(c) [M3] the last `timeline` row\'s `what` is `work.state null->failed`; got ' + JSON.stringify(last.what))
+251 < 2 
+252 < 2 // ══════════════════════════════════════════════════════════════════════════
+253 < 2 // (d) [M4] `cursor`, and the empty-input shape
+254 < 2 // ══════════════════════════════════════════════════════════════════════════
+255 < 2 
+256 < 2 assert.equal(p207.cursor, 130, '(d) [M4] `cursor` is 130 with `runs: [207]`; got ' + JSON.stringify(p207.cursor))
+257 < 2 const p999 = projectBoard(FIXTURE, { runs: [999] })
+258 < 2 assert.equal(p999.cursor, 130,
+259 < 2   '(d) [M4] `cursor` is the last input row\'s `event_id` (130) whatever `runs` says, even ' +
+260 < 2   'a `runs` matching nothing; got ' + JSON.stringify(p999.cursor))
+261 < 2 
+262 < 2 const empty = projectBoard([], { runs: [207] })
+263 < 2 assert.deepEqual(empty.tasks, [], '(d) [M4] over an empty input, `tasks` is `[]`; got ' + JSON.stringify(empty.tasks))
+264 < 2 assert.deepEqual(empty.timeline, [], '(d) [M4] over an empty input, `timeline` is `[]`; got ' + JSON.stringify(empty.timeline))
+265 < 2 assert.equal(empty.cursor, null, '(d) [M4] over an empty input, `cursor` is `null`; got ' + JSON.stringify(empty.cursor))
+266 < 2 
+267 < 2 // ══════════════════════════════════════════════════════════════════════════
+268 < 2 // (e) [M5] `renderBoard`'s lines
+269 < 2 // ══════════════════════════════════════════════════════════════════════════
+270 < 2 
+271 < 2 const rendered = renderBoard(p207)
+272 < 2 assert.equal(typeof rendered, 'string', '(e) [M5] `renderBoard` answers a string; got ' + typeof rendered)
+273 < 2 
+274 < 2 const TASK_LINE = /^ {2}run-207 task 1 +closed:done +last 00:09:00Z {2}The judge reads one question$/m
+275 < 2 assert.ok(TASK_LINE.test(rendered),
+276 < 2   '(e) [M5] a task line matches ' + TASK_LINE + '; got:\n' + rendered)
+277 < 2 
+278 < 2 const TIMELINE_LINE = /^ {2}00:01:10Z run-207 task 2 +\[note\] Wrote fleet\/tests\/test_factory_fold_round\.mjs, exam for foldRound\. Currently red\.$/m
+279 < 2 assert.ok(TIMELINE_LINE.test(rendered),
+280 < 2   '(e) [M5] a timeline line matches ' + TIMELINE_LINE + '; got:\n' + rendered)
+281 < 2 
+282 < 2 const nowIdx = rendered.indexOf('== now')
+283 < 2 const eventsIdx = rendered.indexOf('== events')
+284 < 2 assert.ok(nowIdx !== -1 && eventsIdx !== -1 && nowIdx < eventsIdx,
+285 < 2   '(e) [M5] the line `== now` comes before the line `== events`; got indices ' +
+286 < 2   JSON.stringify({ nowIdx, eventsIdx }))
+287 < 2 
+288 < 2 const trimmedRendered = rendered.endsWith('\n') ? rendered.slice(0, -1) : rendered
+289 < 2 const renderedLines = trimmedRendered.split('\n')
+290 < 2 assert.equal(renderedLines[renderedLines.length - 1], 'cursor 130',
+291 < 2   '(e) [M5] the last line, after a trailing newline is dropped, is `cursor 130`; got ' +
+292 < 2   JSON.stringify(renderedLines[renderedLines.length - 1]))
+293 < 2 
+294 < 2 // ══════════════════════════════════════════════════════════════════════════
+295 < 2 // (f) `readBoard` over a hub-shaped feed — rewritten by the task "`readBoard`
+296 < 2 // starts at the asked run's creation event and pages to the feed's end"
+297 < 2 // (#1227, map #876, on #1174), replacing the old 1000-row-page pin. The
+298 < 2 // first block below proves that task's M1–M3; the second block is the
+299 < 2 // original `since: 500` leg, unchanged, and now proves that task's M5.
+300 < 2 // ══════════════════════════════════════════════════════════════════════════
+301 < 2 
+302 < 2 /** A recording `client.events`: `answer(projectId, afterId)` decides each page. */
+303 < 2 const recordingClient = (answer) => {
+304 < 2   const calls = []
+305 < 2   return {
+306 < 2     calls,
+307 < 2     client: {
+308 < 2       events: async (projectId, afterId) => {
+309 < 2         calls.push([projectId, afterId])
+310 < 2         return answer(projectId, afterId)
+311 < 2       }
+312 < 2     }
+313 < 2   }
+314 < 2 }
+315 < 2 
+316 < 2 /** The hub's own paging rule, as Context and `fleet/CONTRACT.md`'s
+317 < 2  *  `events-page` fact describe it: at most 100 rows a page whatever `limit`
+318 < 2  *  says, `next_after_id` the last answered row's `event_id`, and for an
+319 < 2  *  empty page `after` itself. */
+320 < 2 const hubPage = (feed) => (after) => {
+321 < 2   const rows = feed.filter((e) => e.event_id > after).slice(0, 100)
+322 < 2   return { events: rows, next_after_id: rows.length ? rows[rows.length - 1].event_id : after, reset_required: false }
+323 < 2 }
+324 < 2 
+325 < 2 /** 3,000 rows of another run (205): an `issue.created` at `event_id` 1, then
+326 < 2  *  2,999 `issue.commented` rows on it, `created_at` rising through
+327 < 2  *  `2026-09-20T…` — earlier than every row of `FIXTURE`. */
+328 < 2 const fillerAt = (eventId) => new Date(Date.UTC(2026, 8, 20, 0, 0, 0) + (eventId - 1) * 1000).toISOString()
+329 < 2 const FILLER_RUN_205 = [
+330 < 2   row(1, 'issue.created', 'r205', 'launch', fillerAt(1),
+331 < 2     { title: 'run-205: A different fold entirely', body: '', metadata: { run: 205, target: 'other/other' } }),
+332 < 2   ...Array.from({ length: 2999 }, (_, i) =>
+333 < 2     row(i + 2, 'issue.commented', 'r205', 'factory', fillerAt(i + 2), { body: '[note]\nfiller comment ' + (i + 2) }))
+334 < 2 ]
+335 < 2 /** `FIXTURE` renumbered `event_id` 3001–3031, `created_at` unchanged — the
+336 < 2  *  hub-shaped feed Machine M1 describes, built once and shared with leg (g). */
+337 < 2 const shiftRows = (rows, delta) => rows.map((r) => ({ ...r, event_id: r.event_id + delta }))
+338 < 2 const HUB_FEED = [...FILLER_RUN_205, ...shiftRows(FIXTURE, 2901)]
+339 < 2 assert.equal(HUB_FEED.length, 3031,
+340 < 2   '(f) [M1] the hub-shaped feed itself has 3,031 rows — 3,000 of run 205 then the 31-row ' +
+341 < 2   'fixture renumbered 3001–3031 — as Machine describes')
+342 < 2 
+343 < 2 /** `listIssues`'s answer: the run-205 issue, the run 207 issue `zdbs` (its
+344 < 2  *  `created_at` 3 ms before its creation event's, row 3001's), and the two
+345 < 2  *  task issues, neither carrying a `run`. */
+346 < 2 const HUB_ISSUES = [
+347 < 2   { short_id: 'r205', title: 'run-205: A different fold entirely', metadata: { run: 205 }, created_at: fillerAt(1), status: 'open', uid: 'u-r205' },
+348 < 2   { short_id: 'zdbs', title: 'run-207: A fold red names its fold', metadata: { run: 207, target: 'popmechanic/ultrapowers' }, created_at: '2026-09-21T23:58:00.097Z', status: 'open', uid: 'u-zdbs' },
+349 < 2   { short_id: '06tw', title: 'task 1: The judge reads one question', metadata: { task: '1', plan: 'p' }, created_at: '2026-09-21T23:58:03.997Z', status: 'open', uid: 'u-06tw' },
+350 < 2   { short_id: 'vwnn', title: 'task 2: A fold round', metadata: { task: '2', plan: 'p' }, created_at: '2026-09-21T23:58:07.997Z', status: 'open', uid: 'u-vwnn' }
+351 < 2 ]
+352 < 2 
+353 < 2 {
+354 < 2   const calls = []
+355 < 2   const page = hubPage(HUB_FEED)
+356 < 2   const client = {
+357 < 2     events: async (projectId, afterId) => {
+358 < 2       calls.push([projectId, afterId])
+359 < 2       return page(afterId)
+360 < 2     },
+361 < 2     listIssues: async () => ({ issues: HUB_ISSUES })
+362 < 2   }
+363 < 2   const answer = await readBoard({ client, projectId: 31, runs: [207], since: 0 })
+364 < 2 
+365 < 2   assert.deepEqual(answer.tasks.map((t) => t.issue), ['zdbs', '06tw', 'vwnn'],
+366 < 2     '(f) [M1] over the 3,031-row hub-shaped feed, `readBoard`\'s `tasks` map to exactly ' +
+367 < 2     '`[\'zdbs\', \'06tw\', \'vwnn\']` by `issue`, in that order; got ' +
+368 < 2     JSON.stringify(answer.tasks.map((t) => t.issue)))
+369 < 2   assert.deepEqual(answer.timeline.map((t) => t.eventId),
+370 < 2     [3011, 3012, 3014, 3015, 3016, 3017, 3018, 3019, 3020, 3021, 3023, 3027, 3028, 3031],
+371 < 2     '(f) [M1] and its `timeline` maps to exactly those fourteen `eventId`s, in that order — ' +
+372 < 2     'nothing of run 205 before it; got ' + JSON.stringify(answer.timeline.map((t) => t.eventId)))
+373 < 2 
+374 < 2   assert.equal(answer.cursor, 3031,
+375 < 2     '(f) [M2] that answer\'s `cursor` is exactly 3031, the last event the hub holds; got ' +
+376 < 2     JSON.stringify(answer.cursor))
+377 < 2 
+378 < 2   assert.ok(calls.length < 31,
+379 < 2     '(f) [M3] the read makes fewer than 31 calls to `client.events` (a walk from `after_id` ' +
+380 < 2     '0 over this 3,031-row feed at 100 rows a page is 31 calls); recorded ' + calls.length +
+381 < 2     ' calls: ' + JSON.stringify(calls))
+382 < 2 }
+383 < 2 
+384 < 2 {
+385 < 2   const { calls, client } = recordingClient(() => ({ events: [], next_after_id: 500, reset_required: false }))
+386 < 2   const answer = await readBoard({ client, projectId: 31, runs: [207], since: 500 })
+387 < 2   assert.deepEqual(calls, [[31, 500]],
+388 < 2     '(f) [M5] `since: 500` against an `events` fake answering an empty page: exactly one ' +
+389 < 2     'call, `[[31, 500]]`; got ' + JSON.stringify(calls))
+390 < 2   assert.deepEqual(answer.tasks, [], '(f) [M5] `tasks` is `[]`; got ' + JSON.stringify(answer.tasks))
+391 < 2   assert.equal(answer.cursor, 500,
+392 < 2     '(f) [M5] `cursor` is `500`; got ' + JSON.stringify(answer.cursor))
+393 < 2 }
+394 < 2 
+395 < 2 // ══════════════════════════════════════════════════════════════════════════
+396 < 2 // (g) [M7] `parseBoardArgs` and `main`
+397 < 2 // ══════════════════════════════════════════════════════════════════════════
+398 < 2 
+399 < 2 assert.deepEqual(
+400 < 2   parseBoardArgs(['--run', '207', '--run', '208', '--target', 'o/r', '--since', '12', '--json']),
+401 < 2   { runs: [207, 208], target: 'o/r', since: 12, json: true, follow: false, quietMinutes: 10 },
+402 < 2   '(g) [M7] the five-flag argv parses to `{ runs: [207, 208], target: \'o/r\', since: 12, json: true }`')
+403 < 2 
+404 < 2 const assertBoardRefusal = (thunk, why) => {
+405 < 2   let threw = null
+406 < 2   try { thunk() } catch (error) { threw = error }
+407 < 2   assert.ok(threw, '(g) [M7] ' + why + ': throws')
+408 < 2   assert.ok(String(threw && threw.message).startsWith('board-read:'),
+409 < 2     '(g) [M7] ' + why + ': message begins `board-read:`; got ' + JSON.stringify(threw && threw.message))
+410 < 2 }
+411 < 2 
+412 < 2 assertBoardRefusal(() => parseBoardArgs(['--target', 'o/r']), 'a missing `--run`')
+413 < 2 assertBoardRefusal(() => parseBoardArgs(['--run', '207']), 'a missing `--target`')
+414 < 2 assertBoardRefusal(() => parseBoardArgs(['--run', 'abc', '--target', 'o/r']),
+415 < 2   'a `--run` that is not a positive integer')
+416 < 2 assertBoardRefusal(() => parseBoardArgs(['--run', '207', '--target', 'o/r', '--since', '-1']),
+417 < 2   'a `--since` that is not a non-negative integer')
+418 < 2 
+419 < 2 assert.equal(parseBoardArgs(['--run', '207', '--target', 'o/r']).since, 0,
+420 < 2   '(g) [M7] `since` defaults to `0` with none given')
+421 < 2 
+422 < 2 /** `main`'s `exec`: a recording fake in the ssh-curl shape `sshTransport`
+423 < 2  *  expects, chosen by which path the remote (the last argv element) names —
+424 < 2  *  the projects listing, the issues listing, or a hub-shaped page of `feed`
+425 < 2  *  for the `after_id` parsed out of the remote (the same `hubPage` leg (f)
+426 < 2  *  uses). */
+427 < 2 const makeMainExec = ({ projects, issues, feed }) => {
+428 < 2   const calls = []
+429 < 2   const page = hubPage(feed)
+430 < 2   const exec = async (cmd, argv) => {
+431 < 2     calls.push({ cmd, argv })
+432 < 2     const remote = String(argv[argv.length - 1])
+433 < 2     let answer
+434 < 2     if (remote.includes('/api/v1/projects?limit=1000')) {
+435 < 2       answer = { projects }
+436 < 2     } else if (remote.includes('/api/v1/projects/31/issues?limit=1000')) {
+437 < 2       answer = { issues }
+438 < 2     } else {
+439 < 2       const match = remote.match(/\/api\/v1\/projects\/31\/events\?after_id=(\d+)/)
+440 < 2       answer = page(match ? Number(match[1]) : 0)
+441 < 2     }
+442 < 2     return { code: 0, stdout: JSON.stringify(answer) + '\n200', stderr: '' }
+443 < 2   }
+444 < 2   return { calls, exec }
+445 < 2 }
+446 < 2 
+447 < 2 const writeKataEnv = async (lines) => {
+448 < 2   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'board-read-exam-'))
+449 < 2   const file = path.join(dir, 'kata-hub.env')
+450 < 2   await fs.writeFile(file, lines, 'utf8')
+451 < 2   return file
+452 < 2 }
+453 < 2 
+454 < 2 const HUB_PROJECTS = [{ id: 31, uid: 'P', name: 'popmechanic-ultrapowers' }]
+455 < 2 
+456 < 2 {
+457 < 2   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
+458 < 2   const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
+459 < 2   let written = ''
+460 < 2   const write = (s) => { written += s }
+461 < 2   await main(['--run', '207', '--target', 'popmechanic/ultrapowers'], { exec, kataEnvPath, write })
+462 < 2 
+463 < 2   for (const call of calls) {
+464 < 2     assert.equal(call.cmd, 'ssh', '(g) [M4] every recorded call\'s `cmd` is `ssh`; got ' + JSON.stringify(call.cmd))
+465 < 2     assert.ok(call.argv.includes('hub.example'),
+466 < 2       '(g) [M4] every call\'s `argv` includes the host `hub.example`; got ' + JSON.stringify(call.argv))
+467 < 2     const remote = call.argv[call.argv.length - 1]
+468 < 2     assert.ok(remote.includes('. /etc/kata/kata.env'),
+469 < 2       '(g) [M4] the remote sources `/etc/kata/kata.env`, the janitor\'s own door; got ' + JSON.stringify(remote))
+470 < 2     assert.ok(remote.includes('Authorization: Bearer $KATA_AUTH_TOKEN'),
+471 < 2       '(g) [M4] the remote carries the literal `$KATA_AUTH_TOKEN`, never a value; got ' + JSON.stringify(remote))
+472 < 2     assert.ok(remote.includes('-X GET'), '(g) [M4] the remote is a GET; got ' + JSON.stringify(remote))
+473 < 2     for (const arg of call.argv) {
+474 < 2       assert.ok(!String(arg).includes('deadbeefcafe'),
+475 < 2         '(g) [M4] no argv element of any call carries the env file\'s token value; got ' + JSON.stringify(call.argv))
+476 < 2     }
+477 < 2   }
+478 < 2   assert.ok(calls[0].argv[calls[0].argv.length - 1].includes('/api/v1/projects?limit=1000'),
+479 < 2     '(g) [M7] the first remote lists the projects; got ' + JSON.stringify(calls[0].argv[calls[0].argv.length - 1]))
+480 < 2 
+481 < 2   assert.ok(TASK_LINE.test(written), '(g) [M4] the written text matches leg (e)\'s task-line pattern; got:\n' + written)
+482 < 2   assert.ok(TIMELINE_LINE.test(written),
+483 < 2     '(g) [M4] the written text contains a `run-207 task 2` timeline line, matching leg (e)\'s ' +
+484 < 2     'timeline-line pattern; got:\n' + written)
+485 < 2   assert.ok(written.endsWith('cursor 3031\n'),
+486 < 2     '(g) [M4] the written text ends `cursor 3031\\n`; got ' + JSON.stringify(written.slice(-20)))
+487 < 2 }
+488 < 2 
+489 < 2 {
+490 < 2   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
+491 < 2   const { exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
+492 < 2   let written = ''
+493 < 2   const write = (s) => { written += s }
+494 < 2   await main(['--run', '207', '--target', 'popmechanic/ultrapowers', '--json'], { exec, kataEnvPath, write })
+495 < 2   const parsed = JSON.parse(written)
+496 < 2   assert.equal(parsed.tasks.length, 3,
+497 < 2     '(g) [M7] `--json` writes `JSON.stringify(projection, null, 2)`: parsed `tasks` has length 3; got ' +
+498 < 2     (parsed.tasks && parsed.tasks.length))
+499 < 2   assert.equal(parsed.cursor, 3031, '(g) [M7] and parsed `cursor` is 3031; got ' + JSON.stringify(parsed.cursor))
+500 < 2 }
+501 < 2 
+502 < 2 {
+503 < 2   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
+504 < 2   const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
+505 < 2   let rejection = null
+506 < 2   try {
+507 < 2     await main(['--run', '207', '--target', 'nobody/nothing'], { exec, kataEnvPath, write: () => {} })
+508 < 2   } catch (error) {
+509 < 2     rejection = error
+510 < 2   }
+511 < 2   assert.ok(rejection, '(g) [M7] a `--target` the listing does not hold: `main` rejects')
+512 < 2   assert.ok(String(rejection && rejection.message).startsWith('board-read:'),
+513 < 2     '(g) [M7] its message begins `board-read:`; got ' + JSON.stringify(rejection && rejection.message))
+514 < 2   assert.equal(calls.length, 1,
+515 < 2     '(g) [M7] and exactly one `exec` call was made (the listing, never the feed); got ' + calls.length)
+516 < 2 }
+517 < 2 
+518 < 2 {
+519 < 2   const missingEnvPath = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'board-read-exam-')), 'nope', 'kata-hub.env')
+520 < 2   let rejection = null
+521 < 2   try {
+522 < 2     await main(['--run', '207', '--target', 'o/r'], { exec: async () => { throw new Error('must not be called') }, kataEnvPath: missingEnvPath, write: () => {} })
+523 < 2   } catch (error) {
+524 < 2     rejection = error
+525 < 2   }
+526 < 2   assert.ok(rejection, '(g) [M7] an env file that cannot be read: `main` rejects')
+527 < 2   assert.ok(String(rejection && rejection.message).startsWith('board-read:'),
+528 < 2     '(g) [M7] its message begins `board-read:`; got ' + JSON.stringify(rejection && rejection.message))
+529 < 2   assert.ok(String(rejection && rejection.message).includes(missingEnvPath),
+530 < 2     '(g) [M7] and names the path it tried; got ' + JSON.stringify(rejection && rejection.message))
+531 < 2 }
+532 < 2 
+533 < 2 {
+534 < 2   const noHostEnvPath = await writeKataEnv('KATA_URL=not-a-url\nKATA_TOKEN=deadbeefcafe\n')
+535 < 2   let rejection = null
+536 < 2   try {
+537 < 2     await main(['--run', '207', '--target', 'o/r'], { exec: async () => { throw new Error('must not be called') }, kataEnvPath: noHostEnvPath, write: () => {} })
+538 < 2   } catch (error) {
+539 < 2     rejection = error
+540 < 2   }
+541 < 2   assert.ok(rejection, '(g) [M7] an env file naming no host: `main` rejects')
+542 < 2   assert.ok(String(rejection && rejection.message).startsWith('board-read:'),
+543 < 2     '(g) [M7] its message begins `board-read:`; got ' + JSON.stringify(rejection && rejection.message))
+544 < 2 }
+545 < 2 
+546 < 2 // ── follow: new rows once, one warning per stuck claim and per quiet spell, ends on close ──
+547 < 2 {
+548 < 2   const T0 = Date.parse('2026-09-28T23:00:00Z')
+549 < 2   const iso = (ms) => new Date(T0 + ms).toISOString()
+550 < 2   let clock = 0
+551 < 2   const claimed = { eventId: 1, at: iso(0), run: 5, issue: 11, name: 'task 1', what: 'claimed by A' }
+552 < 2   const done = { eventId: 2, at: iso(40000), run: 5, issue: 11, name: 'task 1', what: 'done by A' }
+553 < 2   const closed = { eventId: 3, at: iso(40000), run: 5, issue: 10, name: 'run-5', what: 'closed done' }
+554 < 2   const read = async () => clock < 40000
+555 < 2     ? { tasks: [{ run: 5, issue: 10, name: 'run-5', closed: null, last: null, lastAt: null },
+556 < 2                 { run: 5, issue: 11, name: 'task 1', closed: null, last: 'claimed by A', lastAt: iso(0) }],
+557 < 2         timeline: [claimed] }
+558 < 2     : { tasks: [{ run: 5, issue: 10, name: 'run-5', closed: 'done', last: 'closed done', lastAt: iso(40000) },
+559 < 2                 { run: 5, issue: 11, name: 'task 1', closed: null, last: 'done by A', lastAt: iso(40000) }],
+560 < 2         timeline: [claimed, done, closed] }
+561 < 2   let out = ''
+562 < 2   const rc = await mod.follow({ read, write: (x) => { out += x }, runs: [5], everyMs: 10000, quietMs: 30000,
+563 < 2     now: () => T0 + clock, sleep: async (ms) => { clock += ms } })
+564 < 2   const lines = out.trim().split('\n')
+565 < 2   assert.equal(rc, 0, '(follow a) a run whose own issue closes ends with 0; got ' + rc)
+566 < 2   assert.equal(lines.filter((l) => l.endsWith('claimed by A')).length, 1, '(follow b) the claim row prints once; got\n' + out)
+567 < 2   assert.equal(lines.filter((l) => l.startsWith('! run-5 task 1 claimed by A') && l.endsWith('no done since')).length, 1, '(follow c) one warning for the stuck claim; got\n' + out)
+568 < 2   assert.equal(lines.filter((l) => l.startsWith('! no new row for')).length, 1, '(follow d) one warning for the quiet spell; got\n' + out)
+569 < 2   assert.ok(lines.some((l) => l.endsWith('done by A')) && lines.at(-1) === '== closed', '(follow e) the done row prints and the last line is == closed; got\n' + out)
+570 < 2 
+571 < 2   clock = 0
+572 < 2   let out2 = ''
+573 < 2   const never = async () => ({ tasks: [{ run: 5, issue: 10, name: 'run-5', closed: null, last: null, lastAt: null }], timeline: [] })
+574 < 2   const rc2 = await mod.follow({ read: never, write: (x) => { out2 += x }, runs: [5], everyMs: 10000, quietMs: 60000, maxMs: 20000,
+575 < 2     now: () => T0 + clock, sleep: async (ms) => { clock += ms } })
+576 < 2   assert.ok(rc2 === 3 && out2.trim().endsWith('== gave up'), '(follow f) a run that never closes gives up at maxMs with 3; got ' + rc2 + '\n' + out2)
+577 < 2   assert.equal(mod.parseBoardArgs(['--run', '5', '--target', 'o/r', '--follow', '--quiet', '7']).quietMinutes, 7, '(follow g) --quiet sets the window')
+578 < 2 }
+579 < 2 
+580 < 2 {
+581 < 2   // A Flock task's state follows the mirror's comments: filed -> claimed -> done (run-275, 2026-09-29).
+582 < 2   const mirror = [
+583 < 2     row(1, 'issue.created', 'rvxp', 'launch', '2026-09-29T22:41:03.000Z', { title: 'task 1: t', metadata: { run: 275 } }),
+584 < 2     row(2, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:22.000Z', { body: 'claimed by A' }),
+585 < 2   ]
+586 < 2   assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'claimed', '(mirror a) a claim comment sets state claimed')
+587 < 2   mirror.push(row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'done by A' }))
+588 < 2   assert.equal(mod.projectBoard(mirror, { runs: [275] }).tasks[0].state, 'done', '(mirror b) a done comment sets state done')
+589 < 2   const released = [mirror[0], mirror[1],
+590 < 2     row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'A released: gave up' })]
+591 < 2   assert.equal(mod.projectBoard(released, { runs: [275] }).tasks[0].state, 'released', '(mirror c) `<agent> released: <why>` sets state released')
+592 < 2   released[2] = row(3, 'issue.commented', 'rvxp', 'factory', '2026-09-29T22:42:30.000Z', { body: 'released: gave up' })
+593 < 2   assert.equal(mod.projectBoard(released, { runs: [275] }).tasks[0].state, 'released', '(mirror d) the older bare `released: <why>` still sets state released')
+594 < 2 }
+595 < 2 
+597 > 2 // ── one shared connection, and a follow that reads only what is new (2026-11-13) ──
+598 < 2 {
+599 < 2   // (h) every request of a read carries the three ControlMaster options before the host, the
+600 < 2   // socket beside the env file; the remote stays the last element
+601 < 2   const kataEnvPath = await writeKataEnv('KATA_URL=https://hub.example\nKATA_TOKEN=deadbeefcafe\n')
+602 < 2   const { calls, exec } = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed: HUB_FEED })
+603 < 2   await main(['--run', '207', '--target', 'popmechanic/ultrapowers', '--since', '3030'], { exec, kataEnvPath, write: () => {} })
+604 < 2   const want = ['-o', 'ControlMaster=auto', '-o', 'ControlPath=' + path.join(path.dirname(kataEnvPath), 'hub-%C'), '-o', 'ControlPersist=60', 'hub.example']
+605 < 2   assert.equal(calls.length, 2, '(h) a read from a cursor is two requests, the projects and one page; got ' + calls.length)
+606 < 2   for (const call of calls) {
+607 < 2     assert.deepEqual(call.argv.slice(4, -1), want, '(h) the shared-connection options sit before the host; got ' + JSON.stringify(call.argv.slice(0, -1)))
+608 < 2   }
+609 < 2 
+610 < 2   // (i) a request that got no status over the shared connection is made once more on its own
+611 < 2   const { sshTransport } = await import('../kata-client.mjs')
+612 < 2   const seen = []
+613 < 2   const flaky = async (cmd, argv) => {
+614 < 2     seen.push(argv)
+615 < 2     return argv.some((a) => String(a).startsWith('ControlPath=')) ? { code: 255, stdout: '', stderr: 'mux_client_request_session: read from master failed' } : { code: 0, stdout: '{"ok":true}\n200', stderr: '' }
+616 < 2   }
+617 < 2   const got = await sshTransport({ sshHost: 'hub.example', exec: flaky, control: '/x/hub-%C' }).request({ method: 'GET', path: '/api/v1/projects' })
+618 < 2   assert.ok(got.status === 200 && got.json && got.json.ok === true, '(i) the retry\'s answer is the request\'s; got ' + JSON.stringify(got))
+619 < 2   assert.ok(seen.length === 2 && !seen[1].some((a) => String(a).startsWith('Control')), '(i) the second hop carries no Control option; got ' + JSON.stringify(seen.map((a) => a.slice(0, -1))))
+620 < 2   const plain = []
+621 < 2   await sshTransport({ sshHost: 'hub.example', exec: async (cmd, argv) => { plain.push(argv); return { code: 0, stdout: '{}\n200', stderr: '' } } }).request({ method: 'GET', path: '/x' })
+622 < 2   assert.deepEqual(plain[0].slice(0, -1), ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', 'hub.example'], '(i) with no control path the argv is what it was; got ' + JSON.stringify(plain[0].slice(0, -1)))
+623 < 2 
+624 < 2   // (j) followReader: the first read starts from the run's creation; the next is one request,
+625 < 2   // from the last row held, and its projection holds the old rows and the new one
+626 < 2   const { hubFromEnv } = await import('../lobby.mjs')
+627 < 2   const feed = [...HUB_FEED]
+628 < 2   const grow = makeMainExec({ projects: HUB_PROJECTS, issues: HUB_ISSUES, feed })
+629 < 2   const page = (after) => { const rows = feed.filter((e) => e.event_id > after).slice(0, 100); return { events: rows, next_after_id: rows.length ? rows[rows.length - 1].event_id : after, reset_required: false } }
+630 < 2   const requests = []
+631 < 2   const live = async (cmd, argv) => {
+632 < 2     const remote = String(argv[argv.length - 1]); requests.push(remote)
+633 < 2     const m = remote.match(/\/api\/v1\/projects\/31\/events\?after_id=(\d+)/)
+634 < 2     return m ? { code: 0, stdout: JSON.stringify(page(Number(m[1]))) + '\n200', stderr: '' } : grow.exec(cmd, argv)
+635 < 2   }
+636 < 2   const { client } = await hubFromEnv({ exec: live, actor: 'board-read', kataEnvPath })
+637 < 2   const read = mod.followReader({ client, projectId: 31, runs: [207] })
+638 < 2   const first = await read()
+639 < 2   assert.equal(first.cursor, 3031, '(j) the first read ends at the feed\'s last row; got ' + first.cursor)
+640 < 2   const before = requests.length
+641 < 2   feed.push(row(3032, 'issue.commented', 'vwnn', 'factory', '2026-09-22T00:09:00.000Z', { body: 'done by Z' }))
+642 < 2   const second = await read()
+643 < 2   const made = requests.slice(before)
+644 < 2   assert.ok(made.length === 1 && made[0].includes('/events?after_id=3031&'), '(j) the second read is one request, after row 3031; got ' + JSON.stringify(made.map((r) => r.slice(-60))))
+645 < 2   assert.equal(second.cursor, 3032, '(j) the second read ends at the new row; got ' + second.cursor)
+646 < 2   assert.equal(second.timeline.length, first.timeline.length + 1, '(j) the second projection holds every earlier row and the new one; got ' + second.timeline.length + ' after ' + first.timeline.length)
+647 < 2   assert.ok(second.timeline.at(-1).what === 'done by Z' && second.timeline.at(-1).run === 207, '(j) the new row is read as run 207\'s; got ' + JSON.stringify(second.timeline.at(-1)))
+648 < 2   const third = await read()
+649 < 2   assert.equal(third.timeline.length, second.timeline.length, '(j) a read with nothing new changes nothing; got ' + third.timeline.length)
+650 < 2 }
+651 < 2 
+596 < 2 console.log('ALL TESTS PASSED')
+597 < 2 

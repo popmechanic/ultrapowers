@@ -1,0 +1,156 @@
+0 < 1 # fleet/tests probes
+1 < 1 
+2 < 1 A `probe_*.mjs` file is either a live measurement or a design gate — never a
+3 < 1 suite test. A live measurement spends real tokens against a real `claude -p`; a
+4 < 1 design gate is model-free and spends only minutes, but it is a reading a person
+5 < 1 takes before a change rather than a verdict CI owes on every commit. Either way
+6 < 1 the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`
+7 < 1 globs `test_*.mjs`, CI has no credentials, and the hermetic sweep
+8 < 1 `test_sims_are_hermetic.mjs` never reads a `probe_*.mjs`. The naming is the
+9 < 1 whole mechanism — CI and the suite never run these.
+10 < 1 
+11 < 2 The kata probe spends no tokens and holds no bearer, reaching the hub over the
+12 < 2 laptop's own ssh seam (the bearer is sourced on the hub), so it runs on the
+13 < 2 LAPTOP and nowhere else — a sandbox reaches the hub through the edge and
+14 < 2 cannot file a throwaway project:
+15 < 2 
+16 < 2     node fleet/tests/probe_kata_facts.mjs
+17 < 2 
+18 < 1 The current probes:
+19 < 1 
+20 < 2 - `probe_kata_facts.mjs` — whether the hub still behaves the way the fleet's
+21 < 2   contract says it does: the 24 kata facts (#978, #979, #993, #1023 and CLAUDE.md's
+22 < 2   seams paragraph), re-read one line per fact against a throwaway project, each
+23 < 2   line stamped with the version it was read on. Run it on every kata upgrade,
+24 < 2   and before any plan that touches `fleet/kata-client.mjs` — those facts are
+25 < 2   what that file's shape is argued from, and nothing in the suite talks to a
+26 < 2   hub, so an upgrade can falsify any of them with the tree still green. It
+27 < 2   removes its `probe-kata-facts-*` project with the very purge ladder its last
+28 < 2   fact measures. Exit 0 every fact holds, 1 at least one drift, 2 the hub was
+29 < 2   unreachable or the project was left behind.
+30 < 1 - `probe_exe_facts.mjs` — whether exe.dev's lobby still behaves the way
+31 < 1   `fleet/RUNBOOK.md`'s §Traps (*Tags, keys and names*, *Reading the lobby*)
+32 < 1   and `fleet/CONTRACT.md`'s `exe.dev facts (measured)` list say it does: the
+33 < 1   twelve lobby facts, re-read one line per fact against the laptop's own ssh
+34 < 1   seam (`ssh exe.dev`), each line stamped with the sha256 of `help all
+35 < 1   --json` — exe.dev exposes no version verb, no `--version` and no
+36 < 1   changelog, so that digest is the only version marker there is — and the
+37 < 1   UTC date. It creates three throwaway VMs (`probe-exe-facts-<stamp>`, 1 vCPU and 2 GB —
+38 < 1   the lobby's floor — and two copies of it) and removes every one of them as its last mutating verbs, and
+39 < 1   it refuses outright, issuing no `new`, when a `fleet-r*` VM is already
+40 < 1   listed — a live run's VM, never to be created beside. Run it on a
+41 < 1   verb-drift finding from the doctor's `verb-drift` row or the launch line,
+42 < 1   and before any plan touching `fleet/launch.mjs` or `fleet/lobby.mjs` — the
+43 < 1   facts here are what those files' shape is argued from. Its exit codes:
+44 < 1   exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the
+45 < 1   lobby was unreachable, a live run's VM was listed, or a throwaway was left
+46 < 1   behind.
+47 < 1 
+48 < 1 ## Hand-run: the Jev authoring probes (need `bun`)
+49 < 1 
+50 < 1 The bridge's `sim_env()` PATH holds node, python3, git, bash and sh only, so four
+51 < 1 probes of the Bun authoring tools stay outside the suite (operator pick, #1447).
+52 < 1 Each runs against a local stand-in Jev on 127.0.0.1 and spends nothing. Run all
+53 < 1 four before any change to `skills/ultrawrite/stories/gate_jev.ts`,
+54 < 1 `jev_checks.ts`, `jev.ts` or `skills/ultrawrite/stories/questions.json`:
+55 < 1 
+56 < 1     for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
+57 < 1     for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done
+58 < 1     for c in own-files own-only rollback typo; do node fleet/tests/gate_jev_reading_probe.mjs $c; done
+59 < 1     for c in bundle map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
+60 < 1 
+61 < 1 - `gate_jev_probe.mjs` — `record`: one request asking the five clause keys,
+62 < 1   the verdict record left alone and one `gate_rounds` entry written;
+63 < 1   `agreement`: the census's two lines over two records. Prints `GATE JEV <case> OK`.
+64 < 1 - `gate_jev_base_probe.mjs` — prints one JSON line (`verdict`, `pinned`,
+65 < 1   `asked_pinned`, `state_base`); `pinned` is asked only when the diet has a
+66 < 1   `base`. Exits 1 only when it could not run; read the line.
+67 < 1 - `gate_jev_reading_probe.mjs` — prints one JSON line (`requests`, `asked`,
+68 < 1   `state_base`, `caught_M1`, `verdict`, `pinned`, `round`) for policy.json's
+69 < 1   `gate_reading` (#1497): `own-files` sends only the sibling entry, unmarked, and
+70 < 1   asks `caught_v2`; `own-only` sends `files` as `[]` and asks no `pinned`;
+71 < 1   `rollback`, on a copy with both cells set back, sends both entries and asks the
+72 < 1   old `caught`; `typo`, on a copy whose `caught` cell names a key no question has
+73 < 1   (`caught_v9`), asks the old `caught` and records `reading.caught` as `caught`.
+74 < 1   The round names its `reading`. Exits 1 only when it could not run.
+75 < 1 - `jev_calls_probe.mjs` — the state `jev_checks.ts` sends Jev at each stage.
+76 < 1   Prints `JEV CALLS <case> OK`.
+77 < 1 
+78 < 1 Everything else the Flock's scripted runs used to probe by hand (catch-up,
+79 < 1 deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
+80 < 1 
+81 < 1 ## Jev's peer-rewrite read, live
+82 < 1 
+83 < 1 `jev_peer_probe.mjs` asks the real Jev (key in `~/.ultrapowers/typesafe.env`; it spends a few calls)
+84 < 1 the `flock_peer_rewrite` question four ways, with five replays each:
+85 < 1 - run-296's L:loose rewrite of `preview.ts` exactly as the engine sent it, as a bare agent name
+86 < 1   (reported, not judged);
+87 < 1 - the same rewrite with the loose-ends side's title and reason, which must read `supersedes` or
+88 < 1   `keeps` in a majority;
+89 < 1 - run-277's run-together words, which must still read `loses`;
+90 < 1 - an unrelated same-file rewrite (the loose-ends builder adds a line the reported problem never asked
+91 < 1   for), which must read `loses`.
+92 < 1 
+93 < 1 Run it before any change to that question, to `factory/flock/engine.mjs`'s `peerRewrites`, or to the
+94 < 1 `flock.jev_peer_rewrite` policy:
+95 < 1 
+96 < 1     node fleet/tests/jev_peer_probe.mjs 5
+97 < 1 
+98 < 1 Readings, 2026-10-02 06:40 UTC (after #1520, field `asked_to_fix`), `jev-1.13.0`, n=5 each:
+99 < 1 
+100 < 1 | Case | Answer |
+101 < 1 |---|---|
+102 < 1 | bare run-296 | loses 5/5 (L .51–.57) |
+103 < 1 | run-296 with its reason | supersedes 5/5 (S .55–.60) |
+104 < 1 | run-277 | loses 5/5 (L .65–.72) |
+105 < 1 | unrelated same-file rewrite | loses 5/5 (L .83–.88) |
+106 < 1 
+107 < 1 The readings of 2026-10-01 (before #1520, field `claim`) read the same answers: bare loses 5/5, with its
+108 < 1 reason supersedes 5/5, run-277 loses 5/5.
+109 < 1 
+110 < 1 ## Jev's gate reading, live
+111 < 1 
+112 < 1 `gate_jev_replay_probe.mjs` replays every labelled gate disagreement in the operator's untracked
+113 < 1 `docs/superpowers/plans/` through the real Jev (key in `~/.ultrapowers/typesafe.env`): each round where
+114 < 1 the agent reader and Jev differ and `right` is set, its diet rebuilt by `extract_gate_input.py` (with the
+115 < 1 tally's `base` when that round saw one) and skipped when the task no longer hashes the same, then read
+116 < 1 by `gate_jev.ts` (never `--record`). Beside them, two known-bad controls (`uncaught-output`,
+117 < 1 `pinned-by-sibling`) must each still read `fail` in a majority. It spends `reps` × (rounds + 2) calls.
+118 < 1 It counts the wrong fails (agent right, Jev failed) that now pass, the right fails (Jev right) that
+119 < 1 still fail, and the agreed fails (agent and Jev both failed it, #1528) that now pass; the summary reports
+120 < 1 `agreed fails now pass N of M`, so an `of 0` shows the check is vacuous. Exit 0 when the controls hold, no
+121 < 1 agreed fail now passes and at least two thirds of the wrong fails now pass; any agreed fail that now
+122 < 1 passes exits 1. The scoring lives in `_gate_replay_helpers.mjs`, run by `test_gate_jev_replay.mjs` in the suite.
+123 < 1 
+124 < 1 Run it before any change to the `authoring_gate` questions, to `gate_reading`, or to
+125 < 1 `extract_gate_input.py`'s `base`:
+126 < 1 
+127 < 1     node fleet/tests/gate_jev_replay_probe.mjs docs/superpowers/plans 3
+128 < 1 
+129 < 1 When a change moves two things at once, flipping one `gate_reading` cell back measures the other
+130 < 1 change alone.
+131 < 1 
+132 < 1 Readings of the earlier caught_v2 wording (before #1528 narrowed it to wiring), 2026-10-01, `jev-1.13.0`, n=15 wrong fails from 10 plans dated 2026-09-29..30, 3 reads each,
+133 < 1 majority:
+134 < 1 
+135 < 1 | Reading | Wrong fails still failing |
+136 < 1 |---|---|
+137 < 1 | caught/read (before) | 14 of 15 |
+138 < 1 | caught/dropped | 6 of 15 |
+139 < 1 | caught_v2/read | 9 of 15 |
+140 < 1 | caught_v2/dropped | 2 of 15 |
+141 < 1 
+142 < 1 Both controls failed 3 of 3 under every reading. The one round Jev was right on, rebuilt by hand (its
+143 < 1 round-1 diet is not replayable), failed 1 of 3 before and 0 of 3 after: the change gives up that catch.
+144 < 1 
+145 < 1 Readings of the narrowed caught_v2 (#1528) with `own_files: dropped`, 2026-10-02 06:40 UTC, `jev-1.13.0`,
+146 < 1 n=23 wrong fails from the plans dated 2026-09-29..10-01, 1 read each (`gate_jev_replay_probe.mjs` with no
+147 < 1 `reps`), exit 0:
+148 < 1 
+149 < 1 | Reading | Wrong fails still failing | Agreed fails now passing |
+150 < 1 |---|---|---|
+151 < 1 | caught_v2 (narrowed)/dropped | 3 of 23 (all 2026-09-29-fast-boot: task 1 r2, task 3 r5, task 4 r1) | 0 of 0 |
+152 < 1 
+153 < 1 Both controls read `fail`. No labelled agreed-fail round was replayable, so the two-sided check is
+154 < 1 vacuous on this window; it gains a count only once runs record rounds where both readers failed.
+155 < 1 

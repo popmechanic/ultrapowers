@@ -1,0 +1,155 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """The wrong-plans reading: how a run coped with a plan that carried one planted flaw.
+2 < 1 
+3 < 1     python3 evals/readings/wrong_plans.py <evidence clone> <id>=<run> ... [--jev] [--json <file>]
+4 < 1 
+5 < 1 The plans, their flaws and what coping well looks like are `evals/fixtures/wrong_plans/manifest.json`.
+6 < 1 Each is launched held (`fleet/launch.mjs <plan> --target <manifest target> --base <manifest base>
+7 < 1 --hold`), so no run merges and every run starts from the same commit. `<id>=<run>` names the run a
+8 < 1 plan got; `<id>=gate` says the launcher refused it on its proof-gate record, which is a result.
+9 < 1 
+10 < 1 For each run this reads `events.jsonl`, `engine.log` and `status.json` at the run's tag in the
+11 < 1 evidence clone and prints one row of counted facts: how it ended, wall seconds, builder sessions,
+13 > 1 tasks reopened red, tasks given back, objections filed, conflicts opened, tasks the engine added, files written
+12 < 2 tasks reopened red, tasks given back, conflicts opened, tasks the engine added, files written
+13 < 1 outside the plan, beliefs posted, and dollars. `--jev` adds one judgment, `said so`: whether
+14 < 1 anything the builders wrote states the planted flaw (`questions.json` beside this file, asked of
+15 < 1 TypeSafe with the key in `~/.ultrapowers/typesafe.env`). Every message read is printed under the
+16 < 1 table, so a person can check the judgment.
+17 < 1 """
+18 < 1 import json, os, subprocess, sys, urllib.request
+19 < 1 from datetime import datetime
+20 < 1 
+21 < 1 HERE = os.path.dirname(os.path.abspath(__file__))
+22 < 1 MANIFEST = os.path.join(HERE, '..', 'fixtures', 'wrong_plans', 'manifest.json')
+23 < 1 
+24 < 1 
+25 < 1 def show(evidence, slug, run, name):
+26 < 1     # the run's tag, else its live branch: a run whose tag did not verify keeps the branch
+27 < 1     for ref in ('%s/run-%s' % (slug, run), 'origin/live/%s/run-%s' % (slug, run)):
+28 < 1         r = subprocess.run(['git', '-C', evidence, 'show', '%s:runs/%s/%s/%s' % (ref, slug, run, name)],
+29 < 1                            capture_output=True, text=True, errors='replace')
+30 < 1         if r.returncode == 0:
+31 < 1             return r.stdout
+32 < 1     return ''
+33 < 1 
+34 < 1 
+35 < 1 def when(ts):
+36 < 1     return datetime.fromisoformat(ts.replace('Z', '+00:00'))
+37 < 1 
+38 < 1 
+39 < 1 def read_run(evidence, slug, run):
+40 < 1     rows = []
+41 < 1     for line in show(evidence, slug, run, 'events.jsonl').splitlines():
+42 < 1         try:
+43 < 1             rows.append(json.loads(line))
+44 < 1         except ValueError:
+45 < 1             pass
+46 < 1     if not rows:
+47 < 1         return None
+48 < 1     of = lambda kind: [e for e in rows if e.get('kind') == kind]
+49 < 1     try:
+50 < 1         status = json.loads(show(evidence, slug, run, 'status.json'))
+51 < 1     except ValueError:
+52 < 1         status = {}
+53 < 1     start, ends = of('start'), of('terminal')
+54 < 1     end = ends[-1] if ends else {}
+55 < 1     cost = None
+56 < 1     for line in show(evidence, slug, run, 'engine.log').splitlines():
+57 < 1         at = line.find('"cost_usd":')
+58 < 1         if at >= 0:
+59 < 1             cost = float(line[at + 11:].split(',')[0].split('}')[0])
+60 < 1     sessions = of('session:end')
+61 < 1     added = sorted({str(e.get('task')) for e in of('session:start') if str(e.get('task'))[:2] in ('R:', 'L:', 'C:')})
+62 < 1     said = ['%s: %s' % (e.get('by'), e.get('claim')) for e in of('belief') if e.get('by') != 'host']
+64 > 1     said += ['%s objected to task %s: %s' % (e.get('agent'), e.get('task'), e.get('reason')) for e in of('objection')]
+63 < 1     said += ['%s, closing task %s: %s' % (e.get('agent'), e.get('task'), e.get('done')) for e in sessions if e.get('done')]
+64 < 1     said += ['the run ended: %s' % e.get('why') for e in ends if e.get('why')]
+65 < 1     return {
+66 < 1         'run': run, 'state': status.get('state'), 'ended': end.get('pr'), 'why': end.get('why'),
+67 < 1         'wall_s': round((when(end['ts']) - when(start[0]['ts'])).total_seconds()) if start and end.get('ts') else None,
+68 < 1         'sessions': len(sessions), 'red_proofs': sum(e.get('redRuns') or 0 for e in sessions),
+70 > 1         'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')), 'objected': len(of('objection')),
+69 < 2         'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')),
+70 < 1         'parked_tasks': len(of('task:parked')), 'conflicts': len(of('conflict:open')), 'engine_tasks': added,
+71 < 1         'outside_plan': sorted({e.get('path') for e in of('driver:amendment') if e.get('path')}),
+72 < 1         'beliefs': len([e for e in of('belief') if e.get('by') != 'host']), 'cost_usd': cost, 'said': said,
+73 < 1     }
+74 < 1 
+75 < 1 
+76 < 1 def ask_jev(flaw, said):
+77 < 1     """`named`, `hinted` or `silent` with its confidence, or None when Jev did not answer."""
+78 < 1     try:
+79 < 1         env = open(os.path.join(os.path.expanduser('~'), '.ultrapowers', 'typesafe.env')).read()
+80 < 1         key = [l.split('=', 1)[1].strip() for l in env.splitlines() if l.startswith('TYPESAFE_API_KEY=')][0]
+81 < 1         q = json.load(open(os.path.join(HERE, 'questions.json')))['sets']['wrong_plan']['questions']['noticed']
+82 < 1         body = json.dumps({'state': {'flaw': flaw, 'said': said}, 'model': 'jev-latest', 'questions': {'noticed': q}}).encode()
+83 < 1         req = urllib.request.Request('https://api.typesafe.ai/v1/systemone', data=body, method='POST',
+84 < 1                                      headers={'content-type': 'application/json', 'authorization': 'Bearer ' + key})
+85 < 1         a = json.load(urllib.request.urlopen(req, timeout=60))['answers']['noticed']
+86 < 1         return {'answer': a.get('choice'), 'confidence': a.get('confidence')}
+87 < 1     except Exception:
+88 < 1         return None
+89 < 1 
+90 < 1 
+91 < 1 def main(argv):
+92 < 1     if len(argv) < 2:
+93 < 1         print(__doc__)
+94 < 1         return 2
+95 < 1     evidence, picks, jev, out = argv[0], {}, '--jev' in argv, None
+96 < 1     if '--json' in argv:
+97 < 1         out = argv[argv.index('--json') + 1]
+98 < 1     for a in argv[1:]:
+99 < 1         if '=' in a and not a.startswith('--'):
+100 < 1             k, v = a.split('=', 1)
+101 < 1             picks[k] = v
+102 < 1     manifest = json.load(open(MANIFEST))
+103 < 1     slug = manifest['target'].replace('/', '-')
+104 < 1     results = []
+105 < 1     for plan in manifest['plans']:
+106 < 1         got = picks.get(plan['id'])
+107 < 1         if got is None:
+108 < 1             continue
+109 < 1         if got == 'gate':
+110 < 1             results.append({'id': plan['id'], 'expect': plan['expect'], 'gate': 'refused'})
+111 < 1             continue
+112 < 1         r = read_run(evidence, slug, got)
+113 < 1         if r is None:
+114 < 1             results.append({'id': plan['id'], 'expect': plan['expect'], 'run': got, 'missing': True})
+115 < 1             continue
+116 < 1         r.update(id=plan['id'], expect=plan['expect'], flaw=plan['flaw'])
+117 < 1         if jev and plan['flaw']:
+118 < 1             r['said_so'] = ask_jev(plan['flaw'], r['said'])
+119 < 1         results.append(r)
+121 > 1     cols = ['plan', 'expected', 'ended', 'wall s', 'sessions', 'reopened', 'given back', 'objected', 'conflicts', 'engine tasks', 'outside plan', 'beliefs', 'said so', '$']
+120 < 2     cols = ['plan', 'expected', 'ended', 'wall s', 'sessions', 'reopened', 'given back', 'conflicts', 'engine tasks', 'outside plan', 'beliefs', 'said so', '$']
+121 < 1     table = []
+122 < 1     for r in results:
+123 < 1         if r.get('gate'):
+125 > 1             table.append([r['id'], r['expect'], 'refused at the gate'] + ['-'] * 11)
+124 < 2             table.append([r['id'], r['expect'], 'refused at the gate'] + ['-'] * 10)
+125 < 1         elif r.get('missing'):
+127 > 1             table.append([r['id'], r['expect'], 'no record for run %s' % r['run']] + ['-'] * 11)
+126 < 2             table.append([r['id'], r['expect'], 'no record for run %s' % r['run']] + ['-'] * 10)
+127 < 1         else:
+128 < 1             s = r.get('said_so')
+129 < 1             table.append([r['id'], r['expect'], '%s (%s)' % (r['ended'] or r['state'], (r['why'] or '')[:44]), r['wall_s'], r['sessions'], r['reopened'],
+131 > 1                           r['given_back'], r['objected'], r['conflicts'], ' '.join(r['engine_tasks']) or '-', ' '.join(r['outside_plan']) or '-', r['beliefs'],
+130 < 2                           r['given_back'], r['conflicts'], ' '.join(r['engine_tasks']) or '-', ' '.join(r['outside_plan']) or '-', r['beliefs'],
+131 < 1                           ('%s %.2f' % (s['answer'], s['confidence'] or 0)) if s else '-', r['cost_usd'] if r['cost_usd'] is not None else '-'])
+132 < 1     widths = [max(len(str(x)) for x in col) for col in zip(cols, *table)] if table else [len(c) for c in cols]
+133 < 1     for row in [cols] + table:
+134 < 1         print('  '.join(str(x).ljust(w) for x, w in zip(row, widths)).rstrip())
+135 < 1     for r in results:
+136 < 1         if r.get('said'):
+137 < 1             print('\n== %s (run %s): what was written down' % (r['id'], r['run']))
+138 < 1             for line in r['said']:
+139 < 1                 print('  - ' + ' '.join(str(line).split())[:600])
+140 < 1     if out:
+141 < 1         json.dump({'target': manifest['target'], 'base': manifest['base'], 'results': results}, open(out, 'w'), indent=1)
+142 < 1     return 0
+143 < 1 
+144 < 1 
+145 < 1 if __name__ == '__main__':
+146 < 1     sys.exit(main(sys.argv[1:]))
+147 < 1 

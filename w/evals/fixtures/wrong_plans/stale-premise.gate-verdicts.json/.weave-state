@@ -1,0 +1,38 @@
+0 < 1 {
+1 < 1   "tasks": {
+2 < 1     "1": {
+3 < 1       "hash": "f388aeea9259042edc0565ec99f643a7d454066faba55218586941a3801f90f2",
+4 < 1       "verdict": "pass",
+5 < 1       "reason": "the exact memo of the entry furthest from zero has a tagged probe that would fail on the signed maximum or another field",
+6 < 1       "gate_rounds": [
+7 < 1         {
+8 < 1           "hash": "f388aeea9259042edc0565ec99f643a7d454066faba55218586941a3801f90f2",
+9 < 1           "agent": "pass",
+10 < 1           "jev": "pass",
+11 < 1           "clauses": [
+12 < 1             {
+13 < 1               "id": "M1",
+14 < 1               "fact": 0.98,
+15 < 1               "caught": 0.99
+16 < 1             }
+17 < 1           ],
+18 < 1           "contradiction": 0.08,
+19 < 1           "pinned": null,
+20 < 1           "reading": {
+21 < 1             "caught": "caught_v2",
+22 < 1             "own_files": "dropped"
+23 < 1           }
+24 < 1         }
+25 < 1       ]
+26 < 1     }
+27 < 1   },
+28 < 1   "tally": {
+29 < 1     "dispatched": 2,
+30 < 1     "rejected": 0,
+31 < 1     "rounds": 2,
+32 < 1     "base": "d668b2e",
+33 < 1     "history": [],
+34 < 1     "note": "round 1 passed and noted the probe could not tell the memo from the account; the sample was changed and re-read"
+35 < 1   }
+36 < 1 }
+37 < 1 

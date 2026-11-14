@@ -1,0 +1,289 @@
+0 < 2 // factory/board.mjs — the one module that talks to Kata, and it never fails
+1 < 2 // a run (CLAUDE.md "Hub writes are never the run's failure").
+2 < 2 
+3 < 2 // ═══════════════════════════════════════════════════════════════════════
+4 < 2 // The CLI. `factory/boot.sh` used to talk to
+5 < 2 // Kata itself; the run's writes to the hub now live here, the one module
+6 < 2 // that talks to Kata, so the boot only ever calls it (#1222, map #1131
+7 < 2 // rule 6). There is no spoke any more (#1390): `close-run` and `mark-run`
+8 < 2 // write to the hub's admin host directly, and each row they record carries
+9 < 2 // the hub's receipt — a row without one is a write the hub did not
+10 < 2 // confirm. Every subcommand complains on stderr and never throws —
+11 < 2 // CLAUDE.md: "board.mjs is the only module that talks to Kata and never
+12 < 2 // fails a run".
+13 < 2 // ═══════════════════════════════════════════════════════════════════════
+14 < 2 
+15 < 2 import { readFileSync, appendFileSync, mkdirSync } from 'node:fs'
+16 < 2 import path from 'node:path'
+17 < 2 import { kataIds } from './flock/io.mjs'
+18 < 2 
+19 < 2 /** `--name value` pairs off `argv`, in order; a trailing flag with no value
+20 < 2  *  reads as `undefined`. */
+21 < 2 function parseFlags (args) {
+22 < 2   const flags = {}
+23 < 2   for (let i = 0; i < args.length; i++) {
+24 < 2     const arg = args[i]
+25 < 2     if (arg.startsWith('--')) {
+26 < 2       flags[arg.slice(2)] = args[i + 1]
+27 < 2       i += 1
+28 < 2     }
+29 < 2   }
+30 < 2   return flags
+31 < 2 }
+32 < 2 
+33 < 2 /** `file`, parsed as JSON, or `undefined` when it is missing or not JSON —
+34 < 2  *  never throws. */
+35 < 2 function readJsonFile (file) {
+36 < 2   try {
+37 < 2     return JSON.parse(readFileSync(file, 'utf8'))
+38 < 2   } catch {
+39 < 2     return undefined
+40 < 2   }
+41 < 2 }
+42 < 2 
+43 < 2 /** The hub's answer body as JSON, or `undefined` when it is empty or not
+44 < 2  *  JSON (a 500 page, a proxy's HTML) — never throws. */
+45 < 2 async function readAnswer (res) {
+46 < 2   try {
+47 < 2     return JSON.parse(await res.text())
+48 < 2   } catch {
+49 < 2     return undefined
+50 < 2   }
+51 < 2 }
+52 < 2 
+53 < 2 /** One events row: `{ ts, kind, ...cells }` (kind `board:close` unless
+54 < 2  *  given), appended as a JSON line; creates the file's directory when needed. */
+55 < 2 function appendEventRow (eventsPath, cells, kind = 'board:close') {
+56 < 2   mkdirSync(path.dirname(eventsPath), { recursive: true })
+57 < 2   const row = { ts: new Date().toISOString(), kind, ...cells }
+58 < 2   appendFileSync(eventsPath, JSON.stringify(row) + '\n')
+59 < 2 }
+60 < 2 
+61 < 2 /** Numeric task ids sort ascending before the rest, which sort by string —
+62 < 2  *  the order the hub's `409 parent_has_open_children` demands the tasks
+63 < 2  *  close in ahead of the run. */
+64 < 2 function compareTaskIds (a, b) {
+65 < 2   const da = /^\d+$/.test(a)
+66 < 2   const db = /^\d+$/.test(b)
+67 < 2   if (da && db) return Number(a) - Number(b)
+68 < 2   if (da !== db) return da ? -1 : 1
+69 < 2   return a < b ? -1 : a > b ? 1 : 0
+70 < 2 }
+71 < 2 
+72 < 2 /** One `POST <adminUrl>/api/v1/projects/<projectId>/issues/<uid>/actions/close`
+73 < 2  *  — no `authorization` header, ever (the admin host is where the edge
+74 < 2  *  injects the hub's bearer). Resolves to `{ code, event_id, event_at }`:
+75 < 2  *  the HTTP status (`null` on a connection failure) and the close's
+76 < 2  *  receipt, `event.id`/`event.created_at` off a 2xx answer (each `null`
+77 < 2  *  when the answer does not carry it); never throws. A 20s timeout. */
+78 < 2 async function closeIssue ({ adminUrl, projectId, uid, key, message, evidence, run }) {
+79 < 2   const body = JSON.stringify({
+80 < 2     actor: 'sandbox:' + run,
+81 < 2     reason: 'done',
+82 < 2     message,
+83 < 2     evidence,
+84 < 2     retry_protocol: 'close-v1',
+85 < 2   })
+86 < 2   const controller = new AbortController()
+87 < 2   const timer = setTimeout(() => controller.abort(), 20000)
+88 < 2   try {
+89 < 2     const res = await fetch(adminUrl + '/api/v1/projects/' + projectId + '/issues/' + uid + '/actions/close', {
+90 < 2       method: 'POST',
+91 < 2       headers: { 'content-type': 'application/json', 'Idempotency-Key': key },
+92 < 2       body,
+93 < 2       signal: controller.signal,
+94 < 2     })
+95 < 2     if (res.status < 200 || res.status >= 300) {
+96 < 2       process.stderr.write('board: close ' + uid + ' answered ' + res.status + '\n')
+97 < 2       return { code: res.status, event_id: null, event_at: null }
+98 < 2     }
+99 < 2     const answer = await readAnswer(res)
+100 < 2     const event = answer && answer.event
+101 < 2     return {
+102 < 2       code: res.status,
+103 < 2       event_id: event && event.id !== undefined ? event.id : null,
+104 < 2       event_at: event && event.created_at !== undefined ? event.created_at : null,
+105 < 2     }
+106 < 2   } catch (error) {
+107 < 2     const detail = error && error.message ? error.message : String(error)
+108 < 2     process.stderr.write('board: close ' + uid + ' failed: ' + detail + '\n')
+109 < 2     return { code: null, event_id: null, event_at: null }
+110 < 2   } finally {
+111 < 2     clearTimeout(timer)
+112 < 2   }
+113 < 2 }
+114 < 2 
+115 < 2 /**
+116 < 2  * `close-run`: closes the run's task issues, then the run issue itself, on
+117 < 2  * the hub — task order first (`409 parent_has_open_children` otherwise),
+118 < 2  * each recorded as one `board:close` row on `--events` whatever the hub
+119 < 2  * answers, carrying the close's receipt (`event_id`, `event_at`; null when
+120 < 2  * the hub did not confirm it). Never fails the run (CLAUDE.md): a
+121 < 2  * missing/unreadable kata.json is one skip row and exit 0; a hub that
+122 < 2  * answers 500, or not at all, is still exit 0 with the row's `code` set
+123 < 2  * from what came back.
+124 < 2  */
+125 < 2 async function cmdCloseRun (flags) {
+126 < 2   const kataJsonPath = flags['kata-json']
+127 < 2   const run = flags.run
+128 < 2   const pr = flags.pr
+129 < 2   const adminUrl = flags['admin-url']
+130 < 2   const eventsPath = flags.events
+131 < 2   const title = flags.title
+132 < 2   const merged = flags.merged
+133 < 2   const base = flags.base
+134 < 2 
+135 < 2   try {
+136 < 2     const doc = readJsonFile(kataJsonPath)
+137 < 2     if (doc === undefined) {
+138 < 2       appendEventRow(eventsPath, { what: 'run', code: null, skipped: 'no kata.json to read' })
+139 < 2       return 0
+140 < 2     }
+141 < 2 
+142 < 2     const ids = kataIds(doc)
+143 < 2     if (!ids) {
+144 < 2       appendEventRow(eventsPath, { what: 'run', code: null, skipped: 'no readable project.id/run.uid' })
+145 < 2       return 0
+146 < 2     }
+147 < 2     const { projectId, runUid } = ids
+148 < 2 
+149 < 2     // no PR: a run that had nothing to build closes on the base commit alone
+150 < 2     const evidence = pr ? [{ type: 'pr', url: pr }] : (base ? [{ type: 'commit', sha: base }] : [])
+151 < 2     if (merged) evidence.push({ type: 'commit', sha: merged })
+152 < 2     const where = pr ? "adopted green in the run's pull request — " + pr : 'already true at the base ' + base
+153 < 2 
+154 < 2     const tasks = doc.tasks || {}
+155 < 2     const taskIds = Object.keys(tasks)
+156 < 2       .filter((id) => tasks[id] && typeof tasks[id].uid === 'string' && tasks[id].uid.length > 0)
+157 < 2       .sort(compareTaskIds)
+158 < 2 
+159 < 2     for (const id of taskIds) {
+160 < 2       const uid = tasks[id].uid
+161 < 2       const receipt = await closeIssue({
+162 < 2         adminUrl,
+163 < 2         projectId,
+164 < 2         uid,
+165 < 2         key: runUid + ':task:' + id + ':close',
+166 < 2         message: run + ' task ' + id + ' done: ' + where,
+167 < 2         evidence,
+168 < 2         run,
+169 < 2       })
+170 < 2       appendEventRow(eventsPath, { what: 'task ' + id, ...receipt })
+171 < 2     }
+172 < 2 
+173 < 2     const runReceipt = await closeIssue({
+174 < 2       adminUrl,
+175 < 2       projectId,
+176 < 2       uid: runUid,
+177 < 2       key: runUid + ':run:close',
+178 < 2       message: run + ' done: ' + title + ' — ' + (pr || 'nothing to build, every proof passed at the base ' + base),
+179 < 2       evidence,
+180 < 2       run,
+181 < 2     })
+182 < 2     appendEventRow(eventsPath, { what: 'run', ...runReceipt })
+183 < 2     return 0
+184 < 2   } catch (error) {
+185 < 2     const detail = error && error.message ? error.message : String(error)
+186 < 2     process.stderr.write('board: close-run: unexpected failure — ' + detail + '\n')
+187 < 2     return 0
+188 < 2   }
+189 < 2 }
+190 < 2 
+191 < 2 /** One JSON `POST <adminUrl><path>` with no `authorization` header (the edge injects the hub's
+192 < 2  *  bearer): `{ code, answer }`, the HTTP status (`null` on a connection failure) and the parsed
+193 < 2  *  2xx answer (else null). Never throws; a 20s timeout. */
+194 < 2 async function post (adminUrl, apiPath, body, key) {
+195 < 2   const controller = new AbortController()
+196 < 2   const timer = setTimeout(() => controller.abort(), 20000)
+197 < 2   try {
+198 < 2     const res = await fetch(adminUrl + apiPath, {
+199 < 2       method: 'POST',
+200 < 2       headers: { 'content-type': 'application/json', ...(key ? { 'Idempotency-Key': key } : {}) },
+201 < 2       body: JSON.stringify(body),
+202 < 2       signal: controller.signal,
+203 < 2     })
+204 < 2     if (res.status < 200 || res.status >= 300) {
+205 < 2       process.stderr.write('board: ' + apiPath + ' answered ' + res.status + '\n')
+206 < 2       return { code: res.status, answer: null }
+207 < 2     }
+208 < 2     return { code: res.status, answer: await readAnswer(res) }
+209 < 2   } catch (error) {
+210 < 2     const detail = error && error.message ? error.message : String(error)
+211 < 2     process.stderr.write('board: ' + apiPath + ' failed: ' + detail + '\n')
+212 < 2     return { code: null, answer: null }
+213 < 2   } finally {
+214 < 2     clearTimeout(timer)
+215 < 2   }
+216 < 2 }
+217 < 2 
+218 < 2 /**
+219 < 2  * `mark-run --kata-json <k> --run <run> --state <s> --message <m> --evidence <url>
+220 < 2  * --admin-url <url> --events <e>`: a run that ended without merging (`parked` or `failed`) is
+221 < 2  * one the operator must read (#1391). On the run issue's metadata it writes `work.state` = `<s>`
+222 < 2  * (the janitor's own `metadataPatch` shape, the key stored flat, so `fleet/janitor.mjs` reaps
+223 < 2  * the VM by its ordinary rule) beside kata's standard `work.attention` = `needs-human` and
+224 < 2  * `work.attention_msg` = `<m>`; one `board:mark` row carries the issue's new `revision` (null
+225 < 2  * when the hub did not confirm it). Then each task issue, in id order, takes the `needs-review`
+226 < 2  * label and one comment naming the run, its state, `<m>` and the evidence, and stays open, so a
+227 < 2  * relaunch of the same plan reuses it by its key; one `board:review` row per task carries both
+228 < 2  * writes' codes. Never fails the run: a missing/unreadable kata.json is one skip row and exit
+229 < 2  * 0; a dark hub is still exit 0.
+230 < 2  */
+231 < 2 async function cmdMarkRun (flags) {
+232 < 2   const kataJsonPath = flags['kata-json']
+233 < 2   const run = flags.run
+234 < 2   const state = flags.state
+235 < 2   const message = flags.message || state
+236 < 2   const adminUrl = flags['admin-url']
+237 < 2   const eventsPath = flags.events
+238 < 2 
+239 < 2   try {
+240 < 2     const doc = readJsonFile(kataJsonPath)
+241 < 2     if (doc === undefined) {
+242 < 2       appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no kata.json to read' }, 'board:mark')
+243 < 2       return 0
+244 < 2     }
+245 < 2     const ids = kataIds(doc)
+246 < 2     if (!ids) {
+247 < 2       appendEventRow(eventsPath, { what: 'run', state, code: null, skipped: 'no readable project.id/run.uid' }, 'board:mark')
+248 < 2       return 0
+249 < 2     }
+250 < 2     const { projectId, runUid } = ids
+251 < 2     const issue = (uid) => '/api/v1/projects/' + projectId + '/issues/' + uid
+252 < 2     const actor = 'sandbox:' + run
+253 < 2 
+254 < 2     const patch = { 'work.state': state, 'work.attention': 'needs-human', 'work.attention_msg': message }
+255 < 2     const marked = await post(adminUrl, issue(runUid) + '/metadata', { actor, patch }, runUid + ':run:mark:' + state)
+256 < 2     const revision = marked.answer && marked.answer.issue && marked.answer.issue.revision !== undefined ? marked.answer.issue.revision : null
+257 < 2     appendEventRow(eventsPath, { what: 'run', state, code: marked.code, revision }, 'board:mark')
+258 < 2 
+259 < 2     const tasks = doc.tasks || {}
+260 < 2     const taskIds = Object.keys(tasks)
+261 < 2       .filter((id) => tasks[id] && typeof tasks[id].uid === 'string' && tasks[id].uid.length > 0)
+262 < 2       .sort(compareTaskIds)
+263 < 2     const body = run + ' ' + state + ': ' + message + (flags.evidence ? ' — evidence ' + flags.evidence : '')
+264 < 2     for (const id of taskIds) {
+265 < 2       const uid = tasks[id].uid
+266 < 2       const label = await post(adminUrl, issue(uid) + '/labels', { actor, label: 'needs-review' })
+267 < 2       const comment = await post(adminUrl, issue(uid) + '/comments', { actor, body }, runUid + ':task:' + id + ':mark:' + state)
+268 < 2       appendEventRow(eventsPath, { what: 'task ' + id, state, label: label.code, comment: comment.code }, 'board:review')
+269 < 2     }
+270 < 2     return 0
+271 < 2   } catch (error) {
+272 < 2     const detail = error && error.message ? error.message : String(error)
+273 < 2     process.stderr.write('board: mark-run: unexpected failure — ' + detail + '\n')
+274 < 2     return 0
+275 < 2   }
+276 < 2 }
+277 < 2 
+278 < 2 async function main (argv) {
+279 < 2   const [, , cmd, ...rest] = argv
+280 < 2   const flags = parseFlags(rest)
+281 < 2   if (cmd === 'close-run') return cmdCloseRun(flags)
+282 < 2   if (cmd === 'mark-run') return cmdMarkRun(flags)
+283 < 2   process.stderr.write('board: usage: board.mjs close-run|mark-run ...\n')
+284 < 2   return 2
+285 < 2 }
+286 < 2 
+287 < 2 if (import.meta.main) { main(process.argv).then((code) => { process.exitCode = code }) }
+288 < 2 

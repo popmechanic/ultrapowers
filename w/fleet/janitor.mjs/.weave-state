@@ -1,0 +1,1212 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 /**
+2 < 1  * fleet/janitor.mjs — reap finished runs; write the deaths; report stale ones.
+3 < 1  *
+4 < 1  *   node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]
+5 < 1  *
+7 > 1  * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the run's
+9 > 1  * status page in the evidence repository), what
+8 < 2  * status page in the evidence repository; the kata hub only when
+9 < 2  * `fleet/policy.json`'s `janitor.record.source` is rolled back to `kata`), what
+10 < 1  * it removes (a finished run's VM after `--age`, an integration branch nothing
+11 < 1  * merged), what it writes (a dead or orphaned run's end, then the seal; the
+12 < 1  * seal alone for a run that ended without one) and what it only reports
+13 < 1  * (`kept`, `unknown`, `unread`, `stale`). This header does not restate it
+14 < 1  * (#1444); the comments below say why the code is shaped the way it is.
+6 < 2  * The contract is `fleet/CONTRACT.md` §Janitor: what a pass reads (the hub
+7 < 2  * first, the evidence repository when the hub is dark), what it removes (a
+8 < 2  * finished run's VM after `--age`, an integration branch nothing merged), what
+9 < 2  * it writes (a dead or orphaned run's end, then the seal) and what it only
+10 < 2  * reports (`kept`, `unknown`, `stale`). This header does not restate it (#1444);
+11 < 2  * the comments below say why the code is shaped the way it is.
+12 < 1  *
+13 < 1  * Nothing schedules it: `fleet/launch.mjs` runs it before every launch, and it
+14 < 1  * is run by hand after the laptop has been asleep. `--dry-run` issues every
+15 < 1  * read and no write.
+16 < 1  */
+17 < 1 
+18 < 1 import { Buffer } from 'node:buffer'
+20 > 2 import fs from 'node:fs'
+19 < 1 import path from 'node:path'
+20 < 1 import { fileURLToPath } from 'node:url'
+21 < 1 
+22 < 2 import { projectNamed, runIssueOf } from './kata-client.mjs'
+23 < 1 import {
+24 < 1   DEFAULT_CONFIG_PATH,
+25 < 1   PLAN_FILE,
+26 < 1   Refusal,
+27 < 1   defaultExec,
+28 < 1   evidenceUrlFor,
+29 < 1   git,
+30 < 2   hubFromEnv,
+31 < 1   integrationBranchFor,
+32 < 1   isFullSha,
+33 < 1   isRunNumber,
+34 < 1   isSafeTarget,
+35 < 1   isVmName,
+36 < 1   listVms,
+37 < 1   liveBranchFor,
+38 < 1   lobby,
+39 < 1   LobbyError,
+40 < 1   output,
+41 < 1   parseArgs,
+42 < 1   parseComment,
+43 < 1   parseDuration,
+44 < 1   parseJson,
+46 > 2   policyCell,
+45 < 1   readEvidenceSetting,
+46 < 1   runCli,
+47 < 1   runFolderFor,
+48 < 1   runOfBranch,
+49 < 1   runOfEvidenceRef,
+50 < 1   runOfVmName,
+52 > 1   runTagFor
+51 < 2   runTagFor,
+52 < 2   targetSlug
+53 < 1 } from './lobby.mjs'
+54 < 1 
+55 < 1 export const USAGE = 'usage: node fleet/janitor.mjs [--age 1h] [--target <owner>/<repo>] [--dry-run] [--json] [--help]'
+56 < 1 
+57 < 1 export const usage = () => USAGE
+58 < 1 
+60 > 1 /** The states of a status page that mean the run is over and its VM is ballast. */
+59 < 2 /**
+60 < 2  * The states that mean the run is over and its VM is ballast — the same three
+61 < 2  * words wherever a run's finish is read: the status page's `state`, and the run
+62 < 2  * issue's own `work.state` (#964).
+63 < 2  */
+64 < 1 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
+65 < 1 /** Page states that claim the run is still in flight — the ones worth a probe. */
+66 < 1 const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
+67 < 1 /** How long a finished run keeps its VM, so its status page can still be read. */
+68 < 1 const DEFAULT_AGE = '1h'
+69 < 1 /** No status update for this long is a stale run, reported and left alone. */
+70 < 1 const STALE_MS = 6 * 60 * 60 * 1000
+71 < 1 /**
+72 < 1  * The hour is for the operator to read a status page before the run is
+73 < 1  * reaped: `reapPlan({finished, updatedAt, nowMs, ageMs})` names the moment a
+74 < 1  * finished run crosses it, without mutating anything. `updatedAt` that does
+75 < 1  * not parse, or a run not yet `finished`, answers `none` — there is nothing
+76 < 1  * to name a time for.
+77 < 1  */
+78 < 1 const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
+79 < 1   const updated = Date.parse(String(updatedAt))
+80 < 1   if (!Number.isFinite(updated) || finished !== true) return { action: 'none', reapableAt: null }
+81 < 1   const at = updated + ageMs
+82 < 1   return nowMs >= at
+83 < 1     ? { action: 'rm', reapableAt: new Date(at).toISOString() }
+84 < 1     : { action: 'pending', reapableAt: new Date(at).toISOString() }
+85 < 1 }
+86 < 1 /**
+88 > 1  * The comment that takes a VM out of the reap: the hub VM's own comment ends
+89 < 1  * `persistent service, do not reap`. The guard matches this substring,
+90 < 1  * case-sensitively, so any row someone marks by hand is kept the same way.
+87 < 2  * The comment that takes a VM out of the reap. The hub's own comment is
+88 < 2  * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
+89 < 2  * it; the guard matches this substring, case-sensitively, so any row someone
+90 < 2  * marks by hand is kept the same way.
+91 < 1  */
+92 < 1 const NEVER_REAP = 'do not reap'
+93 < 2 /** The actor every hub write of the janitor's carries. */
+94 < 2 const HUB_ACTOR = 'janitor'
+95 < 2 /** The idempotency key of the one hub write: a re-driven death is the same patch. */
+96 < 2 const deathKeyFor = (run) => `janitor:run-${run}:death`
+97 < 2 
+98 < 2 /**
+99 < 2  * The three keys a run's issue carries about itself, spelled as kata stores
+100 < 2  * them: FLAT, dotted name and all (#960). `metadata.work.state` reads nothing —
+101 < 2  * there is no `work` object — so every read and every write here goes through
+102 < 2  * `metadata['work.state']`.
+103 < 2  */
+104 < 2 const STATE_KEY = 'work.state'
+105 < 2 const ATTENTION_KEY = 'work.attention'
+106 < 2 const ATTENTION_MSG_KEY = 'work.attention_msg'
+107 < 2 /** What a death writes into those keys: the state, and the hand it raises. */
+108 < 2 const DEATH_STATE = 'failed'
+109 < 2 const DEATH_ATTENTION = 'needs-human'
+110 < 2 
+112 > 2 // ── The switch: where a pass reads a run's end ──────────────────────────────
+113 < 2 
+114 < 2 /**
+115 < 2  * `evidence`: the run's status page in the evidence repository, and the hub is
+116 < 2  * never asked. `kata`: the rollback — the hub first, the evidence repository
+117 < 2  * for a row the hub cannot answer, as every pass read before 2026-11-13.
+118 < 2  */
+119 < 2 export const RECORD_SOURCES = Object.freeze(['evidence', 'kata'])
+120 < 2 const POLICY_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'policy.json')
+121 < 2 
+122 < 2 /**
+123 < 2  * The `janitor.record.source` cell of the `policy.json` beside this file. A
+124 < 2  * file that cannot be read, or a cell that names neither source, is the
+125 < 2  * default: `evidence`.
+126 < 2  */
+128 > 2 export const recordSourceOf = (policyPath) => policyCell(['janitor', 'record', 'source'], RECORD_SOURCES, policyPath)
+127 < 2 export function recordSourceOf (policyPath = POLICY_PATH) {
+128 < 2   try {
+129 < 2     const source = JSON.parse(fs.readFileSync(policyPath, 'utf8'))?.janitor?.record?.source
+130 < 2     return RECORD_SOURCES.includes(source) ? source : RECORD_SOURCES[0]
+131 < 2   } catch {
+132 < 2     return RECORD_SOURCES[0]
+133 < 2   }
+134 < 2 }
+135 < 2 
+136 < 2 /** The hub of a pass that asks no hub: no client, no host, nothing dark. */
+137 < 2 const NO_HUB = () => ({ client: null, host: null, dark: null })
+138 < 2 
+139 < 2 // ── The rollback: the run's state, asked of kata ────────────────────────────
+111 < 2 // ── The hub: the run's state, asked of kata ─────────────────────────────────
+112 < 2 
+113 < 2 /**
+114 < 2  * The hub as the janitor holds it: `client` (null when there is none), `host`
+115 < 2  * (the ssh destination, for the report) and `dark` — null while the hub is
+116 < 2  * answering, else the first reason it could not, kept for the pass. An
+117 < 2  * injected `kata` is the client (`null` for "no hub" outright — a sim's, or the
+118 < 2  * launcher's); with none, `~/.ultrapowers/kata-hub.env`
+119 < 2  * is read and the client built on its host, exactly as the launcher builds
+120 < 2  * its own. An env file that is absent or names no host is not a refusal here:
+122 > 2  * a pass with no hub reads the evidence repository, and says so.
+121 < 2  * a reaper with no hub reads the target, and says so.
+122 < 2  */
+123 < 2 async function openHub ({ exec, kata, kataEnvPath }) {
+124 < 2   if (kata !== undefined) return { client: kata, host: kata?.host ?? null, dark: null }
+125 < 2   const hub = await hubFromEnv({ exec, actor: HUB_ACTOR, kataEnvPath })
+126 < 2   if (hub.client === null) return { client: null, host: null, dark: hub.dark }
+127 < 2   return { client: hub.client, host: hub.host, dark: null }
+128 < 2 }
+129 < 2 
+130 < 2 /** The first line of what went wrong, for a report line and nothing longer. */
+131 < 2 const reasonOf = (error) => String(error?.message ?? error).split('\n')[0].trim()
+132 < 2 
+133 < 2 /**
+134 < 2  * The finish an OPEN issue carries about itself, or null when it carries none:
+135 < 2  * `work.state`, read flat, and only when it names one of the three states that
+136 < 2  * mean the run is over. Anything else there — a run in flight's own word, a
+137 < 2  * value nobody here knows — is not a finish, and the row is read as open.
+138 < 2  */
+139 < 2 const markedFinishOf = (issue) => {
+140 < 2   const value = issue?.metadata?.[STATE_KEY]
+141 < 2   return typeof value === 'string' && REAPABLE_STATES.includes(value) ? value : null
+142 < 2 }
+143 < 2 
+144 < 2 /**
+145 < 2  * What the hub says about one run, as the row loop reads it: `finished`,
+146 < 2  * `live`, `state`, `updatedAt`, `from`, and the project and issue a death
+147 < 2  * would mark. A run is finished when its issue is `closed` OR when an open
+148 < 2  * issue's `work.state` says so — the park is the case that needs the second
+149 < 2  * reading, since a parked run's issue stays open and its VM is ballast all the
+150 < 2  * same (#964). `closed_at` is the age of a closed issue and `updated_at` of
+151 < 2  * every other row — a closed issue's `updated_at` moves with later comments,
+152 < 2  * and the reap's clock is the close; a marked issue's is the mark, which is
+153 < 2  * the last thing that touched it.
+154 < 2  */
+155 < 2 const readingOfIssue = (project, issue) => {
+156 < 2   const closed = issue.status === 'closed'
+157 < 2   const marked = closed ? null : markedFinishOf(issue)
+158 < 2   const updatedAt = closed
+159 < 2     ? (typeof issue.closed_at === 'string' ? issue.closed_at : issue.updated_at)
+160 < 2     : issue.updated_at
+161 < 2   return {
+162 < 2     source: 'hub',
+163 < 2     finished: closed || marked !== null,
+164 < 2     // A marked run is not in flight, so no unit is probed for it: the record
+165 < 2     // already says how it ended, and the probe is only ever a cross-check of a
+166 < 2     // record that claims the run is still going.
+167 < 2     live: issue.status === 'open' && marked === null,
+168 < 2     state: closed ? String(issue.closed_reason ?? 'closed') : (marked ?? String(issue.status ?? 'open')),
+169 < 2     updatedAt: typeof updatedAt === 'string' ? updatedAt : null,
+170 < 2     from: `kata:${project.name}`,
+171 < 2     project,
+172 < 2     issue
+173 < 2   }
+174 < 2 }
+175 < 2 
+176 < 2 /**
+177 < 2  * The hub reader for one pass. The projects listing is fetched once, on the
+178 < 2  * first row that needs it, and every error darkens the hub for the rest of
+179 < 2  * the pass — one dark read costs one ssh timeout, not one per row. A `null`
+180 < 2  * answer means "not from the hub": the caller reads the evidence for that row.
+181 < 2  */
+182 < 2 function hubReader (hub) {
+183 < 2   let listing = null
+184 < 2   const darken = (error) => {
+185 < 2     if (hub.dark === null) hub.dark = reasonOf(error)
+186 < 2   }
+187 < 2   return async (target, run, plan) => {
+188 < 2     if (hub.client === null || hub.dark !== null) return null
+189 < 2     try {
+190 < 2       if (listing === null) listing = await hub.client.listProjects()
+191 < 2       const project = projectNamed(listing, targetSlug(target))
+192 < 2       if (project === null) return null
+193 < 2       const json = await hub.client.listIssues(project.id)
+194 < 2       const issues = Array.isArray(json?.issues) ? json.issues : []
+195 < 2       const issue = runIssueOf(issues, run, plan ?? null)
+196 < 2       return issue === null ? null : readingOfIssue({ id: project.id, uid: project.uid, name: project.name }, issue)
+197 < 2     } catch (error) {
+198 < 2       darken(error)
+199 < 2       return null
+200 < 2     }
+201 < 2   }
+202 < 2 }
+203 < 2 
+205 > 1 // ── The record: the run's page, read off the evidence repository ────────────
+204 < 2 // ── The fallback: the run's page, read off the evidence repository ──────────
+205 < 1 
+206 < 1 /**
+207 < 1  * One `gh api <path>` on the laptop, through the exec seam. An absent file is
+208 < 1  * exit 1 with `HTTP 404`, which is an answer and not a failure — every reader
+209 < 1  * here gets `null` for it and decides for itself what an absence means.
+210 < 1  */
+211 < 1 export const ghApi = async (exec, apiPath) => {
+212 < 1   const res = await exec('gh', ['api', apiPath])
+213 < 1   return res.code === 0 ? parseJson(res.stdout) : null
+214 < 1 }
+215 < 1 
+216 < 1 /**
+217 < 1  * A list read that follows every page: `--paginate --slurp` answers an array
+218 < 1  * of pages, flattened here into one array. A one-page answer (or a stub's bare
+219 < 1  * array) flattens to itself; anything that is not an array is null, as above.
+220 < 1  */
+221 < 1 const ghList = async (exec, apiPath) => {
+222 < 1   const res = await exec('gh', ['api', '--paginate', '--slurp', apiPath])
+223 < 1   const payload = res.code === 0 ? parseJson(res.stdout) : null
+224 < 1   return Array.isArray(payload) ? payload.flat() : null
+225 < 1 }
+226 < 1 
+227 < 1 /**
+228 < 1  * One file of a run's evidence, as the contents API addresses it: in the
+229 < 1  * operator's evidence repository (#1395), under the TARGET's run folder.
+230 < 1  */
+231 < 1 const contentsPath = (evidence, target, run, file) =>
+232 < 1   `repos/${evidence}/contents/${runFolderFor(target, run)}/${file}`
+233 < 1 
+234 < 1 /**
+235 < 1  * The run's status page at one ref. The answer is the contents envelope —
+236 < 1  * base64 under `content` — and nothing else is accepted: a bare status
+237 < 1  * document would mean `gh` answered something other than the contents API, and
+238 < 1  * guessing there is how a janitor reaps on a payload it never read. A missing
+239 < 1  * envelope is `null`, which is what sends the reader on to the next ref; an
+240 < 1  * envelope whose content is not a JSON object is an answer all the same, and
+241 < 1  * carries a null `page` so no second ref is read behind a ref that spoke.
+242 < 1  */
+243 < 1 export async function readContentsAt (exec, evidence, target, run, ref) {
+244 < 1   const payload = await ghApi(exec, `${contentsPath(evidence, target, run, 'status.json')}?ref=${ref}`)
+245 < 1   if (!payload || typeof payload.content !== 'string') return null
+246 < 1   const decoded = parseJson(Buffer.from(payload.content, 'base64').toString('utf8'))
+247 < 1   const page = decoded && typeof decoded === 'object' ? decoded : null
+248 < 1   // The envelope's `sha` is the blob as it sits on that ref, and a write of
+249 < 1   // this file needs it: the page alone cannot be put back.
+250 < 1   return { page, sha: typeof payload.sha === 'string' ? payload.sha : null, from: ref }
+251 < 1 }
+252 < 1 
+253 < 1 /**
+254 < 1  * The run's status page as the row loop reads it: the run's tag first, its
+255 < 1  * live branch only behind a tag that answered no envelope. Null when neither
+256 < 1  * ref has a page, and null without a read when there is no evidence
+257 < 1  * repository to read.
+258 < 1  */
+259 < 1 async function evidenceReading (exec, evidence, target, run) {
+260 < 1   if (evidence === null) return null
+261 < 1   const found = await readContentsAt(exec, evidence, target, run, runTagFor(target, run)) ??
+262 < 1     await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run))
+263 < 1   if (found === null || found.page === null) return null
+264 < 1   const state = typeof found.page.state === 'string' ? found.page.state : null
+265 < 1   return {
+266 < 2     source: 'evidence',
+267 < 1     finished: REAPABLE_STATES.includes(state),
+268 < 1     live: LIVE_STATES.includes(state),
+269 < 1     state,
+270 < 1     updatedAt: typeof found.page.updatedAt === 'string' ? found.page.updatedAt : null,
+271 < 1     from: found.from,
+272 < 1     page: found.page,
+273 < 1     sha: found.sha
+274 < 1   }
+275 < 1 }
+276 < 1 
+277 < 1 /**
+278 < 1  * One `gh api -X PUT <contents path>` — the contents API's update, whose body
+279 < 1  * is `message`, `content` (base64), `branch` and, for a file that already
+280 < 1  * exists, the `sha` it was read at. `-f` is gh's string-field flag, one field
+281 < 1  * per pair, so the path stays the first argv element beginning `repos/`.
+282 < 1  */
+283 < 1 const ghPut = (exec, apiPath, { branch, message, content, sha = null }) => {
+284 < 1   const argv = [
+285 < 1     'api', '-X', 'PUT', apiPath,
+286 < 1     '-f', `branch=${branch}`,
+287 < 1     '-f', `message=${message}`,
+288 < 1     '-f', `content=${Buffer.from(content, 'utf8').toString('base64')}`
+289 < 1   ]
+290 < 1   // A new file carries no `sha`; sending one for a file that is not there is a
+291 < 1   // 422, and omitting one for a file that is is the other 422.
+292 < 1   if (sha !== null) argv.push('-f', `sha=${sha}`)
+293 < 1   return exec('gh', argv)
+294 < 1 }
+295 < 1 
+296 < 1 /**
+297 < 1  * A row's assignment: the run, the target, and the plan its comment carries
+298 < 1  * (`null` when the comment names none, or names something other than a
+299 < 1  * 40-hex sha), or null when the comment is absent or says nothing this tool
+300 < 1  * can read. The comment's `run=` is the run; the name's is the fallback,
+301 < 1  * since the name is only where the run is running this time. The plan is how
+302 < 1  * the janitor tells a colliding launch's abandoned run issue from the run
+303 < 1  * that actually won the number (#1036, `runIssueOf`).
+304 < 1  */
+305 < 1 function assignmentOf (row) {
+306 < 1   if (!isVmName(row.name)) return null
+307 < 1   const fields = parseComment(row.comment)
+308 < 1   const run = isRunNumber(fields.run) ? Number(fields.run) : runOfVmName(row.name)
+309 < 1   const target = isSafeTarget(fields.target) ? fields.target : null
+310 < 1   if (run === null || target === null) return null
+311 < 1   const plan = isFullSha(fields.plan) ? fields.plan : null
+312 < 1   return { run, target, plan }
+313 < 1 }
+314 < 1 
+315 < 1 /**
+316 < 1  * Is this row's comment the operator's "leave it alone"? The raw string is
+317 < 1  * read, not the parsed fields: the sentence is prose a person wrote, and a row
+318 < 1  * that also carries `run=` and `target=` is kept all the same.
+319 < 1  */
+320 < 1 const saysNeverReap = (row) => String(row?.comment ?? '').includes(NEVER_REAP)
+321 < 1 
+322 < 1 // ── The one VM read: is the run's unit still there? ─────────────────────────
+323 < 1 
+324 < 1 /** The systemd user unit one run is, on its own VM. */
+325 < 1 const unitOf = (run) => `fleet-run@${run}.service`
+326 < 1 
+327 < 1 /** The four properties that say whether a unit is alive, done or dead. */
+328 < 1 const UNIT_PROPERTIES = Object.freeze(['ActiveState', 'SubState', 'Result', 'ExecMainStatus'])
+329 < 1 
+330 < 1 /**
+331 < 1  * `$(id -u)` is expanded by the VM's shell, not the laptop's, so it travels as
+332 < 1  * text: the janitor never spawns a shell, and `exec` hands this whole string to
+333 < 1  * `ssh` as one argv element.
+334 < 1  */
+335 < 1 const showUnitCommand = (run) =>
+336 < 1   `XDG_RUNTIME_DIR=/run/user/$(id -u) systemctl --user show ${unitOf(run)} ` +
+337 < 1   UNIT_PROPERTIES.map((p) => `-p ${p}`).join(' ')
+338 < 1 
+339 < 1 /** The contract's own journal literal: a field match asks the journal directly. */
+340 < 1 const journalCommand = (run) => `journalctl _SYSTEMD_USER_UNIT=${unitOf(run)} --no-pager -n 200`
+341 < 1 
+342 < 1 /**
+343 < 1  * One command on one VM. `BatchMode` refuses to ask for a password and
+344 < 1  * `ConnectTimeout` bounds a dark VM at fifteen seconds — `fleet/launch.mjs`
+345 < 1  * runs the janitor before every launch, and a VM that is off must cost a launch
+346 < 1  * those seconds, not hang it. The destination is the row's own `ssh_dest`,
+347 < 1  * handed to `ssh` as its own argv element and never spliced into a string.
+348 < 1  */
+349 < 1 const onVm = (exec, dest, command) =>
+350 < 1   exec('ssh', ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', dest, command])
+351 < 1 
+352 < 1 /**
+353 < 1  * The run's unit as `systemctl show` reports it, or null when it cannot be
+354 < 1  * read: a non-zero exit (a dark VM, a refused connection, a timeout), an empty
+355 < 1  * answer, or an answer with no `ActiveState` in it. Unreadable is not dead —
+356 < 1  * the row is then left exactly as it would have been without this read.
+357 < 1  */
+358 < 1 async function readUnit (exec, dest, run) {
+359 < 1   const res = await onVm(exec, dest, showUnitCommand(run))
+360 < 1   if (res.code !== 0) return null
+361 < 1   const unit = {}
+362 < 1   for (const line of String(res.stdout ?? '').split('\n')) {
+363 < 1     const at = line.indexOf('=')
+364 < 1     if (at === -1) continue
+365 < 1     const key = line.slice(0, at).trim()
+366 < 1     if (UNIT_PROPERTIES.includes(key)) unit[key] = line.slice(at + 1).trim()
+367 < 1   }
+368 < 1   return typeof unit.ActiveState === 'string' && unit.ActiveState !== '' ? unit : null
+369 < 1 }
+370 < 1 
+371 < 1 /**
+372 < 1  * The unit is dead when systemd says so — `ActiveState=failed` — or when it was
+373 < 1  * killed by its own runtime budget, which leaves `Result=timeout` behind
+374 < 1  * whatever `ActiveState` the corpse settled into.
+375 < 1  */
+376 < 1 const unitIsDead = (unit) => unit.ActiveState === 'failed' || unit.Result === 'timeout'
+377 < 1 
+378 < 1 /** The unit's four properties as one line, in the order `systemctl` names them. */
+379 < 1 const unitSummary = (unit) => UNIT_PROPERTIES
+380 < 1   .filter((p) => unit[p] !== undefined)
+381 < 1   .map((p) => `${p}=${unit[p]}`)
+382 < 1   .join(' ')
+383 < 1 
+385 > 1 /** What the written page says happened, in the page's own `error` cell. */
+386 < 1 const deathError = (run, unit, state) =>
+387 < 1   `janitor: ${unitOf(run)} ${unitSummary(unit)} while the page said ${state}`
+384 < 2 /**
+385 < 2  * What the written page says happened, in the page's own `error` cell — and
+386 < 2  * the hub close's message, which kata wants forty characters long. `said` is
+387 < 2  * `page` for a row read off the evidence and `hub` for one the hub answered.
+388 < 2  */
+389 < 2 const deathError = (run, unit, state, said) =>
+390 < 2   `janitor: ${unitOf(run)} ${unitSummary(unit)} while the ${said} said ${state}`
+391 < 1 
+392 < 1 // ── A run's end, written for it ─────────────────────────────────────────────
+393 < 1 
+394 < 1 /** The `error` a close-out writes: a run no VM carries, whose page said live. */
+395 < 1 export const CLOSE_OUT_ERROR = 'reaped before the run recorded its end'
+396 < 1 
+397 < 1 /**
+398 < 1  * Seal run `run` of `target` in `evidence`: the tag `<slug>/run-<N>` cut at
+399 < 1  * the live branch's head through GitHub's refs API, read back to verify it
+400 < 1  * names that sha, and only then the live branch deleted. An answer that the
+401 < 1  * reference already exists is the tag being there, and the read-back decides.
+402 < 1  * Any refusal keeps the branch and says so: `{ tagged, deleted, reason? }`.
+403 < 1  */
+404 < 1 export async function sealRun ({ exec = defaultExec, evidence, target, run }) {
+405 < 1   const branch = liveBranchFor(target, run)
+406 < 1   const tag = runTagFor(target, run)
+407 < 1   const saidBy = (res) => output(res).split('\n')[0]
+408 < 1   const head = await exec('gh', ['api', `repos/${evidence}/git/ref/heads/${branch}`])
+409 < 1   const sha = head.code === 0 ? parseJson(head.stdout)?.object?.sha : null
+410 < 1   if (typeof sha !== 'string') {
+411 < 1     return { tagged: false, deleted: false, reason: `no head for ${branch}: ${saidBy(head)}` }
+412 < 1   }
+413 < 1   const made = await exec('gh', [
+414 < 1     'api', '-X', 'POST', `repos/${evidence}/git/refs`,
+415 < 1     '-f', `ref=refs/tags/${tag}`,
+416 < 1     '-f', `sha=${sha}`
+417 < 1   ])
+418 < 1   if (made.code !== 0 && !/already exists/i.test(saidBy(made))) {
+419 < 1     return { tagged: false, deleted: false, reason: `tag ${tag} refused: ${saidBy(made)}` }
+420 < 1   }
+421 < 1   const check = await exec('gh', ['api', `repos/${evidence}/git/ref/tags/${tag}`])
+422 < 1   const tagged = check.code === 0 && parseJson(check.stdout)?.object?.sha === sha
+423 < 1   if (!tagged) {
+424 < 1     return { tagged: false, deleted: false, reason: `tag ${tag} does not name ${sha}; ${branch} kept` }
+425 < 1   }
+426 < 1   const gone = await exec('gh', ['api', '-X', 'DELETE', `repos/${evidence}/git/refs/heads/${branch}`])
+427 < 1   if (gone.code !== 0) {
+428 < 1     return { tagged: true, deleted: false, reason: `delete of ${branch} refused: ${saidBy(gone)}` }
+429 < 1   }
+430 < 1   return { tagged: true, deleted: true }
+431 < 1 }
+432 < 1 
+433 < 1 /**
+434 < 1  * Write a run's end for it — the one write the death and the close-out share.
+435 < 1  * `found` is the page as read off the live branch (`readContentsAt`): it is put
+436 < 1  * back with `state` `failed`, `updatedAt` `at` and `error`, every other cell
+437 < 1  * kept, then the run is sealed. A `journal`, when given, lands first as
+438 < 1  * `janitor-journal.txt`, so the page's transition is the branch's last commit
+439 < 1  * as the sandbox's own transitions are. Nothing retries a refused PUT: a
+440 < 1  * 409/422 means the sandbox pushed between the read and the write, and the
+441 < 1  * next pass reads the fresh record. Answers `{ written, sealed? , error? }`.
+442 < 1  */
+443 < 1 async function failRun ({ exec, evidence, target, run, found, at, error, why, journal = null }) {
+444 < 1   const branch = liveBranchFor(target, run)
+445 < 1   if (journal !== null) {
+446 < 1     await ghPut(exec, contentsPath(evidence, target, run, 'janitor-journal.txt'), {
+447 < 1       branch,
+448 < 1       message: `janitor: run ${run} journal at death`,
+449 < 1       content: journal
+450 < 1     })
+451 < 1   }
+452 < 1   const written = { ...found.page, state: 'failed', updatedAt: at, error }
+453 < 1   const res = await ghPut(exec, contentsPath(evidence, target, run, 'status.json'), {
+454 < 1     branch,
+455 < 1     message: `janitor: run ${run} failed — ${why}`,
+456 < 1     content: `${JSON.stringify(written, null, 2)}\n`,
+457 < 1     sha: found.sha
+458 < 1   })
+459 < 1   if (res.code !== 0) return { written: false, error: output(res) }
+460 < 1   // The page now says failed: the run is sealed — tagged at the page just
+461 < 1   // written, its live branch deleted once the tag is verified there.
+462 < 1   return { written: true, sealed: await sealRun({ exec, evidence, target, run }) }
+463 < 1 }
+464 < 1 
+465 < 1 /**
+467 > 1  * The death, written: the unit's journal and the page (`failRun`), on the
+468 < 1  * run's live branch in the evidence repository.
+466 < 2  * The death, written: the unit's journal and the page (`failRun`), then, for
+467 < 2  * a row the hub answered, the run issue's three keys. A hub-read row's page is
+468 < 2  * fetched here, off the evidence BRANCH, since the death is written where the
+469 < 2  * sandbox writes; a branch with no page (a boot that never committed) gets no
+470 < 2  * PUT and the marking alone. A patch the hub refuses is reported on the entry,
+471 < 2  * never thrown.
+472 < 1  */
+474 > 1 async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at }) {
+473 < 2 async function writeDeath ({ exec, dryRun, row, run, target, evidence, reading, unit, at, hub }) {
+474 < 2   const fromHub = reading.source === 'hub'
+475 < 2   const said = fromHub ? 'hub' : 'page'
+476 < 1   const death = { vm: row.name, run, target, state: reading.state, unit, applied: false }
+477 < 2   if (fromHub) death.hubMarked = false
+478 < 1   // `--dry-run` reads — the unit read above was one — and writes nothing.
+479 < 1   if (dryRun) return death
+481 > 1   const journal = await onVm(exec, row.sshDest, journalCommand(run))
+482 < 1   const out = await failRun({
+483 < 1     exec,
+484 < 1     evidence,
+485 < 1     target,
+486 < 1     run,
+487 < 1     found: reading,
+488 < 1     at,
+489 < 1     error: deathError(run, unit, reading.state),
+490 < 1     why: unitSummary(unit),
+491 < 1     journal: journal.code === 0
+492 < 1       ? String(journal.stdout ?? '')
+493 < 1       : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
+494 < 1   })
+495 < 1   if (out.written) {
+496 < 1     death.applied = true
+497 < 1     death.sealed = out.sealed
+498 < 1   } else {
+499 < 1     death.error = out.error
+480 < 2 
+481 < 2   // No evidence repository: no page to read, and the hub's marking alone.
+482 < 2   const found = evidence === null
+483 < 2     ? null
+484 < 2     : fromHub ? await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run)) : reading
+485 < 2   if ((found?.page ?? null) !== null) {
+486 < 2     const journal = await onVm(exec, row.sshDest, journalCommand(run))
+487 < 2     const out = await failRun({
+488 < 2       exec,
+489 < 2       evidence,
+490 < 2       target,
+491 < 2       run,
+492 < 2       found,
+493 < 2       at,
+494 < 2       error: deathError(run, unit, reading.state, said),
+495 < 2       why: unitSummary(unit),
+496 < 2       journal: journal.code === 0
+497 < 2         ? String(journal.stdout ?? '')
+498 < 2         : `${journal.stdout ?? ''}${journal.stderr ?? ''}`
+499 < 2     })
+500 < 2     if (out.written) {
+501 < 2       death.applied = true
+502 < 2       death.sealed = out.sealed
+503 < 2     } else {
+504 < 2       death.error = out.error
+505 < 2     }
+506 < 2   }
+507 < 2 
+508 < 2   if (fromHub) {
+509 < 2     // The run issue is MARKED, not closed: a close carries a verified outcome
+510 < 2     // and this one is nobody's yet, so the record reads `failed` and raises a
+511 < 2     // hand — the same three keys, spelled the same flat way, that the sandbox
+512 < 2     // writes at a park. No `If-Match`: the janitor reads the hub once a pass
+513 < 2     // and a death is the same three keys however often it is driven, so a
+514 < 2     // revision it held would only turn the second pass into a 412; the key
+515 < 2     // makes a re-driven death the same patch.
+516 < 2     try {
+517 < 2       await hub.client.patchMetadata(
+518 < 2         reading.project.id,
+519 < 2         reading.issue.uid,
+520 < 2         {
+521 < 2           [STATE_KEY]: DEATH_STATE,
+522 < 2           [ATTENTION_KEY]: DEATH_ATTENTION,
+523 < 2           [ATTENTION_MSG_KEY]: deathError(run, unit, reading.state, said)
+524 < 2         },
+525 < 2         undefined,
+526 < 2         { idempotencyKey: deathKeyFor(run) }
+527 < 2       )
+528 < 2       death.hubMarked = true
+529 < 2     } catch (error) {
+530 < 2       death.hubError = reasonOf(error)
+531 < 2     }
+532 < 1   }
+533 < 1   return death
+534 < 1 }
+535 < 1 
+536 < 1 // ── #724: the integration branches nothing merged — deleted ────────────────
+537 < 1 
+538 < 1 /**
+539 < 1  * Every `ultra/integration-run-<N>` head on a target, in one read. The path's
+540 < 1  * tail is `integrationBranchFor('')`, so the prefix cannot drift from the
+541 < 1  * branch name the rest of the fleet builds. `git/matching-refs/heads/<prefix>`
+542 < 1  * is a prefix match and answers an array of
+543 < 1  * `{ ref: 'refs/heads/ultra/integration-run-<N>', object: { sha } }` — `[]`
+544 < 1  * when the target has none.
+545 < 1  */
+546 < 1 const matchingRefsPath = (target) =>
+547 < 1   `repos/${target}/git/matching-refs/heads/${integrationBranchFor('')}`
+548 < 1 
+549 < 1 /**
+550 < 1  * The same prefix match for a target's live branches (#1314), in the evidence
+551 < 1  * repository (#1395): `live/<slug>/run-`.
+552 < 1  */
+553 < 1 const evidenceRefsPath = (evidence, target) =>
+554 < 1   `repos/${evidence}/git/matching-refs/heads/${liveBranchFor(target, '')}`
+555 < 1 
+556 < 1 /**
+557 < 1  * The runs those heads name, ascending. A 404 or an answer that is not an
+558 < 1  * array is no branches — an absence is an answer here, as everywhere else the
+559 < 1  * janitor reads — and a ref `runOfBranch` cannot read a run out of is skipped
+560 < 1  * rather than guessed at.
+561 < 1  */
+562 < 1 async function integrationRunsOf (exec, target) {
+563 < 1   const payload = await ghList(exec, matchingRefsPath(target))
+564 < 1   if (!Array.isArray(payload)) return []
+565 < 1   const runs = []
+566 < 1   for (const entry of payload) {
+567 < 1     const run = runOfBranch(entry?.ref)
+568 < 1     if (run !== null && !runs.includes(run)) runs.push(run)
+569 < 1   }
+570 < 1   return runs.sort((a, b) => a - b)
+571 < 1 }
+572 < 1 
+573 < 1 /**
+574 < 1  * The pull request that speaks for one integration branch: the highest
+575 < 1  * `number` among the rows of `pulls?state=all&head=<owner>:<branch>`, or null
+576 < 1  * when there are none. `head=` matches on the head ref's NAME, which GitHub
+577 < 1  * keeps after the branch is gone, and run numbers restarted at 1 on
+578 < 1  * 2026-09-04 — so one head name carries two runs' pull requests and the rows'
+579 < 1  * order is not the rule. Read on 2026-09-07, `ultra/integration-run-32` on
+580 < 1  * `popmechanic/ultrapowers` answered `#720 closed, merged_at null` and
+581 < 1  * `#463 closed, merged_at 2026-08-31T03:03:48Z`; only #720 is about the branch
+582 < 1  * that is there now.
+583 < 1  */
+584 < 1 export async function decidingPull (exec, target, run) {
+585 < 1   const owner = String(target).split('/')[0]
+586 < 1   const payload = await ghList(
+587 < 1     exec,
+588 < 1     `repos/${target}/pulls?state=all&per_page=100&head=${owner}:${integrationBranchFor(run)}`
+589 < 1   )
+590 < 1   const rows = Array.isArray(payload) ? payload : []
+591 < 1   let decider = null
+592 < 1   for (const row of rows) {
+593 < 1     const number = Number(row?.number)
+594 < 1     if (!Number.isFinite(number)) continue
+595 < 1     if (decider === null || number > decider.number) decider = { number, state: row.state, mergedAt: row.merged_at ?? null }
+596 < 1   }
+597 < 1   return decider
+598 < 1 }
+599 < 1 
+600 < 1 /**
+601 < 1  * The rule: the highest-numbered pull request decides;
+602 < 1  * `state` `"open"` keeps the branch; `state` `"closed"` with `merged_at` `null`
+603 < 1  * retires it; `merged_at` a string keeps it (delete-on-merge's own); no rows
+604 < 1  * keeps it. The list endpoint's rows carry `merged_at` and no `merged` boolean,
+605 < 1  * so the date is the only thing worth reading.
+606 < 1  */
+607 < 1 const isClosedUnmerged = (pull) =>
+608 < 1   pull !== null && pull.state === 'closed' && pull.mergedAt === null
+609 < 1 
+610 < 1 /**
+611 < 1  * The branches to delete, ascending by target then run. One `matching-refs`
+612 < 1  * read per distinct target — however many of its runs are in the fleet — and
+613 < 1  * one `pulls?` read per head that read answered. Nothing here mutates: the
+614 < 1  * DELETE is the pass's, after the reap, and `--dry-run` issues exactly these
+615 < 1  * same reads.
+616 < 1  */
+617 < 1 async function closedUnmergedBranches (exec, targets) {
+618 < 1   const branches = []
+619 < 1   for (const target of [...targets].sort()) {
+620 < 1     for (const run of await integrationRunsOf(exec, target)) {
+621 < 1       const pull = await decidingPull(exec, target, run)
+622 < 1       if (!isClosedUnmerged(pull)) continue
+623 < 1       branches.push({ target, run, branch: integrationBranchFor(run), pr: pull.number, deleted: false })
+624 < 1     }
+625 < 1   }
+626 < 1   return branches
+627 < 1 }
+628 < 1 
+630 > 1 // ── #1314: the runs no VM carries, whose live branch is still there ────────
+631 < 1 
+632 < 1 /** Is any VM of the fleet, listed now, carrying this run of this target? */
+633 < 1 async function carriedNow (exec, target, run) {
+634 < 1   const vms = await listVms(exec)
+635 < 1   return vms.some((row) => {
+636 < 1     const fields = parseComment(row.comment)
+637 < 1     return fields.run === String(run) && fields.target === target
+638 < 1   })
+639 < 1 }
+629 < 2 // ── #1314: the runs no VM carries, whose page still says live ──────────────
+630 < 1 
+631 < 1 /**
+632 < 1  * One `matching-refs` read per target for its live branches in the evidence
+633 < 1  * repository; for every run no row of this pass carries on that target, its
+635 > 1  * branch page, older than `ageMs`, on a run the fleet still carries no VM for
+636 < 1  * when listed again. Two ends are written here, and answered apart:
+637 < 1  *
+638 < 1  * - `closed`: a page that still says the run is in flight is written failed
+639 < 1  *   and sealed (`failRun`) — `closed` false under `--dry-run`.
+640 < 1  * - `sealed`: a page that says the run ended (`done|parked|failed`) is a run
+641 < 1  *   whose sandbox never cut its tag (flock-baseline run 31, 2026-11-13, n=1:
+642 < 1  *   `done`, no tag, the live branch left). Its page is the sandbox's own last
+643 < 1  *   word and is not rewritten; the run is sealed (`sealRun`: the tag cut at
+644 < 1  *   the branch's head, verified, the branch deleted) — `sealed` false under
+645 < 1  *   `--dry-run` and when the seal is refused, with the reason.
+646 < 1  *
+647 < 1  * No evidence repository, no reads and neither write.
+634 < 2  * branch page. A live page older than `ageMs`, on a run the fleet still
+635 < 2  * carries no VM for when listed again, is written failed and sealed
+636 < 2  * (`failRun`) — `closed` false under `--dry-run`. No evidence repository, no
+637 < 2  * reads and no close-outs.
+638 < 1  */
+639 < 1 async function closeOutOrphans ({ exec, evidence, targets, carried, nowMs, ageMs, now, dryRun }) {
+640 < 1   const closed = []
+642 > 1   const sealed = []
+643 < 1   if (evidence === null) return { closed, sealed }
+641 < 2   if (evidence === null) return closed
+642 < 1   for (const target of [...targets].sort()) {
+643 < 1     const payload = await ghList(exec, evidenceRefsPath(evidence, target))
+644 < 1     if (!Array.isArray(payload)) continue
+645 < 1     const orphans = []
+646 < 1     for (const entry of payload) {
+647 < 1       const run = runOfEvidenceRef(target, entry?.ref)
+648 < 1       if (run === null || orphans.includes(run) || carried.has(`${target}#${run}`)) continue
+649 < 1       orphans.push(run)
+650 < 1     }
+651 < 1     for (const run of orphans.sort((a, b) => a - b)) {
+652 < 1       const found = await readContentsAt(exec, evidence, target, run, liveBranchFor(target, run))
+653 < 1       const page = found?.page ?? null
+654 < 1       if (page === null) continue
+655 < 1       const state = typeof page.state === 'string' ? page.state : null
+657 > 1       const ended = REAPABLE_STATES.includes(state)
+658 < 1       if (!ended && !LIVE_STATES.includes(state)) continue
+656 < 2       if (!LIVE_STATES.includes(state)) continue
+657 < 1       const updated = Date.parse(String(page.updatedAt))
+658 < 1       if (!Number.isFinite(updated) || nowMs - updated < ageMs) continue
+659 < 1       // A VM that came up between the pass's listing and now is not an
+660 < 1       // orphan, and there is nothing to report.
+662 > 1       if (await carriedNow(exec, target, run)) continue
+663 < 1       if (ended) {
+664 < 1         if (dryRun) {
+665 < 1           sealed.push({ target, run, state, sealed: false })
+666 < 1           continue
+667 < 1         }
+668 < 1         const out = await sealRun({ exec, evidence, target, run })
+669 < 1         sealed.push({
+670 < 1           target, run, state, sealed: out.tagged && out.deleted, ...(out.reason === undefined ? {} : { reason: out.reason })
+671 < 1         })
+672 < 1         continue
+673 < 1       }
+661 < 2       const vms = await listVms(exec)
+662 < 2       if (vms.some((row) => {
+663 < 2         const fields = parseComment(row.comment)
+664 < 2         return fields.run === String(run) && fields.target === target
+665 < 2       })) continue
+666 < 1       if (dryRun) {
+667 < 1         closed.push({ target, run, state, closed: false })
+668 < 1         continue
+669 < 1       }
+670 < 1       const out = await failRun({
+671 < 1         exec, evidence, target, run, found, at: now().toISOString(), error: CLOSE_OUT_ERROR, why: CLOSE_OUT_ERROR
+672 < 1       })
+673 < 1       closed.push({ target, run, state, closed: out.written })
+674 < 1     }
+675 < 1   }
+677 > 1   return { closed, sealed }
+676 < 2   return closed
+677 < 1 }
+678 < 1 
+679 < 1 /**
+682 > 1  * Everything the janitor does, with the exec seam and the clock injected.
+683 < 1  * `evidence` is the evidence repository (#1395); handed none, the `evidence`
+684 < 1  * key of `configPath` (default `~/.ultrapowers/fleet.json`) is. With neither,
+685 < 1  * no run can be read and none is reaped — every row is `unread`.
+681 > 2  * Everything the janitor does, with the exec seam, the clock, the hub and the
+682 < 2  * switch injected. `record` is where a run's end is read (`RECORD_SOURCES`);
+683 < 2  * handed none, the policy cell is (`recordSourceOf`). `evidence` is the
+684 < 2  * evidence repository (#1395); handed none, the `evidence` key of `configPath`
+685 < 2  * (default `~/.ultrapowers/fleet.json`) is. With neither, no run can be read
+686 < 2  * and none is reaped — every row is `unread`.
+687 < 2  *
+688 < 2  * Under the `kata` rollback alone, `kata` is the hub client (`null`: no hub);
+680 < 2  * Everything the janitor does, with the exec seam, the clock and the hub
+681 < 2  * injected. `kata` is the hub client (`null`: no hub, read the target);
+682 < 2  * undefined reads `kataEnvPath` (default `~/.ultrapowers/kata-hub.env`) and
+684 > 2  * builds one, and a run the hub answers is reaped by the hub alone.
+683 < 2  * builds one. `evidence` is the evidence repository (#1395); handed none, the
+684 < 2  * `evidence` key of `configPath` (default `~/.ultrapowers/fleet.json`) is.
+685 < 2  * With neither, nothing is read from any evidence repository and the reap
+686 < 2  * goes on by the hub alone.
+687 < 1  */
+688 < 1 export async function janitor ({
+691 > 1   argv = [], exec = defaultExec, now = () => new Date(), evidence = null, configPath
+690 > 2   argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath, record
+689 < 2   argv = [], exec = defaultExec, now = () => new Date(), kata, kataEnvPath, evidence = null, configPath
+690 < 1 }) {
+691 < 1   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
+692 < 1   const dryRun = opts['dry-run'] === true
+693 < 1   const age = opts.age === undefined || opts.age === true ? DEFAULT_AGE : String(opts.age)
+694 < 1   const ageMs = parseDuration(age)
+695 < 1   if (ageMs === null) throw new Refusal(`janitor: --age must look like 1h or 30m, got ${JSON.stringify(age)}`)
+696 < 1   // `--target` adds a target to the branch sweep that no VM of this pass names.
+697 < 1   if (opts.target !== undefined && !isSafeTarget(opts.target)) {
+698 < 1     throw new Refusal(`janitor: --target must be <owner>/<repo>, got ${JSON.stringify(opts.target)}`)
+699 < 1   }
+700 < 1   // The janitor sizes nothing, so of `fleet.json` it reads the one key
+702 > 1   // `evidence` — and only when it was handed no repository. The run's state
+704 > 1   // lives in the evidence repository and nowhere else.
+703 < 2   // lives in the evidence repository; `kata-hub.env` is opened, and the hub
+704 < 2   // asked, only under the `kata` rollback.
+701 < 2   // `evidence` — and only when it was handed no repository; `kata-hub.env` is
+702 < 2   // the only other file under `~/.ultrapowers/` it opens. The run's state
+703 < 2   // lives on the hub and in the evidence repository.
+704 < 1   const evidenceRepo = isSafeTarget(evidence)
+705 < 1     ? evidence
+706 < 1     : await readEvidenceSetting({ path: configPath ?? DEFAULT_CONFIG_PATH() })
+708 > 2   const source = RECORD_SOURCES.includes(record) ? record : recordSourceOf()
+709 < 2   const hub = source === 'kata' ? await openHub({ exec, kata, kataEnvPath }) : NO_HUB()
+707 < 2   const hub = await openHub({ exec, kata, kataEnvPath })
+708 < 2   const fromHub = hubReader(hub)
+709 < 1 
+710 < 1   const nowMs = now().getTime()
+711 < 1   const rows = await listVms(exec)
+712 < 1 
+713 < 1   // ── Read first, every row, whatever the verdict: --dry-run reads the same. ─
+714 < 1   const actions = []
+715 < 1   const pending = []
+716 < 1   const stale = []
+717 < 1   const unknown = []
+718 < 1   const deaths = []
+719 < 1   const kept = []
+721 > 1   // The rows whose record answered nothing: left alone, and said so.
+722 < 1   const unread = []
+720 < 1   // Every row that parsed to an assignment, with what its record said — the
+721 < 1   // launcher's duplicate check reads this list instead of listing the fleet a
+722 < 1   // second time (#1036). A row whose record answered nothing is here too, with
+723 < 1   // `live` and `state` null: the seconds after a launch, before any record
+724 < 1   // exists, are exactly when a double launch happens.
+725 < 1   const runs = []
+726 < 1   // The only targets there are: a row's assignment comment is where the
+727 < 1   // janitor learns of one, so a target no row names is nobody's here.
+728 < 1   const targets = new Set()
+729 < 1   // Every `<target>#<run>` a row of this pass carries, kept rows included:
+730 < 1   // the close-out is only for a run no VM carries.
+731 < 1   const carried = new Set()
+732 < 1   const nowIso = new Date(nowMs).toISOString()
+733 < 1   for (const row of rows) {
+734 < 1     // Before anything is parsed and before a single read is issued: a comment
+735 < 1     // that says do not reap ends this row's pass. Nothing is read about it, so
+736 < 1     // it cannot be aged, cannot be probed, and cannot be removed.
+737 < 1     if (saysNeverReap(row)) {
+738 < 1       const held = assignmentOf(row)
+739 < 1       if (held !== null) carried.add(`${held.target}#${held.run}`)
+740 < 1       kept.push({ vm: row.name, comment: row.comment })
+741 < 1       continue
+742 < 1     }
+743 < 1     const assignment = assignmentOf(row)
+744 < 1     if (assignment === null) {
+745 < 1       unknown.push({ vm: row.name, comment: row.comment })
+746 < 1       continue
+747 < 1     }
+748 < 1     const { run, target, plan: planSha } = assignment
+749 < 1     targets.add(target)
+750 < 1     carried.add(`${target}#${run}`)
+751 < 1 
+754 > 1     const reading = await evidenceReading(exec, evidenceRepo, target, run)
+753 > 2     // The evidence record. Under the `kata` rollback the hub is asked first
+754 < 2     // (`fromHub` answers null at once for a pass with no hub), and the
+755 < 2     // evidence repository only for a row the hub cannot answer.
+752 < 2     // The hub first; the evidence repository when the hub cannot answer this row.
+753 < 2     const reading = await fromHub(target, run, planSha) ?? await evidenceReading(exec, evidenceRepo, target, run)
+754 < 1     runs.push({
+755 < 1       vm: row.name,
+756 < 1       run,
+757 < 1       target,
+758 < 1       plan: planSha,
+759 < 1       live: reading?.live ?? null,
+760 < 1       state: reading?.state ?? null
+761 < 1     })
+763 > 1     // No record that could be read — absent, or a read that failed: nothing
+764 < 1     // to decide on and nothing to age it by, so the VM is never touched.
+765 < 1     if (reading === null) {
+766 < 1       unread.push({ vm: row.name, run, target })
+767 < 1       continue
+768 < 1     }
+762 < 2     // No record anywhere: nothing to decide on, and nothing to age it by.
+763 < 2     if (reading === null) continue
+764 < 1 
+765 < 1     // ── A record that says the run is in flight is cross-checked against the
+766 < 1     //    unit that would be running it. `run` came out of `isRunNumber` (or a
+767 < 1     //    VM name that passed `isVmName`), so nothing unchecked reaches the
+768 < 1     //    remote command string; the destination is the row's own field.
+769 < 1     if (reading.live && typeof row.sshDest === 'string' && isRunNumber(run)) {
+770 < 1       const unit = await readUnit(exec, row.sshDest, run)
+771 < 1       if (unit !== null && unitIsDead(unit)) {
+772 < 1         deaths.push(await writeDeath({
+774 > 1           exec, dryRun, row, run, target, evidence: evidenceRepo, reading, unit, at: nowIso
+773 < 2           exec, dryRun, row, run, target, evidence: evidenceRepo, reading, unit, at: nowIso, hub
+774 < 1         }))
+775 < 1         // The record now says the run died as of now: the reap is the next
+776 < 1         // pass's, an hour on, and that hour is the operator's window to ssh in.
+777 < 1         continue
+778 < 1       }
+779 < 1     }
+780 < 1 
+781 < 1     const updated = Date.parse(String(reading.updatedAt))
+782 < 1     // An age nobody recorded is not six hours; it is unknown, and left alone.
+783 < 1     if (!Number.isFinite(updated)) continue
+784 < 1 
+785 < 1     const plan = reapPlan({ finished: reading.finished, updatedAt: reading.updatedAt, nowMs, ageMs })
+786 < 1     if (plan.action === 'rm') {
+787 < 1       actions.push({
+788 < 1         kind: 'rm',
+789 < 1         vm: row.name,
+790 < 1         run,
+791 < 1         state: reading.state,
+792 < 1         updatedAt: reading.updatedAt,
+793 < 1         command: `rm ${row.name} --json`,
+794 < 1         applied: !dryRun
+795 < 1       })
+796 < 1       continue
+797 < 1     }
+798 < 1     if (plan.action === 'pending') {
+799 < 1       pending.push({ vm: row.name, run, state: reading.state, reapableAt: plan.reapableAt })
+800 < 1     }
+801 < 1     if (nowMs - updated >= STALE_MS) {
+802 < 1       stale.push({
+803 < 1         vm: row.name,
+804 < 1         run,
+805 < 1         state: reading.state,
+806 < 1         lastUpdate: new Date(updated).toISOString(),
+807 < 1         from: reading.from
+808 < 1       })
+809 < 1     }
+810 < 1   }
+811 < 1 
+812 < 1   // ── #724: the last of the reads — the branches nothing merged. They come
+813 < 1   //    after the row loop, so every read order above is unchanged.
+814 < 1   const sweep = opts.target === undefined ? targets : new Set([...targets, opts.target])
+815 < 1   const branches = await closedUnmergedBranches(exec, sweep)
+817 > 1   // ── #1314: beside it, the orphans — the runs no VM carries whose live
+818 < 1   //    branch is still there, on the same targets as the sweep.
+819 < 1   const { closed: closedOut, sealed } = await closeOutOrphans({
+820 < 1     exec, evidence: evidenceRepo, targets: sweep, carried, nowMs, ageMs, now, dryRun
+821 < 1   })
+816 < 2   // ── #1314: beside it, the orphans — the runs no VM carries, still live. ───
+817 < 2   const closedOut = await closeOutOrphans({ exec, evidence: evidenceRepo, targets, carried, nowMs, ageMs, now, dryRun })
+818 < 1 
+819 < 1   // ── Then the reap, through the lobby, and the branches nothing merged. ───
+820 < 1   if (!dryRun) {
+821 < 1     for (const action of actions) {
+822 < 1       try {
+823 < 1         await lobby(exec, action.command)
+824 < 1         action.applied = true
+825 < 1       } catch (error) {
+826 < 1         if (!(error instanceof LobbyError)) throw error
+827 < 1         action.applied = false
+828 < 1         action.error = String(error.message ?? error)
+829 < 1       }
+830 < 1     }
+831 < 1     for (const branch of branches) {
+832 < 1       const res = await exec('gh', ['api', '-X', 'DELETE', `repos/${branch.target}/git/refs/heads/${branch.branch}`])
+833 < 1       branch.deleted = res.code === 0
+834 < 1       if (!branch.deleted) branch.error = output(res)
+835 < 1     }
+836 < 1   }
+837 < 1 
+839 > 2   // `hub` is null for a pass that asked no hub — every pass but the `kata`
+840 < 2   // rollback's — and for one told there is none; otherwise the host it asked
+841 < 2   // and, when it could not, why — the first reason, kept whole.
+838 < 2   // `hub` is null for a pass that was told there is no hub; otherwise the host
+839 < 2   // it asked and, when it could not, why — the first reason, kept whole.
+840 < 2   const hubReport = hub.client === null && hub.host === null && hub.dark === null
+841 < 2     ? null
+842 < 2     : { host: hub.host, dark: hub.dark }
+843 < 1   return {
+845 > 1     dryRun,
+846 < 1     age,
+847 < 2     record: source,
+848 < 1     actions,
+849 < 1     stale,
+850 < 1     unknown,
+851 < 1     unread,
+852 < 1     deaths,
+853 < 1     branches,
+854 < 1     closedOut,
+855 < 1     sealed,
+856 < 1     kept,
+857 < 1     pending,
+858 < 2     hub: hubReport,
+859 < 1     runs,
+860 < 1     evidence: evidenceRepo
+844 < 2     dryRun, age, actions, stale, unknown, deaths, branches, closedOut, kept, pending, hub: hubReport, runs, evidence: evidenceRepo
+845 < 1   }
+846 < 1 }
+847 < 1 
+848 < 1 /**
+849 < 1  * The rows of the janitor's `runs` list that carry this launch's plan on this
+850 < 1  * launch's target and whose record does not say the run ended (#1036). The
+851 < 1  * plan's identity is its text's blob sha: the launcher hashes `planText` with
+852 < 1  * `git hash-object --stdin` (no `-w` — nothing is written before the refusal
+853 < 1  * is decided), and reads each candidate row's `runs/<slug>/<N>/plan.md` blob
+854 < 1  * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
+855 < 1  * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
+856 < 1  * fetch or a `rev-parse` that fails means the branch is gone — the run is
+857 < 1  * publishing or has published, and no engine reads its task issues any more —
+858 < 1  * so that row is not a duplicate.
+859 < 1  */
+860 < 1 async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
+861 < 1   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))
+862 < 1   if (candidates.length === 0) return []
+863 < 1   const hashed = await exec('git', ['-C', repoDir, 'hash-object', '--stdin'], { input: planText })
+864 < 1   if (hashed.code !== 0) return []
+865 < 1   const wanted = String(hashed.stdout ?? '').trim()
+866 < 1   const found = []
+867 < 1   for (const row of candidates) {
+868 < 1     const branch = liveBranchFor(target, row.run)
+869 < 1     const fetched = await git(exec, repoDir, ['fetch', evidenceUrlFor(evidence), `refs/heads/${branch}`])
+870 < 1     if (fetched.code !== 0) continue
+871 < 1     const planFile = `${runFolderFor(target, row.run)}/${PLAN_FILE}`
+872 < 1     const blob = await git(exec, repoDir, ['rev-parse', '--verify', '--quiet', `FETCH_HEAD:${planFile}`])
+873 < 1     if (blob.code !== 0) continue
+874 < 1     if (String(blob.stdout ?? '').trim() === wanted) found.push({ run: row.run, vm: row.vm })
+875 < 1   }
+876 < 1   return found
+877 < 1 }
+878 < 1 
+879 < 1 /**
+880 < 1  * A launch's reap and duplicate check (#1437): `fleet/launch.mjs` calls it
+882 > 1  * before the run number is read. Answers
+881 < 2  * after the hub's ping and before the run number is read. Answers
+882 < 1  * `{ reaped, reapError, again }` — the VMs this pass removed, why the pass
+883 < 1  * failed (or null), and the live runs of this plan that `again` let through —
+884 < 1  * or throws the launcher's own refusal.
+885 < 1  *
+886 < 1  * Nothing schedules the janitor, so every launch is where it runs — before
+887 < 1  * the run number is read, so the fleet a launch joins is already clear of the
+889 > 1  * VMs of runs that finished over an hour ago. A reap that fails is reported and not fatal: the run
+888 < 2  * VMs of runs that finished over an hour ago. `hub` is the client the launch
+890 > 2  * built: the janitor asks it only under the `kata` rollback, so that pass asks
+891 < 2  * the hub the launch already reached. A reap that fails is reported and not fatal: the run
+889 < 2  * built, so the janitor asks the hub the launch already reached — or, with no
+890 < 2  * hub, reads the target. A reap that fails is reported and not fatal: the run
+891 < 1  * being launched is worth more than the ballast the janitor came for.
+892 < 1  */
+893 < 1 export async function preflight ({
+895 > 1   exec = defaultExec, now = () => new Date(), evidence, repoDir, target, planText, again = false
+894 < 2   exec = defaultExec, now = () => new Date(), hub, evidence, repoDir, target, planText, again = false
+895 < 1 }) {
+896 < 1   const reaped = []
+897 < 1   let reapError = null
+898 < 1   let fleetRuns = null
+899 < 1   try {
+901 > 1     const reap = await janitor({ argv: [], exec, now, evidence })
+900 < 2     const reap = await janitor({ argv: [], exec, now, kata: hub, evidence })
+901 < 1     fleetRuns = Array.isArray(reap.runs) ? reap.runs : []
+902 < 1     for (const action of reap.actions) {
+903 < 1       if (action.kind === 'rm' && action.applied === true) reaped.push(action.vm)
+904 < 1     }
+905 < 1   } catch (error) {
+906 < 1     reapError = String(error?.message ?? error) || 'launch: the reap failed'
+907 < 1   }
+908 < 1 
+909 < 1   // A reap that failed leaves no fleet list for the duplicate guard (#1036) to
+910 < 1   // read — refuse rather than launch with the guard silently skipped, unless
+911 < 1   // the operator passed `--again` to launch without it.
+912 < 1   if (fleetRuns === null && again !== true) {
+913 < 1     throw new Refusal(
+914 < 1       `launch: the reap did not answer, so the duplicate guard (#1036) cannot run — ${reapError}; ` +
+915 < 1       'pass --again to launch without it'
+916 < 1     )
+917 < 1   }
+918 < 1 
+919 < 1   // ── The duplicate check (#1036). A plan that is already live on this target
+920 < 1   //    is refused here, before the run number is read and before anything is
+922 > 1   //    pushed: a second launch of the same plan is two sandboxes building one
+923 < 1   //    change, and two pull requests for it. (Until 2026-11-13 it also killed
+924 < 1   //    the first run, whose task issues on the kata hub the replay re-answered.)
+925 < 1   //    "The same plan" is the plan text's git blob sha,
+921 < 2   //    pushed: a second launch of the same plan re-answers the live run's task
+922 < 2   //    issues on the hub and bumps their revision, and the first run dies at
+923 < 2   //    Setup on `kata-revision-mismatch`. "The same plan" is the plan text's
+924 < 2   //    git blob sha — the identity the hub's `Idempotency-Key` is built from —
+925 < 1   //    never the comment's `plan=` commit, which carries the run number in its
+926 < 1   //    subject and so differs on every launch. A row whose record says the run
+927 < 1   //    ended never refuses, however recently; a row with no record yet counts
+928 < 1   //    as live. When the reap itself failed there is no list and no refusal.
+929 < 1   const duplicates = fleetRuns === null
+930 < 1     ? []
+931 < 1     : await liveDuplicatesOf({ exec, repoDir, target, evidence, planText, runs: fleetRuns })
+932 < 1   if (duplicates.length > 0 && again !== true) {
+933 < 1     throw new Refusal(duplicates.map((d) =>
+934 < 1       `launch: run-${d.run} is live on ${target} with this plan (VM ${d.vm}) — nothing was pushed; ` +
+936 > 1       'pass --again to launch it again on purpose (two runs of one plan build the same change twice)'
+935 < 2       'pass --again to launch it again on purpose (a byte-identical replay re-answers the live ' +
+936 < 2       "run's task issues on the hub and bumps their revision)"
+937 < 1     ).join('\n'))
+938 < 1   }
+939 < 1   return { reaped, reapError, again: duplicates }
+940 < 1 }
+941 < 1 
+942 < 1 const renderAction = (a, dryRun) =>
+943 < 1   `${dryRun ? 'would ' : ''}rm ${a.vm}  run=${a.run} ${a.state} since ${a.updatedAt}` +
+944 < 1   (a.error === undefined ? '' : ` (failed: ${a.error})`)
+945 < 1 
+946 < 2 /** A hub-read death also names the hub: marked, would be marked, or refused. */
+947 < 2 const renderDeathHub = (d, dryRun) => {
+948 < 2   if (d.hubMarked === undefined) return ''
+949 < 2   if (d.hubMarked || dryRun) return ' and the hub'
+950 < 2   return ` (hub not marked: ${d.hubError ?? 'unknown'})`
+951 < 2 }
+952 < 2 
+953 < 1 const renderDeath = (d, dryRun) =>
+954 < 1   `${dryRun ? 'would write death' : 'death'} ${d.vm}  run=${d.run} ` +
+956 > 1   `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}`
+955 < 2   `${d.state} → failed: ${unitSummary(d.unit)} — ${liveBranchFor(d.target, d.run)}` +
+956 < 2   renderDeathHub(d, dryRun)
+957 < 1 
+958 < 1 /** #724: a branch nothing merged, deleted (or, dry, to be). */
+959 < 1 const renderBranch = (b, dryRun) =>
+960 < 1   `${dryRun ? 'would delete' : b.deleted ? 'deleted' : 'kept'} branch ${b.branch}  ` +
+961 < 1   `target=${b.target} PR #${b.pr} closed, not merged` +
+962 < 1   (b.error === undefined ? '' : ` (delete failed: ${b.error})`)
+963 < 1 
+964 < 1 /** #1314: a run no VM carried, whose page said live, written (or not) as failed. */
+965 < 1 const renderClosedOut = (c, dryRun) =>
+966 < 1   `${dryRun ? 'would close out' : 'closed out'} run=${c.run} target=${c.target} ${c.state} → failed`
+967 < 1 
+969 > 1 /** A run that ended with its live branch left and no seal: sealed, to be, or refused. */
+970 < 1 const renderSealed = (s, dryRun) => {
+971 < 1   const what = `run=${s.run} target=${s.target} ${s.state}`
+972 < 1   if (dryRun) return `would seal ${what} — its live branch is still there`
+973 < 1   if (s.sealed) return `sealed ${what} — tag ${runTagFor(s.target, s.run)} cut, live branch deleted`
+974 < 1   return `not sealed ${what} — ${s.reason ?? 'unknown'}`
+975 < 1 }
+976 < 1 
+977 < 1 /** A row whose record could not be read: where it was looked for, and that the VM stays. */
+978 < 1 const renderUnread = (u, evidence) =>
+979 < 1   `unread ${u.vm}  run=${u.run} ` +
+980 < 1   (evidence === null
+981 < 1     ? 'no evidence repository is set ("evidence" in ~/.ultrapowers/fleet.json)'
+982 < 1     : `no status page in ${evidence} at ${runTagFor(u.target, u.run)} or ${liveBranchFor(u.target, u.run)}`) +
+983 < 1   ' — left alone'
+984 < 1 
+968 < 1 /** A row the reap never touches, and why — the comment itself said so. */
+969 < 1 const renderKept = (k) => `kept ${k.vm}  comment says do not reap — never removed`
+970 < 1 
+971 < 2 /** A hub that could not be asked: first, because every line below was read another way. */
+972 < 2 const renderHub = (h) =>
+973 < 2   `hub ${h.host ?? 'none'} unreachable (${h.dark}) — every run read from the evidence repository instead`
+974 < 2 
+975 < 1 const renderJanitor = (result) => {
+976 < 1   const lines = [
+977 < 2     ...(result.hub?.dark ? [renderHub(result.hub)] : []),
+978 < 1     ...(result.deaths ?? []).map((d) => renderDeath(d, result.dryRun)),
+979 < 1     ...(result.actions ?? []).map((a) => renderAction(a, result.dryRun)),
+980 < 1     // After every rm and before every stale line: what was removed, then what
+981 < 1     // never will be, then what wants a look.
+982 < 1     ...(result.kept ?? []).map(renderKept),
+983 < 1     ...(result.stale ?? []).map((s) => `stale ${s.vm}  run=${s.run} state=${s.state ?? 'none'} last update ${s.lastUpdate} (${s.from}) — look before you rm`),
+984 < 1     ...(result.pending ?? []).map((p) => `pending ${p.vm}  run=${p.run} state=${p.state ?? 'none'} reapable at ${p.reapableAt}`),
+985 < 1     ...(result.unknown ?? []).map((u) => `unknown ${u.vm}  no readable assignment — look before you rm`),
+987 > 1     ...(result.unread ?? []).map((u) => renderUnread(u, result.evidence ?? null)),
+986 < 1     // Last, after every rm, stale and unknown line: the target's branches,
+987 < 1     // then the evidence repository's close-outs.
+988 < 1     ...(result.branches ?? []).map((b) => renderBranch(b, result.dryRun)),
+990 > 1     ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun)),
+991 < 1     ...(result.sealed ?? []).map((s) => renderSealed(s, result.dryRun))
+989 < 2     ...(result.closedOut ?? []).map((c) => renderClosedOut(c, result.dryRun))
+990 < 1   ]
+991 < 1   return lines.length === 0 ? 'nothing to do' : lines.join('\n')
+992 < 1 }
+993 < 1 
+994 < 1 async function main (argv) {
+995 < 1   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json', 'help'] })
+996 < 1   // `--help` prints the usage and reaps nothing: an unknown flag used to be
+997 < 1   // ignored, and a `--help` that ran a live pass is how three VMs went.
+998 < 1   if (opts.help === true) {
+999 < 1     process.stdout.write(`${USAGE}\n`)
+1000 < 1     return
+1001 < 1   }
+1002 < 1   const result = await janitor({ argv })
+1003 < 1   process.stdout.write(opts.json ? `${JSON.stringify(result)}\n` : `${renderJanitor(result)}\n`)
+1004 < 1 }
+1005 < 1 
+1006 < 1 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+1007 < 1 if (invokedPath === fileURLToPath(import.meta.url)) {
+1008 < 1   await runCli(main, process.argv.slice(2))
+1009 < 1 }
+1010 < 1 

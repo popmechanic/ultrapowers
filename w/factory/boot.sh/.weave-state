@@ -1,0 +1,428 @@
+0 < 1 #!/bin/bash
+1 < 1 # factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
+2 < 1 # plan off `live/<slug>/run-<N>` of the operator's evidence repository (named in
+3 < 1 # `$FLEET_HOME/fleet-evidence-repo`), proves the credential through `factory/preflight.mjs`,
+4 < 1 # runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record in
+5 < 1 # `runs/<slug>/<N>/` on that live branch, then publishes and merges, and however the run ends
+6 < 1 # leaves one tag `<slug>/run-<N>` there. Nothing but `ultra/integration-run-<N>` is written to the
+7 < 1 # target. Every external program goes through a `fleet_*` wrapper and every path hangs off
+8 < 1 # `$FLEET_HOME`, so the exam drives this against stubs.
+9 < 1 set -euo pipefail
+10 < 1 FLEET_HOME="${FLEET_HOME:-/home/exedev}"
+11 < 1 REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
+12 < 1 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
+13 < 1 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
+14 < 1 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
+15 < 2 # The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
+16 < 2 KATA_ADMIN_URL="https://kata.int.exe.xyz"
+17 < 1 # The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
+18 < 1 REAPER_URL="https://reaper.int.exe.xyz"
+20 > 1 # 10 s since 2026-11-13: the record is what a reader watches a run through (fleet/run-read.mjs), so it
+21 < 1 # is at most one tick behind. It was 60 while the hub carried the live view.
+22 < 1 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-10}"
+19 < 2 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-60}"
+20 < 1 # The run's one clock: systemd ends the engine unit at this many seconds (the old lease's four hours), and
+21 < 1 # whatever landed by then is published as a draft. No worker carries a cap of its own.
+22 < 1 FLEET_RUN_MAX_SECONDS="${FLEET_RUN_MAX_SECONDS:-14400}"
+23 < 1 # `systemd-run --user` needs a bus address: the run unit inherits one, ssh does not.
+24 < 1 XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"; DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+25 < 1 export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+26 < 1 TARGET_DIR="$FLEET_HOME/target"; EVIDENCE_DIR="$FLEET_HOME/evidence"
+27 < 1 RUN_DIR="$FLEET_HOME/run"; ENGINE_LOG="$FLEET_HOME/engine.log"
+28 < 1 BOOT_LOG="$FLEET_HOME/fleet-boot.log"; DONE_MARKER="$FLEET_HOME/.fleet-engine-done"
+29 < 1 RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
+30 < 1 BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PLAN_JSON=""; PAST_DIR=""
+31 < 1 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
+32 < 1 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
+33 < 1 # RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
+34 < 1 RECORDED=""
+35 < 1 # MERGED_SHA is the merge commit `factory/publish.mjs` reported (else empty, which `write_status` renders as `null`).
+36 < 1 MERGED_SHA=""
+37 < 1 fleet_curl()        { curl "$@"; }
+38 < 1 fleet_git()         { git "$@"; }
+39 < 1 fleet_npm()         { npm "$@"; }
+40 < 1 fleet_systemd_run() { systemd-run "$@"; }
+41 < 1 fleet_systemctl()   { systemctl "$@"; }
+42 < 1 fleet_python3()     { python3 "$@"; }
+43 < 1 fleet_node()        { node "$@"; }
+44 < 1 fleet_journalctl()  { journalctl "$@"; }
+45 < 1 fleet_timeout()     { timeout "$@"; }
+46 < 1 fleet_claude()      { claude "$@"; }
+47 < 1 # The boot log's stamp, UTC to the millisecond: bash 5's `$EPOCHREALTIME` where it is set
+48 < 1 # (the VM), else one python3 call — macOS's /bin/bash 3.2, which the boot sims run, has none.
+49 < 1 stamp_ms() {
+50 < 1   if [ -n "${EPOCHREALTIME:-}" ]; then
+51 < 1     local t="${EPOCHREALTIME/,/.}" d; TZ=UTC printf -v d '%(%Y-%m-%dT%H:%M:%S)T' "${t%.*}"
+52 < 1     t="${t#*.}000"; printf '%s.%sZ\n' "$d" "${t:0:3}"
+53 < 1   else python3 -c 'import datetime as d; print(d.datetime.now(d.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:23] + "Z")'; fi
+54 < 1 }
+55 < 1 log() {
+56 < 1   local line; line="$(stamp_ms) $*"; mkdir -p "$FLEET_HOME"
+57 < 1   printf '%s\n' "$line" >>"$BOOT_LOG"; printf '%s\n' "$line" >&2
+58 < 1 }
+59 < 1 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
+60 < 1 # No jq: every value read is one flat field of a small document, and an ABSENT field is an answer, not an error; the field in $1, the document on stdin.
+61 < 1 json_field() { { grep -o "\"$1\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" || true; } | head -n 1 | sed 's/.*:[[:space:]]*"\(.*\)"$/\1/'; }
+62 < 1 # The failure account: the page, one evidence commit, one push, the run's tag, out — once there is an evidence clone to write from.
+63 < 1 fail() { # $1 = message, $2 = exit code (default 1)
+64 < 1   ERROR="$1"
+65 < 1   # A clone subshell in `prepare` leaves its message to the parent, whose own `fail` logs the one `FAILED:` line.
+66 < 1   [ -n "${PREPARE_CLONE:-}" ] || log "FAILED: $1"
+67 < 1   if [ -n "${EVIDENCE_READY:-}" ] && [ -z "${FAILING:-}" ]; then
+69 > 1     FAILING=1; collect_evidence; write_status failed "$PHASE"; evidence_commit "$RUN_ID: failed"; record_tags; fi
+68 < 2     # The hub hears the failure too (#1288): `work.state=failed` on the run issue, so the janitor reaps the VM by its ordinary rule.
+69 < 2     # Marked before the last commit, so the record holds the `board:mark` row (#1392).
+70 < 2     FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed "$ERROR"; evidence_commit "$RUN_ID: failed"; record_tags; fi
+71 < 1   exit "${2:-1}"
+72 < 2 }
+73 < 2 # `board.mjs mark-run`: `work.state=<state>` on the run issue, which the janitor reaps (#1288), with `work.attention`
+74 < 2 # raised on the message and every task labelled needs-review (#1391); it never fails the run.
+75 < 2 mark_run() { # $1 = parked|failed, $2 = what the operator reads
+76 < 2   fleet_node "${ENGINE_REPO_DIR:-}/factory/board.mjs" mark-run --kata-json "${FLEET_HOME:-}/plans/${RUN_ID:-}.kata.json" --run "${RUN_ID:-}" --state "$1" \
+77 < 2     --message "${2:-$1}" --evidence "https://github.com/${EVIDENCE_REPO:-}/tree/${SLUG:-}/${RUN_ID:-}/${EVIDENCE_REL:-}" \
+78 < 2     --admin-url "${KATA_ADMIN_URL:-}" --events "${EVIDENCE_DIR:-}/${EVIDENCE_REL:-}/events.jsonl" || true
+79 < 1 }
+80 < 1 read_assignment() { if [ -n "${FLEET_ASSIGNMENT:-}" ]; then printf '%s\n' "$FLEET_ASSIGNMENT"; else fleet_curl -fsS "$REFLECTION_URL/comment" 2>/dev/null | json_field comment || true; fi; }
+81 < 1 is_sha()    { case "$1" in *[!0-9a-f]* | "") return 1 ;; esac; [ "${#1}" -eq 40 ]; }
+82 < 1 is_target() { [[ $1 =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; }
+83 < 1 # `hold` is recorded: `hold=1` is the signal that keeps `publish` from ever sending a merge.
+84 < 1 parse_assignment() { # $1 = the comment line
+85 < 1   local tok key val
+86 < 1   ENGINE_KIND=flock
+87 < 1   for tok in $1; do
+88 < 1     key="${tok%%=*}"; val="${tok#*=}"
+89 < 1     case "$key" in
+90 < 1       run) RUN_N="$val" ;; plan) PLAN_SHA="$val" ;; target) TARGET_REPO="$val" ;;
+91 < 1       base) BASE_SHA="$val" ;; engine) ENGINE_SHA="$val" ;;
+92 < 1       kind) case "$val" in flock) ENGINE_KIND="$val" ;;
+93 < 1               factory) fail "assignment: kind=factory is refused: the factory was retired, the Flock is the one engine" ;;
+94 < 1               *) fail "assignment: kind is not flock ('$val')" ;; esac ;;
+95 < 1       hold) [ "$val" = 1 ] && HOLD_FLAG=1 ;;
+96 < 1       *) fail "assignment: unknown key '$key' in comment" ;; esac
+97 < 1   done
+98 < 1   [ -n "$RUN_N" ]          || fail "assignment: no run id in comment"
+99 < 1   is_sha "$PLAN_SHA"       || fail "assignment: plan is not a 40-hex sha ('$PLAN_SHA')"
+100 < 1   is_target "$TARGET_REPO" || fail "assignment: target is not owner/repo ('$TARGET_REPO')"
+101 < 1   is_sha "$BASE_SHA"       || fail "assignment: base is not a 40-hex sha ('$BASE_SHA')"
+102 < 1   is_sha "$ENGINE_SHA"     || fail "assignment: engine is not a 40-hex sha ('$ENGINE_SHA')"
+103 < 1   RUN_ID="run-$RUN_N"; BRANCH="ultra/integration-$RUN_ID"; SLUG="${TARGET_REPO/\//-}"
+104 < 1   LIVE_BRANCH="live/$SLUG/$RUN_ID"; EVIDENCE_REL="runs/$SLUG/$RUN_N"
+105 < 1   PLAN_FILE="$FLEET_HOME/plans/$RUN_ID.md"; PLAN_JSON="$FLEET_HOME/plans/$RUN_ID.plan.json"; ENGINE_REPO_DIR="$FLEET_HOME/engines/$ENGINE_SHA"
+106 < 1   STATUS_FILE="$EVIDENCE_DIR/$EVIDENCE_REL/status.json"
+107 < 1   log "assignment: $RUN_ID target=$TARGET_REPO base=$BASE_SHA engine=$ENGINE_SHA kind=$ENGINE_KIND"
+108 < 1   read_evidence_repo
+109 < 1 }
+110 < 1 # The operator's evidence repository, one `<owner>/<repo>` line the first-boot setup script wrote; never derived from the target.
+111 < 1 read_evidence_repo() {
+112 < 1   local file="$FLEET_HOME/fleet-evidence-repo"
+113 < 1   EVIDENCE_REPO="$({ head -n 1 "$file" 2>/dev/null || true; } | tr -d '[:space:]')"
+114 < 1   is_target "$EVIDENCE_REPO" || fail "evidence: $file is absent or not one owner/repo line ('$EVIDENCE_REPO') — the first-boot setup script writes it"
+115 < 1   log "evidence: $EVIDENCE_REPO (from $file)"
+116 < 1 }
+117 < 1 # The clone is left AT BASE; the evidence repository is a shallow clone of the run's live branch alone, whose tip on a fresh clone must be the assignment's `plan=` before a model reads a word of the plan.
+118 < 1 # The two clones are independent and run side by side: each is a background subshell whose `fail` logs its own message and
+119 < 1 # exits only that subshell, leaving the message in a file the parent turns into the boot's own `fail` once `wait` reports it.
+120 < 1 # Each trap has its file's path expanded when it is set: under bash 3.2 (macOS) a function's local is gone when an EXIT trap runs.
+121 < 1 prepare() {
+122 < 1   local tpid epid err="$FLEET_HOME/.prepare-error"
+123 < 1   mkdir -p "$FLEET_HOME"; rm -f "$err.target" "$err.evidence"
+124 < 1   (
+125 < 1     PREPARE_CLONE=1
+126 < 1     trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"'"$err.target"'"' EXIT
+127 < 1     [ -e "$TARGET_DIR/.git" ] || fleet_git clone "https://$GITHUB_INT_HOST/$TARGET_REPO.git" "$TARGET_DIR" || fail "clone: target $TARGET_REPO through $GITHUB_INT_HOST"
+128 < 1     fleet_git -C "$TARGET_DIR" checkout "$BASE_SHA" || fail "checkout: target at $BASE_SHA"
+129 < 1   ) & tpid=$!
+130 < 1   (
+131 < 1     local landed; PREPARE_CLONE=1
+132 < 1     trap '[ -z "$ERROR" ] || printf "%s" "$ERROR" >"'"$err.evidence"'"' EXIT
+133 < 1     if [ ! -e "$EVIDENCE_DIR/.git" ]; then
+134 < 1       fleet_git clone --depth=1 --single-branch --branch "$LIVE_BRANCH" "https://$GITHUB_INT_HOST/$EVIDENCE_REPO.git" "$EVIDENCE_DIR" \
+135 < 1         || fail "plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST"
+136 < 1       landed="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
+137 < 1       [ "$landed" = "$PLAN_SHA" ] || fail "plan: $LIVE_BRANCH of $EVIDENCE_REPO is at '${landed:-<nothing>}', not the plan=$PLAN_SHA this run was assigned"
+138 < 1     fi
+139 < 1   ) & epid=$!
+140 < 1   # When both clones failed, the one `fail` names both reasons, the target's first.
+141 < 1   wait "$tpid" || { local terr eerr=""; terr="$(cat "$err.target" 2>/dev/null || true)"
+142 < 1     wait "$epid" || eerr="$(cat "$err.evidence" 2>/dev/null || true)"
+143 < 1     fail "${terr:-clone: target $TARGET_REPO through $GITHUB_INT_HOST}${eerr:+; $eerr}"; }
+144 < 1   wait "$epid" || { ERROR="$(cat "$err.evidence" 2>/dev/null || true)"; fail "${ERROR:-plan: cannot clone $LIVE_BRANCH of $EVIDENCE_REPO through $GITHUB_INT_HOST}"; }
+145 < 1   mkdir -p "$FLEET_HOME/plans"; fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/plan.md" >"$PLAN_FILE" || fail "plan: $PLAN_SHA carries no $EVIDENCE_REL/plan.md"
+146 < 1   EVIDENCE_READY=1; log "plan: $LIVE_BRANCH of $EVIDENCE_REPO at $PLAN_SHA -> $PLAN_FILE"
+147 < 1   # The run's one parse (#1449): the engine, the catch-up, the PR body and the publish probe all read this file.
+148 < 1   fleet_python3 "$ENGINE_REPO_DIR/skills/ultrapowers/scripts/plan_parse.py" "$PLAN_FILE" >"$PLAN_JSON" \
+149 < 1     || fail "plan: plan_parse.py refused $PLAN_FILE"
+150 < 1   # ... and it is the record's too, so a reader sees exactly what the engine read (#1486).
+151 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; cp "$PLAN_JSON" "$EVIDENCE_DIR/$EVIDENCE_REL/plan.json"
+152 < 1 }
+153 < 1 # The previous run's record, for the engine: the highest `<slug>/run-<M>` tag below this run, its run folder
+154 < 1 # extracted to `$FLEET_HOME/past/<M>`. Any miss is one `past:` log line and no `--past-dir`.
+155 < 1 find_past() {
+156 < 1   local listing ref m best=""
+157 < 1   listing="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "refs/tags/$SLUG/run-*" 2>/dev/null)" \
+158 < 1     || { log "past: cannot list $SLUG/run-* tags in $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+159 < 1   while read -r _ ref; do
+160 < 1     m="${ref#refs/tags/$SLUG/run-}"
+161 < 1     case "$m" in *[!0-9]* | "") continue ;; esac
+162 < 1     [ "$m" -lt "$RUN_N" ] 2>/dev/null || continue
+163 < 1     if [ -z "$best" ] || [ "$m" -gt "$best" ]; then best="$m"; fi
+164 < 1   done <<<"$listing"
+165 < 1   [ -n "$best" ] || { log "past: no $SLUG/run-* tag below $RUN_N in $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+166 < 1   fleet_git -C "$EVIDENCE_DIR" fetch --depth=1 origin "refs/tags/$SLUG/run-$best" 2>/dev/null \
+167 < 1     || { log "past: cannot fetch $SLUG/run-$best from $EVIDENCE_REPO — the engine starts with no past"; return 0; }
+168 < 1   rm -rf "$FLEET_HOME/past/$best"; mkdir -p "$FLEET_HOME/past/$best"
+169 < 1   if ! fleet_git -C "$EVIDENCE_DIR" archive --format=tar "FETCH_HEAD:runs/$SLUG/$best" | tar -x -C "$FLEET_HOME/past/$best"
+170 < 1   then log "past: $SLUG/run-$best carries no runs/$SLUG/$best/ — the engine starts with no past"; return 0; fi
+171 < 1   PAST_DIR="$FLEET_HOME/past/$best"; log "past: $SLUG/run-$best -> $PAST_DIR"
+172 < 1 }
+173 < 1 # One writer, twelve cells, written atomically through `factory/record.mjs status`.
+174 < 1 # `startedAt` is the run's clock and is set once; every write stamps `updatedAt`.
+175 < 1 write_status() { # $1 = state, $2 = phase (optional)
+176 < 1   local tmp
+177 < 1   STATE="$1"; if [ "$#" -ge 2 ]; then PHASE="$2"; fi
+178 < 1   [ -n "$STARTED_AT" ] || STARTED_AT="$(now_iso)"
+179 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; tmp="$STATUS_FILE.tmp.$$"
+180 < 1   fleet_node "$ENGINE_REPO_DIR/factory/record.mjs" status \
+181 < 1     run="$RUN_N" state="$STATE" phase="$PHASE" pr="$PR_URL" prAuthor="$PR_AUTHOR" \
+182 < 1     merged="$MERGED_SHA" branch="$BRANCH" vm="$VM_NAME" startedAt="$STARTED_AT" error="$ERROR" \
+183 < 1     --events "$RUN_DIR/events.jsonl" >"$tmp"
+184 < 1   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
+185 < 1 }
+186 < 1 # The engine's own evidence files, named once: collect_evidence copies them and evidence_commit adds them.
+187 < 1 ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json checks-digest.json)
+188 < 1 # The named files the engine left, copied beside the page — never `git add -A`, since the engine's clones live under the run directory and none of them is evidence.
+189 < 1 collect_evidence() {
+190 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
+191 < 1   [ -f "$RUN_DIR/events.jsonl" ] && cp "$RUN_DIR/events.jsonl" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
+192 < 1   [ -f "$ENGINE_LOG" ] && cp "$ENGINE_LOG" "$EVIDENCE_DIR/$EVIDENCE_REL/engine.log"
+193 < 1   [ -f "$RUN_DIR/summary.json" ] && cp "$RUN_DIR/summary.json" "$EVIDENCE_DIR/$EVIDENCE_REL/summary.json"
+194 < 1   local f
+195 < 1   for f in fleet-boot.log fleet-setup.log; do
+196 < 1     [ -f "$FLEET_HOME/$f" ] && cp "$FLEET_HOME/$f" "$EVIDENCE_DIR/$EVIDENCE_REL/$f"
+197 < 1   done
+198 < 1   for f in "${ENGINE_EVIDENCE[@]}"; do
+199 < 1     [ -f "$RUN_DIR/$f" ] && cp "$RUN_DIR/$f" "$EVIDENCE_DIR/$EVIDENCE_REL/$f"
+200 < 1   done
+201 < 1   return 0
+202 < 1 }
+203 < 1 evidence_commit() { # $1 = commit subject
+204 < 1   local p n=0 paths=()
+205 < 1   # The two logs as they stand now, so a line logged after the engine exits reaches this commit.
+206 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
+207 < 1   for p in fleet-boot.log fleet-setup.log; do
+208 < 1     if [ -f "$FLEET_HOME/$p" ]; then cp "$FLEET_HOME/$p" "$EVIDENCE_DIR/$EVIDENCE_REL/$p"; fi
+209 < 1   done
+210 < 1   for p in status.json plan.json events.jsonl engine.log journal.txt fleet-boot.log fleet-setup.log summary.json publish.json publish-deploy.log publish-verify.log publish-rollback.log "${ENGINE_EVIDENCE[@]}"; do
+211 < 1     if [ -f "$EVIDENCE_DIR/$EVIDENCE_REL/$p" ]; then paths+=("$EVIDENCE_REL/$p"); fi
+212 < 1   done
+213 < 1   [ "${#paths[@]}" -gt 0 ] || return 0
+214 < 1   # `-f`: whatever a `.gitignore` says — the target's once ignored `*.log`, and
+215 < 1   # run-38 and run-39 tagged no engine.log and no publish-deploy.log
+216 < 1   # (2026-09-24) — the run's named files are its record and are added.
+217 < 1   fleet_git -C "$EVIDENCE_DIR" add -f -- "${paths[@]}" || log "evidence: add refused"
+218 < 1   fleet_git -C "$EVIDENCE_DIR" commit -m "$1" || log "evidence: nothing to commit"
+219 < 1   while :; do
+220 < 1     if fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:refs/heads/$LIVE_BRANCH"; then return 0; fi
+221 < 1     n=$(( n + 1 )); if [ "$n" -ge 5 ]; then log "evidence: push rejected $n times — the commit stays local"; return 0; fi
+222 < 1     fleet_git -C "$EVIDENCE_DIR" pull --rebase origin "$LIVE_BRANCH" || true
+223 < 1   done
+224 < 1 }
+225 < 1 # One tick of the relay: copy only when the bytes differ, through a temporary name in the destination directory.
+226 < 1 tick_events() {
+227 < 1   local src="$RUN_DIR/events.jsonl" dst="$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
+228 < 1   [ -f "$src" ] || return 0
+229 < 1   if [ -f "$dst" ] && [ "$(cat "$src")" = "$(cat "$dst")" ]; then return 0; fi
+230 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"; cp "$src" "$dst.tmp.$$"; mv "$dst.tmp.$$" "$dst"
+231 < 1   evidence_commit "$RUN_ID: events"
+232 < 1 }
+233 < 1 # The credential probe lives in `factory/preflight.mjs` now: it classifies (one printed line), this
+234 < 1 # only decides — `api_key`/`no_oauth` bill exe.dev credits or mean the box is off the claude-max
+235 < 1 # subscription, `bearer_dead`/`edge_refused` name a credential or edge that refused, and `alive` and
+236 < 1 # `inconclusive` both proceed (a probe that parked a run on a flake would cost more than it saved).
+237 < 1 preflight() {
+238 < 1   local line
+239 < 1   line="$(fleet_node "$ENGINE_REPO_DIR/factory/preflight.mjs" --proxy "$ANTHROPIC_PROXY_URL")"
+240 < 1   log "preflight: $line"
+241 < 1   case "$line" in
+242 < 1     api_key*) fail "claude auth status reports api_key — that bills exe.dev credits, refusing to run" ;;
+243 < 1     no_oauth*) fail "claude auth status shows no oauth_token — this box is not on the claude-max subscription, refusing to run" ;;
+244 < 1     bearer_dead*) fail "bearer probe: the credential was refused — ${line#bearer_dead }" ;;
+245 < 1     edge_refused*) fail "bearer probe: the edge refused — ${line#edge_refused }" ;;
+246 < 1     alive*|inconclusive*) : ;;
+247 < 1   esac
+248 < 1 }
+249 < 2 # The run's hub record: the plan commit's `kata.json`, written where `run_engine`, `close_run`,
+250 < 2 # `mark-run` and the failure path read it; a plan commit without one writes nothing, and the
+251 < 2 # run proceeds with no board.
+252 < 2 kata_record() {
+253 < 2   local blob
+254 < 2   blob="$(fleet_git -C "$EVIDENCE_DIR" show "$PLAN_SHA:$EVIDENCE_REL/kata.json" 2>/dev/null || true)"
+255 < 2   [ -n "$blob" ] || { log "board: no $EVIDENCE_REL/kata.json at $PLAN_SHA — the run proceeds without a board"; return 0; }
+256 < 2   mkdir -p "$FLEET_HOME/plans"; printf '%s' "$blob" >"$FLEET_HOME/plans/$RUN_ID.kata.json"
+257 < 2   log "board: the hub record is at $FLEET_HOME/plans/$RUN_ID.kata.json"
+258 < 2 }
+259 < 1 engine_deps() {
+260 < 1   [ -d "$ENGINE_REPO_DIR/factory/node_modules" ] && return 0
+261 < 1   if [ -f "$ENGINE_REPO_DIR/factory/package-lock.json" ]
+262 < 1   then log "deps: npm ci"; ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm ci --no-audit --no-fund ) || fail "npm ci: engine deps"
+263 < 1   else log "deps: npm install"; ( cd "$ENGINE_REPO_DIR/factory" && fleet_npm install --no-audit --no-fund ) || fail "npm install: engine deps"; fi
+264 < 1   log "deps: npm returned"
+265 < 1 }
+266 < 1 # Claude Code: the image bakes whatever release was current when it was built (2.1.258 and
+267 < 1 # 2.1.267 measured on 2026-10-01), so the boot takes the newest release before the preflight, then
+268 < 1 # holds it to a floor — 2.1.287 is the first with mods — and pins it for the run. `exeuntu update`
+269 < 1 # fetches from Anthropic's public release site with no credential and swaps the binary only after
+270 < 1 # its checksum agrees, so a failed update leaves the old one in place (Shelley, fleet-counsel,
+271 < 1 # 2026-10-01); the floor is what then refuses the run.
+272 < 1 CLAUDE_FLOOR="2.1.287"
+273 < 1 claude_current() {
+274 < 1   log "claude: updating to the newest release"
+275 < 1   fleet_timeout 120 sudo -n exeuntu update claude || log "claude: the update failed; checking the installed release"
+276 < 1   local v; v="$(fleet_claude --version 2>/dev/null | cut -d' ' -f1 || true)"
+277 < 1   log "claude: $v"
+278 < 1   [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [ "$(printf '%s\n%s\n' "$CLAUDE_FLOOR" "$v" | sort -V | head -1)" = "$CLAUDE_FLOOR" ] \
+279 < 1     || fail "claude ${v:-unknown} is below the floor $CLAUDE_FLOOR"
+280 < 1   export DISABLE_AUTOUPDATER=1
+281 < 1 }
+282 < 1 # A transient SERVICE, not a scope: `--wait` hands back the exit code and `--collect` unloads the unit; while it runs, the boot relays events every FLEET_COMMIT_SECONDS and looks for its exit every second.
+283 < 1 run_engine() {
+285 > 1   local pid past_args=() engine_entry="factory/flock/engine.mjs"
+284 < 2   local pid board_args=() past_args=() engine_entry="factory/flock/engine.mjs" kata_json="$FLEET_HOME/plans/$RUN_ID.kata.json"
+285 < 2   [ -f "$kata_json" ] && board_args=(--kata-url "$KATA_ADMIN_URL" --kata-json "$kata_json" --kata-actor "engine:$RUN_ID")
+286 < 1   [ -n "$PAST_DIR" ] && past_args=(--past-dir "$PAST_DIR")
+287 < 1   mkdir -p "$RUN_DIR"; rm -f "$DONE_MARKER"
+288 < 1   ( set +e
+289 < 1     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
+290 < 1       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
+291 < 1       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
+292 < 1         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
+293 < 1         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
+294 < 1         --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
+296 > 1         ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
+295 < 2         ${board_args[@]+"${board_args[@]}"} ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
+296 < 1     printf '%s\n' "$?" >"$DONE_MARKER" ) &
+297 < 1   pid=$!
+298 < 1   # The exit is looked for every second and the events relayed every FLEET_COMMIT_SECONDS: one
+299 < 1   # sleep for both left publish waiting up to a whole tick after the engine had exited (runs 4–6
+300 < 1   # on flock-baseline, 13–58 s, 2026-09-26).
+301 < 1   local waited=0
+302 < 1   while [ ! -f "$DONE_MARKER" ]; do
+303 < 1     sleep 1; waited=$((waited + 1))
+304 < 1     if [ "$waited" -ge "$FLEET_COMMIT_SECONDS" ]; then waited=0; tick_events; fi
+305 < 1   done
+306 < 1   wait "$pid" 2>/dev/null || true
+307 < 1   log "engine: exited $(cat "$DONE_MARKER") (output in $ENGINE_LOG)"
+308 < 1 }
+309 < 2 plan_title()   { { sed -n 's/^# \(.*\)$/\1/p' "$PLAN_FILE" || true; } | head -n 1; }
+310 < 1 # The publish, in plain sequence after the engine (#1441): `factory/publish.mjs` opens the pull
+311 < 1 # request (a draft when the engine did not finish green), self-merges it under `publish.self_merge`
+312 < 1 # (catching the run up to a moved main), and runs the deploy the merge earned. It prints the run's
+313 < 1 # state, phase, PR url, PR author and merge sha one per line, or a refusal this fails on.
+314 < 1 publish() { # $1 = the engine's exit code
+315 < 1   local out rc=0 state phase_text
+316 < 1   fleet_git -C "$TARGET_DIR" push origin "HEAD:refs/heads/$BRANCH" || fail "publish: pushing $BRANCH was rejected"
+317 < 1   write_status publishing "opening the pull request"; evidence_commit "$RUN_ID: publishing"
+318 < 1   out="$(fleet_node "$ENGINE_REPO_DIR/factory/publish.mjs" --engine-exit "$1" --hold "$HOLD_FLAG" --run-id "$RUN_ID" \
+319 < 1     --target-repo "$TARGET_REPO" --target-dir "$TARGET_DIR" --branch "$BRANCH" --base-sha "$BASE_SHA" \
+320 < 1     --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --run-dir "$RUN_DIR" --evidence-dir "$EVIDENCE_DIR/$EVIDENCE_REL" \
+321 < 1     --evidence-url "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --github-host "$GITHUB_INT_HOST" \
+322 < 1     --anthropic-url "$ANTHROPIC_PROXY_URL" --typesafe-url "$TYPESAFE_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
+323 < 1   [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
+324 < 1   state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
+325 < 1   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
+326 < 1   finish "$state" "$phase_text"
+327 < 1 }
+329 > 1 # A run's end, in plain sequence: the record, the tag, the reap request.
+328 < 2 # A run's end, in plain sequence: the record, the board's close, the audit row, the tag, the reap request.
+329 < 1 finish() { # $1 = state, $2 = phase
+330 < 2   local audit_args audit_line
+331 < 1   write_status "$1" "$2"; evidence_commit "$RUN_ID: $1"
+332 < 2   close_run "$1" "$2"
+333 < 2   audit_args=(); [ -f "$FLEET_HOME/plans/$RUN_ID.kata.json" ] && audit_args=(--bound)
+334 < 2   audit_line="$(fleet_node "$ENGINE_REPO_DIR/factory/audit.mjs" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" "$1" ${audit_args[@]+"${audit_args[@]}"} 2>/dev/null)" || true
+335 < 2   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
+336 < 2   evidence_commit "$RUN_ID: audit"
+337 < 1   record_tags
+338 < 1   # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
+339 < 1   if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
+340 < 1     fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
+341 < 1     log "reap: asked the hub to remove this VM"
+342 < 1   fi
+343 < 1 }
+344 < 1 # What a run leaves behind is its one tag in the evidence repository; the live branch is only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
+345 < 1 record_tags() {
+346 < 1   local tag="refs/tags/$SLUG/$RUN_ID" head listed
+347 < 1   head="$(fleet_git -C "$EVIDENCE_DIR" rev-parse HEAD 2>/dev/null || true)"
+348 < 1   [ -n "$head" ] || { log "record: the evidence clone has no HEAD to tag — $LIVE_BRANCH kept"; return 0; }
+349 < 1   fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$tag" || { log "record: pushing $tag at $head was rejected — $LIVE_BRANCH kept"; return 0; }
+350 < 1   listed="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "$tag" 2>/dev/null | awk -v r="$tag" '$2 == r { print $1 }' || true)"
+351 < 1   [ "$listed" = "$head" ] || { log "record: $EVIDENCE_REPO lists $tag at '${listed:-<nothing>}', not $head — $LIVE_BRANCH kept"; return 0; }
+352 < 1   RECORDED=1
+353 < 1   fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
+354 < 1   log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
+355 < 1 }
+356 < 2 # The run's close: `board.mjs close-run`, the one module that talks to Kata and never
+357 < 2 # fails a run (CLAUDE.md). A parked run is not closed but marked: `mark-run` writes
+358 < 2 # `work.state=parked` on the run issue, which the janitor reaps (#1288).
+359 < 2 close_run() { # $1 = the run's final state (done|parked), $2 = its phase
+360 < 2   local args
+361 < 2   if [ "$1" != done ]; then mark_run parked "${2:-}"; return 0; fi
+362 < 2   args=(--kata-json "$FLEET_HOME/plans/$RUN_ID.kata.json" --run "$RUN_ID" --pr "$PR_URL" \
+363 < 2     --admin-url "$KATA_ADMIN_URL" --events "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl" --title "$(plan_title)")
+364 < 2   [ -n "$MERGED_SHA" ] && args+=(--merged "$MERGED_SHA")
+365 < 2   [ -z "$PR_URL" ] && args+=(--base "$BASE_SHA")
+366 < 2   fleet_node "$ENGINE_REPO_DIR/factory/board.mjs" close-run "${args[@]}" || true
+367 < 2 }
+368 < 1 # The one entry point: nothing ahead of base is done (a failure if the engine wasn't green), anything ahead is a publish.
+369 < 1 boot() {
+370 < 1   local comment code head moved; comment="$(read_assignment)"
+371 < 1   [ -n "$comment" ] || fail "assignment: no comment in FLEET_ASSIGNMENT or at $REFLECTION_URL/comment"
+372 < 1   parse_assignment "$comment"
+373 < 1   VM_NAME="$(fleet_curl -fsS "$REFLECTION_URL/" 2>/dev/null | json_field name || true)"; prepare; find_past
+374 < 1   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
+376 > 1   engine_deps; claude_current; preflight; run_engine
+375 < 2   engine_deps; claude_current; preflight; kata_record; run_engine
+376 < 1   code="$(cat "$DONE_MARKER")"; collect_evidence
+377 < 1   # a run that followed main (policy flock.main.mode `peer`) ends on the main it moved to, and says
+378 < 1   # so in $RUN_DIR/base: "nothing ahead of base" and the publish's catch-up are judged against that
+379 < 1   moved="$(head -n 1 "$RUN_DIR/base" 2>/dev/null || true)"
+380 < 1   if is_sha "$moved" && [ "$moved" != "$BASE_SHA" ]; then log "engine: the run's base moved to $moved (was $BASE_SHA)"; BASE_SHA="$moved"; fi
+381 < 1   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
+382 < 1   if [ "$head" = "$BASE_SHA" ]; then
+383 < 1     if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
+384 < 1     # exit 0 at the base: the engine settled green on a snapshot equal to the base, so every proof
+385 < 1     # already held there; nothing to publish, and the run is done, closed with the base as evidence
+386 < 1     finish done "nothing to build: every proof already passes at the base"; exit 0; fi
+387 < 1   publish "$code"; exit 0
+388 < 1 }
+389 < 1 # systemd's `ExecStopPost=` of the run unit: a boot that was killed (or died) before its record ended
+390 < 1 # leaves a failed record, with the unit's journal, and its tag; a record that already ended is left alone.
+391 < 1 # Always exits 0 — even a `fail` inside `parse_assignment` — since a stop hook's exit only muddies the unit.
+392 < 1 died() {
+393 < 1   local state how
+394 < 1   trap 'exit 0' EXIT
+395 < 1   how="unit ${SERVICE_RESULT:-unknown} (${EXIT_CODE:-unknown} ${EXIT_STATUS:-unknown})"
+396 < 1   parse_assignment "${FLEET_ASSIGNMENT:-}"
+397 < 1   if [ ! -e "$EVIDENCE_DIR/.git" ] || [ ! -f "$STATUS_FILE" ]; then
+399 > 1     ERROR="$how while the record said nothing"; log "died: $ERROR"; exit 0
+398 < 2     ERROR="$how while the record said nothing"; log "died: $ERROR"; mark_run failed "$ERROR"; exit 0
+399 < 1   fi
+400 < 1   state="$(json_field state <"$STATUS_FILE")"
+401 < 1   case "$state" in done|parked|failed) log "died: the record already says $state"; exit 0 ;; esac
+402 < 1   STARTED_AT="$(json_field startedAt <"$STATUS_FILE")"; PHASE="$(json_field phase <"$STATUS_FILE")"
+403 < 1   VM_NAME="$(json_field vm <"$STATUS_FILE")"; PR_URL="$(json_field pr <"$STATUS_FILE")"
+404 < 1   PR_AUTHOR="$(json_field prAuthor <"$STATUS_FILE")"; MERGED_SHA="$(json_field merged <"$STATUS_FILE")"
+405 < 1   ERROR="$how while the record said $state"; log "died: $ERROR"
+406 < 1   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
+407 < 1   fleet_journalctl --user -u "fleet-run@$RUN_N.service" --no-pager -n 200 >"$EVIDENCE_DIR/$EVIDENCE_REL/journal.txt" 2>&1 || true
+409 > 1   EVIDENCE_READY=1; FAILING=1; collect_evidence; write_status failed "$PHASE"
+408 < 2   EVIDENCE_READY=1; FAILING=1; collect_evidence; write_status failed "$PHASE"; mark_run failed "$ERROR"
+409 < 1   evidence_commit "$RUN_ID: died"; record_tags
+410 < 1   exit 0
+411 < 1 }
+412 < 1 case "${1:-}" in
+413 < 1   boot) boot ;;
+414 < 1   died) died ;;
+415 < 1   *) printf 'usage: boot.sh boot|died\n' >&2; exit 2 ;;
+416 < 1 esac
+417 < 1 

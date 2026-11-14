@@ -1,0 +1,215 @@
+0 < 2 /**
+1 < 2  * Filing a run on the kata hub: the project, the run issue and one issue per
+2 < 2  * task, moved out of `fleet/launch.mjs` (#1277). `fileRunOnHub` is the one
+3 < 2  * export; the plan readers and the sandbox url are its own.
+4 < 2  */
+5 < 2 
+6 < 2 import crypto from 'node:crypto'
+7 < 2 
+8 < 2 import { Refusal, integrationBranchFor, targetSlug } from './lobby.mjs'
+9 < 2 
+10 < 2 /** The url the SANDBOX reaches the hub at — the `kata` http-proxy attached by
+11 < 2  *  `tag:fleet` — written into the record regardless of the laptop's own route,
+12 < 2  *  because the record's reader is the engine on the sandbox and never the
+13 < 2  *  laptop. */
+14 < 2 const KATA_SANDBOX_URL = 'https://kata.int.exe.xyz'
+15 < 2 
+16 < 2 /** The plan's H1: the text after `# ` on the first such line, `''` when none. */
+17 < 2 const planTitleOf = (planText) => /^# (.*)$/m.exec(planText)?.[1]?.trim() ?? ''
+18 < 2 /** The plan's `**Claim:**` line, whole — the run issue's body. `''` when none. */
+19 < 2 const planClaimOf = (planText) =>
+20 < 2   planText.split('\n').find((line) => line.startsWith('**Claim:**'))?.trim() ?? ''
+21 < 2 /**
+22 < 2  * The numbers of the plan's one `**Closes:**` line — the first such line
+23 < 2  * before the first `### ` heading, which is the line the sandbox's
+24 < 2  * `plan_closes` reads — as integers, `[]` when the plan has none.
+25 < 2  */
+26 < 2 const planClosesOf = (planText) => {
+27 < 2   for (const line of planText.split('\n')) {
+28 < 2     if (line.startsWith('### ')) break
+29 < 2     if (!line.startsWith('**Closes:**')) continue
+30 < 2     return [...line.matchAll(/#(\d+)/g)].map((m) => Number(m[1]))
+31 < 2   }
+32 < 2   return []
+33 < 2 }
+34 < 2 
+35 < 2 /**
+36 < 2  * The 40 hex `git hash-object` prints for a text — computed in-process, so
+37 < 2  * nothing here has to exec git to learn the identity of a plan. A blob's sha1
+38 < 2  * is taken over the header `blob <byte length>\0` and then the bytes; the
+39 < 2  * length is the BYTE length, which is why `Buffer.byteLength` and not `.length`.
+40 < 2  *
+41 < 2  * It is the plan's identity in an `Idempotency-Key`: the same plan text is the
+42 < 2  * same sha is the same key is the same issue, and a plan whose text changed is
+43 < 2  * a new sha and a new set of issues.
+44 < 2  */
+45 < 2 // The janitor's REAPABLE_STATES (fleet/janitor.mjs), copied: a run issue in
+46 < 2 // one of these has ended even while it is still open.
+47 < 2 const FINISHED_STATES = ['done', 'parked', 'failed']
+48 < 2 
+49 < 2 const planBlobSha = (text) => {
+50 < 2   const s = String(text ?? '')
+51 < 2   return crypto.createHash('sha1')
+52 < 2     .update('blob ' + Buffer.byteLength(s) + '\0')
+53 < 2     .update(s)
+54 < 2     .digest('hex')
+55 < 2 }
+56 < 2 
+57 < 2 /**
+58 < 2  * The run, filed on the hub for one run number: the tasks of the parse made
+59 < 2  * for `run-<n>` (`compilePlanForRun`), one project `<owner>-<repo>` —
+60 < 2  * the TARGET's, not this number's, so every run against one repository files
+61 < 2  * into one project and a name the hub already holds answers the project that is
+62 < 2  * there — one run issue carrying the plan's title, Claim line and Closes
+63 < 2  * numbers, one issue per task in wave order whose run and wave are PATCHED on
+64 < 2  * after the create and whose `parent` is the run issue, one `blocks` link per
+65 < 2  * dependency edge created ON the task that blocks, and then one `getIssue` per
+66 < 2  * task and one for the run — the revisions THOSE answer are the record's,
+67 < 2  * because nothing here assumes which side of a link kata re-revisions. The
+68 < 2  * answer is the `.ultrapowers/kata.json` object, keys in the order the contract
+69 < 2  * spells: `url`, `project`, `run`, `tasks`.
+70 < 2  *
+71 < 2  * FILING THE SAME PLAN TWICE FILES IT ONCE. Every create carries an
+72 < 2  * `Idempotency-Key` — `<target>:<plan sha>:task-<id>` for a task, `…:run-<n>`
+73 < 2  * for the run — and kata fingerprints that key together with the create's
+74 < 2  * fields, so the create body must be the same on every launch of one plan
+75 < 2  * text or the replay is a 409 `idempotency_mismatch`. That is why a task's
+76 < 2  * create carries only `{task, plan}` and no links: `run` and `wave`
+77 < 2  * move with the run number, and initial links are in the
+78 < 2  * fingerprint too. They arrive instead as the metadata patch and the `parent`
+79 < 2  * link that follow, which a second launch simply re-applies to the issue the
+80 < 2  * key answered. The patch reads the issue first because an idempotent replay
+81 < 2  * answers the ORIGINAL revision (the issue is already past it, linked), and a
+82 < 2  * stale `If-Match` is a 412; the metadata endpoint merges per key, so a patch
+83 < 2  * of `{run, wave}` leaves `{task, plan}` where they are. The
+84 < 2  * `parent` link carries `replace: true` because a second parent is otherwise a
+85 < 2  * 409 `parent_already_set` — a refiled task moves under the new run issue
+86 < 2  * rather than refusing. Hub behaviour measured against kata v0.17.2 on
+87 < 2  * 2026-09-14 and re-read on v0.18.0 on 2026-09-30 (CONTRACT's kata facts).
+88 < 2  *
+89 < 2  * A task row is `{uid, short_id, revision}`, in that order (#963). The
+90 < 2  * `short_id` is the create answer's — `MUTATION_KEYS` in `fleet/kata-client.mjs`
+91 < 2  * projects it, so the launcher already holds it here — and it is the ONLY place
+92 < 2  * it can come from: the dispatch `getIssue` the engine makes projects
+93 < 2  * `ISSUE_KEYS`, which has no `short_id`, so a row that does not carry one leaves
+94 < 2  * every worker of that task with no `KATA_REF` and no issue to write to. Hence
+95 < 2  * the refusal below rather than a row without it: a run whose workers cannot
+96 < 2  * name their issue is not a run this launcher files. The run's own row stays
+97 < 2  * `{uid, revision}` — no label resolves to it, so nothing reads a short id
+98 < 2  * there.
+99 < 2  *
+100 < 2  * Every hub call goes through `call`, which turns a throw into the launch's
+101 < 2  * LobbyError naming the method; the missing `short_id` is the launch's own
+102 < 2  * refusal. The sheets are `compiled` — the launch's one parse, handed in
+103 < 2  * rather than run again here; a bumped push files the same parse under the
+104 < 2  * number it got.
+105 < 2  */
+106 < 2 async function fileRunOnHub ({ hub, call, planText, target, base, n, compiled }) {
+107 < 2   const stamp = `run-${n}`
+108 < 2   const waves = compiled?.waves ?? []
+109 < 2   const edges = compiled?.edges ?? []
+110 < 2 
+111 < 2   const planSha = planBlobSha(planText)
+112 < 2   const keyFor = (suffix) => `${target}:${planSha}:${suffix}`
+113 < 2 
+114 < 2   const name = targetSlug(target)
+115 < 2   const project = await call('createProject', () => hub.createProject(name))
+116 < 2   // Task issues are keyed by plan sha, so a byte-identical plan relaunched
+117 < 2   // while its twin runs would replay and patch that run's task issues (#1308).
+118 < 2   // Refuse by name instead; run-n itself is skipped, since a bump closes it and
+119 < 2   // a replay of the same n answers the same issue.
+120 < 2   const listed = await call('listIssues', () => hub.listIssues(project.id))
+121 < 2   const live = (listed?.issues ?? []).find((issue) => {
+122 < 2     const meta = issue?.metadata ?? {}
+123 < 2     return meta.task === undefined && meta.plan === planSha &&
+124 < 2       Number(meta.run) !== Number(n) && issue.status === 'open' &&
+125 < 2       !FINISHED_STATES.includes(meta['work.state'])
+126 < 2   })
+127 < 2   if (live !== undefined) {
+128 < 2     const other = `run-${live.metadata.run}`
+129 < 2     throw new Refusal(
+130 < 2       `launch: ${other} is live on ${target} with this plan's task issues on the kata hub — ` +
+131 < 2       `nothing was filed, no plan branch was pushed and no VM was created; launch again once ${other} has ended`
+132 < 2     )
+133 < 2   }
+134 < 2   const runIssue = await call('createIssue', () => hub.createIssue(project.id, {
+135 < 2     title: `${stamp}: ${planTitleOf(planText)}`,
+136 < 2     body: planClaimOf(planText),
+137 < 2     // `work.branch` is kata's orchestration key the launcher owns (#1391)
+138 < 2     metadata: { run: n, target, base, closes: planClosesOf(planText), plan: planSha, 'work.branch': integrationBranchFor(n) },
+139 < 2     idempotencyKey: keyFor(`run-${n}`),
+140 < 2     // A relaunch of a plan the fleet already drove differs from that run's
+141 < 2     // open issue only by N in the title, and the hub's duplicate scorer refuses
+142 < 2     // it (#1008). Run numbers make the title distinct by construction, so the
+143 < 2     // create says so; the task creates below stay byte-identical, since theirs
+144 < 2     // is the body the idempotency key is fingerprinted with.
+145 < 2     forceNew: true
+146 < 2   }))
+147 < 2   const tasks = []
+148 < 2   for (const [index, wave] of waves.entries()) {
+149 < 2     for (const entry of wave) {
+150 < 2       const id = String(entry.id)
+151 < 2       const issue = await call('createIssue', () => hub.createIssue(project.id, {
+152 < 2         title: `task ${id}: ${entry.title ?? ''}`,
+153 < 2         body: '',
+154 < 2         metadata: { task: id, plan: planSha },
+155 < 2         idempotencyKey: keyFor(`task-${id}`)
+156 < 2       }))
+157 < 2       const shortId = issue?.short_id
+158 < 2       if (typeof shortId !== 'string' || shortId === '') {
+159 < 2         throw new Refusal(
+160 < 2           `launch: kata createIssue for task ${id} answered no short_id — ` +
+161 < 2           'the worker reference `<project>#<short id>` cannot be written and no ' +
+162 < 2           'record was filed'
+163 < 2         )
+164 < 2       }
+165 < 2       // This number's half of the issue, applied rather than created: read for
+166 < 2       // the revision the patch needs (a replay answers the create's, not the
+167 < 2       // issue's), merge the run's own metadata on, and move the parent.
+168 < 2       // A 412 revision_conflict means something moved the issue between the
+169 < 2       // read and the patch: re-read and apply once more (the endpoint merges
+170 < 2       // per key, so re-applying is safe). The retry lives inside the callback
+171 < 2       // because `call` rewraps throws and drops the status.
+172 < 2       const read = await call('getIssue', () => hub.getIssue(issue.uid))
+173 < 2       const patch = { run: n, wave: index + 1 }
+174 < 2       await call('patchMetadata', async () => {
+175 < 2         try {
+176 < 2           return await hub.patchMetadata(project.id, issue.uid, patch, read.revision)
+177 < 2         } catch (err) {
+178 < 2           if (err?.status !== 412 || !String(err?.body ?? '').includes('revision_conflict')) throw err
+179 < 2           const reread = await hub.getIssue(issue.uid)
+180 < 2           return await hub.patchMetadata(project.id, issue.uid, patch, reread.revision)
+181 < 2         }
+182 < 2       })
+183 < 2       await call('link', () => hub.link(project.id, issue.uid, {
+184 < 2         type: 'parent', to_ref: runIssue.uid, replace: true
+185 < 2       }))
+186 < 2       tasks.push({ id, uid: issue.uid, shortId })
+187 < 2     }
+188 < 2   }
+189 < 2   const uidOf = new Map(tasks.map((t) => [t.id, t.uid]))
+190 < 2   for (const edge of edges) {
+191 < 2     const from = uidOf.get(String(edge.from))
+192 < 2     const to = uidOf.get(String(edge.to))
+193 < 2     if (!from || !to) {
+194 < 2       throw new Refusal(`launch: plan_parse.py for ${stamp} names an edge ${edge.from} -> ${edge.to} between tasks it did not list`)
+195 < 2     }
+196 < 2     await call('link', () => hub.link(project.id, from, { type: 'blocks', to_ref: to }))
+197 < 2   }
+198 < 2   const record = {
+199 < 2     url: KATA_SANDBOX_URL,
+200 < 2     project: { id: project.id, uid: project.uid, name: project.name },
+201 < 2     run: null,
+202 < 2     tasks: {}
+203 < 2   }
+204 < 2   for (const t of tasks) {
+205 < 2     const read = await call('getIssue', () => hub.getIssue(t.uid))
+206 < 2     record.tasks[t.id] = { uid: t.uid, short_id: t.shortId, revision: read.revision }
+207 < 2   }
+208 < 2   const readRun = await call('getIssue', () => hub.getIssue(runIssue.uid))
+209 < 2   record.run = { uid: runIssue.uid, revision: readRun.revision }
+210 < 2   return record
+211 < 2 }
+212 < 2 
+213 < 2 export { fileRunOnHub }
+214 < 2 

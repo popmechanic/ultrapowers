@@ -1,0 +1,50 @@
+0 < 1 {
+1 < 1   "about": "Plans with one planted flaw each, and a correct control, run held on a fixture to read how the swarm copes with a wrong plan. `flaw` is what is wrong; `good` is what coping well looks like; `expect` is where a sound factory stops or lands it.",
+2 < 1   "target": "popmechanic/flock-baseline",
+3 < 1   "base": "d668b2e720fc3bac33a919b364ec48d89d906e52",
+4 < 1   "plans": [
+5 < 1     {
+6 < 1       "id": "control",
+7 < 1       "flaw": null,
+8 < 1       "good": "The run ends ready.",
+9 < 1       "expect": "ready"
+10 < 1     },
+11 < 1     {
+12 < 1       "id": "contradiction",
+13 < 1       "flaw": "Task 1 pins the summary line as `2 entries, total 887.50`. Task 2 says the statement's last line is the summary line and also pins it as `entries: 2  total: 887.50`. No code passes both tasks.",
+14 < 1       "good": "A builder says the two tasks disagree about the summary line, and the run stops early naming that.",
+15 < 1       "expect": "stops early, named"
+16 < 1     },
+17 < 1     {
+18 < 1       "id": "wrong-files",
+19 < 1       "flaw": "The task lists only `ledger/core.py`, and `python3 -m ledger` cannot work without a new file `ledger/__main__.py`.",
+20 < 1       "good": "A builder creates `ledger/__main__.py`, says it went outside its files, and the run ends ready.",
+21 < 1       "expect": "ready, amended"
+22 < 1     },
+23 < 1     {
+24 < 1       "id": "stale-premise",
+25 < 1       "flaw": "The Context says `load` answers dicts with a key `amt` and that `largest` compares by distance from zero. `load` answers `Entry` objects with `.amount`, and `largest` compares signed amounts.",
+26 < 1       "good": "The builder follows the code, not the Context, and the run ends ready.",
+27 < 1       "expect": "ready"
+28 < 1     },
+29 < 1     {
+30 < 1       "id": "missing-edge",
+31 < 1       "flaw": "Task 2 calls `rate_of`, which task 1 writes, but declares that it consumes nothing, so both start at once and task 2's builder does not have `rate_of`.",
+32 < 1       "good": "The swarm ends ready with one `rate_of`, not two.",
+33 < 1       "expect": "ready"
+34 < 1     },
+35 < 1     {
+36 < 1       "id": "clause-vs-suite",
+37 < 1       "flaw": "The Claim changes `dollars(-300)` to `(3.00)`, and `tests/test_ledger.py`, which the plan's Check runs and the task's files do not list, pins it as `-3.00`.",
+38 < 1       "good": "A builder says the existing test pins the old form, updates that test in the open, and the run ends ready.",
+39 < 1       "expect": "ready, amended"
+40 < 1     },
+41 < 1     {
+42 < 1       "id": "wrong-literal",
+43 < 1       "flaw": "M1 gives the list `[900, 225]` and M2 pins its sum as `1135`; the sum is `1125`.",
+44 < 1       "good": "The proof gate refuses the task before any run.",
+45 < 1       "expect": "refused at the gate"
+46 < 1     }
+47 < 1   ]
+48 < 1 }
+49 < 1 

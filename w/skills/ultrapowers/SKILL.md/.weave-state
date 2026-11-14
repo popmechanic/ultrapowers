@@ -1,0 +1,266 @@
+0 < 1 ---
+1 < 1 name: ultrapowers
+2 < 1 description: Use when the user runs "/ultrapowers <plan-path>", asks to "execute this plan", "go ultra", or wants an approved plan built autonomously and in parallel — on the exe.dev fleet, never on this machine. Also use when the user runs "/ultrapowers setup", asks whether they have a fleet yet, or asks to build one.
+3 < 1 argument-hint: <plan-path> | setup
+4 < 1 allowed-tools: Skill Read Grep Glob Bash AskUserQuestion
+5 < 1 hooks:
+6 < 1   Stop:
+7 < 1     - hooks:
+8 < 1         - type: command
+9 < 1           command: bash "${CLAUDE_PLUGIN_ROOT}/hooks/keep_working.sh"
+10 < 1           timeout: 10
+11 < 1 ---
+12 < 1 
+13 < 1 # Ultrapowers
+14 < 1 
+15 < 1 This skill is the CLIENT only. Since 0.3.0 there is no LLM engine session:
+16 < 1 on the sandbox, a boot unit (`factory/boot.sh`) spawns the one engine, the
+17 < 1 Flock (`factory/flock/engine.mjs`), which seeds a board from the plan, runs a
+18 < 1 leaderless pool of builders that claim its tasks, merges their copies through
+19 < 1 the weave, proves each task by its `Run:` probes and the plan's `Check:` lines,
+20 < 1 and decides the merge by its own exit code — code, not prose. Nothing in this
+21 < 1 skill runs a plan locally; every dispatch happens on the sandbox.
+22 < 1 
+23 < 1 The argument decides the mode. A plan path is the client below; the bare word
+24 < 1 `setup` is the guided first run. The client falls into setup by itself when the
+25 < 1 doctor is not `ready`, so setup is a path through this file and not a separate
+26 < 1 errand.
+27 < 1 
+28 < 1 ## Setup
+29 < 1 
+30 < 1 The doctor is the only thing that knows which pieces of the fleet are already
+31 < 1 there. Every row it returns is a read: running it twice is the same as running
+32 < 1 it once, and nothing in setup creates a VM.
+33 < 1 
+34 < 1 The setup agent uses AskUserQuestion wherever a question can be posed as choices.
+35 < 1 The agent runs every command in this section itself. Only three things need a
+36 < 1 human — a browser signup, a browser approval, and one copied code — and each of
+37 < 1 those is followed by an AskUserQuestion whose recommended option is the next
+38 < 1 step, so the agent waits on an answer instead of on a guess. If a command fails
+39 < 1 in the agent's own shell, the agent reports the failure and the exact command
+40 < 1 and offers, with AskUserQuestion, to hand that one command over; that fallback
+41 < 1 exists only after the agent-run form has already failed.
+42 < 1 
+43 < 1 The first command, run from the plugin cache:
+44 < 1 
+45 < 1 ```bash
+46 < 1 node ${CLAUDE_PLUGIN_ROOT}/fleet/doctor.mjs --json
+47 < 1 ```
+48 < 1 
+49 < 1 `${CLAUDE_PLUGIN_ROOT}` is the installed plugin's directory; Claude Code
+50 < 1 writes the real path into this file when it loads it, so the cache path, which
+51 < 1 differs by version and by host, never has to be derived by hand. The reference files,
+52 < 1 which Claude Code does not rewrite, write the same directory as `<plugin-root>`.
+53 < 1 
+54 < 1 The doctor answers with one row per piece, and its row ids are `exe-dev`,
+56 > 1 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper`, in that
+55 < 2 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, in that
+56 < 1 order. Each row carries
+57 < 1 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
+58 < 1 section of `references/first-run.md` that repairs it. Read the rows back to the
+59 < 1 user as a short list before touching anything. Configuration lives in
+60 < 1 `~/.ultrapowers/fleet.json`; the doctor takes `--config <path>` to read it from
+61 < 1 somewhere else, and `--target <owner>/<repo>` to include that repository's own
+62 < 1 integration object in the answer.
+63 < 1 
+64 < 1 Then take the red rows in the doctor's order. Open the row's `fix` section in
+65 < 1 `references/first-run.md` for the detail — the walk is not restated here — and
+66 < 1 say one line about what is happening before each repair.
+67 < 1 
+68 < 1 `exe-dev` — the account. The human signs up at exe.dev and adds an ssh key in
+69 < 1 the browser; that is the first consent and the agent cannot do it for them.
+70 < 1 AskUserQuestion: **Done in the browser?** — `Yes, the account and key are in place (Recommended)` / `Not yet, wait for me`.
+71 < 1 Then the agent asks, again with AskUserQuestion, which key file `~/.ssh/config`
+72 < 1 should point at — `~/.ssh/id_ed25519` (Recommended) or another path the user
+73 < 1 names — and writes the `Host *.exe.xyz exe.dev` stanza itself.
+74 < 1 
+75 < 1 `capacity` — the pool the account's plan allows. When the detail names keys
+76 < 1 nothing reads, the agent rewrites the file with cpu and memory only, keeping
+77 < 1 any size it already carried, and re-runs the doctor — no question is asked.
+78 < 1 The agent reads the doctor's `detail` for the pool it found and asks with
+79 < 1 AskUserQuestion: **Lower the run size, or upgrade the plan?** — `Lower it to {"cpu":"4","memory":"8GB"} (Recommended)` / `Upgrade the plan instead`.
+80 < 1 On the first the agent writes the smaller size into `~/.ultrapowers/fleet.json`
+81 < 1 itself; on the second the human upgrades the plan in the browser and the agent
+82 < 1 re-runs the doctor after them.
+83 < 1 
+84 < 1 `claude` — the token. The agent runs
+85 < 1 `node ${CLAUDE_PLUGIN_ROOT}/fleet/claude-token.mjs login --code-from-clipboard` in the
+86 < 1 background; it opens claude.ai and waits for the code to land on the clipboard.
+87 < 1 The human approves there and copies the code — the third consent, and the only
+88 < 1 secret that ever moves by hand.
+89 < 1 AskUserQuestion: **Done in the browser?** — `Yes, the code is copied (Recommended)` / `Not yet, still approving`.
+90 < 1 On the answer the agent reads the command's result and says in one line whether
+91 < 1 the token landed.
+92 < 1 
+93 < 1 `github` — the GitHub integration. The agent runs
+94 < 1 `ssh exe.dev integrations setup github` and shows the user what it prints; the
+95 < 1 human approves the GitHub app install in the browser, which is the second
+96 < 1 consent.
+97 < 1 AskUserQuestion: **Done in the browser?** — `Yes, the install is approved (Recommended)` / `Not yet, wait for me`.
+98 < 1 Keep that integration personal: `--act-as-user` is unavailable on team
+99 < 1 integrations, so a team account's PRs are authored by the installation bot
+100 < 1 rather than by the user.
+101 < 1 
+102 < 1 `integrations` — every object a run needs, attached to `tag:fleet`. The agent runs
+103 < 1 `node ${CLAUDE_PLUGIN_ROOT}/fleet/target.mjs <owner>/<repo>` for the repository being
+104 < 1 built, which creates the one object that repository needs attached to
+105 < 1 `tag:fleet`; the command is idempotent, so an object already there is left
+106 < 1 alone and attached only when it is not on `tag:fleet`. When the doctor reports
+107 < 1 another object — `claude-max`, say — as not attached, the agent asks with
+108 < 1 AskUserQuestion: **Attach `<name>` to the fleet tag?** — `Yes, attach it to tag:fleet (Recommended)` / `No, leave it and I will look`,
+109 < 1 and on yes it runs `ssh exe.dev "integrations attach <name> tag:fleet"`.
+110 < 1 (`new --integration` is refused since 2026-09-11, and `integrations` has no
+111 < 1 `policy` verb, #1434; the tag attachment is the only grant.)
+112 < 1 
+113 < 1 `evidence` — the operator's evidence repository, where every run's plan and
+114 < 1 record live (never on the target, so a run on someone else's repository works
+115 < 1 too). It is set up once, in three steps the row checks in order: the key
+116 < 1 `"evidence": "<owner>/<repo>"` in `~/.ultrapowers/fleet.json`, the private
+117 < 1 repository itself (`gh repo create <owner>/<repo> --private`), and its
+118 < 1 integration (`node ${CLAUDE_PLUGIN_ROOT}/fleet/target.mjs <owner>/<repo>`). The detail
+119 < 1 of each step is the `evidence` section of `references/first-run.md`
+120 < 1 (`references/first-run.md#evidence`).
+121 < 1 
+122 < 1 The agent re-runs the doctor after each fix, and the row that turned `ok` is
+123 < 1 read back to the user in one line before the next red row is touched. A row
+124 < 1 that comes back `missing` twice is reported with the doctor's `detail` and its
+125 < 1 walk section, and the agent keeps going down the list rather than starting over.
+126 < 1 
+127 < 1 When the doctor's verdict is `ready` the fleet is complete, and the launch in
+128 < 1 `## Client` below runs in the same turn — setup is a repair, not a destination.
+129 < 1 
+130 < 1 ## Client
+131 < 1 
+132 < 1 Selecting ultrapowers at the planning handoff, or invoking `/ultrapowers` on an
+133 < 1 approved plan, **is** the authorization to execute — no further approval pause.
+134 < 1 
+135 < 1 1. **Derive the target from this checkout.** The target is the repository this
+136 < 1    skill is run in: `repo` is
+137 < 1    `gh repo view --json nameWithOwner -q .nameWithOwner`, and `baseSha` is the
+138 < 1    checkout's current commit. There is nothing per-project to configure — the
+139 < 1    pair travels in the launch, and each sandbox clones `repo` and branches from
+140 < 1    `baseSha`. That sha has to be one GitHub already has, so compare it against
+141 < 1    the upstream tip: when they differ, say the base is not on GitHub yet and ask
+142 < 1    the operator to push it before the launch. When the plan is for a
+143 < 1    repository other than this checkout, the launcher still needs a clone of
+144 < 1    that target with it as `origin`: clone it somewhere disposable and add
+145 < 1    `--repo <that clone>` to the launch line; `--target` alone is refused. The
+146 < 1    launcher compiles the plan from inside that clone, so the plan path on the
+147 < 1    launch line resolves relative to it: copy the plan and its
+148 < 1    `.gate-verdicts.json` into the clone (an untracked `docs/superpowers/plans/`
+149 < 1    there is fine) and name that relative path.
+150 < 1 
+151 < 1    Then run `node ${CLAUDE_PLUGIN_ROOT}/fleet/doctor.mjs --target <repo>` once. A
+152 < 1    verdict of `ready` goes straight to step 2. Any other verdict is repaired
+153 < 1    here: run the `## Setup` path inline, in this same turn, and launch when the
+154 < 1    doctor comes back `ready`.
+155 < 1 
+156 < 1 2. **Launch.** One line:
+157 < 1 
+158 < 1    ```bash
+159 < 1    node ${CLAUDE_PLUGIN_ROOT}/fleet/launch.mjs <plan-path> --target <repo> --base <baseSha>
+160 < 1    ```
+161 < 1 
+162 < 1    It prints the run id and the VM name — `run-<N>` and `fleet-r<N>-…` — along
+163 < 1    with a status URL and the assignment comment; tell the user the run id and
+164 < 1    VM name, and point them at step 3 to read progress, not the printed URL —
+165 < 1    there is no page behind it today, git is the record. Nothing else needs staging — the launcher commits the plan to the
+166 < 1    evidence repository's `live/<owner>-<repo>/run-<N>` branch (the target is
+167 < 1    never written to until the run's own PR branch), then creates the VM in one lobby call with
+168 < 1    `--tag fleet` (the tag every fleet integration is attached to), the
+169 < 1    assignment as its comment, and a setup script that starts the run's unit.
+170 < 1    No ssh, no second step.
+171 < 1 
+172 < 1    Add `--hold` to that line when the PR should stay open for a person — a
+173 < 1    measurement run; the sandbox then publishes and does not merge.
+174 < 1 
+175 < 1 3. **Walk away.** The run outlives this session; there is nothing to tail.
+177 > 1    While the run is in flight, read it from its evidence record:
+176 < 2    While the run is in flight, read it off the board:
+177 < 1 
+178 < 1    ```bash
+180 > 1    node ${CLAUDE_PLUGIN_ROOT}/fleet/run-read.mjs --run <N> --target <repo>
+179 < 2    node ${CLAUDE_PLUGIN_ROOT}/fleet/board-read.mjs --run <N> --target <repo>
+180 < 1    ```
+181 < 1 
+183 > 1    It prints the run's state, one line per task with its state, then
+184 < 1    `== events`: every claim, give-back, objection, conflict, move of main and
+185 < 1    the pull request, in order. The sandbox commits the record every 10 s.
+182 < 2    It prints `== now` — one line per issue of the run (the run issue and each
+183 < 2    task) with its state — then `== events`, the event feed for the run in
+184 < 2    order.
+185 < 1 
+186 < 1    Its state is also `status.json`, written at every transition: `booting` →
+187 < 1    `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
+188 < 1    evidence repository (`"evidence"` in `~/.ultrapowers/fleet.json`), under
+189 < 1    `runs/<owner>-<repo>/<N>/`. A finished run's record is `status.json` by tag:
+190 < 1    `<owner>-<repo>/run-<N>`, the one spelling that keeps working after the VM
+191 < 1    is reaped and after the run's live branch is gone.
+192 < 1 
+193 < 1    ```bash
+194 < 1    gh api 'repos/<evidence repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=<owner>-<repo>/run-<N>' --jq .content | base64 -d
+195 < 1    ```
+196 < 1 
+197 < 1    While the run is in flight that tag is not written yet and the same bytes
+198 < 1    are on its `live/<owner>-<repo>/run-<N>` branch, a working surface that
+200 > 1    goes at the end of the run — `run-read.mjs` reads whichever of the two
+201 < 1    holds the run.
+199 < 2    goes at the end of the run — read `status.json` there
+200 < 2    (`?ref=live/<owner>-<repo>/run-<N>`) as a fallback when the hub is dark.
+201 < 1 
+203 > 1    The record is the poll: read it on whatever cadence the user asks for, or
+204 < 1    watch it with `--follow`, in the foreground or the background; it ends
+205 < 1    by itself when the run's status says `done`, `parked` or `failed`. A watcher
+202 < 2    The board is the poll: read it on whatever cadence the user asks for, or
+203 < 2    watch it with `--follow`, in the foreground or the background. A watcher
+204 < 1    only reads; nothing on this machine writes to a run (step 5).
+205 < 1 
+206 < 1 4. **The PR is the gate.** There is no approval command. When the engine is
+207 < 1    done and the branch is ahead of base, the sandbox pushes it and opens the
+208 < 1    PR itself, through the target's integration attached at launch. The run's
+209 < 1    code is the `ultra/integration-run-<N>` branch, which is the PR head; its
+210 < 1    evidence is under `runs/<owner>-<repo>/<N>/` in the evidence repository, on
+211 < 1    the `live/<owner>-<repo>/run-<N>` branch while the run is in flight and at
+212 < 1    the tag `<owner>-<repo>/run-<N>` once it ends, never merged and linked from
+213 < 1    the PR body. Gate-green → a
+214 < 1    ready PR and `done`. Parked → a draft PR carrying the gate receipt and
+215 < 1    `parked`. `pr` and
+216 < 1    `prAuthor` in `status.json` are the PR's URL and who GitHub says opened it —
+217 < 1    read both back to the user, and say so when the author is the installation
+218 < 1    bot rather than them (their GitHub account is not yet linked on exe.dev's
+219 < 1    Integrations page). A ready PR merges itself on the run's own evidence: the
+220 < 1    sandbox asks GitHub for no check runs, it merges once its own gate is green
+221 < 1    and main has not moved off the tip it folded onto —
+222 < 1    `status.json`'s `merged` cell is the squash commit (null when no PR opened) — and `--hold`
+223 < 1    on the launch line keeps it open for the operator; a draft PR is the
+224 < 1    operator's to merge or close. That self-merge sentence is a gate-green
+225 < 1    run's only: after a park the sandbox has exited and merges nothing, so a
+226 < 1    parked run is acknowledged by the operator, by hand — mark the draft ready,
+227 < 1    `gh pr update-branch <N>` when it is behind main (GitHub's strict rule
+228 < 1    refuses a behind merge; this is a GitHub merge, not the kernel's fold),
+229 < 1    then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A run
+230 < 1    that builds nothing opens no PR. A stories-v1 run whose every proof already
+231 < 1    passes at the base ends `done` (phase `nothing to build: every proof already
+232 < 1    passes at the base`, `merged` null, tasks closed as already true at the
+233 < 1    base). Anything else ends `failed: engine exit <code>`, because a claims-v1
+234 < 1    probe already green at the base proves nothing. Either way the record is
+235 < 1    pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
+236 < 1    branch.
+237 < 1 
+238 < 1 5. **Reap.** `node ${CLAUDE_PLUGIN_ROOT}/fleet/janitor.mjs` removes the VMs of runs
+239 < 1    that finished over an hour ago, and reports the stale ones rather than
+240 < 1    removing them. The launcher runs it before every launch; nothing schedules it,
+241 < 1    and the agent runs it by hand when this machine has been asleep. No
+242 < 1    scheduled job or timer on this machine runs the janitor, and none is to be
+243 < 1    added: a run merges its own PR from the sandbox and the launcher runs the
+244 < 1    reap (#660), so a local process on a timer would only be a second writer,
+245 < 1    and one that dies when the laptop sleeps.
+246 < 1 
+247 < 1 ## Resources
+248 < 1 
+249 < 1 - `factory/flock/engine.mjs` — the engine (board, builders, weave) as code;
+250 < 1   `factory/flock/catchup.mjs` — a finished run caught up to a moved main.
+251 < 1 - `references/first-run.md` — one section per doctor row: what it means and the
+252 < 1   command that builds it.
+253 < 1 - `scripts/plan_parse.py` (the one parser — the sandbox runs it), `scripts/plan_check.py` (the laptop's check of the records and the base, on that parser).
+254 < 1 

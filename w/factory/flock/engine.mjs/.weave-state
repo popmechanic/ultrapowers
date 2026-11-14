@@ -4,10 +4,10 @@
 3 < 1 //
 4 < 1 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
 5 < 1 //        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
-6 < 1 //        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
-7 < 1 //   (with both --kata-url and --kata-json, and a record that reads, the board's
-8 < 1 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
-9 < 1 //    flight; without them the board stays in memory and sends nothing.)
+6 < 2 //        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
+7 < 2 //   (with both --kata-url and --kata-json, and a record that reads, the board's
+8 < 2 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
+9 < 2 //    flight; without them the board stays in memory and sends nothing.)
 10 < 1 //
 11 < 1 // With N builders working one plan together, each on its own copy, merging with each other
 12 < 1 // between tool batches, the swarm settles on green code; the engine then leaves the target one
@@ -31,10 +31,11 @@
 30 < 1 import { pullScope } from './pulls.mjs'
 31 < 1 import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
 32 < 1 import { readTrial, claimOf } from './trial_reading.mjs'
-33 < 1 import { mirrorBoard } from './kata_mirror.mjs'
+33 < 2 import { mirrorBoard } from './kata_mirror.mjs'
 34 < 1 import { looseEnds } from './loose_ends.mjs'
-35 < 1 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds, POLICY_FLOCK, EXAM_MS } from './io.mjs'
-36 < 1 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
+36 > 1 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
+35 < 2 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, kataIds, POLICY_FLOCK, EXAM_MS } from './io.mjs'
+36 < 2 import { makeKataClient, httpTransport } from '../../fleet/kata-client.mjs'
 37 < 1 import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 38 < 1 import { pastItems } from './past.mjs'
 39 < 1 import { stepReceipts } from './step_receipts.mjs'
@@ -50,11 +51,11 @@
 49 < 1 const BASE_SHA = need('base')
 50 < 1 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 51 < 1 const RUN_DIR = path.resolve(need('run-dir'))
-52 < 1 // --kata-url / --kata-json / --kata-actor: the boot passes them to either engine. With the first
-53 < 1 // two and a record that reads with an integer project.id and a run.uid, each board move is mirrored straight onto the task's issue on the
-54 < 1 // hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
-55 < 1 // never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
-56 < 1 // comment uid. Otherwise the board stays in memory.
+52 < 2 // --kata-url / --kata-json / --kata-actor: the boot passes them to either engine. With the first
+53 < 2 // two and a record that reads with an integer project.id and a run.uid, each board move is mirrored straight onto the task's issue on the
+54 < 2 // hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
+55 < 2 // never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
+56 < 2 // comment uid. Otherwise the board stays in memory.
 57 < 1 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
 58 < 1 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 59 < 1 const BUILDER = arg('builder', 'sdk')
@@ -109,6 +110,10 @@
 108 < 1 // most once a run) instead of settling; `record` only writes the run's `loose-ends` row. `--loose-ends`,
 109 < 1 // else the policy cell flock.loose_ends.mode, else record.
 110 < 1 const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
+112 > 1 // objections (the wrong-plans reading, 2026-11-13): a builder may say its task's plan cannot be
+113 < 1 // satisfied as written; the task then parks at once for the operator. `--objection`, else the policy
+114 < 1 // cell flock.objection.mode, else off, where a builder can only give the task back.
+115 < 1 const OBJECTION = arg('objection') ?? mode('objection.mode', ['on', 'off'], 'off')
 111 < 1 if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
 112 < 1 // main's memory (the main-is-a-peer design; weave_store.py): `memory` starts the run's weaves
 113 < 1 // from the entry stored for --base's tree on the target's ref refs/ultrapowers/weave/v1 and stores the
@@ -333,32 +338,33 @@
 332 < 1 }
 333 < 1 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 334 < 1 
-335 < 1 // ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
+336 > 1 // ── the board: in memory; its moves are rows in events.jsonl. ──
+335 < 2 // ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
 336 < 1 const board = new Board({ tasks: W.tasks, now })
-337 < 1 const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
-338 < 1 let kataRecord = null
-339 < 1 if (KATA_URL && KATA_JSON) {
-340 < 1   try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
-341 < 1 }
-342 < 1 // posts queued or in flight, so the engine can let them land (bounded) before it exits
-343 < 1 const kataPending = new Set()
-344 < 1 // a post gives up after 10 s (radio-station run-2 lost 1 of 6 notes at 3 s, 2026-09-28, n=1 run);
-345 < 1 // the exit still waits at most 3 s for posts in flight, so Kata never holds the publish longer
-346 < 1 const KATA_POST_MS = 10000
-347 < 1 const KATA_EXIT_MS = 3000
-348 < 1 // the posts go to the record's project and are keyed on its run uid: without both, nothing mirrors
-349 < 1 if (kataRecord && !kataIds(kataRecord)) {
-350 < 1   log('kata record lacks an integer project.id or a run.uid, not mirroring')
-351 < 1   kataRecord = null
-352 < 1 }
-353 < 1 if (kataRecord) {
-354 < 1   // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
-355 < 1   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
-356 < 1   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
-357 < 1   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
-358 < 1   // the record's project.id is the hub's own project id: posts go straight to the hub
-359 < 1   mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid })
-360 < 1 }
+337 < 2 const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
+338 < 2 let kataRecord = null
+339 < 2 if (KATA_URL && KATA_JSON) {
+340 < 2   try { kataRecord = JSON.parse(fs.readFileSync(KATA_JSON, 'utf8')) } catch (e) { log('kata record unreadable, not mirroring:', e.message) }
+341 < 2 }
+342 < 2 // posts queued or in flight, so the engine can let them land (bounded) before it exits
+343 < 2 const kataPending = new Set()
+344 < 2 // a post gives up after 10 s (radio-station run-2 lost 1 of 6 notes at 3 s, 2026-09-28, n=1 run);
+345 < 2 // the exit still waits at most 3 s for posts in flight, so Kata never holds the publish longer
+346 < 2 const KATA_POST_MS = 10000
+347 < 2 const KATA_EXIT_MS = 3000
+348 < 2 // the posts go to the record's project and are keyed on its run uid: without both, nothing mirrors
+349 < 2 if (kataRecord && !kataIds(kataRecord)) {
+350 < 2   log('kata record lacks an integer project.id or a run.uid, not mirroring')
+351 < 2   kataRecord = null
+352 < 2 }
+353 < 2 if (kataRecord) {
+354 < 2   // each request gives up after KATA_POST_MS, so a hung hub costs a post, never the run
+355 < 2   const fetchImpl = (u, init) => fetch(u, { ...init, signal: AbortSignal.timeout(KATA_POST_MS) })
+356 < 2   const kata = makeKataClient({ transport: httpTransport({ url: KATA_URL, fetchImpl }), actor: arg('kata-actor') })
+357 < 2   const track = (q) => { kataPending.add(q); q.finally(() => kataPending.delete(q)) }
+358 < 2   // the record's project.id is the hub's own project id: posts go straight to the hub
+359 < 2   mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid })
+360 < 2 }
 361 < 1 
 362 < 1 // ── facts ─────────────────────────────────────────────────────────────────────
 363 < 1 function runFacts (cwd, task) {
@@ -604,7 +610,8 @@
 600 < 1 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 601 < 1 - Publish whenever your change is coherent, so the others build on it.
 602 < 1 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
-603 < 1 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
+604 > 1 ${OBJECTION === 'on' ? '- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again.\n' : ''}- If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
+603 < 2 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 604 < 1 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 605 < 1 
 606 < 1 // What a pull brought that its builder has not been told of yet: agent -> path -> the change.
@@ -687,6 +694,22 @@
 683 < 1   await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
 684 < 1 }
 685 < 1 
+687 > 1 // A builder's objection: its task's plan cannot be satisfied as written, by any code: two clauses
+688 < 1 // that cannot both hold, or a proof nothing can pass. The task parks at once and the run, when
+689 < 1 // nothing else is left to do, ends a draft that says so. A give-back hands the task to the next
+690 < 1 // builder, who meets the same wall: on flock-baseline run-32 (2026-11-13, n=1 run) the builder named
+691 < 1 // the contradiction in its first note, the task was given back three times over 24 s, and the run
+692 < 1 // ended `deadlock` without the reason.
+693 < 1 const objections = []   // { task, agent, reason }
+694 < 1 async function objectTo (agent, task, why) {
+695 < 1   const reason = String(why).replace(/\s+/g, ' ').trim().slice(0, 600)
+696 < 1   objections.push({ task: task.id, agent, reason })
+697 < 1   await board.park(task, `${agent} objected: ${reason}`)
+698 < 1   ev('objection', { task: task.id, agent, reason })
+699 < 1   ev('task:parked', { task: task.id, releases: task.released || 0, reason: reason.slice(0, 300), objected: true })
+700 < 1   await stall('objection', { task: task.id }); log(agent, 'objects to', task.id, '—', reason)
+701 < 1 }
+702 < 1 
 686 < 1 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
 688 > 1 // it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
 689 < 1 // held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
@@ -726,6 +749,16 @@
 717 < 1   }
 718 < 1   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
 719 < 1   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
+721 > 1   // test seam: `@object` maps a task to the objection its session files instead of writing; with
+722 < 1   // objections off it is a give-back, as the `object` tool's absence leaves a builder
+723 < 1   const objected = (SCRIPT['@object'] || {})[task.id]
+724 < 1   if (objected) {
+725 < 1     usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
+726 < 1     ev('session:end', { agent, task: task.id, released: OBJECTION === 'on' ? false : objected, objected: OBJECTION === 'on' ? objected : undefined, done: false })
+727 < 1     live.delete(agent); lastChange = now()
+728 < 1     if (OBJECTION === 'on') await objectTo(agent, task, objected); else await giveBack(agent, task, objected)
+729 < 1     return
+730 < 1   }
 720 < 1   if (files) {
 721 < 1     // a path mapped to null is deleted, as a builder's delete_file would
 722 < 1     writeFiles(cwd, Object.entries(files))
@@ -853,6 +886,8 @@
 844 < 1       }),
 845 < 1     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
 846 < 1       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
+848 > 1     ...(OBJECTION === 'on' ? [tool('object', 'Say that your task cannot be done as the plan is written, by any code: two clauses that cannot both be true, or a proof nothing can pass. Name the clauses and say why. The task then waits for the operator and is not handed to another builder. When you are only blocked for now, use release.', { reason: z.string().max(600) },
+849 < 1       async (a) => { st.objected = a.reason; return say('objection filed; end your turn now') })] : []),
 847 < 1     tool('done', 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.', { summary: z.string() },
 848 < 1       async (a) => {
 849 < 1         const red = redOf(runFacts(cwd, task))
@@ -981,12 +1016,14 @@
 972 < 1   clearTimeout(killer); stops.delete(agent)
 973 < 1   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
 974 < 1   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0 })
-975 < 1   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
+976 > 1   ev('session:end', { agent, task: task.id, released: st.released, objected: st.objected, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
+975 < 2   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
 976 < 1   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
 977 < 1   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
 978 < 1   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
 979 < 1   live.delete(agent); if (!st.closed) lastChange = now()
-980 < 1   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
+981 > 1   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
+980 < 2   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
 981 < 1     const red = redOf(runFacts(cwd, task))
 982 < 1     if (red.length) {
 983 < 1       ev('facts:red', { agent, task: task.id, at: 'session-end', exits: red.map((r) => r.exit) })
@@ -1153,6 +1190,11 @@
 1144 < 1     // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
 1145 < 1     const claimed = all.some((t) => t.state === 'claimed')
 1146 < 1     if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
+1148 > 1       // nothing left that anyone can do. An objection is why: the run says so in the builder's words.
+1149 < 1       if (objections.length) {
+1150 < 1         const o = objections[0], more = objections.length - 1
+1151 < 1         terminal('draft', `objection on task ${o.task}: ${o.reason}${more ? ` (and ${more} more)` : ''}`, lastEdge); break
+1152 < 1       }
 1147 < 1       // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
 1148 < 1       await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
 1149 < 1       terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
@@ -1345,9 +1387,9 @@
 1336 < 1 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
 1337 < 1 const landed = await land()
 1338 < 1 keeper.end()
-1339 < 1 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
-1340 < 1 // a post still pending is dropped at exit: say how many, so the record accounts for every post
-1341 < 1 if (kataPending.size) ev('kata:mirror', { abandoned: kataPending.size })
+1339 < 2 if (kataPending.size) await Promise.race([Promise.all([...kataPending]), new Promise((r) => setTimeout(r, KATA_EXIT_MS).unref())])
+1340 < 2 // a post still pending is dropped at exit: say how many, so the record accounts for every post
+1341 < 2 if (kataPending.size) ev('kata:mirror', { abandoned: kataPending.size })
 1342 < 1 process.exit(landed)
 1343 < 1 
 1344 < 1 // #1401: under `enforce`, a settled green whose snapshot lost a peer's line (the survival fact,

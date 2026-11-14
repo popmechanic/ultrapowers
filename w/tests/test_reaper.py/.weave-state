@@ -1,0 +1,197 @@
+0 < 1 """The hub's VM remover (fleet/reaper.py): what it answers, and on which record.
+1 < 1 
+2 < 1 The remover answers 202 only when the caller is a fleet VM whose name carries
+3 < 1 the run it names and the record says that run ended done. The record is the
+5 > 1 evidence repository's status page at the run's tag. No socket is opened: the
+6 < 1 reader is handed in.
+4 < 2 evidence repository's status page at the run's tag by default; the kata run
+5 < 2 issue is the rollback. No socket is opened: the readers are handed in.
+6 < 1 """
+7 < 1 import base64
+8 < 1 import importlib.util
+9 < 1 import json
+10 < 1 import pathlib
+11 < 1 
+12 < 1 import pytest
+13 < 1 
+14 < 1 REAPER = pathlib.Path(__file__).resolve().parent.parent / "fleet" / "reaper.py"
+15 < 1 spec = importlib.util.spec_from_file_location("fleet_reaper", REAPER)
+16 < 1 reaper = importlib.util.module_from_spec(spec)
+17 < 1 spec.loader.exec_module(reaper)
+18 < 1 
+19 < 1 VM = "fleet-r7-2611130000-abcd"
+20 < 1 CALLER = VM + ".exe.xyz"
+21 < 1 BODY = {"run": 7, "target": "o/r"}
+22 < 1 RAW = json.dumps(BODY).encode("utf-8")
+23 < 1 EVIDENCE = "ops/evidence"
+24 < 1 
+25 < 1 
+26 < 1 def never(*args):
+27 < 1     raise AssertionError(f"no record may be read here, got {args}")
+28 < 1 
+29 < 1 
+30 < 1 # ── decide(): the caller, the run its name carries, the target, the record ──
+31 < 1 
+32 < 1 def test_decide_answers_202_and_names_only_the_caller():
+33 < 1     assert reaper.decide(CALLER, BODY, True) == (202, VM)
+34 < 1     assert reaper.decide(VM, BODY, True) == (202, VM)
+35 < 1 
+36 < 1 
+37 < 1 @pytest.mark.parametrize("caller", [None, "", "kata-hub.exe.xyz", "fleet-r8-2611130000-abcd.exe.xyz", "xfleet-r7-1-a"])
+38 < 1 def test_decide_refuses_a_caller_that_is_not_the_runs_own_vm(caller):
+39 < 1     assert reaper.decide(caller, BODY, True) == (403, None)
+40 < 1 
+41 < 1 
+42 < 1 @pytest.mark.parametrize("body", [None, [], {}, {"run": "7", "target": "o/r"}, {"run": True, "target": "o/r"}, {"run": 8, "target": "o/r"}])
+43 < 1 def test_decide_refuses_a_body_whose_run_is_not_the_callers(body):
+44 < 1     assert reaper.decide(CALLER, body, True) == (403, None)
+45 < 1 
+46 < 1 
+47 < 1 @pytest.mark.parametrize("target", [None, 7, "o", "o/r/x", "o r/x", "o/r?x"])
+48 < 1 def test_decide_refuses_a_target_that_is_not_owner_repo(target):
+49 < 1     assert reaper.decide(CALLER, {"run": 7, "target": target}, True) == (400, None)
+50 < 1 
+51 < 1 
+52 < 1 @pytest.mark.parametrize("done", [False, None, "done", 1, {"state": "done"}])
+53 < 1 def test_decide_answers_409_unless_the_record_said_done(done):
+54 < 1     assert reaper.decide(CALLER, BODY, done) == (409, None)
+55 < 1 
+56 < 1 
+58 > 1 # ── The record ─────────────────────────────────────────────────────────────
+57 < 2 # ── The two records ────────────────────────────────────────────────────────
+58 < 1 
+59 < 1 def test_status_done_is_a_status_page_whose_state_is_done():
+60 < 1     assert reaper.status_done({"state": "done", "merged": None}) is True
+61 < 1     for status in [None, {}, {"state": "parked"}, {"state": "failed"}, {"state": "running"}, {"state": "publishing"}, "done"]:
+62 < 1         assert reaper.status_done(status) is False
+63 < 2 
+64 < 2 
+65 < 2 def test_issue_done_is_a_run_issue_closed_as_done():
+66 < 2     assert reaper.issue_done({"status": "closed", "closed_reason": "done"}) is True
+67 < 2     for issue in [None, {"status": "open"}, {"status": "closed", "closed_reason": "wontfix"}]:
+68 < 2         assert reaper.issue_done(issue) is False
+69 < 2 
+70 < 2 
+71 < 2 def test_record_of_is_evidence_unless_it_says_kata():
+72 < 2     assert reaper.record_of("kata") == "kata"
+73 < 2     for value in [None, "", "evidence", "KATA", "hub"]:
+74 < 2         assert reaper.record_of(value) == "evidence"
+75 < 1 
+76 < 1 
+77 < 1 # ── The evidence read ──────────────────────────────────────────────────────
+78 < 1 
+79 < 1 def test_status_url_reads_the_page_at_the_runs_tag_and_no_other_ref():
+80 < 1     assert reaper.status_url(EVIDENCE, "o/r", 7) == (
+81 < 1         "https://github.int.exe.xyz/api/v3/repos/ops/evidence/contents/runs/o-r/7/status.json"
+82 < 1         "?ref=refs%2Ftags%2Fo-r%2Frun-7"
+83 < 1     )
+84 < 1 
+85 < 1 
+86 < 1 def test_status_of_reads_the_raw_file_and_the_base64_envelope():
+87 < 1     page = {"state": "done", "run": "7"}
+88 < 1     raw = json.dumps(page).encode("utf-8")
+89 < 1     envelope = json.dumps({"encoding": "base64", "content": base64.encodebytes(raw).decode("ascii")}).encode("utf-8")
+90 < 1     assert reaper.status_of(raw) == page
+91 < 1     assert reaper.status_of(envelope) == page
+92 < 1     for junk in [b"", b"not json", b"[]", b'"done"', json.dumps({"encoding": "base64", "content": "!!"}).encode("utf-8")]:
+93 < 1         assert reaper.status_of(junk) is None
+94 < 1 
+95 < 1 
+96 < 1 def test_read_status_reads_nothing_without_an_evidence_repository(monkeypatch):
+97 < 1     monkeypatch.setattr(reaper.urllib.request, "urlopen", never)
+98 < 1     for evidence in [None, "", "not a repo", "o/r/x"]:
+99 < 1         assert reaper.read_status(evidence, "o/r", 7) is None
+100 < 1 
+101 < 1 
+102 < 1 class _Answer:
+103 < 1     def __init__(self, raw):
+104 < 1         self.raw = raw
+105 < 1 
+106 < 1     def __enter__(self):
+107 < 1         return self
+108 < 1 
+109 < 1     def __exit__(self, *exc):
+110 < 1         return False
+111 < 1 
+112 < 1     def read(self):
+113 < 1         return self.raw
+114 < 1 
+115 < 1 
+116 < 1 def test_read_status_asks_the_edge_once_and_a_missing_tag_is_none(monkeypatch):
+117 < 1     asked = []
+118 < 1 
+119 < 1     def found(req, timeout=None):
+120 < 1         asked.append((req.full_url, timeout))
+121 < 1         return _Answer(b'{"state": "done"}')
+122 < 1 
+123 < 1     monkeypatch.setattr(reaper.urllib.request, "urlopen", found)
+124 < 1     assert reaper.read_status(EVIDENCE, "o/r", 7) == {"state": "done"}
+125 < 1     assert asked == [(reaper.status_url(EVIDENCE, "o/r", 7), reaper.READ_SECONDS)]
+126 < 1     assert reaper.READ_SECONDS < 5, "the calling boot waits five seconds"
+127 < 1 
+128 < 1     def missing(req, timeout=None):
+129 < 1         raise reaper.urllib.error.HTTPError(req.full_url, 404, "Not Found", None, None)
+130 < 1 
+131 < 1     monkeypatch.setattr(reaper.urllib.request, "urlopen", missing)
+132 < 1     assert reaper.read_status(EVIDENCE, "o/r", 7) is None
+133 < 1 
+134 < 1 
+135 < 1 # ── One request, decided ───────────────────────────────────────────────────
+136 < 1 
+137 < 1 def reader(status):
+138 < 1     seen = []
+139 < 1 
+140 < 1     def read(evidence, target, run):
+141 < 1         seen.append((evidence, target, run))
+142 < 1         return status
+143 < 1 
+144 < 1     return read, seen
+145 < 1 
+146 < 1 
+148 > 1 def test_evidence_record_done_at_the_tag_answers_202():
+147 < 2 def test_evidence_record_done_at_the_tag_answers_202_and_kata_is_not_asked():
+148 < 1     read, seen = reader({"state": "done"})
+150 > 1     assert reaper.answer_for(CALLER, RAW, EVIDENCE, read=read) == (202, VM, 7)
+149 < 2     assert reaper.answer_for(CALLER, RAW, "evidence", EVIDENCE, read=read, find=never) == (202, VM, 7)
+150 < 1     assert seen == [(EVIDENCE, "o/r", 7)]
+151 < 1 
+152 < 1 
+153 < 1 @pytest.mark.parametrize("status", [None, {"state": "parked"}, {"state": "failed"}, {"state": "running"}, {}])
+154 < 1 def test_evidence_record_that_does_not_say_done_answers_409(status):
+155 < 1     read, _ = reader(status)
+157 > 1     assert reaper.answer_for(CALLER, RAW, EVIDENCE, read=read) == (409, None, 7)
+156 < 2     assert reaper.answer_for(CALLER, RAW, "evidence", EVIDENCE, read=read, find=never) == (409, None, 7)
+157 < 1 
+158 < 1 
+159 < 1 def test_no_record_is_read_for_a_wrong_caller_body_or_target():
+161 > 1     assert reaper.answer_for(None, RAW, EVIDENCE, read=never) == (403, None, None)
+162 < 1     assert reaper.answer_for("kata-hub.exe.xyz", RAW, EVIDENCE, read=never) == (403, None, 7)
+163 < 1     assert reaper.answer_for(CALLER, b"not json", EVIDENCE, read=never) == (400, None, None)
+160 < 2     assert reaper.answer_for(None, RAW, "evidence", EVIDENCE, read=never, find=never) == (403, None, None)
+161 < 2     assert reaper.answer_for("kata-hub.exe.xyz", RAW, "evidence", EVIDENCE, read=never, find=never) == (403, None, 7)
+162 < 2     assert reaper.answer_for(CALLER, b"not json", "evidence", EVIDENCE, read=never, find=never) == (400, None, None)
+163 < 1     other = json.dumps({"run": 8, "target": "o/r"}).encode("utf-8")
+165 > 1     assert reaper.answer_for(CALLER, other, EVIDENCE, read=never) == (403, None, 8)
+164 < 2     assert reaper.answer_for(CALLER, other, "evidence", EVIDENCE, read=never, find=never) == (403, None, 8)
+165 < 1     bad = json.dumps({"run": 7, "target": "nowhere"}).encode("utf-8")
+167 > 1     assert reaper.answer_for(CALLER, bad, EVIDENCE, read=never) == (400, None, 7)
+166 < 2     assert reaper.answer_for(CALLER, bad, "kata", EVIDENCE, read=never, find=never) == (400, None, 7)
+167 < 1 
+168 < 1 
+170 > 1 def test_no_kata_is_left_in_the_remover():
+171 < 1     text = REAPER.read_text()
+172 < 1     assert "kata" not in text.lower()
+173 < 1     assert "localhost:8000" not in text
+169 < 2 def test_the_kata_rollback_decides_on_the_run_issue_and_reads_no_evidence():
+170 < 2     closed = lambda target, run: {"status": "closed", "closed_reason": "done"}
+171 < 2     assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=closed) == (202, VM, 7)
+172 < 2     still_open = lambda target, run: {"status": "open"}
+173 < 2     assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=still_open) == (409, None, 7)
+174 < 2     assert reaper.answer_for(CALLER, RAW, "kata", EVIDENCE, read=never, find=lambda t, r: None) == (409, None, 7)
+175 < 1 
+176 < 1 
+177 < 1 def test_rm_succeeded_counts_a_2xx_and_a_vm_already_gone():
+178 < 1     assert reaper.rm_succeeded(200, "") is True
+179 < 1     assert reaper.rm_succeeded(404, "VM Not Found") is True
+180 < 1     assert reaper.rm_succeeded(401, "invalid token") is False
+181 < 1 

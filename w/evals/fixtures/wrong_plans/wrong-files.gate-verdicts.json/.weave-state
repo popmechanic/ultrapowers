@@ -1,0 +1,38 @@
+0 < 1 {
+1 < 1   "tasks": {
+2 < 1     "1": {
+3 < 1       "hash": "0c41f27583c2441e7c7943424d254f48eb239347f05eed875238904966de5977",
+4 < 1       "verdict": "pass",
+5 < 1       "reason": "the last line's beginning and end have one tagged probe that would fail if false and does not contradict the clause",
+6 < 1       "gate_rounds": [
+7 < 1         {
+8 < 1           "hash": "0c41f27583c2441e7c7943424d254f48eb239347f05eed875238904966de5977",
+9 < 1           "agent": "pass",
+10 < 1           "jev": "pass",
+11 < 1           "clauses": [
+12 < 1             {
+13 < 1               "id": "M1",
+14 < 1               "fact": 0.81,
+15 < 1               "caught": 0.97
+16 < 1             }
+17 < 1           ],
+18 < 1           "contradiction": 0.03,
+19 < 1           "pinned": null,
+20 < 1           "reading": {
+21 < 1             "caught": "caught_v2",
+22 < 1             "own_files": "dropped"
+23 < 1           }
+24 < 1         }
+25 < 1       ]
+26 < 1     }
+27 < 1   },
+28 < 1   "tally": {
+29 < 1     "dispatched": 2,
+30 < 1     "rejected": 1,
+31 < 1     "rounds": 2,
+32 < 1     "base": "d668b2e",
+33 < 1     "history": [],
+34 < 1     "note": "round 1 failed the clause for naming an exit code its piped probe cannot see; the clause was narrowed"
+35 < 1   }
+36 < 1 }
+37 < 1 

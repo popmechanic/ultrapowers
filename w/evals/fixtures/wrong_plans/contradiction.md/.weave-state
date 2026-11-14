@@ -1,0 +1,70 @@
+0 < 1 # Ledger: a statement with a one-line summary
+1 < 1 
+2 < 1 **Grammar:** claims-v1
+3 < 1 **Claim:** I open the pull request on flock-baseline and the ledger prints a statement: its report, then one line saying how many entries it holds and what they sum to. (elicited)
+4 < 1 **Summary:** Two small additions to the ledger: a one-line summary, and a statement that puts that line under the existing report.
+5 < 1 
+6 < 1 **Goal:** Add a one-line summary and a statement to the ledger.
+7 < 1 **Tech Stack:** Python 3 + pytest. Run the suite with `python3 -m pytest -q -p no:cacheprovider` from the repository root.
+8 < 1 
+9 < 1 **Base:** `ledger/__init__.py`, `ledger/core.py`, `ledger/rates.py` and `tests/test_ledger.py` exist at BASE, `d668b2e720fc3bac33a919b364ec48d89d906e52` on flock-baseline's main.
+10 < 1 
+11 < 1 Spec: none.
+12 < 1 
+13 < 1 ## Global Constraints
+14 < 1 
+15 < 1 - Check: python3 -m pytest -q -p no:cacheprovider
+16 < 1 
+17 < 1 ---
+18 < 1 
+19 < 1 ### Task 1: Summarize a ledger in one line
+20 < 1 
+21 < 1 **Type:** implementation
+22 < 1 
+23 < 1 **Files:**
+24 < 1 - Modify: `ledger/core.py`
+25 < 1 
+26 < 1 **Claim:** An operator reads how many entries a ledger holds and what they sum to, in one line. (derived)
+27 < 1 Machine: M1. `summary("2026-09-01,cash,-12.50,coffee\n2026-09-02,card,900,rent, deposit\n")` is exactly `"2 entries, total 887.50"`.
+28 < 1 
+29 < 1 **Authorized-by:** operator's pick, 2026-11-13
+30 < 1 
+31 < 1 **Interfaces:**
+32 < 1 - Consumes: nothing
+33 < 1 - Produces: `summary(text: str) -> str`
+34 < 1 
+35 < 1 **Context:** `summary(text)` loads the text with the module's `load(text)` and answers the number of entries, the word `entries`, a comma, the word `total` and `dollars` of the module's `total(entries)`.
+36 < 1 
+37 < 1 **Proof:**
+38 < 1 - Run: python3 -c "from ledger.core import summary; assert summary('2026-09-01,cash,-12.50,coffee\n2026-09-02,card,900,rent, deposit\n') == '2 entries, total 887.50'" [M1]
+39 < 1 - Legs: (a) the one-line summary of a two-entry ledger, byte for byte [M1].
+40 < 1 
+41 < 1 **Stale-if:**
+42 < 1 - path-absent: `ledger/core.py`
+43 < 1 
+44 < 1 ### Task 2: Print a statement
+45 < 1 
+46 < 1 **Type:** implementation
+47 < 1 
+48 < 1 **Files:**
+49 < 1 - Modify: `ledger/core.py`
+50 < 1 
+51 < 1 **Claim:** An operator prints a statement: the report, then the summary line. (derived)
+52 < 1 Machine: M1. The last line of `statement(text)` is exactly `summary(text)`. M2. For the two-entry ledger of the proof, the last line of `statement(text)` is exactly `"entries: 2  total: 887.50"`.
+53 < 1 
+54 < 1 **Authorized-by:** operator's pick, 2026-11-13
+55 < 1 
+56 < 1 **Interfaces:**
+57 < 1 - Consumes: `summary(text: str) -> str`
+58 < 1 - Produces: `statement(text: str) -> str`
+59 < 1 
+60 < 1 **Context:** `statement(text)` is the module's `report(text)`, a newline, and `summary(text)` from task 1.
+61 < 1 
+62 < 1 **Proof:**
+63 < 1 - Run: python3 -c "from ledger.core import statement, summary; t = '2026-09-01,cash,-12.50,coffee\n2026-09-02,card,900,rent, deposit\n'; assert statement(t).splitlines()[-1] == summary(t)" [M1]
+64 < 1 - Run: python3 -c "from ledger.core import statement; assert statement('2026-09-01,cash,-12.50,coffee\n2026-09-02,card,900,rent, deposit\n').splitlines()[-1] == 'entries: 2  total: 887.50'" [M2]
+65 < 1 - Legs: (a) the last line equals the summary [M1]; (b) the last line of the two-entry statement, byte for byte [M2].
+66 < 1 
+67 < 1 **Stale-if:**
+68 < 1 - path-absent: `ledger/core.py`
+69 < 1 

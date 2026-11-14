@@ -1,0 +1,388 @@
+0 < 2 #!/usr/bin/env node
+1 < 2 /**
+2 < 2  * fleet/kata-hub.mjs — build the fleet's one kata hub, once.
+3 < 2  *
+4 < 2  *   node fleet/kata-hub.mjs [--dry-run] [--json]
+5 < 2  *
+6 < 2  * The hub is a single persistent VM named `kata-hub` running the kata issue
+7 < 2  * daemon, reachable from every sandbox through one `http-proxy --peer`
+8 < 2  * integration named `kata` and from the laptop over ssh. It is NOT part of a
+9 < 2  * run: it carries no tag, so the janitor's `fleet-r*` glob never lists it, and
+10 < 2  * its comment says so a second time.
+11 < 2  *
+12 < 2  * Three mutating verbs build it, in this order:
+13 < 2  *
+14 < 2  *   new --name kata-hub --cpu 1 --memory 2GB --disk 20GB --comment '…'
+15 < 2  *       --setup-script /dev/stdin --json      (the rendered script on stdin)
+16 < 2  *   share port kata-hub 8000                  (`docs/proxy.md` picks a port
+17 < 2  *                                              heuristically; this pins it)
+18 < 2  *   integrations add http-proxy --name kata --target <https_url> --peer
+19 < 2  *       --bearer - --comment '…' --attach tag:fleet   (bearer on stdin)
+20 < 2  *
+21 < 2  * `<https_url>` is read off the `kata-hub` row of one `ls kata-hub --json`
+22 < 2  * issued directly after the `new`: a team VM's host is not necessarily
+23 < 2  * `<name>.exe.xyz`, so nothing here guesses a host. The same row's `ssh_dest`
+24 < 2  * is where every ssh goes.
+25 < 2  *
+26 < 2  * Nothing secret rides an argv. The bearer is 32 random bytes of hex, minted
+27 < 2  * here, handed to `integrations add` on stdin, written to the hub's own
+28 < 2  * `/etc/kata/kata.env` (root:exedev 0640) on stdin, and kept on the laptop in
+29 < 2  * `~/.ultrapowers/kata-hub.env` at mode 0600. The setup script carries neither
+30 < 2  * it nor the origin — exe.dev stores a rendered setup script as a property of
+31 < 2  * the VM, and the `https_url` does not exist until `new` has answered — so the
+32 < 2  * unit waits, via `ExecStartPre`, for an env file this tool delivers over ssh
+33 < 2  * once the VM's first boot is done.
+34 < 2  *
+35 < 2  * `new` answers long before first boot finishes, hence the bounded wait:
+36 < 2  * `.setup-done`, then the config, then the env and a restart, then
+37 < 2  * `is-active`. Only after the daemon answers `active` does the laptop's env
+38 < 2  * file appear, so the file's existence means the hub works.
+39 < 2  *
+40 < 2  * The build resumes. Every step is skipped when its object already exists, and
+41 < 2  * a `kata` integration in front of a rebuilt VM has its bearer rotated with
+42 < 2  * `integrations edit kata --bearer=-` rather than being added twice.
+43 < 2  */
+44 < 2 
+45 < 2 import { randomBytes } from 'node:crypto'
+46 < 2 import fs from 'node:fs'
+47 < 2 import os from 'node:os'
+48 < 2 import path from 'node:path'
+49 < 2 import { fileURLToPath } from 'node:url'
+50 < 2 
+51 < 2 import {
+52 < 2   FLEET_POLICY,
+53 < 2   LobbyError,
+54 < 2   defaultExec,
+55 < 2   listIntegrations,
+56 < 2   lobby,
+57 < 2   output,
+58 < 2   parseArgs,
+59 < 2   parseJson,
+60 < 2   runCli
+61 < 2 } from './lobby.mjs'
+62 < 2 
+63 < 2 const HERE = path.dirname(fileURLToPath(import.meta.url))
+64 < 2 
+65 < 2 const USAGE = 'usage: node fleet/kata-hub.mjs [--dry-run] [--json]'
+66 < 2 
+67 < 2 /** The hub's VM name, and the integration that fronts it. */
+68 < 2 const HUB_VM = 'kata-hub'
+69 < 2 const HUB_INTEGRATION = 'kata'
+70 < 2 /** The second integration on the same target: no bearer, so a spoke's own
+71 < 2  *  `Authorization` rides through untouched for federation. */
+72 < 2 const FED_INTEGRATION = 'kata-sync'
+73 < 2 /** The port the daemon binds and the one verb that pins it. */
+74 < 2 const HUB_PORT = 8000
+75 < 2 /** Two locks against the janitor: no tag at all, and a comment that says why. */
+76 < 2 const HUB_COMMENT = 'kata hub — persistent service, do not reap'
+77 < 2 const INTEGRATION_COMMENT = 'kata issue daemon on kata-hub'
+78 < 2 /** The federation transport's own comment — carries no bearer, so it says why. */
+79 < 2 const FED_INTEGRATION_COMMENT = 'kata hub federation transport — passes Authorization through'
+80 < 2 
+81 < 2 /** The laptop's copy of the hub's address and bearer. */
+82 < 2 const ENV_FILE = ['.ultrapowers', 'kata-hub.env']
+83 < 2 
+84 < 2 /** exe.dev's `--setup-script` cap is 10 KiB; this is the fleet's own budget. */
+85 < 2 const HUB_SETUP_BUDGET_BYTES = 8192
+86 < 2 /** The quoted heredoc the unit's bytes ride in, and the line they replace. */
+87 < 2 const UNIT_TAG = 'KATA_UNIT_EOF'
+88 < 2 const UNIT_PLACEHOLDER = '__KATA_UNIT__'
+89 < 2 
+90 < 2 /** How long between polls, and how long in all, both overridable. */
+91 < 2 const DEFAULT_POLL_SECONDS = 5
+92 < 2 const DEFAULT_WAIT_SECONDS = 600
+93 < 2 
+94 < 2 // ── The setup script ────────────────────────────────────────────────────────
+95 < 2 
+96 < 2 /** The two files this tool carries, as they sit beside this module. */
+97 < 2 function readHubFiles () {
+98 < 2   return {
+99 < 2     template: fs.readFileSync(path.join(HERE, 'kata-hub-setup.sh'), 'utf8'),
+100 < 2     unit: fs.readFileSync(path.join(HERE, 'kata.service'), 'utf8')
+101 < 2   }
+102 < 2 }
+103 < 2 
+104 < 2 /**
+105 < 2  * The template with its one `__KATA_UNIT__` line replaced by the unit's bytes.
+106 < 2  *
+107 < 2  * The unit rides a quoted heredoc, so the only thing that can go wrong is the
+108 < 2  * delimiter appearing inside it — say so rather than truncate, exactly as
+109 < 2  * `heredocBody` in `fleet/setup-script.mjs` does. The budget is checked here
+110 < 2  * because a two-byte overrun would otherwise surface at `new`, after the
+111 < 2  * operator has waited for a VM.
+112 < 2  */
+113 < 2 function renderHubSetupScript ({ template, unit }) {
+114 < 2   const lines = String(template ?? '').split('\n')
+115 < 2   const at = lines.indexOf(UNIT_PLACEHOLDER)
+116 < 2   if (at === -1) {
+117 < 2     throw new Error(`the hub setup template carries no ${UNIT_PLACEHOLDER} line`)
+118 < 2   }
+119 < 2   const body = String(unit ?? '')
+120 < 2   if (body.split('\n').includes(UNIT_TAG)) {
+121 < 2     throw new Error(`the unit carries the heredoc delimiter ${UNIT_TAG} on a line of its own`)
+122 < 2   }
+123 < 2   lines.splice(at, 1, ...body.replace(/\n$/, '').split('\n'))
+124 < 2   const script = lines.join('\n')
+125 < 2   const bytes = Buffer.byteLength(script, 'utf8')
+126 < 2   if (bytes > HUB_SETUP_BUDGET_BYTES) {
+127 < 2     throw new Error(`hub setup script is ${bytes} bytes; the fleet's budget is ${HUB_SETUP_BUDGET_BYTES}`)
+128 < 2   }
+129 < 2   return script
+130 < 2 }
+131 < 2 
+132 < 2 // ── The three verbs, as strings ─────────────────────────────────────────────
+133 < 2 
+134 < 2 const newVerb = () =>
+135 < 2   `new --name ${HUB_VM} --cpu 1 --memory 2GB --disk 20GB ` +
+136 < 2   `--comment '${HUB_COMMENT}' --setup-script /dev/stdin --json`
+137 < 2 
+138 < 2 const sharePortVerb = () => `share port ${HUB_VM} ${HUB_PORT}`
+139 < 2 
+140 < 2 const addVerb = (httpsUrl) =>
+141 < 2   `integrations add http-proxy --name ${HUB_INTEGRATION} --target ${httpsUrl} --peer ` +
+142 < 2   `--bearer - --comment '${INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
+143 < 2 
+144 < 2 const editVerb = () => `integrations edit ${HUB_INTEGRATION} --bearer=-`
+145 < 2 
+146 < 2 /**
+147 < 2  * The federation transport, same target, no `--bearer`: peer auth rides a
+148 < 2  * reserved internal header the target never sees, so a spoke's own
+149 < 2  * `Authorization: Bearer <enrollment token>` is the only one in flight
+150 < 2  * (Shelley's counsel, 2026-09-18, `kata-federation-proxy-configuration`).
+151 < 2  */
+152 < 2 const fedAddVerb = (httpsUrl) =>
+153 < 2   `integrations add http-proxy --name ${FED_INTEGRATION} --target ${httpsUrl} --peer ` +
+154 < 2   `--comment '${FED_INTEGRATION_COMMENT}' --attach ${FLEET_POLICY}`
+155 < 2 
+156 < 2 // ── Reads ───────────────────────────────────────────────────────────────────
+157 < 2 
+158 < 2 /**
+159 < 2  * The `kata-hub` row of `ls kata-hub --json`, or null.
+160 < 2  *
+161 < 2  * `listVms` in `fleet/lobby.mjs` maps a row to name/sshDest/sshHost/status/
+162 < 2  * comment/tags and drops `https_url`, which is the one field this tool cannot
+163 < 2  * do without — so the raw payload is read here instead of widening a helper
+164 < 2  * three other CLIs share.
+165 < 2  */
+166 < 2 async function readHubRow (exec) {
+167 < 2   const res = await lobby(exec, `ls ${HUB_VM} --json`)
+168 < 2   const payload = parseJson(res.stdout)
+169 < 2   const rows = Array.isArray(payload?.vms) ? payload.vms : []
+170 < 2   const row = rows.find((entry) => entry?.vm_name === HUB_VM)
+171 < 2   if (!row) return null
+172 < 2   return {
+173 < 2     name: row.vm_name,
+174 < 2     httpsUrl: typeof row.https_url === 'string' ? row.https_url : null,
+175 < 2     sshDest: typeof row.ssh_dest === 'string' ? row.ssh_dest : null,
+176 < 2     status: typeof row.status === 'string' ? row.status : null
+177 < 2   }
+178 < 2 }
+179 < 2 
+180 < 2 // ── One command on the hub ──────────────────────────────────────────────────
+181 < 2 
+182 < 2 /**
+183 < 2  * `BatchMode` refuses to ask for a password and `ConnectTimeout` bounds a dark
+184 < 2  * VM at fifteen seconds — the same shape the janitor's `onVm` uses. `input`,
+185 < 2  * when given, is the only way a secret reaches the hub.
+186 < 2  */
+187 < 2 const onVm = (exec, dest, command, options) => {
+188 < 2   const argv = ['-o', 'BatchMode=yes', '-o', 'ConnectTimeout=15', dest, command]
+189 < 2   return options === undefined ? exec('ssh', argv) : exec('ssh', argv, options)
+190 < 2 }
+191 < 2 
+192 < 2 const DONE_FLAG = '/var/lib/kata/.setup-done'
+193 < 2 
+194 < 2 const configCommand = () =>
+195 < 2   'sudo -n tee /var/lib/kata/config.toml >/dev/null && ' +
+196 < 2   'sudo -n chown exedev:exedev /var/lib/kata/config.toml && ' +
+197 < 2   'sudo -n chmod 0644 /var/lib/kata/config.toml'
+198 < 2 
+199 < 2 const envCommand = () =>
+200 < 2   'sudo -n install -d -m 0755 /etc/kata && ' +
+201 < 2   'sudo -n tee /etc/kata/kata.env >/dev/null && ' +
+202 < 2   'sudo -n chown root:exedev /etc/kata/kata.env && ' +
+203 < 2   'sudo -n chmod 0640 /etc/kata/kata.env && ' +
+204 < 2   'sudo -n systemctl restart kata.service'
+205 < 2 
+206 < 2 /** What the daemon validates the request `Host` against. */
+207 < 2 const configText = (httpsUrl) => `[web]\npublic_origin = "${httpsUrl}"\n`
+208 < 2 
+209 < 2 /** What the unit sources. `PORT` is what makes the daemon bind 0.0.0.0. */
+210 < 2 const envText = (bearer) =>
+211 < 2   `KATA_AUTH_TOKEN=${bearer}\nKATA_TRUST_PRIVATE_NETWORK=1\nKATA_HOME=/var/lib/kata\nPORT=${HUB_PORT}\n`
+212 < 2 
+213 < 2 // ── The bounded wait ────────────────────────────────────────────────────────
+214 < 2 
+215 < 2 /**
+216 < 2  * Poll `attempt` until it answers done, sleeping `poll` seconds between tries
+217 < 2  * and spending from a budget shared by every wait in one build. An exhausted
+218 < 2  * budget is a `LobbyError` naming the hub and the last answer seen — the last
+219 < 2  * answer is the whole diagnosis, so it is carried verbatim.
+220 < 2  */
+221 < 2 async function waitFor (attempt, { sleep, poll, budget, what }) {
+222 < 2   let last = ''
+223 < 2   for (;;) {
+224 < 2     const seen = await attempt()
+225 < 2     if (seen.done) return
+226 < 2     last = seen.answer
+227 < 2     if (budget.spent + poll > budget.total) break
+228 < 2     await sleep(poll)
+229 < 2     budget.spent += poll
+230 < 2   }
+231 < 2   throw new LobbyError(
+232 < 2     `${HUB_VM} is not ready after ${budget.total}s: ${what} last answered "${last}"`
+233 < 2   )
+234 < 2 }
+235 < 2 
+236 < 2 const answerOf = (res) => {
+237 < 2   const text = output(res)
+238 < 2   return text === '' ? `exit ${res.code}` : text
+239 < 2 }
+240 < 2 
+241 < 2 // ── The build ───────────────────────────────────────────────────────────────
+242 < 2 
+243 < 2 const defaultSleep = (seconds) => new Promise((resolve) => setTimeout(resolve, seconds * 1000))
+244 < 2 
+245 < 2 /**
+246 < 2  * 32 random bytes as lower-case hex. `rand` is the seam a sim replaces, so a
+247 < 2  * substitute answering hex already is taken at its word rather than encoded
+248 < 2  * twice.
+249 < 2  */
+250 < 2 function mintBearer (rand) {
+251 < 2   const minted = rand(32)
+252 < 2   if (typeof minted === 'string') {
+253 < 2     return /^[0-9a-f]{64}$/.test(minted) ? minted : Buffer.from(minted, 'utf8').toString('hex')
+254 < 2   }
+255 < 2   return Buffer.from(minted).toString('hex')
+256 < 2 }
+257 < 2 
+258 < 2 const positive = (value, fallback) => {
+259 < 2   const n = Number(value)
+260 < 2   return Number.isFinite(n) && n > 0 ? n : fallback
+261 < 2 }
+262 < 2 
+263 < 2 /**
+264 < 2  * Build the hub, or resume a half-built one, and answer what was done.
+265 < 2  *
+266 < 2  * The reads come first, because what is already there decides every verb
+267 < 2  * below; the bearer is minted before the first mutation, because a rebuilt VM
+268 < 2  * needs a fresh one at the edge whether the integration is added or edited.
+269 < 2  */
+270 < 2 async function kataHub ({
+271 < 2   argv = [],
+272 < 2   exec = defaultExec,
+273 < 2   rand = randomBytes,
+274 < 2   sleep = defaultSleep,
+275 < 2   home = os.homedir(),
+276 < 2   env = process.env,
+277 < 2   files = null
+278 < 2 } = {}) {
+279 < 2   const { opts } = parseArgs(argv, { flags: ['dry-run', 'json'] })
+280 < 2   const dryRun = opts['dry-run'] === true
+281 < 2   const json = opts.json === true
+282 < 2   // The usage is the answer to `--help`, and it is plain text whatever else
+283 < 2   // was asked for.
+284 < 2   if (opts.help === true) return reported({ help: true, json: false })
+285 < 2   const poll = positive(env.KATA_HUB_POLL_SECONDS, DEFAULT_POLL_SECONDS)
+286 < 2   const budget = { spent: 0, total: positive(env.KATA_HUB_WAIT_SECONDS, DEFAULT_WAIT_SECONDS) }
+287 < 2   const envPath = path.join(home, ...ENV_FILE)
+288 < 2 
+289 < 2   const integrations = await listIntegrations(exec)
+290 < 2   const listed = integrations.some((entry) => entry.name === HUB_INTEGRATION)
+291 < 2   const listedFed = integrations.some((entry) => entry.name === FED_INTEGRATION)
+292 < 2   let row = await readHubRow(exec)
+293 < 2 
+294 < 2   if (dryRun) {
+295 < 2     return reported({
+296 < 2       dryRun: true,
+297 < 2       json,
+298 < 2       verbs: [newVerb(), sharePortVerb(), addVerb(row?.httpsUrl ?? '<https_url>')]
+299 < 2     })
+300 < 2   }
+301 < 2   if (listed && row && fs.existsSync(envPath)) {
+302 < 2     // An existing hub still lacks the federation transport when it predates it
+303 < 2     // (the hub of 2026-09-12 did, on 2026-09-18): add it before answering built.
+304 < 2     if (!listedFed && row.httpsUrl) {
+305 < 2       try { await lobby(exec, fedAddVerb(row.httpsUrl)) } catch (error) { await lobby(exec, fedAddVerbAttach(row.httpsUrl)) }
+306 < 2     }
+307 < 2     return reported({ alreadyBuilt: true, json, vm: HUB_VM, url: row.httpsUrl })
+308 < 2   }
+309 < 2 
+310 < 2   const bearer = mintBearer(rand)
+311 < 2   // A `kata` in the listing with no VM behind it is a hub that was rebuilt:
+312 < 2   // the edge still injects the bearer the old daemon held, so it is rotated.
+313 < 2   const rebuilt = listed && !row
+314 < 2 
+315 < 2   if (!row) {
+316 < 2     const { template, unit } = files ?? readHubFiles()
+317 < 2     await lobby(exec, newVerb(), { input: renderHubSetupScript({ template, unit }) })
+318 < 2     row = await readHubRow(exec)
+319 < 2     if (!row) throw new LobbyError(`exe.dev new answered, but no ${HUB_VM} row followed it`)
+320 < 2     await lobby(exec, sharePortVerb())
+321 < 2   }
+322 < 2   if (!row.httpsUrl) throw new LobbyError(`the ${HUB_VM} row carries no https_url`)
+323 < 2   if (!row.sshDest) throw new LobbyError(`the ${HUB_VM} row carries no ssh_dest`)
+324 < 2 
+325 < 2   if (!listed) await lobby(exec, addVerb(row.httpsUrl), { input: bearer })
+326 < 2   else if (rebuilt) await lobby(exec, editVerb(), { input: bearer })
+327 < 2 
+328 < 2   // The federation transport: same target, no bearer, idempotent the same way.
+329 < 2   if (!listedFed) await lobby(exec, fedAddVerb(row.httpsUrl))
+330 < 2 
+331 < 2   // First boot: the setup script's last act before it deletes itself.
+332 < 2   await waitFor(async () => {
+333 < 2     const res = await onVm(exec, row.sshDest, `test -f ${DONE_FLAG}`)
+334 < 2     return { done: res.code === 0, answer: answerOf(res) }
+335 < 2   }, { sleep, poll, budget, what: `test -f ${DONE_FLAG}` })
+336 < 2 
+337 < 2   // The origin first — the daemon reads it at start — then the bearer and the
+338 < 2   // restart that picks both up.
+339 < 2   const config = await onVm(exec, row.sshDest, configCommand(), { input: configText(row.httpsUrl) })
+340 < 2   if (config.code !== 0) throw new LobbyError(`${HUB_VM}: writing config.toml failed:\n${output(config)}`)
+341 < 2   const delivered = await onVm(exec, row.sshDest, envCommand(), { input: envText(bearer) })
+342 < 2   if (delivered.code !== 0) throw new LobbyError(`${HUB_VM}: writing kata.env failed:\n${output(delivered)}`)
+343 < 2 
+344 < 2   await waitFor(async () => {
+345 < 2     const res = await onVm(exec, row.sshDest, 'systemctl is-active kata.service')
+346 < 2     return { done: String(res.stdout ?? '').trim() === 'active', answer: answerOf(res) }
+347 < 2   }, { sleep, poll, budget, what: 'systemctl is-active kata.service' })
+348 < 2 
+349 < 2   // Last: the file whose existence means the hub answers.
+350 < 2   fs.mkdirSync(path.dirname(envPath), { recursive: true })
+351 < 2   fs.writeFileSync(envPath, `KATA_URL=${row.httpsUrl}\nKATA_TOKEN=${bearer}\n`, { mode: 0o600 })
+352 < 2   fs.chmodSync(envPath, 0o600)
+353 < 2 
+354 < 2   return reported({
+355 < 2     built: true,
+356 < 2     json,
+357 < 2     vm: HUB_VM,
+358 < 2     url: row.httpsUrl,
+359 < 2     envFile: envPath,
+360 < 2     integration: HUB_INTEGRATION
+361 < 2   })
+362 < 2 }
+363 < 2 
+364 < 2 const renderKataHub = (result) => {
+365 < 2   if (result.help) return USAGE
+366 < 2   if (result.dryRun) return result.verbs.join('\n')
+367 < 2   if (result.alreadyBuilt) return `${HUB_VM} already built`
+368 < 2   return `${HUB_VM} is up at ${result.url} — ${result.integration} at the edge, ${result.envFile} on the laptop`
+369 < 2 }
+370 < 2 
+371 < 2 /**
+372 < 2  * Every answer carries the line the operator reads, so what the tool has to
+373 < 2  * say survives the trip back to `main` — one place decides the wording, and a
+374 < 2  * caller holding the result holds the report too.
+375 < 2  */
+376 < 2 const reported = (result) => ({ ...result, report: renderKataHub(result) })
+377 < 2 
+378 < 2 async function main (argv) {
+379 < 2   const result = await kataHub({ argv })
+380 < 2   process.stdout.write(result.json ? `${JSON.stringify(result)}\n` : `${result.report}\n`)
+381 < 2 }
+382 < 2 
+383 < 2 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+384 < 2 if (invokedPath === fileURLToPath(import.meta.url)) {
+385 < 2   await runCli(main, process.argv.slice(2))
+386 < 2 }
+387 < 2 

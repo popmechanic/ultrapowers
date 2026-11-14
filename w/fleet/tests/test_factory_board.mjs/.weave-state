@@ -1,0 +1,348 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_factory_board.mjs — the exam for `factory/board.mjs`'s
+2 < 2  * CLI: the one module that talks to Kata, holding the run's close, so the
+3 < 2  * boot only ever calls it (Authorized-by #1222, map #1131 rule 6; CLAUDE.md
+4 < 2  * "`board.mjs` is the only module that talks to Kata and never fails a
+5 < 2  * run"). The spoke's `spoke-config`, `wait` and `install` are gone (#1390),
+6 < 2  * and with them the legs that drove them.
+7 < 2  *
+8 < 2  * The Machine clauses under test, restated so a reader can map every
+9 < 2  * assertion back to the contract:
+10 < 2  *
+11 < 2  *   M3 `close-run` against a 200-answering stub sends exactly three POSTs,
+12 < 2  *      in task-then-run order, each with the right path, Idempotency-Key,
+13 < 2  *      no `authorization` header, and a body of the given shape; the events
+14 < 2  *      file gains three `board:close` rows in order.
+15 < 2  *   M4 `close-run` never fails the run: a 500-answering stub still exits 0
+16 < 2  *      (rows carry `code: 500`); a missing kata.json exits 0, sends
+17 < 2  *      nothing, and writes the one documented skip row.
+18 < 2  *
+19 < 2  * Legs, each naming the clause it proves: (c) [M3] close-run's three POSTs
+20 < 2  * and its three event rows; (d) [M4] close-run's never-fails shape over a
+21 < 2  * 500 stub and a missing kata.json. The stub answers `{}`, so the rows'
+22 < 2  * receipts (`event_id`, `event_at`) read null here and are not asserted.
+23 < 2  *
+24 < 2  * The CLI is driven as a child process, every spawn's `env` built by
+25 < 2  * `simEnv` from `./_helpers.mjs` (`test_sims_are_hermetic.mjs` names any
+26 < 2  * spawn whose `env` is not). The admin host is a `node:http` server on
+27 < 2  * `127.0.0.1:0`, recording method/path/headers/body per request.
+28 < 2  * Everything lives under `fs.mkdtempSync(path.join(os.tmpdir(), …))`.
+29 < 2  *
+30 < 2  * `execFileSync` is *synchronous*: it blocks this process's own event loop
+31 < 2  * until the child exits, so a stub `http` server hosted here could never
+32 < 2  * `accept()` a connection from a child that is itself waiting on that same
+33 < 2  * stub — a real deadlock. Every leg drives the CLI with `spawn` wrapped in
+34 < 2  * a promise (`runCliAsync`) so this process's event loop stays free to
+35 < 2  * service the stub while the child runs.
+36 < 2  *
+37 < 2  * Assumed of the code under test: the CLI's subcommands, flags and
+38 < 2  * exit/stdout/stderr shapes are exactly as the task's Context section spells
+39 < 2  * them out — this exam does not re-derive them from `factory/boot.sh`,
+40 < 2  * which is a sibling task's file.
+41 < 2  */
+42 < 2 
+43 < 2 import assert from 'node:assert/strict'
+44 < 2 import fs from 'node:fs'
+45 < 2 import http from 'node:http'
+46 < 2 import os from 'node:os'
+47 < 2 import path from 'node:path'
+48 < 2 import { spawn } from 'node:child_process'
+49 < 2 import { fileURLToPath } from 'node:url'
+50 < 2 
+51 < 2 import { simEnv } from './_helpers.mjs'
+52 < 2 
+53 < 2 const MODULE = fileURLToPath(new URL('../../factory/board.mjs', import.meta.url))
+54 < 2 
+55 < 2 const mkdir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'board-exam-'))
+56 < 2 
+57 < 2 /** Runs the CLI as a child process asynchronously, never throwing: resolves
+58 < 2  *  `{ stdout, stderr, status }` once the child exits (or is killed past
+59 < 2  *  `timeoutMs`). Used by every leg, each of which also runs a stub `http`
+60 < 2  *  server in this process (see the header comment on why `execFileSync`
+61 < 2  *  cannot be). */
+62 < 2 const runCliAsync = (args, { bin, home, timeoutMs } = {}) =>
+63 < 2   new Promise((resolve) => {
+64 < 2     const child = spawn(process.execPath, [MODULE, ...args], { env: simEnv({ bin, home }) })
+65 < 2     let stdout = ''
+66 < 2     let stderr = ''
+67 < 2     child.stdout.on('data', (d) => { stdout += d })
+68 < 2     child.stderr.on('data', (d) => { stderr += d })
+69 < 2     const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs ?? 10000)
+70 < 2     child.on('close', (code) => {
+71 < 2       clearTimeout(timer)
+72 < 2       resolve({ stdout, stderr, status: code })
+73 < 2     })
+74 < 2   })
+75 < 2 
+76 < 2 /** A recording HTTP stub on 127.0.0.1: every request is captured (method,
+77 < 2  *  path, headers, body), and answered the status `statusFor` names — a
+78 < 2  *  number, or a function of the recorded request. */
+79 < 2 const startStub = (statusFor) =>
+80 < 2   new Promise((resolve) => {
+81 < 2     const requests = []
+82 < 2     const server = http.createServer((req, res) => {
+83 < 2       const chunks = []
+84 < 2       req.on('data', (c) => chunks.push(c))
+85 < 2       req.on('end', () => {
+86 < 2         const body = Buffer.concat(chunks).toString('utf8')
+87 < 2         const rec = { method: req.method, path: req.url, headers: req.headers, body }
+88 < 2         requests.push(rec)
+89 < 2         const status = typeof statusFor === 'function' ? statusFor(rec) : statusFor
+90 < 2         res.writeHead(status, { 'content-type': 'application/json' })
+91 < 2         res.end('{}')
+92 < 2       })
+93 < 2     })
+94 < 2     server.listen(0, '127.0.0.1', () => resolve({ server, requests, url: `http://127.0.0.1:${server.address().port}` }))
+95 < 2   })
+96 < 2 
+97 < 2 const closeStub = (stub) => new Promise((resolve) => stub.server.close(resolve))
+98 < 2 
+99 < 2 const readEventRows = (file) =>
+100 < 2   fs.readFileSync(file, 'utf8').split('\n').filter((l) => l.length > 0).map((l) => JSON.parse(l))
+101 < 2 
+102 < 2 // ══════════════════════════════════════════════════════════════════════════
+103 < 2 // (c) [M3] `close-run` against a 200-answering stub
+104 < 2 // ══════════════════════════════════════════════════════════════════════════
+105 < 2 
+106 < 2 {
+107 < 2   const root = mkdir()
+108 < 2   const kataJson = path.join(root, 'kata.json')
+109 < 2   fs.writeFileSync(kataJson, JSON.stringify({
+110 < 2     project: { id: 31 },
+111 < 2     run: { uid: 'r-uid' },
+112 < 2     tasks: { 1: { uid: 't1' }, 2: { uid: 't2' } },
+113 < 2   }))
+114 < 2   const eventsPath = path.join(root, 'events.jsonl')
+115 < 2   const prUrl = 'https://github.com/o/r/pull/9'
+116 < 2 
+117 < 2   const stub = await startStub(200)
+118 < 2   try {
+119 < 2     const result = await runCliAsync([
+120 < 2       'close-run',
+121 < 2       '--kata-json', kataJson,
+122 < 2       '--run', 'run-9',
+123 < 2       '--pr', prUrl,
+124 < 2       '--admin-url', stub.url,
+125 < 2       '--events', eventsPath,
+126 < 2       '--title', 'T',
+127 < 2     ], { timeoutMs: 15000 })
+128 < 2     assert.equal(result.status, 0,
+129 < 2       '(c) [M3] close-run exits 0 against a 200-answering stub; got status ' + JSON.stringify(result.status) +
+130 < 2       ', stderr ' + JSON.stringify(result.stderr))
+131 < 2 
+132 < 2     assert.equal(stub.requests.length, 3,
+133 < 2       '(c) [M3] the stub recorded exactly three requests; got ' + stub.requests.length)
+134 < 2     for (const rec of stub.requests) {
+135 < 2       assert.equal(rec.method, 'POST', '(c) [M3] every request is a POST; got ' + JSON.stringify(rec.method))
+136 < 2     }
+137 < 2 
+138 < 2     const expectedPaths = [
+139 < 2       '/api/v1/projects/31/issues/t1/actions/close',
+140 < 2       '/api/v1/projects/31/issues/t2/actions/close',
+141 < 2       '/api/v1/projects/31/issues/r-uid/actions/close',
+142 < 2     ]
+143 < 2     assert.deepEqual(stub.requests.map((r) => r.path), expectedPaths,
+144 < 2       '(c) [M3] the three POSTs land, in order, on task 1, task 2, then the run; got ' +
+145 < 2       JSON.stringify(stub.requests.map((r) => r.path)))
+146 < 2 
+147 < 2     const expectedKeys = ['r-uid:task:1:close', 'r-uid:task:2:close', 'r-uid:run:close']
+148 < 2     assert.deepEqual(stub.requests.map((r) => r.headers['idempotency-key']), expectedKeys,
+149 < 2       '(c) [M3] their Idempotency-Key headers are exactly the three keys, in order; got ' +
+150 < 2       JSON.stringify(stub.requests.map((r) => r.headers['idempotency-key'])))
+151 < 2 
+152 < 2     for (const rec of stub.requests) {
+153 < 2       assert.equal(rec.headers.authorization, undefined,
+154 < 2         '(c) [M3] no request carries an authorization header; ' + rec.path + ' had ' +
+155 < 2         JSON.stringify(rec.headers.authorization))
+156 < 2       assert.ok(String(rec.headers['content-type'] || '').startsWith('application/json'),
+157 < 2         '(c) [M3] every request carries content-type: application/json; ' + rec.path + ' had ' +
+158 < 2         JSON.stringify(rec.headers['content-type']))
+159 < 2     }
+160 < 2 
+161 < 2     for (const rec of stub.requests) {
+162 < 2       const parsed = JSON.parse(rec.body)
+163 < 2       assert.equal(parsed.actor, 'sandbox:run-9',
+164 < 2         '(c) [M3] ' + rec.path + '\'s body actor is sandbox:run-9; got ' + JSON.stringify(parsed.actor))
+165 < 2       assert.equal(parsed.reason, 'done',
+166 < 2         '(c) [M3] ' + rec.path + '\'s body reason is done; got ' + JSON.stringify(parsed.reason))
+167 < 2       assert.equal(parsed.retry_protocol, 'close-v1',
+168 < 2         '(c) [M3] ' + rec.path + '\'s body retry_protocol is close-v1; got ' + JSON.stringify(parsed.retry_protocol))
+169 < 2       assert.ok(typeof parsed.message === 'string' && parsed.message.length >= 40,
+170 < 2         '(c) [M3] ' + rec.path + '\'s body message is a string of at least 40 characters; got ' +
+171 < 2         JSON.stringify(parsed.message))
+172 < 2       assert.deepEqual(parsed.evidence, [{ type: 'pr', url: prUrl }],
+173 < 2         '(c) [M3] ' + rec.path + '\'s body evidence is exactly [{type:"pr",url:<pr>}]; got ' +
+174 < 2         JSON.stringify(parsed.evidence))
+175 < 2     }
+176 < 2 
+177 < 2     const rows = readEventRows(eventsPath)
+178 < 2     assert.equal(rows.length, 3, '(c) [M3] the events file gained exactly three rows; got ' + rows.length)
+179 < 2     assert.deepEqual(rows.map((r) => r.kind), ['board:close', 'board:close', 'board:close'],
+180 < 2       '(c) [M3] every row\'s kind is board:close; got ' + JSON.stringify(rows.map((r) => r.kind)))
+181 < 2     assert.deepEqual(rows.map((r) => r.what), ['task 1', 'task 2', 'run'],
+182 < 2       '(c) [M3] the rows\' what is task 1, task 2, run, in that order; got ' +
+183 < 2       JSON.stringify(rows.map((r) => r.what)))
+184 < 2     assert.deepEqual(rows.map((r) => r.code), [200, 200, 200],
+185 < 2       '(c) [M3] every row\'s code is the number 200; got ' + JSON.stringify(rows.map((r) => r.code)))
+186 < 2     for (const row of rows) {
+187 < 2       assert.equal(typeof row.ts, 'string', '(c) [M3] every row carries a string ts')
+188 < 2       assert.ok(row.ts.length > 0, '(c) [M3] every row\'s ts is non-empty')
+189 < 2     }
+190 < 2   } finally {
+191 < 2     await closeStub(stub)
+192 < 2   }
+193 < 2 }
+194 < 2 
+195 < 2 // ══════════════════════════════════════════════════════════════════════════
+196 < 2 // (e) #1391 `mark-run`: the run raises work.attention, its tasks take needs-review
+197 < 2 // ══════════════════════════════════════════════════════════════════════════
+198 < 2 
+199 < 2 {
+200 < 2   const root = mkdir()
+201 < 2   const kataJson = path.join(root, 'kata.json')
+202 < 2   fs.writeFileSync(kataJson, JSON.stringify({
+203 < 2     project: { id: 31 },
+204 < 2     run: { uid: 'r-uid' },
+205 < 2     tasks: { 2: { uid: 't2' }, 1: { uid: 't1' } },
+206 < 2   }))
+207 < 2   const eventsPath = path.join(root, 'events.jsonl')
+208 < 2   const evidence = 'https://github.com/ops/evidence/tree/o-r/run-9/runs/o-r/9'
+209 < 2 
+210 < 2   const stub = await startStub(200)
+211 < 2   try {
+212 < 2     const result = await runCliAsync([
+213 < 2       'mark-run', '--kata-json', kataJson, '--run', 'run-9', '--state', 'parked',
+214 < 2       '--message', 'nothing ahead of base', '--evidence', evidence,
+215 < 2       '--admin-url', stub.url, '--events', eventsPath,
+216 < 2     ], { timeoutMs: 15000 })
+217 < 2     assert.equal(result.status, 0, '(e) mark-run exits 0; stderr ' + JSON.stringify(result.stderr))
+218 < 2     assert.deepEqual(stub.requests.map((r) => r.path), [
+219 < 2       '/api/v1/projects/31/issues/r-uid/metadata',
+220 < 2       '/api/v1/projects/31/issues/t1/labels',
+221 < 2       '/api/v1/projects/31/issues/t1/comments',
+222 < 2       '/api/v1/projects/31/issues/t2/labels',
+223 < 2       '/api/v1/projects/31/issues/t2/comments',
+224 < 2     ], '(e) the run is marked first, then each task in id order is labelled and commented; got ' +
+225 < 2       JSON.stringify(stub.requests.map((r) => r.path)))
+226 < 2     const [mark, label, comment] = stub.requests.map((r) => JSON.parse(r.body))
+227 < 2     assert.deepEqual(mark.patch, { 'work.state': 'parked', 'work.attention': 'needs-human', 'work.attention_msg': 'nothing ahead of base' },
+228 < 2       '(e) the run patch raises work.attention with the phase; got ' + JSON.stringify(mark.patch))
+229 < 2     assert.equal(label.label, 'needs-review', '(e) each task takes the needs-review label; got ' + JSON.stringify(label))
+230 < 2     assert.ok(comment.body.includes('run-9 parked: nothing ahead of base') && comment.body.includes(evidence),
+231 < 2       '(e) each task comment names the run, its state, the phase and the evidence; got ' + JSON.stringify(comment.body))
+232 < 2     assert.equal(stub.requests[2].headers['idempotency-key'], 'r-uid:task:1:mark:parked',
+233 < 2       '(e) a task comment is keyed per run, task and state')
+234 < 2     for (const rec of stub.requests) assert.equal(rec.headers.authorization, undefined, '(e) no authorization header on ' + rec.path)
+235 < 2     const rows = readEventRows(eventsPath)
+236 < 2     assert.deepEqual(rows.map((r) => [r.kind, r.what]), [['board:mark', 'run'], ['board:review', 'task 1'], ['board:review', 'task 2']],
+237 < 2       '(e) one board:mark row for the run, one board:review row per task; got ' + JSON.stringify(rows))
+238 < 2     assert.deepEqual(rows.slice(1).map((r) => [r.label, r.comment]), [[200, 200], [200, 200]],
+239 < 2       '(e) each task row carries both writes\' codes')
+240 < 2   } finally {
+241 < 2     await closeStub(stub)
+242 < 2   }
+243 < 2 }
+244 < 2 
+245 < 2 // ══════════════════════════════════════════════════════════════════════════
+246 < 2 // (c2) `close-run` with no PR: a run with nothing to build closes on the base commit alone
+247 < 2 // ══════════════════════════════════════════════════════════════════════════
+248 < 2 
+249 < 2 {
+250 < 2   const root = mkdir()
+251 < 2   const kataJson = path.join(root, 'kata.json')
+252 < 2   fs.writeFileSync(kataJson, JSON.stringify({ project: { id: 31 }, run: { uid: 'r-uid' }, tasks: { 1: { uid: 't1' } } }))
+253 < 2   const eventsPath = path.join(root, 'events.jsonl')
+254 < 2   const base = '078ea0c3385b88e7fc6a3a587eb250d34e88aebe'
+255 < 2   const stub = await startStub(200)
+256 < 2   try {
+257 < 2     const result = await runCliAsync(['close-run', '--kata-json', kataJson, '--run', 'run-1', '--pr', '', '--base', base,
+258 < 2       '--admin-url', stub.url, '--events', eventsPath, '--title', 'The shared list'], { timeoutMs: 15000 })
+259 < 2     assert.equal(result.status, 0, '(c2) close-run with no PR exits 0; got ' + JSON.stringify(result.status) + ', stderr ' + JSON.stringify(result.stderr))
+260 < 2     assert.equal(stub.requests.length, 2, '(c2) the task and the run are closed; got ' + stub.requests.length + ' requests')
+261 < 2     for (const rec of stub.requests) {
+262 < 2       const parsed = JSON.parse(rec.body)
+263 < 2       assert.deepEqual(parsed.evidence, [{ type: 'commit', sha: base }],
+264 < 2         '(c2) ' + rec.path + '\'s evidence is the base commit alone; got ' + JSON.stringify(parsed.evidence))
+265 < 2       assert.ok(parsed.message.includes(base) && !parsed.message.includes('undefined') && parsed.message.length >= 40,
+266 < 2         '(c2) ' + rec.path + '\'s message names the base commit; got ' + JSON.stringify(parsed.message))
+267 < 2     }
+268 < 2   } finally {
+269 < 2     await closeStub(stub)
+270 < 2   }
+271 < 2 }
+272 < 2 
+273 < 2 // ══════════════════════════════════════════════════════════════════════════
+274 < 2 // (d) [M4] `close-run` never fails the run
+275 < 2 // ══════════════════════════════════════════════════════════════════════════
+276 < 2 
+277 < 2 {
+278 < 2   const root = mkdir()
+279 < 2   const kataJson = path.join(root, 'kata.json')
+280 < 2   fs.writeFileSync(kataJson, JSON.stringify({
+281 < 2     project: { id: 31 },
+282 < 2     run: { uid: 'r-uid' },
+283 < 2     tasks: { 1: { uid: 't1' }, 2: { uid: 't2' } },
+284 < 2   }))
+285 < 2   const eventsPath = path.join(root, 'events.jsonl')
+286 < 2 
+287 < 2   const stub = await startStub(500)
+288 < 2   try {
+289 < 2     const result = await runCliAsync([
+290 < 2       'close-run',
+291 < 2       '--kata-json', kataJson,
+292 < 2       '--run', 'run-9',
+293 < 2       '--pr', 'https://github.com/o/r/pull/9',
+294 < 2       '--admin-url', stub.url,
+295 < 2       '--events', eventsPath,
+296 < 2       '--title', 'T',
+297 < 2     ], { timeoutMs: 15000 })
+298 < 2     assert.equal(result.status, 0,
+299 < 2       '(d) [M4] close-run against a 500-answering stub still exits 0; got status ' + JSON.stringify(result.status) +
+300 < 2       ', stderr ' + JSON.stringify(result.stderr))
+301 < 2     const rows = readEventRows(eventsPath)
+302 < 2     assert.equal(rows.length, 3,
+303 < 2       '(d) [M4] close-run against a 500-answering stub still gains exactly three event rows; got ' + rows.length)
+304 < 2     assert.deepEqual(rows.map((r) => r.code), [500, 500, 500],
+305 < 2       '(d) [M4] all three rows carry code 500; got ' + JSON.stringify(rows.map((r) => r.code)))
+306 < 2   } finally {
+307 < 2     await closeStub(stub)
+308 < 2   }
+309 < 2 }
+310 < 2 
+311 < 2 {
+312 < 2   const root = mkdir()
+313 < 2   const kataJson = path.join(root, 'nope.kata.json') // never written
+314 < 2   const eventsPath = path.join(root, 'events.jsonl')
+315 < 2 
+316 < 2   const stub = await startStub(200)
+317 < 2   try {
+318 < 2     const result = await runCliAsync([
+319 < 2       'close-run',
+320 < 2       '--kata-json', kataJson,
+321 < 2       '--run', 'run-9',
+322 < 2       '--pr', 'https://github.com/o/r/pull/9',
+323 < 2       '--admin-url', stub.url,
+324 < 2       '--events', eventsPath,
+325 < 2       '--title', 'T',
+326 < 2     ], { timeoutMs: 15000 })
+327 < 2     assert.equal(result.status, 0,
+328 < 2       '(d) [M4] close-run over a missing --kata-json exits 0; got status ' + JSON.stringify(result.status) +
+329 < 2       ', stderr ' + JSON.stringify(result.stderr))
+330 < 2     assert.equal(stub.requests.length, 0,
+331 < 2       '(d) [M4] a missing --kata-json sends no request; got ' + stub.requests.length)
+332 < 2 
+333 < 2     const rows = readEventRows(eventsPath)
+334 < 2     assert.equal(rows.length, 1,
+335 < 2       '(d) [M4] the events file gained exactly one row; got ' + rows.length)
+336 < 2     const { ts, ...rest } = rows[0]
+337 < 2     assert.equal(typeof ts, 'string', '(d) [M4] the one row carries a string ts')
+338 < 2     assert.deepEqual(rest, { kind: 'board:close', what: 'run', code: null, skipped: 'no kata.json to read' },
+339 < 2       '(d) [M4] the row is, less ts, exactly {kind:"board:close",what:"run",code:null,' +
+340 < 2       'skipped:"no kata.json to read"}; got ' + JSON.stringify(rest))
+341 < 2   } finally {
+342 < 2     await closeStub(stub)
+343 < 2   }
+344 < 2 }
+345 < 2 
+346 < 2 console.log('ALL TESTS PASSED')
+347 < 2 
