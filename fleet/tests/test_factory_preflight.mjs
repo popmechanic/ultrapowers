@@ -13,8 +13,6 @@
  *       `bearer_dead 401 <message>` (a 401 with a `"type":"error"` JSON body
  *       carrying a `message`), and `edge_refused 401 <first line>` (a 401
  *       with a plain body starting `integration not found`).
- *   (b) retired with `factory/audit.mjs` (2026-11-13: its one row listed the kata closes a run
- *       missed, and no run has a board to close).
  *   (c) [M3] `node <D>/factory/preflight.mjs --proxy <U>`, through the same
  *       link, with an `oauth_token` auth answer and a 200 usage answer,
  *       prints exactly `alive\n` and exits 0.

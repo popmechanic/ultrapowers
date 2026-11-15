@@ -44,7 +44,7 @@ function storiesWorkload (parsed, planPath) {
     // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
     checkTimeoutMs: 120000 + 15000 * guards.length,
     setup: bash(parsed.bootstrapCmd),
-    stories: { planPath: abs, sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
+    stories: { sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
   };
 }
 
@@ -72,8 +72,6 @@ export function workloadFromPlan(planPath, planJson) {
     files: t.files || [],
     depends_on: edges.filter((e) => e.to === t.id).map((e) => e.from),
     facts: (t.proofRuns || []).map(bash),
-    // the clause ids each fact is tagged with (`Run: ... [M1]`), one list per fact
-    factClauses: t.proofRunClauses || [],
   }));
 
   const cmds = (parsed.checks || []).map((c) => c.cmd);

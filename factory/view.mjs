@@ -3,7 +3,7 @@
  *
  * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
  * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
- * re-exports it. `renderView` is what the engine writes as the run's view: that projection plus
+ * re-exports it. `renderView` is the run's view, which the boot writes through `record.mjs view`: that projection plus
  * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
  * here reads a file; the engine may not import `fleet/`, so nothing here does either.
  */

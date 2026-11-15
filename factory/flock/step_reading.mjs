@@ -38,7 +38,7 @@ function storySteps (result, all) {
 
 // A store is [tables, values], tables `{table: {row: {cell: value}}}`: one
 // `{table, row, before, after}` per row that differs, a missing row `null`.
-export function storeChanges (before, after) {
+function storeChanges (before, after) {
   const tb = (Array.isArray(before) && before[0]) || {}
   const ta = (Array.isArray(after) && after[0]) || {}
   const changes = []
@@ -59,7 +59,7 @@ export function storeChanges (before, after) {
 const STATE_MAX = 120000
 const STORE_MAX = 100000
 
-export function stepState (result, sentences, all) {
+function stepState (result, sentences, all) {
   // A guard clause (e.g. `G:p0/S2.3`) proves an earlier plan's setup still
   // holds; its sentence belongs to that earlier plan, not this one, so it
   // gets no story sentence at all rather than a wrong or coincidental one.

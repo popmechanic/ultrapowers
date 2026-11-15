@@ -1,8 +1,8 @@
 // factory/jev-client.mjs — the Jev client: one POST, no key, `null` on anything
 // that is not an answer.
 //
-// Jev is an exe.dev `http-proxy` integration named `typesafe` on the fleet
-// policy `tag:fleet`, the same shape as `claude-max`. From a fleet
+// Jev is an exe.dev `http-proxy` integration named `typesafe` attached to
+// `tag:fleet`, the same shape as `claude-max`. From a fleet
 // VM the endpoint is `https://typesafe.int.exe.xyz/v1/systemone`, HTTPS only.
 // The request carries NO `Authorization` header of its own: the edge injects
 // the bearer, which is the whole reason a sandbox holding no TypeSafe

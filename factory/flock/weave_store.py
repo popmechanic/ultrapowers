@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The weave store: main's memory (the main-is-a-peer design, stage 1). No engine reads it yet.
+"""The weave store: main's memory (the main-is-a-peer design).
 
 Each tree of a target's default branch has at most one stored weave, an *entry*: one commit on
 the ref `refs/ultrapowers/weave/v1` of the target repository, subject `weave <tree sha>`. The ref

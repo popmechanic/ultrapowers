@@ -5,7 +5,7 @@
 // times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
 import crypto from 'node:crypto'
 
-export const PATCH_LIMIT = 524288
+const PATCH_LIMIT = 524288
 const CONTEXT = 3
 
 const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
@@ -40,7 +40,7 @@ function hunk (a, b) {
 }
 
 // A unified diff of one path from `before` to `after` (null: absent).
-export function fileDiff (p, before, after) {
+function fileDiff (p, before, after) {
   if (before === after) return ''
   const head = `diff --git a/${p} b/${p}\n`
   if (before === null) {

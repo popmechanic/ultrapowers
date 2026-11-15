@@ -1,5 +1,5 @@
 #!/bin/bash
-# factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
+# factory/boot.sh — the sandbox side of a run: clones the target, takes the
 # plan off `live/<slug>/run-<N>` of the operator's evidence repository (named in
 # `$FLEET_HOME/fleet-evidence-repo`), proves the credential through `factory/preflight.mjs`,
 # runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record in
@@ -35,7 +35,6 @@ fleet_curl()        { curl "$@"; }
 fleet_git()         { git "$@"; }
 fleet_npm()         { npm "$@"; }
 fleet_systemd_run() { systemd-run "$@"; }
-fleet_systemctl()   { systemctl "$@"; }
 fleet_python3()     { python3 "$@"; }
 fleet_node()        { node "$@"; }
 fleet_journalctl()  { journalctl "$@"; }

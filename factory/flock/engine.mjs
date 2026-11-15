@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The Flock engine (map #1292: adopted as an experiment behind the boot's engine switch; the
-// round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
+// The Flock engine (map #1292), the one engine every launch boots. Grown from the laptop prototype
+// (flock-runroom's host.mjs).
 //
 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
 //        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
@@ -217,11 +217,10 @@ function peerRewrites (agent, rel, rewrites) {
       'jev:peer-rewrite', row, (o) => peerReads.push(o))
   }
 }
-const readAndRecord = (clauses) => {
+const readAndRecord = () => {
   if (!JEV_STEP || !W.stories) return Promise.resolve()
   const all = latestResults(CHECK_OUT)
-  const results = clauses ? clauses.map((c) => all.get(c)).filter(Boolean) : [...all.values()]
-  return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
+  return readSteps({ ask: jev.ask, results: [...all.values()], sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
 }
 
 // ── the engine's own git, on the target ───────────────────────────────────────
@@ -408,12 +407,12 @@ function region (annotated) {
 async function openConflict (p, info) {
   const reg = region(info.annotated)
   const e = ledger.get(p + '\u0000' + reg)
-  if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
+  if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
   // a file main and a builder each began apart is two whole files, and no probe of this run speaks
   // for main's: a builder makes them one (policy flock.main.created; `union` is the rollback)
   const made = !!info.bothCreated && MAIN_CREATED === 'conflict'
   if (info.addsOnly && !made) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
-  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), seen: 1, annotated: info.annotated, between: info.between, party: info.party, made })
+  ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), annotated: info.annotated, between: info.between, party: info.party, made })
   lastChange = now()
   ev('conflict:open', { path: p, region: reg, between: info.between, ...(made ? { created: 'both' } : {}) })
   await board.post({ by: 'host', claim: made
@@ -424,7 +423,7 @@ const openConflicts = () => [...new Set([...ledger.values()].filter((e) => e.ope
 const openEntries = (p) => [...ledger.values()].filter((e) => e.open && e.path === p)
 function closeEntries (p, by, note, via) {
   for (const e of openEntries(p)) {
-    e.open = false; e.closed_by = by; e.closed_t = now(); e.note = String(note).slice(0, 200)
+    e.open = false; e.note = String(note).slice(0, 200)
     ev('conflict:close', { path: p, region: e.region, by, note: e.note, via })
   }
   lastChange = now()
@@ -461,7 +460,7 @@ function earlyClose (m, snap) {
     const holders = Object.entries(pubHeld).filter(([, ps]) => ps[e.path] && ps[e.path].held && ps[e.path].text === text).map(([a]) => a)
     if (!holders.length) continue
     const unflagged = !(m.conflicts.includes(e.path) && region(m.annotated[e.path]) === e.region)
-    e.open = false; e.closed_by = 'host'; e.closed_t = now()
+    e.open = false
     e.note = `the merged text of ${e.path} is ${holders.join(' and ')}'s own published writing over both sides`
     const evidence = { snap, holders: holders.map((a) => ({ agent: a, published_t: pubHeld[a][e.path].t, last_edit_t: lastEditT[a][e.path], last_marked_t: (lastMarkedT[a] || {})[e.path] ?? null })), unflagged }
     ev('conflict:close', { path: e.path, region: e.region, by: 'host', note: e.note, via: 'early:held', evidence })
@@ -963,7 +962,7 @@ async function session (agent, task) {
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
     // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
     // spelt in parts so no line names the retired switch's constant.
-    env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ['ENABLE_TOOL' + '_SEARCH']: 'false' },
+    env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ENABLE_TOOL_SEARCH: 'false' },
   } })
   let result = null
   live.add(agent)
@@ -1253,7 +1252,7 @@ let PAST = null
       const text = (f) => fs.readFileSync(path.join(dir, f), 'utf8')
       const status = JSON.parse(text('status.json'))
       const events = readEventRows(path.join(dir, 'events.jsonl'))
-      // optional: runs before #1352, and factory runs, have no red-checks.json; pastItems reads null as none
+      // optional: runs before #1352 have no red-checks.json; pastItems reads null as none
       let redChecks = null
       try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
       const items = pastItems({ status, events, redChecks })
@@ -1442,14 +1441,14 @@ async function land () {
       ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
       // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
       if (W.grammar !== 'stories-v1') return 1
-      await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
+      await Promise.race([readAndRecord().catch(() => {}), sleep(20000)])
       return 0
     }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     await storeEntry(sha)
     writeProvenance(outcome.snap)
-    await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
+    await Promise.race([readAndRecord().catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {

@@ -37,7 +37,7 @@ const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome
 
 /** The browser to run: an explicit path, else TINYAPP_BROWSER, else the fleet
  *  image's headless shell, else a laptop's Chrome. Nothing is installed. */
-export const resolveBinary = (
+const resolveBinary = (
   explicit?: string,
   env: Record<string, string | undefined> = process.env,
 ): string => {
