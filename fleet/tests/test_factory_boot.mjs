@@ -819,6 +819,61 @@ for (const [n, how] of [['511', 'created'], ['512', 'lost']]) {
   console.log(`ok (k) no answer to the pull request, ${how}`)
 }
 
+// ── (l) the view cannot be rendered: the run ends done all the same, with no view.json ──
+// `record.mjs view` prints half a view and exits 1 on every commit; every other verb is the real
+// file's. The record keeps its other files, carries no view and no half-written one, and the boot
+// log says why.
+
+{
+  const runN = '513'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-l-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  const recordPath = path.join(buildEngineDir(home, ENGINE_SHA), 'factory', 'record.mjs')
+  const realRecord = fs.realpathSync(recordPath)
+  fs.unlinkSync(recordPath)
+  fs.writeFileSync(recordPath, [
+    "import { spawnSync } from 'node:child_process'",
+    "if (process.argv[2] === 'view') { process.stdout.write('{\"view\":'); process.exit(1) }",
+    `const r = spawnSync(process.execPath, [${JSON.stringify(realRecord)}, ...process.argv.slice(2)], { stdio: 'inherit' })`,
+    'process.exit(r.status ?? 1)',
+    ''
+  ].join('\n'))
+  writeStubs(bin, { claudeAuth: 'oauth' })
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  assert.equal(
+    res.code, 0,
+    `(l) the run exits 0 without its view — got ${res.code}, stdout: ${res.stdout}, stderr tail: ${(res.stderr || '').slice(-4000)}`
+  )
+  assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', '(l) status.json at the tag records state "done"')
+  const runDirEntries = git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
+    .split('\n').filter((p) => p.startsWith(`runs/o-r/${runN}/`)).sort()
+  assert.deepEqual(
+    runDirEntries,
+    ['engine.log', 'events.jsonl', 'fleet-boot.log', 'plan.json', 'plan.md', 'status.json'].map((p) => `runs/o-r/${runN}/${p}`),
+    `(l) the record carries its other files, no view.json and no half-written one — got ${JSON.stringify(runDirEntries)}`
+  )
+  const viewLines = atTag(evidenceDir, runN, 'fleet-boot.log').split('\n')
+    .filter((l) => l.endsWith(' view: factory/record.mjs view failed — view.json not replaced'))
+  assert.ok(viewLines.length >= 1, `(l) fleet-boot.log at the tag says the view was not rendered — got:\n${atTag(evidenceDir, runN, 'fleet-boot.log')}`)
+  console.log('ok (l) a view that cannot be rendered')
+}
+
 proxyServer.close()
 
 console.log('ALL TESTS PASSED')
