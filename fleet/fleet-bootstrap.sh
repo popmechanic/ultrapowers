@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fleet/fleet-bootstrap.sh — the image's only moving part, installed root-owned and
+# fleet/fleet-bootstrap.sh — the VM's one fixed script, installed root-owned and
 # 0555 at /usr/local/lib/fleet/bootstrap.sh by the first-boot setup script, started
 # by fleet-run@<N>.service, which passes the run number as $1 (optional, checked) and, from its ExecStopPost=, `died` as $2.
 #
@@ -7,8 +7,8 @@
 # a checkout that replaced it at its own path while bash kept reading the old
 # inode. So no run ever overwrites this file: it reads the assignment once, clones
 # the engine it names into a content-addressed directory, and execs THAT checkout's
-# boot script. A boot-script fix ships as an engine sha; the image is rebuilt for
-# tools only. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
+# boot script. A boot-script fix ships as an engine sha; a tool change ships in the
+# setup script. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
 set -euo pipefail
 home="${FLEET_HOME:-/home/exedev}"
 say() { printf '%s bootstrap: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$home/fleet-boot.log" >&2; }

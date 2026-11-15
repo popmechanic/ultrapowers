@@ -29,7 +29,6 @@ import {
   evidenceUrlFor,
   git,
   integrationBranchFor,
-  isFullSha,
   isRunNumber,
   isSafeTarget,
   isVmName,
@@ -58,7 +57,7 @@ export const usage = () => USAGE
 /** The states of a status page that mean the run is over and its VM is ballast. */
 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 /** Page states that claim the run is still in flight — the ones worth a probe. */
-const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
+const LIVE_STATES = Object.freeze(['running', 'publishing'])
 /** How long a finished run keeps its VM, so its status page can still be read. */
 const DEFAULT_AGE = '1h'
 /** No status update for this long is a stale run, reported and left alone. */
@@ -175,13 +174,10 @@ const ghPut = (exec, apiPath, { branch, message, content, sha = null }) => {
 }
 
 /**
- * A row's assignment: the run, the target, and the plan its comment carries
- * (`null` when the comment names none, or names something other than a
- * 40-hex sha), or null when the comment is absent or says nothing this tool
- * can read. The comment's `run=` is the run; the name's is the fallback,
- * since the name is only where the run is running this time. The plan is how
- * the janitor tells a colliding launch's abandoned run issue from the run
- * that actually won the number (#1036, `runIssueOf`).
+ * A row's assignment: the run and the target its comment carries, or null
+ * when the comment is absent or says nothing this tool can read. The
+ * comment's `run=` is the run; the name's is the fallback, since the name is
+ * only where the run is running this time.
  */
 function assignmentOf (row) {
   if (!isVmName(row.name)) return null
@@ -189,8 +185,7 @@ function assignmentOf (row) {
   const run = isRunNumber(fields.run) ? Number(fields.run) : runOfVmName(row.name)
   const target = isSafeTarget(fields.target) ? fields.target : null
   if (run === null || target === null) return null
-  const plan = isFullSha(fields.plan) ? fields.plan : null
-  return { run, target, plan }
+  return { run, target }
 }
 
 /**
@@ -605,7 +600,7 @@ export async function janitor ({
       unknown.push({ vm: row.name, comment: row.comment })
       continue
     }
-    const { run, target, plan: planSha } = assignment
+    const { run, target } = assignment
     targets.add(target)
     carried.add(`${target}#${run}`)
 
@@ -614,7 +609,6 @@ export async function janitor ({
       vm: row.name,
       run,
       target,
-      plan: planSha,
       live: reading?.live ?? null,
       state: reading?.state ?? null
     })
@@ -728,8 +722,7 @@ export async function janitor ({
  * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
  * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
  * fetch or a `rev-parse` that fails means the branch is gone — the run is
- * publishing or has published, and no engine reads its task issues any more —
- * so that row is not a duplicate.
+ * publishing or has published — so that row is not a duplicate.
  */
 async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))

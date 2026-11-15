@@ -35,7 +35,6 @@ import { fileURLToPath } from 'node:url'
 
 import {
   FLEET_POLICY,
-  LobbyError,
   Refusal,
   defaultExec,
   githubIntegrationFor,

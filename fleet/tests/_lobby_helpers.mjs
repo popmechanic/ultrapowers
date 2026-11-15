@@ -21,7 +21,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
-import { fileURLToPath } from 'node:url'
 
 import { EXE_HOST, defaultExec } from '../lobby.mjs'
 import { simEnv } from './_helpers.mjs'
@@ -34,16 +33,12 @@ export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
 })
 
 const isLobby = (cmd, argv) => cmd === 'ssh' && argv[0] === EXE_HOST
-const isVmSsh = (cmd, argv) => cmd === 'ssh' && argv.length > 0 && argv[0] !== EXE_HOST
 
 /** A rule matching one lobby verb by the prefix of its remote command string. */
 export const sshRule = (prefix, res) => ({
   when: (cmd, argv) => isLobby(cmd, argv) && String(argv[1] ?? '').startsWith(prefix),
   answer: res
 })
-
-/** A rule matching every `ssh <ssh_dest> …` — a command run on a VM. */
-export const vmRule = (res) => ({ when: isVmSsh, answer: res })
 
 /** A rule matching a local command by its first argument. */
 export const cmdRule = (cmd, first, res) => ({
@@ -65,19 +60,6 @@ export const vmRow = (name, extra = {}) => ({
 /** The `ls --json` envelope: fleet rows under `vms`, other people's under `shared_vms`. */
 export const vmsPayload = (vms = [], shared = []) => answer({ shared_vms: shared, vms })
 
-/** The ssh arguments after the `-o` options: `{ dest, command }`. */
-const vmCall = (argv) => {
-  const rest = []
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === '-o') {
-      i += 1
-      continue
-    }
-    rest.push(argv[i])
-  }
-  return { dest: rest[0], command: rest.slice(1).join(' ') }
-}
-
 /**
  * The recording seam. `rules` are tried in order; the first match answers.
  * `passthrough` names commands that really run when nothing matched.
@@ -97,8 +79,6 @@ export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
   exec.calls = calls
   /** Every remote command string issued as a lobby verb, in order. */
   exec.lobby = () => calls.filter((c) => isLobby(c.cmd, c.argv)).map((c) => c.argv[1])
-  /** Every command run on a VM over ssh, in order, as `{ dest, command }`. */
-  exec.vm = () => calls.filter((c) => isVmSsh(c.cmd, c.argv)).map((c) => vmCall(c.argv))
   /** The mutating lobby verbs only — what a refusal must never have issued. */
   exec.mutating = () => exec.lobby().filter((line) =>
     /^(cp|rm|comment|rename|new|tag) /.test(line) || /^integrations (add|attach|detach|edit) /.test(line)
@@ -227,13 +207,6 @@ export function makeEvidenceRepo ({ root, name = 'ops/evidence' } = {}) {
   }
 }
 
-/** Write `runs/<N>/status.json` into a checkout (no commit needed). */
-export function writeStatus (dir, run_, status) {
-  const target = path.join(dir, 'runs', String(run_))
-  fs.mkdirSync(target, { recursive: true })
-  fs.writeFileSync(path.join(target, 'status.json'), JSON.stringify(status))
-}
-
 /** Remove a temp tree. */
 export const cleanup = (dir) => fs.rmSync(dir, { recursive: true, force: true })
 
@@ -341,25 +314,6 @@ export const compilerRule = (compiled) => ({
     argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
 })
 
-/** `help <verb>` answered with a bare Options block. */
-export const HELP_OK = (cmd, argv) => answer(`Command: ${String(argv[1] ?? '').slice('help '.length)}\n\nOptions:\n`)
-
-const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const helpText = (verb, flags) => [
-  `Command: ${verb}`, '', 'Options:', ...flags.map((flag) => `  ${flag}  what ${flag} does`), ''
-].join('\n')
-/** `help <verb>` answered with the flags `fleet/exe-verbs.json` pins for it,
- *  and an unrecognized verb answered as exe.dev answers one. Read per call, so
- *  a sim that never asks never opens the file. */
-export const HELP_FROM_VERBS = (cmd, argv) => {
-  const { verbs } = JSON.parse(fs.readFileSync(path.join(FLEET_DIR, 'exe-verbs.json'), 'utf8'))
-  const verb = String(argv[1] ?? '').slice('help '.length)
-  const flags = verbs[verb]
-  return flags
-    ? answer(helpText(verb, flags))
-    : answer(`No help available for unrecognized command: ${verb}\n`)
-}
-
 /** `gh api …` answering `res` for every call; `NO_RECORD` is an empty page. */
 export const recordRule = (res) => cmdRule('gh', 'api', res)
 export const NO_RECORD = answer('')
@@ -368,17 +322,16 @@ export const NO_RECORD = answer('')
  * The seam a good launch reads through, in the order the launch sims need it
  * (`COMPILER_FETCH` before `recordRule`, see above). `gh` is the target's
  * integration name, and `integrations` replaces the default three rows; `rows`
- * is what `ls` answers, `record` what `gh api` answers, `help` what `help`
- * answers. With no `engine` the engine's `ls-remote` rule is left out.
+ * is what `ls` answers and `record` what `gh api` answers. With no `engine` the
+ * engine's `ls-remote` rule is left out.
  */
 export const launchRules = ({
-  engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, help = HELP_OK, compiled = ONE_TASK
+  engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, compiled = ONE_TASK
 }) => [
   ...(engine ? [engineRule(engine)] : []),
   COMPILER_FETCH,
   localRemote(repo, evidence),
   compilerRule(compiled),
-  sshRule('help ', help),
   sshRule('integrations list --json', answer(integrations ?? [
     { name: gh, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] }, { name: 'claude-max', attachments: [] }
   ])),

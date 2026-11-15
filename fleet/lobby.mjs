@@ -7,8 +7,8 @@
  * target receives only `ultra/integration-run-N`) is `fleet/CONTRACT.md`
  * section "The shape in one paragraph"; this file does not restate it.
  *
- * This module is what the three laptop CLIs (`launch`, `janitor`, `target`)
- * share: the exec seam, the config file, the name validators, the branch
+ * This module is what the laptop CLIs (`launch`, `janitor`, `target`, `doctor`,
+ * `claude-token`, `run-read`) share: the exec seam, the config file, the name validators, the branch
  * names and the lobby readers.
  * It runs from the installed plugin cache, so every specifier is
  * `node:`-prefixed, and there are no npm dependencies.
@@ -59,7 +59,7 @@ export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
  * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev does not
  * reserve a deleted name, but a name is still minted once per launch and never
  * derived from N alone — the run's durable identity is N, in the comment and in the
- * target's three branches; the VM name is only where it is running this time.
+ * evidence repository's live branch and tag; the VM name is only where it is running this time.
  */
 const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/
 
@@ -88,7 +88,7 @@ export const targetSlug = (target) => String(target).replace('/', '-')
 
 /**
  * The ONE GitHub integration a target has: `gh-<owner>-<repo>`, `--act-as-user`,
- * writable, attached per VM for the run's window. Named for the repository so
+ * writable, attached to `tag:fleet`. Named for the repository so
  * a plain `integrations list` shows two objects naming one repo without any
  * parsing — and two such objects on one VM is the fault the sandbox refuses
  * to boot into (measured 2026-09-03: the GitHub edge routes by repo path and

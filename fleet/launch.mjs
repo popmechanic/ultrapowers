@@ -21,7 +21,6 @@ import { fileURLToPath } from 'node:url'
 import {
   COMMENT_MAX_BYTES,
   ENGINE_URL,
-  EXE_HOST,
   FLEET_DEFAULTS,
   FLEET_TAG,
   LobbyError,
@@ -150,8 +149,8 @@ const planGrammar = (planText) => {
  *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
  *   memory = min(cap.memory, 2 + W) GB
  *
- * The two constants of the width formula are the run's own floor: an engine, a
- * fold and a publish live on the box whatever the plan is, and every
+ * The two constants of the width formula are the run's own floor: the engine
+ * and the publish live on the box whatever the plan is, and every
  * implementer beyond the first costs about a gigabyte and a third of a core
  * (RUNBOOK §Capacity). So a one-task plan gets `--cpu 3 --memory 3GB` and a
  * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
@@ -343,9 +342,8 @@ export function defaultReadUsage (account = DEFAULT_ACCOUNT, spawn = spawnSync) 
  * publishing plan and is never refused here, whatever `integrations` carries.
  */
 function publishRefusal ({ compiled, integrations }) {
-  // The compile answers `{ stamp, payload, waves, edges }`, so the parse's `publish` is under
-  // `payload`; reading `compiled.publish` alone found nothing and this never refused (#1331).
-  const publish = compiled?.payload?.publish ?? compiled?.publish
+  // The compile answers `{ stamp, payload }`: the parse's `publish` is under `payload` (#1331).
+  const publish = compiled?.payload?.publish
   if (publish === null || publish === undefined || typeof publish !== 'object') return null
   const rows = Array.isArray(integrations) ? integrations : []
   if (rows.some((row) => row?.name === 'cloudflare')) return null
@@ -360,7 +358,7 @@ function publishRefusal ({ compiled, integrations }) {
  * does not parse is not a declaration of `assets` and is passed over.
  */
 async function assetsConfigAtBase ({ exec, repoDir, base, compiled }) {
-  const publish = compiled?.payload?.publish ?? compiled?.publish
+  const publish = compiled?.payload?.publish
   if (publish === null || publish === undefined || typeof publish !== 'object') return null
   const listed = await git(exec, repoDir, ['ls-tree', '-r', '--name-only', base])
   if (listed.code !== 0) return null
@@ -838,15 +836,14 @@ async function launchBody ({
     planText,
     verdictsText,
     commands,
-    reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
-    compiled: firstCompiled
+    reread: () => highestRunInEvidence(exec, repoDir, evidence, target)
   })
   const run = plan.run
   const liveBranch = plan.branch
   const planSha = plan.sha
-  // The size and the width the verb carries, read off the parse the push
-  // filed — the same parse under every N.
-  const { width, cpu, memory } = sizeFromCompile(plan.compiled, sizing)
+  // The size and the width the verb carries, read off the launch's one parse —
+  // the same parse under every N.
+  const { width, cpu, memory } = sizeFromCompile(firstCompiled, sizing)
 
   // ── The one mutating lobby verb. ──────────────────────────────────────────
   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
@@ -1063,15 +1060,12 @@ const PUSH_ATTEMPTS = 3
  * with the push's own output. Git's words are never parsed: the target's refs
  * decide, not the wording of a rejection line.
  *
- * The parse does not move with the number: `compiled` is the launch's one
- * parse, and it rides back out on `compiled` for the verb to size the box from.
- *
  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
  * text a single refused push has always carried — with ` after <n> tries` when
  * more than one was made.
  */
 async function pushPlan ({
-  exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread, compiled = null
+  exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread
 }) {
   const url = evidenceUrlFor(evidence)
   let n = run
@@ -1082,7 +1076,7 @@ async function pushPlan ({
     commands.push(`git ${pushArgv.join(' ')}`)
     const push = await exec('git', pushArgv)
     if (push.code === 0) {
-      return { run: n, sha, branch, compiled }
+      return { run: n, sha, branch }
     }
 
     const refusal = () =>

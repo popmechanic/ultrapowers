@@ -46,7 +46,7 @@ import { USAGE, launch, renderLaunch } from '../launch.mjs'
 import { janitor } from '../janitor.mjs'
 import { Refusal } from '../lobby.mjs'
 import {
-  HELP_FROM_VERBS, NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
+  NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
   answer, launchRules, launchWorkspace, makeExec, pushCalls, recordRule, sshRule,
   thrown, vmRow, vmsPayload
 } from './_lobby_helpers.mjs'
@@ -76,7 +76,7 @@ const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toIS
 
 /** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
 const readRules = ({ repo, evidence, rows, record }) =>
-  launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
+  launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record })
 
 // ── The workspace: a target whose origin already carries plan branches ──────
 
@@ -219,7 +219,7 @@ const assertLaunched = (d, leg) => {
   const recorded = await janitorIn(RUNNING)
   assert.deepEqual(
     recorded.runs,
-    [{ vm: LIVE_VM, run: 7, target: TARGET, plan: ws.run7, live: true, state: 'running' }],
+    [{ vm: LIVE_VM, run: 7, target: TARGET, live: true, state: 'running' }],
     '(f) [M6] one entry: the assignment row, read live; the kept row and the target-less row are not in it'
   )
   const unrecorded = await janitorIn(NO_RECORD)

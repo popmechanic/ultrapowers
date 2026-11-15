@@ -364,12 +364,14 @@ after a sleep.
 
 | state | meaning |
 |---|---|
-| `booting` | the setup script is provisioning, or the bootstrap is cloning the engine and the boot script the target |
-| `running` | `fleet-engine-<N>.service` is active; `phase` says which wave |
-| `publishing` | the engine service is inactive and the branch is ahead of base; evidence committed, pushing and opening the PR |
-| `done` | PASS, or a verdict the two-move rule approved; `pr` is the ready PR, `prAuthor` who GitHub says opened it; merged is the squash commit's sha, or null when the PR was left open; or a stories-v1 run with nothing to build, `pr` and `merged` null |
-| `parked` | a gate verdict other than PASS that no `approve-receipt.json` approved; `pr` is a draft PR |
-| `failed` | a step other than the engine's verdict broke; `error` says which |
+| `running` | the boot has prepared the clone and the record; it installs the engine's dependencies, proves the credential and runs the engine |
+| `publishing` | the engine exited and the branch is ahead of base: pushing, opening the PR, catching up to a moved main and merging |
+| `done` | the engine exited 0: `pr` is the ready PR, `prAuthor` who GitHub says opened it, `merged` the squash commit's sha or null when the PR was left open; or a run with nothing to build, `pr` and `merged` null |
+| `parked` | the engine exited non-zero (its `terminal` row says why); `pr` is a draft PR |
+| `failed` | a step outside the engine broke; `error` says which |
+
+A run that dies before the boot has cloned the evidence repository has no page
+at all; the janitor reports it `unread` and the VM's own logs say why.
 
 An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch
 zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
@@ -465,7 +467,7 @@ Four logs, in the order a run writes them:
    died here: a package install, the user bus, or the `daemon-reload`.
 2. `/home/exedev/fleet-boot.log` — the bootstrap: the comment read, the
    `engine=` parse, the clone into `/home/exedev/engines/<sha>`. A run that
-   never reached `booting` on the target is here. Its lines from the boot
+   that never wrote a status page is here. Its lines from the boot
    script on are stamped to the millisecond.
    Both logs are also committed to the run's evidence folder once the boot has cloned the evidence repository.
 3. `engine.log` — the engine's stdout and stderr, committed to the live branch
@@ -656,7 +658,7 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   needs neither.
 - The setup script runs before the user bus is guaranteed to exist: it waits up
   to 60 s for `/run/user/$(id -u)/bus` before `daemon-reload`, or the start
-  finds no bus and the VM sits idle with a `booting` page forever. The image
+  finds no bus and the VM sits idle with no status page at all. The image
   lingers `exedev` itself, so the script never calls `loginctl`.
 - A oneshot's `start` blocks for the unit's whole life, has
   `TimeoutStartUSec=infinity`, ignores `RuntimeMaxSec=`, and finished reads
@@ -723,7 +725,7 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   `/usr/local/bin/celld` was absent on a box whose engine sha was newer than
   the merge (2026-09-17). Read the rendered script before a launch that depends
   on a new tool: `node -e "import('./fleet/setup-script.mjs')…"`, or grep the
-  VM's `~/fleet-setup.log` for the tool's `status booting` line.
+  VM's `~/fleet-setup.log` for the tool's `setup:` line.
 
 **The sandbox's runtime.** (celld 0.5.0, measured on fleet-counsel, 2026-09-17,
 an exe VM with 2 vCPU / 4 GB)

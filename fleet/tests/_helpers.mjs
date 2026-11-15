@@ -21,9 +21,6 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 
-/** Prefixes of the parent's environment that never reach a child. */
-export const DROPPED_PREFIXES = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
-
 /** The interpreters a sim's children resolve on the `PATH` this builds. */
 const INTERPRETERS = ['python3', 'git', 'bash', 'sh']
 

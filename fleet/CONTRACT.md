@@ -393,7 +393,7 @@ evidence repository.
   no row.
     Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
   neither is persisted anywhere this engine reads again.
-- **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
+- **status.json:** `{"run":"<N>","state":"running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
   — committed to
   `runs/<owner>-<repo>/<N>/status.json` on `live/<owner>-<repo>/run-<N>` in the evidence repository
   at every transition **and, while
@@ -414,13 +414,12 @@ evidence repository.
   that are not progress — `transcript:*`, `engine:log` and `capture:*`, and `resolver:reply`
   with them — and the kind it takes is the last `driver:*`/`worker:*` one the log has written since
   that phase event, so a phase followed only by bookkeeping reads as that phase alone.
-  The `state` cell is a sequence, not a set: a run that published reads
-  `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
-  again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
-  `publish fold (attempt <n>)`. So a run folded once more reads
-  `running → publishing → running → publishing → done`, one folded three times more carries three
-  such pairs before its `done`, and the count is whatever the folds allowed under the refold bound
-  `publish.self_merge.max_refolds` in `factory/policy.json` — never a fixed number. `parked` and `failed` are terminal wherever they are reached.
+  The `state` cell is a sequence, not a set: a run that published reads `running → publishing →
+  done` (engine exit 0) or `running → publishing → parked` (any other exit, a draft PR;
+  `factory/publish.mjs`). A catch-up to a moved main (`publish.self_merge.max_refolds`) writes no
+  state of its own. `failed` is a step outside the engine breaking, and is terminal wherever it is
+  reached; nothing writes a `booting` page (a run that dies before the boot clones its evidence has
+  no page, and the janitor reads it `unread`).
 - **Publish:** the pull request is one `POST /repos/<target>/pulls` with title
   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
@@ -505,7 +504,7 @@ evidence repository.
   repository (taken from the `"evidence"` setting) with `gh api`
   (`gh api repos/<evidence repo>/contents/…?ref=…`) at the run tag `<owner>-<repo>/run-<N>` first and
   at the branch `live/<owner>-<repo>/run-<N>` only when the tag answered no envelope — the page's
-  `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) is the run's state
+  `state` (`done|parked|failed` finished, `running|publishing` in flight) is the run's state
   and its `updatedAt` the age → `rm <vm> --json` for a finished run older than 1 h. A run whose
   page cannot be read — absent at both refs, a read that failed, or the `"evidence"` key unset — is
   never removed and is reported `unread`, the line naming the two refs. (Until 2026-11-13 the
