@@ -71,7 +71,7 @@ import { fileURLToPath } from 'node:url'
 import { defaultReadUsage, defaultRefreshCredential, launch, renderLaunch, USAGE_REFUSE_PCT } from '../launch.mjs'
 import { Refusal, defaultExec } from '../lobby.mjs'
 import {
-  HELP_FROM_VERBS, launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
+  launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 } from './_lobby_helpers.mjs'
 
 // ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
@@ -138,7 +138,7 @@ const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 // `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
 const readRules = ({ repo }) =>
-  launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH, help: HELP_FROM_VERBS })
+  launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH })
 
 function workspace () {
   const ws = launchWorkspace({ prefix: 'fleet-launch-credential-', originUrl: ORIGIN_URL, evidence: EVIDENCE })

@@ -11,7 +11,7 @@
  * while it works and on its tag once it has ended. This reads that record and nothing else: no
  * hub, no VM. `projectRun` is pure and answers plain data (the run's state, each task's state and
  * a timeline of every row worth a line), so a page in a browser can use it as it stands; the CLI
- * prints it the way `board-read.mjs` prints the hub's copy, which holds claims and closes only.
+ * prints it one line per row.
  *
  * `--since <n>` prints only timeline rows after the first `n` (the last line of every print is
  * `cursor <rows read>`). `--follow` keeps reading every 10 s, prints each new line once, flags a

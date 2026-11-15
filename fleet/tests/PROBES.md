@@ -22,7 +22,7 @@ The current probes:
   the lobby's floor — and two copies of it) and removes every one of them as its last mutating verbs, and
   it refuses outright, issuing no `new`, when a `fleet-r*` VM is already
   listed — a live run's VM, never to be created beside. Run it on a
-  verb-drift finding from the doctor's `verb-drift` row or the launch line,
+  verb-drift finding from the doctor's `verb-drift` row,
   and before any plan touching `fleet/launch.mjs` or `fleet/lobby.mjs` — the
   facts here are what those files' shape is argued from. Its exit codes:
   exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the

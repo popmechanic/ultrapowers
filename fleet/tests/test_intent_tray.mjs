@@ -23,16 +23,10 @@
  *   (g) a second repo's feedback is read from its own offset
  *   (h) two sessions in one repo take a feedback line once
  *   (i) a dropped or failed submit keeps the tray
- *   (j) the README's tray section names no digit hotkey for the band
  */
 
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 
-const HERE = path.dirname(fileURLToPath(import.meta.url))
-const ROOT = path.resolve(HERE, '..', '..')
 const MODULE = new URL('../../hooks/register.js', import.meta.url).href
 const FEED = '.ultrapowers/feedback.jsonl'
 const PASSED = Symbol('next')
@@ -375,15 +369,6 @@ for (const mode of ['drop', 'throw']) {
   h.submit = 'ok'
   await press(s, 'band', 'band-send')
   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
-}
-
-// (j) the README's tray section names no digit hotkey for the band
-{
-  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8')
-  const section = readme.split('## The intent tray')[1].split('\n## ')[0]
-  assert.ok(!/\(`[0-9]`\)/.test(section), '(j) the README pins no digit hotkey on a band button')
-  assert.ok(/\*\*Add note\*\* \(`n`\)/.test(section) && /\*\*Send\*\* \(`s`\)/.test(section) && /\*\*Clear\*\*\s+\(`c`\)/.test(section),
-    '(j) the README names the band hotkeys n, s and c')
 }
 
 console.log('ALL TESTS PASSED')

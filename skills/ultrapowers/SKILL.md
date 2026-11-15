@@ -184,8 +184,8 @@ approved plan, **is** the authorization to execute — no further approval pause
    `== events`: every claim, give-back, objection, conflict, move of main and
    the pull request, in order. The sandbox commits the record every 10 s.
 
-   Its state is also `status.json`, written at every transition: `booting` →
-   `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
+   Its state is also `status.json`, written at every transition: `running` →
+   `publishing` → `done`, or `parked` or `failed`. It lives in the
    evidence repository (`"evidence"` in `~/.ultrapowers/fleet.json`), under
    `runs/<owner>-<repo>/<N>/`. A finished run's record is `status.json` by tag:
    `<owner>-<repo>/run-<N>`, the one spelling that keeps working after the VM

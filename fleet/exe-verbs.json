@@ -29,13 +29,6 @@
       "--json",
       "--l"
     ],
-    "comment": [
-      "--json"
-    ],
-    "tag": [
-      "--d",
-      "--json"
-    ],
     "integrations add": [
       "--act-as-user",
       "--attach",
@@ -59,9 +52,6 @@
       "--team",
       "--until"
     ],
-    "integrations detach": [
-      "--team"
-    ],
     "integrations list": [
       "--json",
       "--usage"
@@ -81,13 +71,6 @@
       "--target",
       "--team",
       "--webhook-url"
-    ],
-    "ssh-key generate-api-key": [
-      "--cmds",
-      "--exp",
-      "--json",
-      "--label",
-      "--vm"
     ],
     "billing plan": [
       "--all",

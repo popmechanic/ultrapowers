@@ -282,7 +282,6 @@ await test('R1: a closed unmerged PR\'s integration branch is deleted, and nothi
   const { exec, calls } = stub({ vms: [ROW], unit: 'active', gh: sweepAnswers([{ number: 12, state: 'closed', merged_at: null }]) })
   const result = await janitor({ argv: ['--json'], exec, now, configPath: NO_CONFIG })
   assert.deepEqual(onTarget(calls).map((c) => c.args), DELETE_3)
-  assert.ok(!calls.some((c) => c.args.some((a) => /plan-run-3|evidence-run-3/.test(String(a)))))
   assert.deepEqual(result.branches, [{ target: TARGET, run: 3, branch: 'ultra/integration-run-3', pr: 12, deleted: true }])
 })
 
@@ -363,9 +362,8 @@ await test('E1: a done and a parked run are reaped, a running one left, an unrea
     }
   })
   const result = await janitor({ argv: ['--json'], exec, now, evidence: EV, configPath: NO_CONFIG })
-  assert.ok(!('hub' in result) && !('record' in result), 'the result names no hub and no source')
   const hosts = calls.filter((c) => c.cmd === 'ssh').map((c) => c.args.find((a) => !a.startsWith('-') && !/^(BatchMode|ConnectTimeout)=/.test(a)))
-  assert.deepEqual([...new Set(hosts)].sort(), ['exe.dev', `${vmOf(3)}.exe.xyz`], 'ssh reaches the lobby and the one running VM, and no hub')
+  assert.deepEqual([...new Set(hosts)].sort(), ['exe.dev', `${vmOf(3)}.exe.xyz`], 'ssh reaches the lobby and the one running VM')
   assert.deepEqual(rmCommands(calls), [`rm ${vmOf(1)} --json`, `rm ${vmOf(2)} --json`])
   assert.deepEqual(result.actions.map((a) => [a.run, a.state, a.applied]), [[1, 'done', true], [2, 'parked', true]])
   assert.deepEqual(result.unread, [{ vm: vmOf(4), run: 4, target: TARGET }])

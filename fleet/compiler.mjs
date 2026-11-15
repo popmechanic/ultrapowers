@@ -101,7 +101,7 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot, stories = fal
     const parser = await fetchOne(PARSER_REL)
     const checker = await fetchOne(CHECKER_REL)
     if (stories) for (const rel of STORIES_RELS) await fetchOne(rel)
-    return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
+    return { dir, scriptPath: checker.filePath, parserPath: parser.filePath }
   } catch (error) {
     await fsp.rm(dir, { recursive: true, force: true })
     throw error

@@ -33,7 +33,6 @@ const exec = makeExec({
   rules: [
     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
       answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo, evidence)), o || {}) },
-    sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
     sshRule('integrations list --json', INTEGRATIONS),
     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
     sshRule('ls ', vmsPayload([]))
@@ -81,7 +80,6 @@ const exec2 = makeExec({
   rules: [
     { when: (c, a) => c === 'git' && (a.includes('push') || a.includes('ls-remote') || a.includes('fetch')),
       answer: (c, a, o) => defaultExec('git', a.map(pointAt(repo2, evidence2)), o || {}) },
-    sshRule('help ', () => answer('Command: x\n\nOptions:\n')),
     sshRule('integrations list --json', INTEGRATIONS),
     sshRule('billing plan --json', answer({ max_cpus: 16, max_memory_gb: 64 })),
     sshRule('ls ', vmsPayload([]))
