@@ -16,10 +16,10 @@ const assert = (ok, why) => { if (!ok) throw new Error(why) }
 
 // ── the catch-up (catchup.mjs) ─────────────────────────────────────────────────
 // A base of five lines, a moved main beside it, and the run's own commit on the base.
-//   clean     main changed another line: exit 0, {refolded, head}, HEAD's one parent the moved main,
+//   clean     main changed another line: exit 0, {caughtUp, head}, HEAD's one parent the moved main,
 //             the file carrying both sides' lines
-//   conflict  main changed the run's own line: {refolded: false, reason: conflict}, HEAD the run's commit
-//   red       the join is clean but the probe is red on it: {refolded: false, reason: red}
+//   conflict  main changed the run's own line: {caughtUp: false, reason: conflict}, HEAD the run's commit
+//   red       the join is clean but the probe is red on it: {caughtUp: false, reason: red}
 //   remap     main puts M1, M2 above `one`: provenance.json's hunk at line 5 lands at line 7
 const MAIN = { clean: ['one', 'two', 'three', 'four', 'MAIN'], conflict: ['MAIN', 'two', 'three', 'four', 'five'], red: ['one', 'two', 'three', 'four', 'RED'], remap: ['M1', 'M2', 'one', 'two', 'three', 'four', 'five'] }
 for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
@@ -49,7 +49,7 @@ for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
   const head = t.git('rev-parse', 'HEAD')
   const text = fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8')
   if (CASE === 'clean' || CASE === 'remap') {
-    assert(r.status === 0 && out.refolded === true, `exit ${r.status}, ${last}`)
+    assert(r.status === 0 && out.caughtUp === true, `exit ${r.status}, ${last}`)
     assert(out.head === head, `head ${out.head} is not HEAD ${head}`)
     const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
     assert(parents.length === 1 && parents[0] === onto, `HEAD's parents are ${parents.join(',')}, not the moved main ${onto}`)
@@ -62,7 +62,7 @@ for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
       assert(prov.snap === 'x', 'the record lost its other keys')
     }
   } else {
-    assert(r.status !== 0 && out.refolded === false && out.reason === CASE, `exit ${r.status}, ${last}`)
+    assert(r.status !== 0 && out.caughtUp === false && out.reason === CASE, `exit ${r.status}, ${last}`)
     assert(head === runSha, `HEAD moved to ${head}; the run's commit is ${runSha}`)
     assert(!t.git('status', '--porcelain'), 'the tree is not clean')
   }

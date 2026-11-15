@@ -97,7 +97,7 @@ The Files block carries canonical `Create:` / `Modify:` / `Delete:` bullets, bac
 paths, no globs and no open write sets. It is load-bearing for edge derivation.
 
 That block is the expected footprint of a submission, not a fence. A builder that must go outside
-it writes there in the open: the record carries it as a `driver:amendment` row, and nothing
+it writes there in the open: the record carries it as an `amendment` row, and nothing
 reverts it as a breach. So the author still lists every file they can
 foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
 reads a run's amendments as the next plan's input, since what the workers had to declare is exactly

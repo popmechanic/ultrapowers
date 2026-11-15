@@ -6,7 +6,7 @@
 // text into other.txt with no builder edit, standing in for run-247's weave fault. Checks:
 //   - the engine exits non-zero and summary.json's outcome is a draft;
 //   - events.jsonl holds a scope:outside row, and every one names exactly other.txt;
-//   - no driver:amendment row names gone.txt (a Delete: path is the task's own).
+//   - no amendment row names gone.txt (a Delete: path is the task's own).
 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -87,7 +87,7 @@ const rows = fs.readFileSync(path.join(RUN, 'events.jsonl'), 'utf8').split('\n')
 const outside = rows.filter((x) => x.kind === 'scope:outside')
 if (!outside.length) fail('no scope:outside row was written')
 for (const x of outside) if (JSON.stringify(x.paths) !== JSON.stringify(['other.txt'])) fail(`a scope:outside row names ${JSON.stringify(x.paths)}, not exactly other.txt`)
-const amended = rows.filter((x) => x.kind === 'driver:amendment' && x.path === 'gone.txt')
-if (amended.length) fail('gone.txt, a Delete: path of the task, was written as a driver:amendment row')
+const amended = rows.filter((x) => x.kind === 'amendment' && x.path === 'gone.txt')
+if (amended.length) fail('gone.txt, a Delete: path of the task, was written as an amendment row')
 fs.rmSync(tmp, { recursive: true, force: true })
 console.log('ALL TESTS PASSED')

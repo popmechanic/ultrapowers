@@ -55,7 +55,7 @@ t.git('checkout', '-q', '--detach', run1)
 const c = spawnSync('node', [path.join(REPO, 'factory', 'flock', 'catchup.mjs'), '--plan', planFor('RUN1'), '--target', t.T,
   '--base', t.base, '--onto', onto, '--run-dir', t.RUN], { encoding: 'utf8', timeout: 120000, env: simEnv({ home: t.tmp, env: t.over }) })
 const last = (c.stdout || '').trim().split('\n').pop() || ''
-assert(c.status === 0 && JSON.parse(last).refolded === true, `the catch-up exited ${c.status}: ${last} ${(c.stderr || '').slice(-600)}`)
+assert(c.status === 0 && JSON.parse(last).caughtUp === true, `the catch-up exited ${c.status}: ${last} ${(c.stderr || '').slice(-600)}`)
 const caught = t.git('rev-parse', 'HEAD')
 assert(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8') === lines(['RUN1', ...BODY.slice(1, -1), 'MAIN']), `a.txt after the catch-up is ${JSON.stringify(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8'))}`)
 assert(entryOf(onto) && meta(entryOf(onto)).via === 'replay', 'the moved main has no replayed entry')

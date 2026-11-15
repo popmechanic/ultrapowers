@@ -48,7 +48,7 @@ export function publishPolicy (policyPath = POLICY) {
   const sm = doc && typeof doc === 'object' && doc.publish && typeof doc.publish === 'object' ? doc.publish.self_merge : undefined
   const probe = cell('probe')
   return {
-    selfMerge: { maxRefolds: int(sm?.max_refolds, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
+    selfMerge: { maxCatchups: int(sm?.max_catchups, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
     probe: { enabled: Boolean(probe?.enabled), timeoutSeconds: int(probe?.timeout_seconds, 600) }
   }
 }
@@ -149,7 +149,7 @@ export async function publish (o) {
   // M2: on a moved default branch, hand the target to the Flock's catch-up and, once it says every
   // exam ran green there, force-push the target's new HEAD over the run's own branch — any other
   // exit leaves the target untouched and sets the merge phase.
-  const refold = (runBase, onto) => {
+  const catchup = (runBase, onto) => {
     const env = {
       ...process.env,
       ANTHROPIC_BASE_URL: o.anthropicUrl,
@@ -163,45 +163,45 @@ export async function publish (o) {
     if (rc !== 0) {
       const last = (r.stdout ?? '').trimEnd().split('\n').pop()
       const reason = json(last)?.reason
-      mergePhase = `merge: re-fold refused (${typeof reason === 'string' && reason ? reason : `exit ${rc}`})`
-      log(`merge: re-fold onto ${onto} exited ${rc} — ${mergePhase}`)
-      row('refold', { ok: false, reason: mergePhase })
+      mergePhase = `merge: catch-up refused (${typeof reason === 'string' && reason ? reason : `exit ${rc}`})`
+      log(`merge: catch-up onto ${onto} exited ${rc} — ${mergePhase}`)
+      row('catchup', { ok: false, reason: mergePhase })
       return false
     }
     git(['fetch', 'origin', `refs/heads/${o.branch}`], { quiet: true })
     if (git(['push', '--force-with-lease', 'origin', `HEAD:refs/heads/${o.branch}`]).status !== 0) {
-      mergePhase = 'merge: force-with-lease push of the re-folded head was refused'
+      mergePhase = 'merge: force-with-lease push of the caught-up head was refused'
       log(`merge: ${mergePhase}`)
-      row('refold', { ok: false, reason: mergePhase })
+      row('catchup', { ok: false, reason: mergePhase })
       return false
     }
-    log(`merge: re-folded onto ${onto} and pushed ${o.branch}`)
+    log(`merge: caught up onto ${onto} and pushed ${o.branch}`)
     // the catch-up remapped provenance.json to the pushed commit's lines: copy that file alone,
     // since the evidence events.jsonl holds this module's rows (publish:pr, merge) the engine's copy lacks
     const prov = path.join(o.runDir, 'provenance.json')
     if (fs.existsSync(prov)) fs.copyFileSync(prov, path.join(o.evidenceDir, 'provenance.json'))
-    row('refold', { ok: true })
-    pushWeave('refold')
+    row('catchup', { ok: true })
+    pushWeave('catchup')
     return true
   }
 
   // M1–M4: before every send, and again after every 405/409 refusal, re-fetch the default branch and
-  // re-fold onto it if it moved (M2); wait out a `null` mergeable, GitHub's answer for a few seconds
+  // catch up onto it if it moved (M2); wait out a `null` mergeable, GitHub's answer for a few seconds
   // after a push while it recomputes (M3); then PUT the squash merge, titled off the plan's own first
-  // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_refolds` merge requests
+  // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_catchups` merge requests
   // in all; anything else parks.
   const selfMerge = async () => {
-    const { maxRefolds, waitSeconds } = policy.selfMerge
+    const { maxCatchups, waitSeconds } = policy.selfMerge
     let curBase = o.baseSha
-    for (let attempts = 0; attempts < maxRefolds;) {
+    for (let attempts = 0; attempts < maxCatchups;) {
       const fetched = git(['fetch', 'origin', `refs/heads/${base}`], { quiet: true })
       const tip = fetched.status === 0 ? (git(['rev-parse', 'FETCH_HEAD'], { quiet: true }).stdout ?? '').trim() : ''
       if (tip && tip !== curBase) {
-        if (!refold(curBase, tip)) return
+        if (!catchup(curBase, tip)) return
         curBase = tip
       }
       // GitHub answers a `mergeable` it computed for whatever head it last processed: right after a
-      // refold's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
+      // the catch-up's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
       // naming the head this clone pushed counts; any other head is waited out like a null.
       const headSha = (git(['rev-parse', 'HEAD']).stdout ?? '').trim()
       const start = nowSeconds()
@@ -225,14 +225,14 @@ export async function publish (o) {
         return
       }
       if (put.code === '405' || put.code === '409') {
-        log(`merge: PUT /pulls/${number}/merge answered ${put.code} — re-folding and trying again`)
+        log(`merge: PUT /pulls/${number}/merge answered ${put.code} — catching up and trying again`)
         continue
       }
       mergePhase = `merge: PUT /pulls/${number}/merge answered ${put.code || '<none>'}`
       log(`merge: ${mergePhase}`)
       return
     }
-    mergePhase = `merge: refused after ${maxRefolds} refold attempt(s)`
+    mergePhase = `merge: refused after ${maxCatchups} catch-up attempt(s)`
     log(`merge: ${mergePhase}`)
   }
 
