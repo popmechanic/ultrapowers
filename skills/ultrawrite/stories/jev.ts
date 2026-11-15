@@ -1,5 +1,6 @@
 // The laptop's Jev: the fleet's client (one POST, a status check and a state budget) with the
-// operator's own key riding as a bearer header. Shared by jev_checks.ts and gate_jev.ts.
+// operator's own key riding as a bearer header. Shared by every authoring tool that asks Jev
+// (jev_checks, gate_jev, ask, arrange, notebook).
 import {readFileSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join} from 'node:path';

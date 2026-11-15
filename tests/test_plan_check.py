@@ -184,7 +184,7 @@ def base_repo(tmp_path):
 
 def write_plan(dirpath, name, text, rec=None):
     """The plan plus the gate-verdict artifact claims-v1 compiles against
-    (spec §4.5), hashed by the gate's own extractor so a fixture edit re-signs
+    (ultrawrite §The proof gate), hashed by the gate's own extractor so a fixture edit re-signs
     itself rather than going stale against a hand-copied digest. `rec` is the
     record's every key but `tasks` (the authoring section passes its own);
     omitted, it is a one-dispatch, zero-rejection `tally`."""

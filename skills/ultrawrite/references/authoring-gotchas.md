@@ -43,7 +43,7 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   against every measured fact in the same task's Context before dispatching
   readers.** A clause that started a status server before waiting for the user
   bus — the exact race the Context had measured — passed nine rounds and was
-  caught as `plan-defect` by both referees; a clause that orders a `--user` call
+  caught as `plan-defect` by the gate; a clause that orders a `--user` call
   names the bus precondition (run-75, 2026-09-04).
 - **The gate's recurring rejection species, each with its fix** (19 of 33
   dispatches on 2026-09-04, 18 of 25 on 2026-09-05, every rejection correct): an
@@ -127,15 +127,11 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   semantically, so the literal was gone. A text pin on a sibling file belongs in a
   `Run:` line of the plan, and wording folds (run-13 and run-12,
   popmechanic/tinyapp-fixture, 2026-09-15; #1019).
-- **A `Run:` that names two exams at once is a sweep; do not write one.** A Proof
-  `Run:` naming two or more paths under `tests/state-exams/` — or the bare
-  `tests/state-exams` directory, which names all of them — was the old compiler's
-  `one Run, one exam` refusal; nothing refuses it now. The reading behind it: 19
-  of 29 fixture exam files spawned a runner over their neighbours, one leg took
-  573 s, and the integration suite grew from 2.4 to 19 minutes over four fixture
-  runs ending at run-24. One claim, one prover; regression is the run's `Check:`
-  lines, so a sweep the operator wants is written once in the owning task's own
-  `Run:` (a `Check:` line is not read by this rule).
+- **A `Run:` that runs a whole directory of tests is a sweep; do not write one.**
+  One claim, one prover: when fixture exam files each spawned a runner over
+  their neighbours, one leg took 573 s and the suite grew from 2.4 to 19 minutes
+  over four fixture runs (to run-24, 2026-09). Regression is the run's `Check:`
+  lines, so a sweep the operator wants is written once, as a `Check:`.
 - **A `Run:`/`Check:` line writes only to stdout.** `tee /dev/stderr` — and any
   write to `/dev/stderr` or `/dev/tty` — is refused under the sandbox's
   service shell (`tee: /dev/stderr: Permission denied`), so the proof exits
@@ -144,17 +140,6 @@ file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left
   record lets the engine keep it and never duplicates it; and a proof line's exit comes from
   the command that proves the claim, not from plumbing (fixture run-25,
   popmechanic/tinyapp-fixture, 2026-09-17).
-- **A fake that stands in for a client a sibling feature also calls
-  over-counts the moment the sibling lands.** Give the fake per-exam shape
-  recognition so it records only the states with this exam's own shape
-  (`note`, `amendment`) and answers null to the rest, never an exact call
-  count on a fake shared across features — run-183's
-  `test_run_engine_worker_notes.mjs` pinned "exactly three asks" on the one
-  `jev.ask` fake, run-182's tier rows asked the same client at every dispatch
-  and review, the count read 7 where the exam pinned 3, and the publish fold
-  went red on a correct tree; the amendments exam had the same leg, 4 ≠ 2
-  (run-183, PR #1111, hand fold `f3c69320`).
-
 - **A `Check:` red at BASE is a red no task of the plan owns, unless one
   task's Files hold the offender.** A run-wide `Check:` is paid by every task
   on every pass; one already failing before any work is done keeps the run from

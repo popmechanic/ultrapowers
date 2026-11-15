@@ -24,10 +24,9 @@ Every `implementation` task is a pure diff against the integration branch:
 7. **Greenfield targets take the Bun + TypeScript + TinyBase defaults** — `bun install` to
    bootstrap, `bunx tsc --noEmit && bun test` as the suite, one TinyBase store as the
    app's state; the synced shape (store → WsSynchronizer → Durable Object) is a *TinyApp*.
-   Both knobs verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where the
-   restriction stops: `references/greenfield-stack.md`. A TinyApp task is proven like any
+   The header lines verbatim, the `@types/bun` tsconfig gotcha, the TinyApp shape, and where
+   the restriction stops: `references/greenfield-stack.md`. A TinyApp task is proven like any
    other, by `Run:` probes and the stack's `Check:` line.
-   the stack's `Check:` line, until state exams return as probes (owed on map #1248).
 
 ## Decomposition judgment
 

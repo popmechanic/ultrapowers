@@ -32,7 +32,7 @@ bootstrap reads the assignment from the VM comment once, clones the engine at `e
 content-addressed directory, and execs that checkout's `factory/boot.sh`. The boot script clones the
 target at `base=`, fetches only the live branch of the evidence repository, shallow, runs the engine
 as a transient user service with a memory cap, commits the record to the live branch every 10 s and
-at each transition — no status page; git is the record — and, only when there is something to publish
+at each transition — no status server; git is the record — and, only when there is something to publish
 and the default branch moved underneath it, catches the run up to the target's tip inline
 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
 opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
@@ -72,12 +72,6 @@ evidence repository.
     runs, on the first tick that finds `events.jsonl` changed since the last commit, at most
     `FLEET_COMMIT_SECONDS` seconds apart (default 10) — so the branch is never far behind the
     live run, and a tick that saw no change commits nothing however long it has been.
-    **This bullet described the wave engine's own record here in detail through 2026-09-21** —
-    `report.json`'s per-run schema, the `driver:wave-adopted`/`driver:wave-blocked`/
-    `driver:finding` event kinds, the seven kinds of receipt, the `FACTS:` block, `frontier/`,
-    `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
-    receipts directory — and it left with that engine at cut two; what the current engine writes
-    to this branch beyond the three files above is not yet described in this contract.
     **A Flock run adds eight files beside them** (with `summary.json` and the
     publish files), so its record says what went wrong and not only that it did:
     - `board.json` — the board as it stood at the end: every task with its state and owner, and
@@ -158,23 +152,13 @@ evidence repository.
   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
   if it is absent or malformed. Nobody rewrites it.
 - **Proof environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
-  lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
-  never a candidate's own base — and it rides no other line. A run's proof is the plan's `Run:`
-  probes and `Check:` lines only: a task is measured by its `Run:` probes, run in the candidate's
-  own clone, and by the plan's `Check:` lines on the folded tree; the Flock selects no other tests
-  (probes-only, operator, 2026-09-27) — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
-  engine's own environment and nothing added: no `ULTRA_BASE` (that rides `Check:` lines and
-  nothing else), no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the
-  numbered exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were
-  the wave engine's and left at cut two (2026-09-21); a probe that wants a base to compare against
-  carries a frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`. The
-  peer exam role, its files and their
-  evidence copy left the engine at cut three (2026-09-22); the way back is a launch from a checkout
-  at `d412149a`, never `--engine d412149a` from today's launcher, whose `kind=` comment key that
-  boot refuses (RUNBOOK §Rollback).
-- **State handshake:** left with the factory at cut three (2026-09-22); nothing reads it. Its
-  shape is #812 (4a63b4ef); map #998 dropped it on 2026-09-30, and #1419 (the Flock's beliefs) is
-  where a reached state would return.
+  lines run on every tested snapshot with `ULTRA_BASE` set to the run's base sha (the moved main's
+  tip once the run follows main), and it rides no other line. A run's proof is the plan's `Run:`
+  probes and `Check:` lines only: a task is measured by its `Run:` probes and the run by the plan's
+  `Check:` lines; the Flock selects no other tests (probes-only, operator, 2026-09-27). A task's
+  `Run:` probes run with the engine's own environment and nothing added — no `ULTRA_BASE`, no
+  `ULTRA_TASK`, no `ULTRA_RUN_DIR` — so a probe that wants a base to compare against carries a
+  frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`.
 - **Launch order (launcher):** read the evidence repository (`--evidence-repo`, else `fleet.json`'s
   `"evidence"`) and refuse a launch with neither, naming the key and `node fleet/doctor.mjs` →
   validate `--target`/`--base`/plan — a `--base` that is not an ancestor
@@ -221,10 +205,8 @@ evidence repository.
 
   with the generated setup script on the verb's stdin, under a `# fleet: width=<W>`
   header line the
-  launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells six and
-  `parse_assignment` fails the boot on a seventh), so that header is a record only: the old wave
-  engine read the same W back off its own compile (`args.json`) as its dispatch bound, falling back
-  to 12 when the compile answered no waves, and that reading left with it at cut two (2026-09-21).
+  launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells seven and
+  `parse_assignment` fails the boot on any other), so that header is a record only.
   `<cpu>` and `<memory>` are the PLAN's size,
   not the fleet's: the launcher parses the plan once before this verb (`plan_parse.py <plan>`,
   the one payload the sizing reads), takes
@@ -250,8 +232,9 @@ evidence repository.
 - **Setup script (generated by `fleet/setup-script.mjs`, ≤10 KiB, bash, `set -euo pipefail`):** exe.dev
   runs it ONCE, as `exedev`, on first boot. It contains no secret and no `ANTHROPIC` string. Its duties,
   in order:
-  1. wait, bounded, for the user bus (`systemctl --user` has no address before `user@.service` is
-     up);
+  1. wait, bounded, for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s):
+     `systemctl --user` has no address before `user@.service` is up, and the image lingers `exedev`
+     by a marker file, so the script never calls `loginctl`;
   2. install the toolchain: node 24.22.1, bun 1.4.4,
      celld 0.6.1 (the one `.gz` asset from
      `github.com/denoland/celld`, verified with `sha256sum -c` against the digest the plugin records
@@ -286,10 +269,7 @@ evidence repository.
      and the bearer itself never leaves the edge;
   6. write the evidence repository's `<owner>/<repo>` to `$HOME/fleet-evidence-repo` — the one way
      the VM learns it (the assignment comment carries no `evidence=`);
-  7. wait for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s) to appear
-     before any `systemctl --user` call — the image lingers `exedev` by a marker file, so the script
-     never calls `loginctl`;
-  8. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
+  7. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
 
   `<N>` is baked into the script the launcher generates, so the script passes `bash -n` for every run
   number. Why a template of `Type=exec` and not a oneshot (Counsel 3, measured on exeuntu, systemd 255):
@@ -298,7 +278,7 @@ evidence repository.
   `systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus`
   reads: `active/exited` + `success` = done; `failed` + `ExecMainStatus=N` = crashed with exit N;
   `failed` + `Result=timeout` = over the 6 h budget; `inactive/dead` = never launched.
-- **Bootstrap (`fleet/fleet-bootstrap.sh`, installed as `/usr/local/lib/fleet/bootstrap.sh`, ≤40 lines,
+- **Bootstrap (`fleet/fleet-bootstrap.sh`, installed as `/usr/local/lib/fleet/bootstrap.sh`, under 50 lines,
   bash, `set -euo pipefail`):** read the comment once → when `$1` (the unit's `%i`) is given, it and the
   comment's `run=` agree or the run fails → parse `engine=` (40 hex or fail) →
   `dst=/home/exedev/engines/<sha>`; if absent, clone `https://github.com/popmechanic/ultrapowers.git`
@@ -343,12 +323,6 @@ evidence repository.
     <engine>/factory/flock/engine.mjs --plan <plan> --plan-json <parse> --target <target> --base <sha> --run-dir <dir>`,
     stdout+stderr teed to `engine.log`.
     cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
-  **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
-  the kata ping and reuse-driven relaunch, the five declared worker roles and their confinement,
-  the worker API-layer error classes, the fold-before-publish transient unit and its six
-  dispositions, the fold-again wall-clock and the tag-and-branch record step — and all of it left
-  with that engine at cut two; what `factory/boot.sh` itself does at this level of detail is not
-  yet written down here.
 - **Beliefs (Flock, the `belief` row):** a builder's belief is the tuple
   `{by, claim, about, task, path, stale}` — `about` is one of `task`, `app` or `engine` (whom the
   belief is for: the task's builders, the app's operator, or the engine's maintainers), the claim
@@ -427,8 +401,12 @@ evidence repository.
   `### Receipt` table with one `| task | probe | proves | exit |` row per `Run:` line of the plan,
   the exit read from the `edge` row of the last `settled` snapshot (the last `edge` row when
   nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the run tag's folder>` —
-  `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
-  line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
+  `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — then,
+  each only where the run has it and each its own `###` section or line, the provenance of its
+  lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`), Jev's
+  readings of each story step and what each step changed, and last one `Closes #<n>` line per
+  number on the plan's `**Closes:**` line, all rendered by `factory/record.mjs pr-body`. A body
+  over GitHub's cap gives up builders' lines first, never the summary or the closes. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is appended by `factory/publish.mjs`, as are its `merge`,
   `refold` and `publish:*` rows.
