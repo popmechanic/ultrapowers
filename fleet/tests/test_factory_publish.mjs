@@ -247,9 +247,10 @@ function evidenceRunDirEntries (evidenceDir, runN) {
       `runs/o-r/${runN}/publish-deploy.log`,
       `runs/o-r/${runN}/publish-verify.log`,
       `runs/o-r/${runN}/publish.json`,
-      `runs/o-r/${runN}/status.json`
+      `runs/o-r/${runN}/status.json`,
+      `runs/o-r/${runN}/view.json`
     ],
-    `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three and the boot log — got ${JSON.stringify(runDirEntries)}`
+    `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three, the boot log and the run's view (#1562) — got ${JSON.stringify(runDirEntries)}`
   )
 
   // [M6] both probe commands ran in the target checkout under the
