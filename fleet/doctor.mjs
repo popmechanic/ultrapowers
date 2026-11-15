@@ -338,7 +338,7 @@ function claudeRow (found, tokenRes, usageRes) {
   }
   const status = tokenRes.code === 0 && firstLine(tokenRes.stdout) !== ''
     ? firstLine(tokenRes.stdout)
-    : 'no refresh token in the keychain — the bearer will not be refreshed before a run'
+    : 'no refresh token in the keychain — a launch on this account refuses until it is signed in'
   return row('claude', 'ok', `${CLAUDE_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
 }
 

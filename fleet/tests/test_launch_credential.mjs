@@ -116,6 +116,13 @@ function spy (result) {
   const credOther = defaultRefreshCredential('acct', spOther)
   assert.equal(credOther.ok, false, '(b) [M2] ok is false on an unrelated failure')
   assert.equal(credOther.refused, undefined, '(b) [M2] refused is undefined when no refusal line is present')
+
+  // no keychain record for the account (a misnamed --account) refuses, naming it — never a skip
+  const spNone = spy({ status: 1, stderr: 'no refresh token in the keychain — run `node fleet/claude-token.mjs login` first\n' })
+  const credNone = defaultRefreshCredential('acct', spNone)
+  assert.equal(credNone.ok, false, '(b) a missing keychain record is not ok')
+  assert.ok(typeof credNone.refused === 'string' && credNone.refused.includes('account acct'),
+    `(b) a missing keychain record refuses naming the account — got ${JSON.stringify(credNone.refused)}`)
 }
 
 // ── c/d. [M3, M4] launch() driven with a stand-in refreshCredential ─────────

@@ -278,7 +278,10 @@ async function defaultEngineSha (exec) {
 // four hours of expiry — a run that outlives its bearer dies in the gate. The
 // tool holds instead of rotating when a listed fleet VM is still live, since a
 // refresh grant would revoke the access token every live run is using.
-// A laptop set up with `claude setup-token` (no keychain record) skips this.
+// No keychain record for the account is a refusal, never a skip: it is what a
+// misnamed `--account` reads, and a bearer nobody refreshes (a `claude
+// setup-token` one among them) parks every run at the boot's bearer probe
+// (CONTRACT, #1131 probe 3).
 //
 // The account is the launch's, so the entry this rotates and installs is the
 // one the run signs in with — one entry, chosen per run and never mid-run.
@@ -293,7 +296,12 @@ export function defaultRefreshCredential (account = DEFAULT_ACCOUNT, spawn = spa
     if (held !== undefined) return { ok: true, held, out }
     return { ok: true, out }
   }
-  if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
+  if (/no refresh token in the keychain/.test(out)) {
+    const refused = `token: no refresh token in the keychain for account ${account}; ` +
+      `pass the account the keychain holds (\`node fleet/claude-token.mjs accounts\`) or sign it in with ` +
+      `\`node fleet/claude-token.mjs login --account ${account}\``
+    return { ok: false, refused, out }
+  }
   const refused = out.split('\n').find((line) => line.startsWith('token: expires '))
   if (refused !== undefined) return { ok: false, refused, out }
   return { ok: false, out }

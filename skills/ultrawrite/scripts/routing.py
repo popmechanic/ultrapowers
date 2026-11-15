@@ -96,10 +96,11 @@ def routing_branch(T, width, risk):
 def routing_fact_lines(result, tasks, plan_path):
     """The `ROUTING fact:` line, and — risk read, the record naming another
     of the four branches — the mismatch line. Asks Jev once."""
-    impl = [t for t in tasks if t.get("type") == "implementation"]
+    # Every task the parser answers is an implementation task: it refuses any
+    # other `**Type:**`, and a task with no Type line (type None) is one too.
     T = len(result["tasks"])
     width = max((len(w) for w in result["launch_waves"]), default=0)
-    risk = read_routing_risk(impl)
+    risk = read_routing_risk(tasks)
     branch = routing_branch(T, width, risk)
     if risk is None:
         lines = ["ROUTING fact: T=%d, width %d, risk unread, branch %s "

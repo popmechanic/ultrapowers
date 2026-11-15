@@ -876,7 +876,12 @@ it read before it.
 separately from the implementer, and its own evidence copy, left the engine the next day: a
 task's proof is now its `Run:` probes, the tests the engine selects for the patch and the plan's
 `Check:` lines, and nothing on the fleet writes a file for that role. An engine sha from before
-that date still carries it; `--engine d412149a` is how you run it.
+that date still carries it, but today's launcher cannot run it: every launch writes `kind=flock`
+into the comment, and the boot at `d412149a` refuses any key it does not know
+(`assignment: unknown key 'kind' in comment`). The way back is a launch from a checkout at
+`d412149a` itself, launcher and engine together. That launcher files the run on the Kata hub and
+keeps its evidence on the target, so the Kata rollback (CONTRACT §The hub VM) and the evidence
+move's rollback (a checkout before #1395) come with it.
 
 **The factory's retirement (map #1292 rule 8, 2026-09-29).** The factory engine — its modules,
 roles, replay tools and the fold kernel's `kernel/*.py` beside Manyana — is gone; the Flock is the

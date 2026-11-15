@@ -169,8 +169,9 @@ evidence repository.
   the wave engine's and left at cut two (2026-09-21); a probe that wants a base to compare against
   carries a frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`. The
   peer exam role, its files and their
-  evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
-  before it.
+  evidence copy left the engine at cut three (2026-09-22); the way back is a launch from a checkout
+  at `d412149a`, never `--engine d412149a` from today's launcher, whose `kind=` comment key that
+  boot refuses (RUNBOOK §Rollback).
 - **State handshake:** left with the factory at cut three (2026-09-22); nothing reads it. Its
   shape is #812 (4a63b4ef); map #998 dropped it on 2026-09-30, and #1419 (the Flock's beliefs) is
   where a reached state would return.
