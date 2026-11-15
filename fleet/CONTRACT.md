@@ -228,12 +228,12 @@ evidence repository.
   `<cpu>` and `<memory>` are the PLAN's size,
   not the fleet's: the launcher parses the plan once before this verb (`plan_parse.py <plan>`,
   the one payload the sizing reads), takes
-  W — the task count of the widest `launch_waves` entry —
+  W — the parse's `width`, the most tasks the plan can have ready at once —
   and asks for `min(cpu, 2 + ceil(W / 3))` vCPU and
-  `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+  `min(memory, 2 + W)GB` (`max(6, ceil(2 + 1.25 × W))`GB for a stories-v1 plan, whose
+  checker runs Chromium; #1087), where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
   `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
-  either number is refused when `billing plan --json` cannot seat it. The browser term the old
-  state exams added to memory left with them (cut three, 2026-09-22; a return is owed on #1248).
+  either number is refused when `billing plan --json` cannot seat it.
   The verb carries NO `--integration`, and the launcher refuses its own line
   before issuing it should the flag ever reappear. The run's credentials reach the VM by TAG instead:
   each integration a run needs — `claude-max`, the target's `gh-<owner>-<repo>` and the evidence

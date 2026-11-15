@@ -5,8 +5,6 @@
 ```markdown
 ### Task 2: The widget catalog
 
-**Type:** implementation
-
 **Files:**
 - Create: `widgetkit/catalog.py`
 

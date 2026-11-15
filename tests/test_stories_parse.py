@@ -32,7 +32,7 @@ def test_plan_parse_dispatches_a_stories_plan(tmp_path):
     assert t["piece"] == "todo" and t["actions"] == ["addTodo", "completeTodo", "deleteTodo"]
     assert len(t["probes"]) == 4 and t["proofRuns"] == []
     assert t["files"] == ["client/src/pieces/todo.json"]
-    assert got["launch_waves"][0][0]["id"] == "1" and got["bootstrapCmd"] == "bun install"
+    assert t["wave"] == 1 and got["width"] == 1 and got["bootstrapCmd"] == "bun install"
 
 
 def test_depends_on_pieces_becomes_edges(tmp_path):
@@ -41,7 +41,7 @@ def test_depends_on_pieces_becomes_edges(tmp_path):
                           "**Actions:**\n**Stories:**\n**Proof:**\n")
     got = json.loads(parse(tmp_path, text).stdout)
     assert got["dag_edges"] == [{"from": "1", "to": "2", "why": "piece tag depends on todo"}]
-    assert [[t["id"] for t in w] for w in got["launch_waves"]] == [["1"], ["2"]]
+    assert [t["wave"] for t in got["tasks"]] == [1, 2] and got["width"] == 1
     assert got["tasks"][1]["depends_on"] == ["1"]
 
 
@@ -69,4 +69,4 @@ def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):
     res = subprocess.run([sys.executable, str(tmp_path / "plan_parse.py"),
                           str(ROOT / "evals/fixtures/claims/plan.md")], capture_output=True, text=True)
     assert res.returncode == 0, res.stderr
-    assert "launch_waves" in json.loads(res.stdout)
+    assert "width" in json.loads(res.stdout)

@@ -254,16 +254,12 @@ export async function thrown (body) {
 /** An account whose billing caps clear every launch. */
 export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
 
-const task = (id) => ({
-  id: String(id),
-  title: `task ${id}`,
-  factsheet: {
-    files: [`f${id}.txt`], deletes: [], guards: [], proofTests: [], landing: {},
-    driverOwned: [], siblingOwned: [], produces: [], consumes: []
-  }
-})
-/** The compiled plan the stubbed compiler answers: one task, one wave. */
-export const ONE_TASK = { launch_waves: [[task(1)]], dag_edges: [] }
+/** The compiled plan the stubbed compiler answers: one task, width one. */
+export const ONE_TASK = {
+  tasks: [{ id: '1', title: 'task 1', files: ['f1.txt'], wave: 1, proofRuns: [], proofRunClauses: [] }],
+  dag_edges: [],
+  width: 1
+}
 
 /** `new` answers the VM it was asked to make, running. */
 export const NEW_OK = (cmd, argv) =>

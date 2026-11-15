@@ -80,22 +80,14 @@ read `references/stories.md` in full and follow it step by step**, after the enr
 
 ## Task shape — pinned to what the parser actually reads
 
-`### Task N: <title>`, then the header block, then the Files block, then exactly six body
-slots.
+`### Task N: <title>`, then the Files block, then exactly six body slots. Every task is an
+implementation task: a write-nothing verification is a `Run:` probe or a `Check:`, never a
+task of its own; a deploy goes through the plan's `**Publish:**` header (above), and
+nothing in a run waits on a human. (A `**Type:**` line, which older plans carry, is read as
+nothing.)
 
-Header markers: **Type:** — nothing else; **Files:** is not a marker and ends the header block.
-
-The compiler closes the header block at the first line that is not marker-shaped, so a
-marker written below the Files block is not read — it is dropped and surfaced as a
-conflict. Keep the marker directly under the heading.
-
-- `**Type:**` — `implementation`, the default and the only Type the Flock runs;
-  `plan_check.py` refuses any other. A write-nothing verification is a `Run:` probe or a
-  `Check:`, never a task of its own; a deploy goes through the plan's `**Publish:**`
-  header (above), and nothing in a run waits on a human.
-- `Depends-on` and `Commutes` lines are refused by `plan_check.py` as a `grammar:`
-  violation; `plan_parse.py` reads neither. Ordering is derived from
-  Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
+- There is no `Depends-on` or `Commutes` line; `plan_parse.py` reads neither. Ordering is
+  derived from Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
   A Proof `Run:` whose command names a path in a sibling's Files — and not in the running
   task's own — is derived the same way: the sibling that owns the file goes first, because
   a command cannot run a file nobody has written yet.
@@ -335,9 +327,9 @@ fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispa
 key, such as a `history` array of every round's verdicts, is tolerated. One such key is
 reserved: beside `tasks` and `tally` the record carries the sitting's own `authoring` object,
 
-    {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A", "explain_rounds": 0}]}}
+    {"authoring": {"minutes": 118, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A", "explain_rounds": 0}]}}
 
-where `minutes` is the sitting's wall-clock minutes to `PLAN OK`, `probes` the hub probes made,
+where `minutes` is the sitting's wall-clock minutes to `PLAN OK`,
 `routing` the handoff rule's own verdict (§Execution handoff), and `questions` one row per
 AskUserQuestion of the sitting — the execute question included, `recommended` null when no
 option carried the tag, and `explain_rounds` the number of Please explain rounds that question
@@ -411,10 +403,10 @@ what a parser cannot see: a gate record that is missing, stale or `fail`, a `Che
 `Check:` that freezes a pathspec covering a task's own Files, a Stale-if predicate that
 already holds at BASE, a `Run:` tag citing a clause the Machine line does not number, a
 task without its six slots once each, non-empty and in order, and a code fence outside a
-task's Proof. The parser itself refuses a task whose `**Type:**` is not `implementation`. It is not a grammar check — the old
-compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
-own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
-`dag_edges`): what it prints is what the engine will do.
+task's Proof. The parser itself refuses a cycle, a duplicate task id and a `(minor)` Check.
+Read `plan_parse.py`'s own output for the plan before launching (`proofRuns`,
+`proofRunClauses`, `checks`, `dag_edges`, each task's `wave` and the plan's `width`): what it
+prints is what the engine will do.
 
 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
 `quoted from #NNN` claim against its issue body at signing time. The plan is done when

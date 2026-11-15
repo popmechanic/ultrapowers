@@ -107,16 +107,15 @@ function proofOf (e) {
 /**
  * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
  * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
- * last, lastAt }` plus `wave` (its 1-based launch wave, one past the last for a task the plan does
- * not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
+ * last, lastAt }` plus `wave` (its 1-based layer in the plan's dependency order, the parse's own
+ * `wave`; one past the last for a task the plan does not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
  * `proof` row's reading, null without one).
  */
 export function renderView ({ run, target, rows, status = null, plan = null, summary = null }) {
   const p = projectRun({ run, target, rows, status, plan })
   const list = Array.isArray(rows) ? rows : []
-  const waves = plan && Array.isArray(plan.launch_waves) ? plan.launch_waves : []
   const waveOf = new Map()
-  waves.forEach((w, i) => { for (const id of ids(w)) if (!waveOf.has(id)) waveOf.set(id, i + 1) })
+  for (const t of plan && Array.isArray(plan.tasks) ? plan.tasks : []) if (Number.isInteger(t?.wave)) waveOf.set(String(t.id), t.wave)
   const deps = new Map()
   const dep = (id, on) => { if (!deps.has(id)) deps.set(id, new Set()); deps.get(id).add(on) }
   for (const t of plan && Array.isArray(plan.tasks) ? plan.tasks : []) for (const on of ids(t.depends_on)) dep(String(t.id), on)
@@ -149,7 +148,7 @@ export function renderView ({ run, target, rows, status = null, plan = null, sum
       state: t.state,
       last: t.last,
       lastAt: t.lastAt,
-      wave: waveOf.get(t.id) ?? waves.length + 1,
+      wave: waveOf.get(t.id) ?? Math.max(0, ...waveOf.values()) + 1,
       deps: [...(deps.get(t.id) ?? [])].sort(),
       agent: agents.get(t.id) ?? null,
       proof: proofs.has(t.id) ? proofs.get(t.id) : null

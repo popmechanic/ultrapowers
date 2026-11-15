@@ -143,8 +143,8 @@ const planGrammar = (planText) => {
 }
 
 /**
- * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
- * W, the task count of the compiled plan's widest wave, `cap` is the
+ * The box one plan needs, clamped by the fleet's ceiling. Pure: `width` is
+ * W, the parse's `width` (the most tasks ready at once), `cap` is the
  * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`).
  *
  *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
@@ -165,8 +165,8 @@ const planGrammar = (planText) => {
  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
  * takes verbatim; `cpu` is a decimal string for the same reason.
  */
-function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
-  const w = Math.max(0, Math.floor(Number(widestWave) || 0))
+function vmSizeFor (width, cap = FLEET_DEFAULTS, browsers = false) {
+  const w = Math.max(0, Math.floor(Number(width) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
   // a stories-v1 builder runs its checks in Chromium (0.7-1 GB with a page, #1087)
@@ -184,15 +184,11 @@ function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
  * a named number wins outright whatever the plan is, and what it wins is the
  * cap value, which is where the launch line's own number already sits.
  *
- * W is floored at one: a payload with no waves launches nothing, and a box
- * below the one-task size would be a smaller answer than the smallest real
- * plan's.
+ * W is the parse's `width` floored at one: a box below the one-task size
+ * would be a smaller answer than the smallest real plan's.
  */
 function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
-  const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
-  const w = Math.max(1, waves.reduce(
-    (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
-  ))
+  const w = Math.max(1, Math.floor(Number(compiled?.payload?.width) || 0))
   const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, compiled?.payload?.grammar === 'stories-v1')
   return {
     width: w,
@@ -203,7 +199,7 @@ function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
 
 /**
  * The launcher's own header on the setup script the `new` verb carries on
- * stdin: W, the widest wave of the plan this box was cut for, and the size it
+ * stdin: W, the width of the plan this box was cut for, and the size it
  * was cut to. Pure — the script comes back with one comment line inserted
  * under its shebang, nothing else moved.
  *
@@ -217,7 +213,7 @@ function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
  * does not read it.
  */
 function stampWidth (script, { width, cpu, memory }) {
-  const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+  const note = `# fleet: width=${width} — the most tasks the parsed plan can have ready at once, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
   const text = String(script ?? '')
   const firstLine = text.indexOf('\n')
   return firstLine < 0
@@ -582,7 +578,7 @@ async function refuseUnlaunchable ({ exec, repoDir, base, compiled, integrations
   // One run must fit the plan's pool. Allocation is over-committable and
   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
   // contention bounds concurrency, and two plans at once is by design. The
-  // parse does not move with N, so the widest wave, and the box it asks for,
+  // parse does not move with N, so the width, and the box it asks for,
   // are the same under every N.
   const capacity = await readPlanCapacity(exec)
   if (capacity.maxCpus < Number(size.cpu)) {
@@ -934,7 +930,7 @@ async function launchBody ({
     github: githubName,
     cpu,
     memory,
-    // W, the widest wave of the parsed plan: what `cpu` and `memory` were
+    // W, the width of the parsed plan: what `cpu` and `memory` were
     // sized to. It is not an assignment key — `COMMENT_KEYS` in
     // `fleet/lobby.mjs` spells seven and `parse_assignment` on the VM fails on an
     // eighth — so it rides the setup script's header instead (`stampWidth`),

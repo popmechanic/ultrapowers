@@ -4,7 +4,7 @@
     routing.py <plan.md>
 
 Prints `ROUTING fact: T=<n>, width <w>, risk <r>, branch <b>`: T the
-implementation tasks, width the largest launch wave, risk one Jev reading of
+tasks, width the most tasks ready at once (the parse's `width`), risk one Jev reading of
 `authoring_routing` / `risk` (via `skills/ultrawrite/stories/ask.ts`; any
 failure reads `risk unread` and the line ends `(computed without risk)`), and
 the branch by the first-match rule. When risk was read and the gate record's
@@ -75,7 +75,7 @@ def routing_risk_threshold():
 
 def read_routing_risk(tasks):
     """One Jev reading of `authoring_routing` / `risk` over the plan's
-    implementation tasks, or None for any failure (`ask_jev`)."""
+    tasks, or None for any failure (`ask_jev`)."""
     value = ask_jev("authoring_routing", "risk", {"plan": {"tasks": [
         {"title": t["title"], "claim": t.get("claim") or "",
          "files": list(t.get("files") or [])} for t in tasks]}})
@@ -96,10 +96,8 @@ def routing_branch(T, width, risk):
 def routing_fact_lines(result, tasks, plan_path):
     """The `ROUTING fact:` line, and — risk read, the record naming another
     of the four branches — the mismatch line. Asks Jev once."""
-    # Every task the parser answers is an implementation task: it refuses any
-    # other `**Type:**`, and a task with no Type line (type None) is one too.
     T = len(result["tasks"])
-    width = max((len(w) for w in result["launch_waves"]), default=0)
+    width = result["width"]
     risk = read_routing_risk(tasks)
     branch = routing_branch(T, width, risk)
     if risk is None:

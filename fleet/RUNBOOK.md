@@ -97,18 +97,16 @@ Those are also the defaults. `memory` is `<int>GB` or `<int>G`; a bare number or
 a fractional `1.5GB` is unreadable.
 
 The size a run actually asks for is its PLAN's. The launcher compiles the plan
-before it creates anything, takes W — the task count of the widest wave — and
+before it creates anything, takes W — the parse's `width`, the most tasks the
+plan can have ready at once — and
 asks for `min(cpu, 2 + ceil(W / 3))` vCPU and `min(memory, 2 + W)` GB, so a
 one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6 --memory
 8GB` under a ceiling of `6`/`8GB`. `--cpu <n>` or `--memory <n>GB` on the launch
 line overrides the formula outright, and either way the number is still checked
 against `billing plan --json` before a VM exists.
 
-The old state exams added a browser term to memory (`max(6, 2 + 1.25 × C)` GB,
-one Chromium per exam-carrying task of the widest wave; #1087, #1094). It left
-with them at cut three (2026-09-22) — no plan can name a state exam, so the
-launcher sizes by `2 + W` alone until state exams return as probes (owed on
-#1248).
+A stories-v1 plan's checker runs Chromium, so its memory term is
+`max(6, ceil(2 + 1.25 × W))` GB instead of `2 + W` (#1087).
 
 The `capacity` doctor row is a report of those two facts and of nothing else:
 the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
@@ -247,7 +245,7 @@ exe.dev app).
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, with each field the record does not say (or says oddly) read as `-`, or `AUTHORING fact: none recorded` when the gate record carries no `authoring` key; the record never refuses a plan (#1440) — so the cost of the plan is read beside the run it launched, without opening the record.
+The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, with each field the record does not say (or says oddly) read as `-`, or `AUTHORING fact: none recorded` when the gate record carries no `authoring` key; the record never refuses a plan (#1440) — so the cost of the plan is read beside the run it launched, without opening the record.
 
 The launcher, in this order: validates the plan, the target and the base;
 reads every command word of every `Run:` probe and `Check:` line against the

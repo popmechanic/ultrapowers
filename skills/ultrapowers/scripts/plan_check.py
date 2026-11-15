@@ -28,7 +28,7 @@ What refuses:
   * with `--base`: a Stale-if predicate that already holds at BASE, and a
     `--base` that is neither a checkout directory nor a 40-hex sha.
 
-A task whose `**Type:**` is not `implementation` is refused by the parser.
+The parser's own refusals (a cycle, a duplicate id, a `(minor)` Check) come back verbatim.
 
 What is printed after the verdict and refuses nothing: `SHARED fact:` always;
 with `--base`, `STALE fact: … unreadable at BASE`, `GREEN-AT-BASE fact:` (the
@@ -204,10 +204,10 @@ def authoring_fact_line(plan_path):
     questions = auth.get("questions")
     questions = [q for q in questions if isinstance(q, dict)] if isinstance(questions, list) else []
     picked, offered = recommended_picked(questions)
-    return ("AUTHORING fact: %s min to PLAN OK, %s hub probes, "
+    return ("AUTHORING fact: %s min to PLAN OK, "
             "%s gate dispatches, %s rejected, routing %s->%s, "
             "%d questions, %d/%d recommended picked, %d explain rounds"
-            % (_count(auth.get("minutes")), _count(auth.get("probes")),
+            % (_count(auth.get("minutes")),
                tally.get("dispatched", "-"), tally.get("rejected", "-"),
                _word(routing.get("branch")), _word(routing.get("lane")),
                len(questions), picked, offered, explain_rounds(questions)))
@@ -260,7 +260,7 @@ def command_violations(checks, tasks, publish=None):
     callers; and a `Check:` naming a path ONE implementation task's Files own
     is that task's `Run:` wearing a run-wide coat — red for every other task
     until that one lands (#978). A `**Publish:**`, `**Verify:**` or
-    `**Rollback:**` command earns the same backtick refusal — the driver's
+    `**Rollback:**` command earns the same backtick refusal — the engine's
     shell reads all four the same way."""
     commands = ([("Check", "", c["cmd"]) for c in checks]
                 + [("Run", "task %s: " % t["id"], cmd)
@@ -271,13 +271,11 @@ def command_violations(checks, tasks, publish=None):
                        ("Rollback", "rollback"))
                       if publish.get(key)]
     violations = [
-        "grammar: %s: command carries a backtick — %s%s; the driver's shell "
+        "grammar: %s: command carries a backtick — %s%s; the engine's shell "
         "reads it as a command substitution (run-74)" % (kind, where, cmd[:80])
         for kind, where, cmd in commands if "`" in cmd]
     for check in checks:
         for t in tasks:
-            if not plan_parse._is_implementation(t["type"]):
-                continue
             for path in sorted(task_files(t)):
                 if command_names_path(check["cmd"], path):
                     violations.append(

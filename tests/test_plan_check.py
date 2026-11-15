@@ -1,150 +1,22 @@
 """The plan-check exams: every test that drives
 `skills/ultrapowers/scripts/plan_check.py`, in one file, each shared helper
-defined once. Three sections, in order: GREEN-AT-BASE, the run-wide freeze,
-and the authoring record.
+defined once. Three sections, in order:
 
-=== GREEN-AT-BASE ===
+  * GREEN-AT-BASE (#1098): with `--base`, every Proof `Run:` is rehearsed in a
+    detached worktree at BASE, and each one already green prints a
+    `GREEN-AT-BASE fact:` line, plus one reading of what the rehearsal cost.
+    A fact, never a refusal: the verdict stays `PLAN OK`.
+  * The run-wide freeze (#1202): a `Check:` freeze whose pathspec covers a
+    task's own Files is refused (`freeze_violations`).
+  * The authoring record: with `--base`, the gate record's `authoring` object
+    prints one `AUTHORING fact:` line (minutes, gate dispatches and
+    rejections, routing, question counts), each unsaid field read as `-`;
+    the record is telemetry and never refuses (#1440).
 
-GREEN-AT-BASE: the compiler rehearses every Proof `Run:` at BASE (#1098).
-
-A `Run:` line that already passes at BASE proves nothing about the task —
-whatever the implementer writes, that line was green before they started. So
-`plan_check.py --base <sha>` cuts a detached worktree at BASE,
-runs every Proof `Run:` there, and prints one `GREEN-AT-BASE fact:` line per
-command that exits 0, plus one reading line saying what the rehearsal cost.
-This release the lines are a fact and never a refusal: the verdict stays
-`PLAN OK` and the exit stays 0.
-
-The seven Machine clauses, restated, and where each is graded here:
-
-  * M1 — a Proof `Run:` bullet whose value ends in a citation tag (`[M2]`,
-    `[M1, M3]`) is a PROVER: `parse_task` records the command WITHOUT the tag
-    in `proof_runs` and the tag's clause ids, sorted, in a parallel
-    `proof_run_cites` list; an untagged `Run:` is a GUARD, recorded there as
-    `[]`. Graded by leg (a), which calls `parse_task` directly and compares
-    both lists by equality.
-  * M2 — a tag naming a clause the Machine line does not number is refused at
-    `--check` with
-
-        grammar: Run: cites an unknown clause — task <id>: <command cut to 80 characters> cites <Mn>; the Machine line numbers <span>
-
-    and a tag never counts as a citing leg: a clause cited only by a `Run:`
-    tag still draws `Machine clause <Mn> has no citing Proof leg`. Graded by
-    leg (b), both halves, as whole-line strings off a real `--check`.
-  * M3 — `green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S)`
-    cuts ONE detached worktree of the plan's repository at BASE's commit under
-    a fresh temporary directory, runs every task's `Run:` commands there in
-    Proof order through `bash -lc` with `ULTRA_BASE` set to the 40-hex commit
-    and the worktree as working directory, and removes the worktree afterwards
-    whatever the commands did. Graded by leg (c) — the command itself asserts
-    where it ran, and the exam asserts what is left behind.
-  * M4 — the three outcome lines, verbatim: a prover that exits 0, a guard
-    that exits 0, and nothing at all for a command that exits non-zero. Graded
-    by leg (d), by equality, from the function and from the `--check --base`
-    stdout alike.
-  * M5 — a command still running at `timeout_s` seconds (`GREEN_AT_BASE_TIMEOUT_S
-    = 30` by default) is killed with its whole process group, yields the
-    `not run (timeout after <timeout_s> s)` line, and the call returns within
-    3 seconds of the limit. Graded by leg (e), which passes `timeout_s=1` so
-    the suite never waits 30 seconds, and by leg (h)'s first `Run:` line.
-  * M6 — the last line the function returns is the reading,
-    `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)`,
-    returned even for a plan with no `Run:` line at all. Graded by leg (f),
-    all three shapes.
-  * M7 — `--check --base <base>` whose verdict is `PLAN OK` prints every line
-    of M4–M6 after the `BASE fact:`/`STALE fact:` lines and before the
-    `AUTHORING fact:` line, still prints `PLAN OK` first and still exits 0; a
-    bare `--check`, a plain compile with or without `--base`, and a
-    `--check --base` whose verdict is a refusal run no command and print no
-    `GREEN-AT-BASE fact:` line. Graded by leg (g), whose witness is a `Run:`
-    line that touches a file outside the worktree.
-
-Leg (h) is the Proof's `Run:` lines. The constant at 30 is graded here; the
-function's signature is exercised by every leg that calls it. Its third is `python3 -m pytest -q
-tests/test_plan_check.py`, which is THIS file: an exam never
-runs an exam, least of all itself, so the driver runs that line and nothing
-here does.
-
-The shape is `tests/test_compile_plan_edges.py` and
-`tests/test_compile_plan_exam_sweep.py`: the direct legs import `compile_plan`
-from `skills/ultrapowers/scripts` and call the function; the `--check` legs
-write a real claims-v1 plan inside a one-commit git repository under
-`tmp_path`, sign its gate-verdict record with the gate's own extractor, run the
-compiler as a subprocess, and read the exit code and the two output channels.
-
-=== The run-wide freeze ===
-
-`plan_check.py` refuses a run-wide `Check:` freeze that covers a task's own
-Files (#1202).
-
-Machine, restated, and where each clause is graded here:
-
-  * M1 — a signed one-task plan whose `## Global Constraints` carries
-    `- Check: git diff --quiet $ULTRA_BASE -- fleet/`, with task 1 naming
-    `fleet/tests/test_x.mjs` as its `Create:` path and `src/prover.ts` as its
-    `Modify:` path, exits 2 under a bare `plan_check.py <plan>` (no `--base`),
-    prints no `PLAN OK`, and prints exactly one line carrying `freezes` — that
-    line also carries the check's whole command, the pathspec `fleet/`,
-    `task 1` and the path `fleet/tests/test_x.mjs`. Graded by leg (a),
-    subprocess, and again directly against `freeze_violations` in leg (d).
-  * M2 — the same plan with the check
-    `git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/te` prints
-    `PLAN OK`, exits 0, and carries no `freezes` line — `fleet/te` is a
-    string prefix of the task's path, not a directory prefix, so it covers
-    nothing. Graded by leg (b), and again directly in leg (d).
-  * M3 — the same plan with the check
-    `git diff --quiet $ULTRA_BASE -- docs src/prover.ts` exits 2 and prints a
-    line carrying `freezes`, `src/prover.ts` and `task 1` — a pathspec equal
-    to a task's path covers it. Graded by leg (c), and again directly in leg
-    (d).
-  * M4 — `freeze_violations(checks, tasks)` is a module-level function of
-    `plan_check.py` that answers from the `checks`/`tasks` values alone.
-    Graded by leg (d): its answering M1/M2/M3 correctly when
-    called directly on plain dicts (no `tmp_path`, no git, no subprocess —
-    demonstrating it needs none). `main` summing its
-    answer into `violations` is what legs (a)-(c) already exercise end to
-    end; that the function itself spawns nothing is a diff-reading claim (the
-    Context's own words), not one this file can observe from outside.
-
-The shape is the GREEN-AT-BASE section's: a claims-v1 plan is built
-directly (no repository — this task runs `plan_check.py` with no `--base`,
-so none is needed) and signed with the gate's own extractor, then run as a
-subprocess so stdout and the exit code are read as the compiler actually
-prints them.
-
-=== The authoring record ===
-
-The authoring record: one AUTHORING fact line, and a refusal when it is
-malformed (#988 desired state 1).
-
-The record sits at the top level of `<plan-stem>.gate-verdicts.json` beside
-`tasks` and `tally`, and it is the one literal every task of this plan shares:
-
-    {"authoring": {"minutes": 118, "probes": 12,
-                   "routing": {"branch": "risk", "lane": "ultrapowers"},
-                   "questions": [{"question": "Claim and summary",
-                                  "options": ["A", "B"],
-                                  "recommended": "A", "picked": "A"}]}}
-
-Three clauses, one exam:
-
-  * M1 — under `--check --base <sha>`, a well-formed record prints, after the
-    verdict line, exactly one `AUTHORING fact:` line carrying the sitting's
-    minutes, hub probes, the `tally`'s dispatches and rejections (`-` for an
-    absent key), the routing branch and lane, and the question counts; the
-    compile still exits 0 with `PLAN OK`.
-  * M2 — a record with no `authoring` key prints `AUTHORING fact: none
-    recorded` under the same flags, and a bare `--check` of either record
-    prints no `AUTHORING fact:` line at all.
-  * M3 — a malformed `authoring` object is refused at `--check`: exit 2, no
-    `PLAN OK`, one `grammar: authoring record unreadable —` line naming the
-    offending field.
-
-Every plan below is a real claims-v1 plan written to a temp directory and
-compiled by a subprocess, its gate verdicts hashed by the gate's own extractor,
-so nothing here reaches into the compiler's internals. The `--base` legs put
-that plan inside a one-commit git repository, because a 40-hex `--base` is
-resolved in the plan's own toplevel.
+The direct legs import plan_check and call its functions; the subprocess legs
+write a real claims-v1 plan (inside a one-commit git repository when they
+need a BASE), sign its gate-verdict record with the gate's own extractor, and
+read the exit code and both output channels.
 """
 import copy
 import json
@@ -783,7 +655,7 @@ CMD_M2 = "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/te"
 CMD_M3 = "git diff --quiet $ULTRA_BASE -- docs src/prover.ts"
 
 
-def compile_plan(tmp_path, name, text):
+def run_plan_check(tmp_path, name, text):
     """`plan_check.py <plan>` — no `--base`: the Context says this refusal
     needs no repository, and none is set up here."""
     plan = write_plan(tmp_path, name, text)
@@ -804,7 +676,7 @@ def test_a_a_directory_pathspec_covering_the_test_path_is_refused(tmp_path):
     """[M1]: exit 2, no `PLAN OK`, exactly one `freezes` line, carrying the
     check's whole command, the pathspec `fleet/`, `task 1` and the covered
     path `fleet/tests/test_x.mjs`."""
-    p = compile_plan(tmp_path, "a.md", make_plan(CMD_M1))
+    p = run_plan_check(tmp_path, "a.md", make_plan(CMD_M1))
     out = p.stdout + p.stderr
     assert p.returncode == 2, out
     assert "PLAN OK" not in p.stdout, p.stdout
@@ -823,7 +695,7 @@ def test_a_a_directory_pathspec_covering_the_test_path_is_refused(tmp_path):
 def test_b_a_string_prefix_pathspec_is_not_a_directory_prefix(tmp_path):
     """[M2]: `fleet/te` is a string prefix of `fleet/tests/test_x.mjs`, not a
     directory prefix — `PLAN OK`, exit 0, no `freezes` line at all."""
-    p = compile_plan(tmp_path, "b.md", make_plan(CMD_M2))
+    p = run_plan_check(tmp_path, "b.md", make_plan(CMD_M2))
     out = p.stdout + p.stderr
     assert p.returncode == 0, out
     assert p.stdout.splitlines()[:1] == ["PLAN OK"], p.stdout
@@ -840,7 +712,7 @@ def test_c_a_pathspec_equal_to_the_modify_path_is_refused(tmp_path):
     `src/prover.ts` and `task 1` together (`command_violations`' own "names"
     line may also fire here — that line says a different thing and is not
     asserted against)."""
-    p = compile_plan(tmp_path, "c.md", make_plan(CMD_M3))
+    p = run_plan_check(tmp_path, "c.md", make_plan(CMD_M3))
     out = p.stdout + p.stderr
     assert p.returncode == 2, out
     lines = freeze_lines(p.stdout)
@@ -936,7 +808,6 @@ Machine: M1. The sim prints `PASSED`.
 # The Context's example record, verbatim, and the `tally` it is read beside.
 AUTHORING = {
     "minutes": 118,
-    "probes": 12,
     "routing": {"branch": "risk", "lane": "ultrapowers"},
     "questions": [{"question": "Claim and summary", "options": ["A", "B"],
                    "recommended": "A", "picked": "A"}],
@@ -944,7 +815,7 @@ AUTHORING = {
 TALLY = {"dispatched": 4, "rejected": 1}
 
 # M1's line for that pair, exactly as the Context writes it.
-EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
+EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                 "4 gate dispatches, 1 rejected, routing risk->ultrapowers, "
                 "1 questions, 1/1 recommended picked, 0 explain rounds")
 # M2's line for a record with no `authoring` key.
@@ -996,7 +867,7 @@ def assert_one_fact_after_the_verdict(p, expected):
 # ── (a) M1: the well-formed record prints the Context's example line ────────
 # "a claims-v1 plan whose `<stem>.gate-verdicts.json` carries a well-formed
 # top-level `authoring` object prints, after the verdict line, exactly one line
-# of the form `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes,
+# of the form `AUTHORING fact: <minutes> min to PLAN OK, 
 # <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
 # <n> questions, <p>/<q> recommended picked, <e> explain rounds` ... and the
 # compile still exits 0 with `PLAN OK`."
@@ -1017,7 +888,7 @@ def test_a_the_example_record_prints_the_example_line(tmp_path):
 # whose `recommended` is not null and `<p>` the count of those whose `picked`
 # equals `recommended`."
 
-REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
+REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                         "4 gate dispatches, - rejected, "
                         "routing risk->ultrapowers, "
                         "1 questions, 1/1 recommended picked, "
@@ -1031,7 +902,7 @@ TWO_QUESTIONS = [
     {"question": "Routing", "options": ["A", "B"],
      "recommended": "A", "picked": "A"},
 ]
-TWO_QUESTIONS_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
+TWO_QUESTIONS_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                       "4 gate dispatches, 1 rejected, "
                       "routing risk->ultrapowers, "
                       "2 questions, 1/1 recommended picked, "
@@ -1111,43 +982,21 @@ def _odd():
     """Every field the fact line reads, said oddly or not at all."""
     a = copy.deepcopy(AUTHORING)
     a["minutes"] = "12"
-    a["probes"] = -1
     del a["routing"]
     a["questions"] = [{"question": "q", "options": ["only"], "picked": "C"}, "not a row"]
     return a
 
 
 def test_e_a_malformed_record_reads_dashes_and_is_not_refused(tmp_path):
-    """(e) #1440: odd `minutes`/`probes`, no `routing` and a non-object
+    """(e) #1440: an odd `minutes`, no `routing` and a non-object
     question row — exit 0, `PLAN OK`, and one fact line reading each unsaid
     field as `-` and skipping the row that is not an object."""
     repo, head = base_repo(tmp_path)
     p = check(repo, "e.md", record(authoring=_odd()), "--base", head)
     assert_one_fact_after_the_verdict(
-        p, "AUTHORING fact: - min to PLAN OK, - hub probes, 4 gate dispatches, "
+        p, "AUTHORING fact: - min to PLAN OK, 4 gate dispatches, "
            "1 rejected, routing -->-, 1 questions, 0/0 recommended picked, "
            "0 explain rounds")
-
-
-# ########################################################################### #
-# NON-IMPLEMENTATION TYPES                                                    #
-# ########################################################################### #
-
-
-@pytest.mark.parametrize("ttype", ["gate", "release", "manual"])
-def test_a_task_the_engine_would_skip_is_refused(tmp_path, ttype):
-    """The parser keeps only implementation tasks, so a `gate`, `release` or
-    `manual` task would vanish without a word: plan_check refuses it."""
-    text = (ROOT / "evals/fixtures/claims/plan.md").read_text()
-    plan = tmp_path / "p.md"
-    plan.write_text(re.sub(r"^\*\*Type:\*\* implementation",
-                           "**Type:** " + ttype, text, flags=re.M))
-    p = run_compiler(plan)
-    assert p.returncode != 0, p.stdout
-    lines = [l for l in p.stdout.splitlines()
-             if l.startswith("grammar: task 1: Type")]
-    assert len(lines) == 1 and ttype in lines[0], p.stdout
-    assert "**Publish:**" in lines[0], p.stdout
 
 
 # ########################################################################### #

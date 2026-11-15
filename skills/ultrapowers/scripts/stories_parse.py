@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Parse a stories-v1 plan to the fields the engine and the laptop's check
-read. The Flock's field names (tasks, dag_edges, launch_waves, checks,
-bootstrapCmd, publish) are kept. proofRuns stays empty: each task's facts are
+read. The Flock's field names (tasks, dag_edges, width, checks,
+bootstrapCmd, publish) are kept, and each task carries its `wave`. proofRuns stays empty: each task's facts are
 its probes, which factory/flock/plan.mjs turns into check.ts calls itself."""
 import re
 
@@ -148,11 +148,14 @@ def parse_stories_text(text):
         t["files"] = sorted(t["files"])
         t["depends_on"] = [e["from"] for e in edges if e["to"] == t["id"]]
         t["proofRuns"], t["proofRunClauses"] = [], []
-        t["interfaces"] = {"consumes": [], "produces": []}
     sections = task_sections(text)
     for t in tasks:
         t["body"] = sections.get(t["id"], "")
-    by_id = {t["id"]: t for t in tasks}
+    layers = _layers([t["id"] for t in tasks], edges)
+    for n, layer in enumerate(layers):
+        for t in tasks:
+            if t["id"] in layer:
+                t["wave"] = n + 1
     # A TinyApp plan that publishes carries the same three header lines a claims plan does;
     # the boot deploys after the self-merge and verifies with ULTRA_PUBLISH_URL set.
     unwrap = lambda v: v[1:-1] if v and len(v) > 1 and v[0] == v[-1] == "`" else v
@@ -166,6 +169,6 @@ def parse_stories_text(text):
         "store": {"path": sm.group(1), "sha256": sm.group(2)},
         "stories": stories, "links": links, "numbers": numbers, "guards": guards,
         "tasks": tasks, "dag_edges": edges,
-        "launch_waves": [[by_id[i] for i in w] for w in _layers([t["id"] for t in tasks], edges)],
+        "width": max((len(layer) for layer in layers), default=0),
         "checks": [], "bootstrapCmd": "bun install", "publish": publish,
     }

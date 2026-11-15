@@ -164,14 +164,13 @@ export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planT
 
 /**
  * The launch's parse: `plan_parse.py <plan>` — the sandbox's own parser, so
- * what the laptop sizes the box from is what the engine will read. Run once
- * per run number the launch attempts and read by everything that needs to know
- * what the plan IS: how wide its widest wave is (which is what the VM is sized
- * to and what the engine's dispatch bound becomes), and the tasks and edges the
- * hub is filed with. `stamp` names the run the parse was made for and nothing
- * in the parse itself: the output is the same under every number.
+ * what the laptop sizes the box from is what the engine will read. Read by
+ * everything that needs to know what the plan IS: its `width` (the most tasks
+ * ready at once, which the VM is sized to), its tasks' probes and its checks.
+ * `stamp` names the run the parse was made for and nothing in the parse
+ * itself: the output is the same under every number.
  *
- * Answers `{ stamp, payload, waves, edges }`. `compilerPath` is
+ * Answers `{ stamp, payload }`. `compilerPath` is
  * `fetchCompilerAt`'s `parserPath` and is required, for the reason
  * `verifyPlanCompiles` gives.
  */
@@ -187,10 +186,5 @@ export async function compilePlanForRun ({ exec, repoDir, planPath, stamp, compi
   } catch (error) {
     throw new Refusal(`launch: plan_parse.py for ${stamp} printed no JSON: ${error?.message ?? error}`)
   }
-  return {
-    stamp,
-    payload,
-    waves: Array.isArray(payload?.launch_waves) ? payload.launch_waves : [],
-    edges: Array.isArray(payload?.dag_edges) ? payload.dag_edges : []
-  }
+  return { stamp, payload }
 }

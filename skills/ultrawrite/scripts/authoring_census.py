@@ -2,7 +2,7 @@
 """Read a release's runs into one table: what authoring cost beside the run.
 
 Every run leaves a gate record, and since this plan that record carries an
-`authoring` object — the minutes, the probes, the routing branch the risk
+`authoring` object — the minutes, the routing branch the risk
 override chose, the lane, and the questions with their recommended and picked
 options and how many explain rounds each asked for. One run's record answers
 one run; a release is a handful of them, and
@@ -16,8 +16,7 @@ is a question about the pile. This census is that pile read into one table.
         [--evidence-repo <owner>/<repo>] [--config <path>]
 
 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
-`run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
-with no record is not a row.
+`run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
 `--register` prints one line per option of every question instead of the table
 (#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
 `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
@@ -51,14 +50,12 @@ RUN_DIR_RE = re.compile(r"^run-(\d+)$")
 
 RECORD_NAME = "gate-verdicts.json"
 STATUS_NAME = "status.json"
-REPORT_NAME = "report.json"
 
 #: The table's columns, in order. The first line of `--from` output is exactly
 #: these names, tab-separated.
 COLUMNS = (
     "run",
     "authoring_min",
-    "probes",
     "dispatched",
     "rejected",
     "routing",
@@ -66,7 +63,6 @@ COLUMNS = (
     "questions",
     "recommended_picked",
     "run_min",
-    "amendments",
     "explain_rounds",
 )
 
@@ -112,23 +108,6 @@ def _run_minutes(status):
     return int((b - a).total_seconds() // 60)
 
 
-def _amendments(report):
-    """How many amendments the run's workers made, from its `report.json`.
-
-    The report's top-level `amendments` is a list of `{task, amends, what,
-    why}` rows, `[]` when none — so the count is that list's length. None when
-    the file is absent, unreadable, not an object, or carries no list under
-    that key: every run before the plan that introduced the key reads `-`,
-    never `0`, because a run that never wrote the key is not a run that made
-    no amendment."""
-    if not isinstance(report, dict):
-        return None
-    amendments = report.get("amendments")
-    if not isinstance(amendments, list):
-        return None
-    return len(amendments)
-
-
 def _questions(authoring):
     """The record's questions as a list of objects."""
     questions = authoring.get("questions")
@@ -171,13 +150,10 @@ def census_rows(root):
 
         status = _load_json(directory / STATUS_NAME)
         run_min = _run_minutes(status) if isinstance(status, dict) else None
-        report = _load_json(directory / REPORT_NAME)
-        amendments = _amendments(report)
 
         rows.append({
             "run": number,
             "authoring_min": authoring.get("minutes") if has_authoring else None,
-            "probes": authoring.get("probes") if has_authoring else None,
             "dispatched": tally.get("dispatched"),
             "rejected": tally.get("rejected"),
             "routing": routing.get("branch") if has_authoring else None,
@@ -186,7 +162,6 @@ def census_rows(root):
             "recommended_picked": (
                 recommended_picked(questions) if has_authoring else None),
             "run_min": run_min,
-            "amendments": amendments,
             "explain_rounds": (
                 explain_rounds(questions) if has_authoring else None),
             "questions_detail": questions,
@@ -226,9 +201,7 @@ def _totals_line(rows):
 
     `risk_override` is over the rows that carry a routing record at all — a
     pre-plan record has no branch and is no part of the denominator — and the
-    two `recommended_picked` sums are over every row. `amendments` sums the
-    rows that carry a count; a release where no run wrote one reads 0.
-    `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
+    two `recommended_picked` sums are over every row. `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
     routed = [row for row in rows if row["routing"] is not None]
     risk = [row for row in routed if row["routing"] == "risk"]
     picked = offered = 0
@@ -239,11 +212,10 @@ def _totals_line(rows):
             offered += q
     return ("totals: plans=%d runs=%s risk_override=%d/%d "
             "recommended_picked=%d/%d authoring_min=%d run_min=%d "
-            "amendments=%d explain_rounds=%d"
+            "explain_rounds=%d"
             % (len(rows), _window(rows), len(risk), len(routed),
                picked, offered,
                _sum(rows, "authoring_min"), _sum(rows, "run_min"),
-               _sum(rows, "amendments"),
                _sum(rows, "explain_rounds")))
 
 
@@ -332,19 +304,17 @@ def _fetch_file(gh, path):
 
 
 def fetch_runs(target, first, last, into, gh="gh", *, evidence):
-    """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
-    `run-<N>/report.json` for each N from `first` to `last` inclusive; return
-    the runs written.
+    """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
+    for each N from `first` to `last` inclusive; return the runs written.
 
-    All three live in the run's folder `runs/<owner>-<repo>/<N>/` of the
+    Both live in the run's folder `runs/<owner>-<repo>/<N>/` of the
     operator's evidence repository `evidence`, at the tag
     `<owner>-<repo>/run-<N>`; the record is read first. A run
     whose tag has no record is skipped whole — one line on stderr, nothing
     written for it, no directory left behind — because a run with no record is
     no row. A status that does not answer leaves that file unwritten and the
-    row's `run_min` a `-`, and a report that does not answer leaves that file
-    unwritten and the row's `amendments` a `-`: the authoring numbers are still
-    worth reading without either."""
+    row's `run_min` a `-`: the authoring numbers are still worth reading
+    without it."""
     into = Path(into)
     # The destination exists whether or not any run answers: a release where
     # every tag is missing is an empty census, not a usage error.
@@ -366,10 +336,6 @@ def fetch_runs(target, first, last, into, gh="gh", *, evidence):
             evidence, target, number, STATUS_NAME))
         if status is not None:
             (directory / STATUS_NAME).write_bytes(status)
-        report = _fetch_file(command, evidence_contents_path(
-            evidence, target, number, REPORT_NAME))
-        if report is not None:
-            (directory / REPORT_NAME).write_bytes(report)
         written.append(number)
     return written
 
