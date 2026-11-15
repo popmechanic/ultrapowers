@@ -618,7 +618,8 @@
 607 < 1  * refusal before any push; an unread row is never a refusal (#1114). Answers
 608 < 1  * the refresh's own answer and the launch line's `usage:` line.
 609 < 1  */
-610 < 1 function readCredential ({ account, refreshCredential, readUsage }) {
+611 > 1 export function readCredential ({ account, refreshCredential, readUsage }) {
+610 < 2 function readCredential ({ account, refreshCredential, readUsage }) {
 611 < 1   const cred = refreshCredential(account)
 612 < 1   if (cred.refused) {
 613 < 1     throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
@@ -632,14 +633,19 @@
 621 < 1     return { cred, usageLine: `usage: ${account} unread — ${usageRow.reason}` }
 622 < 1   }
 623 < 1   const { sevenDay, fiveHour } = usageRow
-624 < 1   if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
+625 > 1   if (sevenDay && sevenDay.utilization >= USAGE_REFUSE_PCT) {
+624 < 2   if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
 625 < 1     throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
 626 < 1   }
-627 < 1   if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
+628 > 1   if (fiveHour && fiveHour.utilization >= USAGE_REFUSE_PCT) {
+627 < 2   if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
 628 < 1     throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
 629 < 1   }
-630 < 1   const usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
-631 < 1     `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+631 > 1   // A null window is one the account does not have: never refused, printed `none`.
+632 < 1   const shown = (window) => window ? `${window.utilization}% resets ${window.resetsAt}` : 'none'
+633 < 1   const usageLine = `usage: ${account} 7d ${shown(sevenDay)}; 5h ${shown(fiveHour)}`
+630 < 2   const usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
+631 < 2     `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
 632 < 1   return { cred, usageLine }
 633 < 1 }
 634 < 1 

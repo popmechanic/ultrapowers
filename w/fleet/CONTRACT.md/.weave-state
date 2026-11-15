@@ -222,7 +222,9 @@
 211 < 1   read the account's usage windows (`node fleet/claude-token.mjs usage --json --account <account>
 212 < 1   --no-rotate`) and refuse a reading at or past 95% of either window, naming the account and the
 213 < 1   reset time, before any push (#1114); under the wall, the launch line carries
-214 < 1   `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>` →
+215 > 1   `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>`; a window the account does not have
+216 < 1   is never refused and prints `none` after its label, as in `5h none` →
+214 < 2   `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>` →
 216 > 2   kata, only under the rollback. The `launch.kata.mode` cell of `fleet/policy.json` is `off` (the
 217 < 2   operator's decision of 2026-11-13: Kata leaves the run path): the launcher does not open
 218 < 2   `~/.ultrapowers/kata-hub.env`, pings no hub, files nothing, and the plan commit carries no

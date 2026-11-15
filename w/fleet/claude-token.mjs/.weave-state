@@ -1,0 +1,572 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The Claude Max credential for the fleet, the loom way.
+2 < 1 //
+3 < 1 //   node fleet/claude-token.mjs login     browser consent → code from the clipboard →
+4 < 1 //                                         tokens → the edge proxy; nothing printed
+5 < 1 //   node fleet/claude-token.mjs login --code-from-clipboard
+6 < 1 //                                         the same, with no question at the terminal:
+7 < 1 //                                         the process polls the clipboard until the
+8 < 1 //                                         copied `code#state` carries THIS login's state
+9 < 1 //   node fleet/claude-token.mjs refresh   install the keychain's access token at the
+10 < 1 //                                         edge before a run, rotating it first when
+11 < 1 //                                         < 4 h remain — held instead, with the
+12 < 1 //                                         cached token installed, while a fleet VM
+13 < 1 //                                         is listed and 90 min or more remain; refused
+14 < 1 //                                         under 90 minutes with a fleet VM listed
+15 < 1 //   node fleet/claude-token.mjs status    when the current access token expires
+16 < 1 //   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
+17 < 1 //                                         its access token is still fresh (`--json`)
+18 < 1 //   node fleet/claude-token.mjs usage     one `/api/oauth/usage` read per account, as one
+19 < 1 //                                         table (`--json`)
+20 < 1 //
+21 < 1 // The keychain holds ONE ITEM PER ACCOUNT: service `ultrapowers-claude-oauth`,
+22 < 1 // account `<name>`, which is `ultrapowers` (DEFAULT_ACCOUNT) when no `--account`
+23 < 1 // is given. `login`, `refresh` and `status` take `--account <name>`; `accounts`
+24 < 1 // enumerates the items under the service and `usage` meters each one.
+25 < 1 //
+26 < 1 // Why this exists: exe.dev has no account-linked Claude integration (it has one
+27 < 1 // for ChatGPT), the catalog `anthropic` object is API-key billing, and an
+28 < 1 // http-proxy's bearer never refreshes on its own. So the laptop owns the OAuth
+29 < 1 // dance and the refresh; exe.dev owns injection at the edge. The access token
+30 < 1 // reaches exactly two places — the keychain and `integrations … --bearer -` on
+31 < 1 // stdin — and the refresh token rotates on every refresh (a consumed copy is
+32 < 1 // dead), so the keychain entry is rewritten each time.
+33 < 1 //
+34 < 1 // The record grew an `accessToken` so `usage` can meter a fresh account without
+35 < 1 // spending a refresh grant. Metering never installs: the edge carries the
+36 < 1 // account a launch chose, and installing a second account's bearer to read its
+37 < 1 // usage would switch every live sandbox to that account mid-run (the prompt
+38 < 1 // cache is per account). So rotation and installation are separate — `refresh`
+39 < 1 // installs unless `--no-install`, and `usage` rotates with `install: false`.
+40 < 1 // Installation is unconditional, rotation is not: `refresh` installs the record's
+41 < 1 // access token even when the record is fresh and nothing rotates, because a
+42 < 1 // `usage` read minutes earlier may have rotated that account with
+43 < 1 // `install: false` and left the edge carrying a revoked bearer (run-100,
+44 < 1 // 2026-09-11). One idempotent `integrations edit … --bearer -` per launch is the
+45 < 1 // price of a launch line that is honest about what the edge carries.
+46 < 1 //
+47 < 1 // The flow, constants and request shapes are popmechanic/loom's
+48 < 1 // (skills/loom/references/oauth-reference.md), measured there against claude.ai.
+49 < 1 
+50 < 1 import { createHash, randomBytes } from 'node:crypto'
+51 < 1 import { spawnSync } from 'node:child_process'
+52 < 1 import fs from 'node:fs'
+53 < 1 import os from 'node:os'
+54 < 1 import path from 'node:path'
+55 < 1 import readline from 'node:readline'
+56 < 1 
+57 < 1 import { CLAUDE_INTEGRATION as INTEGRATION, EXE_HOST, FLEET_PATTERN, parseArgs as parseFlags, runCli } from './lobby.mjs'
+58 < 1 
+59 < 1 const OAUTH = Object.freeze({
+60 < 1   clientId: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+61 < 1   authorizeUrl: 'https://claude.ai/oauth/authorize',
+62 < 1   tokenUrl: 'https://platform.claude.com/v1/oauth/token',
+63 < 1   redirectUri: 'https://platform.claude.com/oauth/code/callback',
+64 < 1   scopes: 'user:profile user:inference user:sessions:claude_code user:mcp_servers'
+65 < 1 })
+66 < 1 
+67 < 1 export const TARGET = 'https://api.anthropic.com'
+68 < 1 export const DEFAULT_ACCOUNT = 'ultrapowers'
+69 < 1 const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
+70 < 1 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
+71 < 1 const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
+72 < 1 const LOCK_STALE_MS = 2 * 60 * 1000
+73 < 1 // A launch rotates the access token when fewer than this remain. Four hours,
+74 < 1 // not thirty minutes: the token lives eight hours and nothing refreshes it
+75 < 1 // mid-run, so a run launched with thirty-one minutes left dies at minute
+76 < 1 // thirty-one with a 401 to whichever worker is mid-call. Run-92
+77 < 1 // (2026-09-11 00:28 UTC) did exactly that on the token run-88's launch had
+78 < 1 // minted at 16:28; the five launches between them each found more than
+79 < 1 // thirty minutes remaining and rotated nothing. Four hours is the longest
+80 < 1 // run on record (about ninety minutes) with room to spare, and a rotation is
+81 < 1 // one refresh grant behind the single-flight lock — cheap. But inside this
+82 < 1 // window, with a fleet VM up, the rotation is held instead (see
+83 < 1 // LIVE_FLOOR_MS): the refresh grant revokes the previous access token at
+84 < 1 // once and the edge carries one bearer for every run, so rotating while a
+85 < 1 // run is in flight kills it on its next call with a 401.
+86 < 1 const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
+87 < 1 // Below REFRESH_AHEAD_MS, a listed fleet VM changes what `refresh` will do:
+88 < 1 // with at least this much left on the cached access token, the rotation is
+89 < 1 // held (the cached token is installed, nothing is spent); under it, `refresh`
+90 < 1 // refuses outright rather than revoke a bearer a live run may call next.
+91 < 1 // Ninety minutes is the longest run on record (see REFRESH_AHEAD_MS above) —
+92 < 1 // runs 92, 100, 103 and 178 (2026-09-11 to 2026-09-17) were all killed by a
+93 < 1 // rotation landing while a run was up.
+94 < 1 const LIVE_FLOOR_MS = 90 * 60 * 1000
+95 < 1 // `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
+96 < 1 const CLIPBOARD_POLL_MS = 2 * 1000
+97 < 1 const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
+98 < 1 
+99 < 1 // An account name is the keychain item's `acct` and rides `--comment account=`
+100 < 1 // into a lobby verb, so it is checked before anything else happens.
+101 < 1 export const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+102 < 1 
+103 < 1 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+104 < 1 
+105 < 1 function pkce (random = randomBytes) {
+106 < 1   const verifier = b64url(random(32))
+107 < 1   const challenge = b64url(createHash('sha256').update(verifier).digest())
+108 < 1   const state = random(32).toString('hex')
+109 < 1   return { verifier, challenge, state }
+110 < 1 }
+111 < 1 
+112 < 1 function authorizeUrlFor ({ challenge, state }) {
+113 < 1   const q = new URLSearchParams({
+114 < 1     client_id: OAUTH.clientId,
+115 < 1     code_challenge: challenge,
+116 < 1     code_challenge_method: 'S256',
+117 < 1     redirect_uri: OAUTH.redirectUri,
+118 < 1     scope: OAUTH.scopes,
+119 < 1     state,
+120 < 1     response_type: 'code'
+121 < 1   })
+122 < 1   return `${OAUTH.authorizeUrl}?${q}`
+123 < 1 }
+124 < 1 
+125 < 1 // The callback page shows `code#state`; the fragment is not part of the code.
+126 < 1 const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
+127 < 1 
+128 < 1 // Matching on the state is what makes polling safe: nothing already on the
+129 < 1 // clipboard can carry a state minted milliseconds ago, and neither can a code
+130 < 1 // from someone else's flow — so the poll never exchanges a stray value. A value
+131 < 1 // with no `#`, or with a different state, answers null and is skipped.
+132 < 1 // A value with more than one # is rejected on the same ground: a code#state#extra
+133 < 1 // is not this login's code#state. Skipping it is the safe failure — the poll
+134 < 1 // waits on until a matching value appears or CLIPBOARD_WAIT_MS elapses, where
+135 < 1 // exchanging a value we cannot vouch for would spend the login on a stray code.
+136 < 1 // `cleanCode` keeps the looser first-`#` split, and that difference is deliberate.
+137 < 1 function codeForState (pasted, state) {
+138 < 1   const [code, fragment, ...rest] = String(pasted).trim().split('#')
+139 < 1   if (rest.length || fragment === undefined) return null
+140 < 1   if (fragment.trim() !== state) return null
+141 < 1   const clean = code.trim()
+142 < 1   return clean || null
+143 < 1 }
+144 < 1 
+145 < 1 // `security dump-keychain` (no `-d`, so no secret is dumped) answers a sequence
+146 < 1 // of items, each opened by a `class: "genp"` line and carrying attribute lines
+147 < 1 // like `    "acct"<blob>="ultrapowers"` and `    "svce"<blob>="…"`; the `svce`
+148 < 1 // line may follow the `acct` line, so an item is only judged when it ends.
+149 < 1 function parseKeychainDump (out, service = KEYCHAIN.service) {
+150 < 1   const names = []
+151 < 1   let acct = null
+152 < 1   let svce = null
+153 < 1   const close = () => {
+154 < 1     if (acct && svce === service && !names.includes(acct)) names.push(acct)
+155 < 1     acct = null
+156 < 1     svce = null
+157 < 1   }
+158 < 1   for (const line of String(out ?? '').split('\n')) {
+159 < 1     if (/^class:/.test(line)) { close(); continue }
+160 < 1     const m = /^\s*"(acct|svce)"<blob>="(.*)"\s*$/.exec(line)
+161 < 1     if (!m) continue
+162 < 1     if (m[1] === 'acct') acct = m[2]
+163 < 1     else svce = m[2]
+164 < 1   }
+165 < 1   close()
+166 < 1   return names
+167 < 1 }
+168 < 1 
+169 < 1 // ---- seams: everything that touches the world goes through `deps` ------------
+170 < 1 
+171 < 1 function defaultDeps () {
+172 < 1   return {
+173 < 1     fetch: globalThis.fetch,
+174 < 1     now: () => Date.now(),
+175 < 1     random: randomBytes,
+176 < 1     open: (url) => spawnSync('open', [url], { stdio: 'ignore' }).status === 0,
+177 < 1     clipboard: () => {
+178 < 1       const r = spawnSync('pbpaste', [], { encoding: 'utf8' })
+179 < 1       return r.status === 0 ? r.stdout : ''
+180 < 1     },
+181 < 1     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+182 < 1     prompt: async (question) => {
+183 < 1       const rl = readline.createInterface({ input: process.stdin, output: process.stderr })
+184 < 1       const answer = await new Promise((resolve) => rl.question(question, resolve))
+185 < 1       rl.close()
+186 < 1       return answer
+187 < 1     },
+188 < 1     keychainRead: (name) => {
+189 < 1       const r = spawnSync('security', ['find-generic-password', '-a', name, '-s', KEYCHAIN.service, '-w'], { encoding: 'utf8' })
+190 < 1       return r.status === 0 ? r.stdout.trim() : null
+191 < 1     },
+192 < 1     // `-U` updates in place; the value rides argv for the life of one short
+193 < 1     // process, which is the trade for not writing a file.
+194 < 1     keychainWrite: (name, value) => spawnSync('security', ['add-generic-password', '-U', '-a', name, '-s', KEYCHAIN.service, '-w', value], { stdio: 'ignore' }).status === 0,
+195 < 1     // The accounts under the service, from the attribute dump — never `-d`, so
+196 < 1     // the dump carries names and no secrets.
+197 < 1     keychainList: () => {
+198 < 1       const r = spawnSync('security', ['dump-keychain'], { encoding: 'utf8' })
+199 < 1       return r.status === 0 ? parseKeychainDump(r.stdout) : []
+200 < 1     },
+201 < 1     // The lobby verb runs with the secret on STDIN (`--bearer -`), never in argv.
+202 < 1     lobby: (verb, input) => {
+203 < 1       const r = spawnSync('ssh', [EXE_HOST, verb], { encoding: 'utf8', input })
+204 < 1       return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
+205 < 1     },
+206 < 1     log: (line) => process.stderr.write(`${line}\n`),
+207 < 1     // The tables go to stdout so a reader can parse them; every human line goes
+208 < 1     // to stderr through `log`.
+209 < 1     stdout: (text) => process.stdout.write(text),
+210 < 1     // Single-flight across processes: two launches inside the 30-minute window
+211 < 1     // would both refresh, and the second would spend a refresh token the first
+212 < 1     // had already rotated away. The lock is a directory (mkdir is atomic on every
+213 < 1     // filesystem); a lock older than LOCK_STALE_MS belongs to a dead process.
+214 < 1     // One lock for every account: two accounts rotating at once serialize, which
+215 < 1     // is fine, and the single-flight legs stay true.
+216 < 1     lock: () => {
+217 < 1       fs.mkdirSync(path.dirname(LOCK_PATH), { recursive: true })
+218 < 1       const deadline = Date.now() + LOCK_STALE_MS
+219 < 1       for (;;) {
+220 < 1         try { fs.mkdirSync(LOCK_PATH); break } catch (err) {
+221 < 1           if (err.code !== 'EEXIST') throw err
+222 < 1           let age = 0
+223 < 1           try { age = Date.now() - fs.statSync(LOCK_PATH).mtimeMs } catch { continue }
+224 < 1           if (age > LOCK_STALE_MS) { try { fs.rmdirSync(LOCK_PATH) } catch {} ; continue }
+225 < 1           if (Date.now() > deadline) throw new Error(`claude-token: lock ${LOCK_PATH} held for over ${LOCK_STALE_MS / 1000}s`)
+226 < 1           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 200)
+227 < 1         }
+228 < 1       }
+229 < 1       return () => { try { fs.rmdirSync(LOCK_PATH) } catch {} }
+230 < 1     }
+231 < 1   }
+232 < 1 }
+233 < 1 
+234 < 1 // ---- the token endpoint -------------------------------------------------------
+235 < 1 
+236 < 1 async function tokenRequest (deps, body) {
+237 < 1   const resp = await deps.fetch(OAUTH.tokenUrl, {
+238 < 1     method: 'POST',
+239 < 1     headers: { 'content-type': 'application/json' },
+240 < 1     body: JSON.stringify(body)
+241 < 1   })
+242 < 1   if (!resp.ok) {
+243 < 1     const text = await resp.text().catch(() => '')
+244 < 1     throw new Error(`token endpoint answered ${resp.status}: ${text.slice(0, 300)}`)
+245 < 1   }
+246 < 1   const tokens = await resp.json()
+247 < 1   if (!tokens.access_token || !tokens.refresh_token || !tokens.expires_in) {
+248 < 1     throw new Error('token endpoint answered without access_token/refresh_token/expires_in')
+249 < 1   }
+250 < 1   return {
+251 < 1     accessToken: tokens.access_token,
+252 < 1     refreshToken: tokens.refresh_token,
+253 < 1     expiresAt: deps.now() + tokens.expires_in * 1000
+254 < 1   }
+255 < 1 }
+256 < 1 
+257 < 1 const exchange = (deps, { code, verifier, state }) => tokenRequest(deps, {
+258 < 1   grant_type: 'authorization_code',
+259 < 1   code,
+260 < 1   redirect_uri: OAUTH.redirectUri,
+261 < 1   client_id: OAUTH.clientId,
+262 < 1   code_verifier: verifier,
+263 < 1   state
+264 < 1 })
+265 < 1 
+266 < 1 const refreshGrant = (deps, refreshToken) => tokenRequest(deps, {
+267 < 1   grant_type: 'refresh_token',
+268 < 1   refresh_token: refreshToken,
+269 < 1   client_id: OAUTH.clientId,
+270 < 1   scope: OAUTH.scopes
+271 < 1 })
+272 < 1 
+273 < 1 // ---- the edge ---------------------------------------------------------------
+274 < 1 
+275 < 1 function integrationExists (deps) {
+276 < 1   const r = deps.lobby('integrations list --json')
+277 < 1   if (r.code !== 0) throw new Error(`exe.dev integrations list failed (exit ${r.code}):\n${r.out}`)
+278 < 1   let payload
+279 < 1   try { payload = JSON.parse(r.out) } catch { throw new Error(`integrations list --json was not JSON:\n${r.out.slice(0, 300)}`) }
+280 < 1   const rows = Array.isArray(payload) ? payload : Object.values(payload).find(Array.isArray) ?? []
+281 < 1   return rows.some((row) => row?.name === INTEGRATION)
+282 < 1 }
+283 < 1 
+284 < 1 // Add or edit — either way the bearer arrives on stdin and is the ONLY header
+285 < 1 // the proxy injects: an injected header replaces the client's same-named one
+286 < 1 // (measured 2026-09-03), so an injected anthropic-beta list would destroy the
+287 < 1 // flags Claude Code sends. `--comment account=<name>` is the one thing in the
+288 < 1 // verb that names the account, and it is what lets the doctor say which account
+289 < 1 // the edge carries; the token still rides stdin.
+290 < 1 export function installBearer (deps, accessToken, account = DEFAULT_ACCOUNT) {
+291 < 1   const comment = `--comment account=${account}`
+292 < 1   const verb = integrationExists(deps)
+293 < 1     ? `integrations edit ${INTEGRATION} --bearer - ${comment}`
+294 < 1     : `integrations add http-proxy --name ${INTEGRATION} --target ${TARGET} --bearer - ${comment}`
+295 < 1   const r = deps.lobby(verb, accessToken)
+296 < 1   if (r.code !== 0) throw new Error(`exe.dev ${verb.split(' --')[0]} failed (exit ${r.code}):\n${r.out}`)
+297 < 1   return verb.startsWith('integrations add') ? 'added' : 'edited'
+298 < 1 }
+299 < 1 
+300 < 1 // The same verb `fleet/lobby.mjs`'s `listVms` issues, read here for the one
+301 < 1 // question `refresh` needs answered: which VMs are up. A row's `status` is
+302 < 1 // not read — the lobby's status vocabulary beyond `running` is not on record,
+303 < 1 // and the launcher's janitor pass has already reaped the VMs of finished
+304 < 1 // runs, so every row with a `vm_name` counts as a live run. A listing that
+305 < 1 // exits non-zero, or whose `out` is not JSON, is an Error — never read as an
+306 < 1 // empty fleet, since that would spend a grant a live run could be killed by.
+307 < 1 function listLiveFleet (deps) {
+308 < 1   const verb = `ls '${FLEET_PATTERN}' --json`
+309 < 1   const r = deps.lobby(verb)
+310 < 1   if (r.code !== 0) throw new Error(`${EXE_HOST} ${verb} failed (exit ${r.code}):\n${r.out}`)
+311 < 1   let payload
+312 < 1   try { payload = JSON.parse(r.out) } catch { throw new Error(`${verb} was not JSON:\n${String(r.out).slice(0, 300)}`) }
+313 < 1   const vms = Array.isArray(payload?.vms) ? payload.vms : []
+314 < 1   return vms.map((row) => row?.vm_name).filter((name) => typeof name === 'string')
+315 < 1 }
+316 < 1 
+317 < 1 // ---- keychain record ----------------------------------------------------------
+318 < 1 
+319 < 1 function readRecord (deps, account = DEFAULT_ACCOUNT) {
+320 < 1   const raw = deps.keychainRead(account)
+321 < 1   if (!raw) return null
+322 < 1   try {
+323 < 1     const rec = JSON.parse(raw)
+324 < 1     if (typeof rec.refreshToken === 'string' && typeof rec.expiresAt === 'number') return rec
+325 < 1   } catch {}
+326 < 1   return null
+327 < 1 }
+328 < 1 
+329 < 1 function writeRecord (deps, rec, account = DEFAULT_ACCOUNT) {
+330 < 1   const value = JSON.stringify({ refreshToken: rec.refreshToken, accessToken: rec.accessToken, expiresAt: rec.expiresAt })
+331 < 1   if (!deps.keychainWrite(account, value)) {
+332 < 1     throw new Error('keychain write failed (security add-generic-password)')
+333 < 1   }
+334 < 1 }
+335 < 1 
+336 < 1 const iso = (ms) => new Date(ms).toISOString()
+337 < 1 const minutes = (ms) => Math.round(ms / 60000)
+338 < 1 
+339 < 1 // ---- verbs ----------------------------------------------------------------
+340 < 1 
+341 < 1 // The chat-driven wait: the agent runs this from a Bash tool that has no
+342 < 1 // interactive stdin, so nobody can press Enter. The process polls the clipboard
+343 < 1 // itself and only exchanges a value whose `#state` is this login's, which is why
+344 < 1 // waiting is safe — see `codeForState`. Returns the clean code.
+345 < 1 async function pollClipboardForCode (deps, state) {
+346 < 1   const deadline = deps.now() + CLIPBOARD_WAIT_MS
+347 < 1   for (;;) {
+348 < 1     const code = codeForState(deps.clipboard(), state)
+349 < 1     if (code) return code
+350 < 1     if (deps.now() >= deadline) {
+351 < 1       throw new Error(`--code-from-clipboard: no code for this login appeared on the clipboard within ${CLIPBOARD_WAIT_MS / 60000} minutes — copy the code from the callback page and run login again`)
+352 < 1     }
+353 < 1     await deps.sleep(CLIPBOARD_POLL_MS)
+354 < 1   }
+355 < 1 }
+356 < 1 
+357 < 1 export async function login (deps, { codeFromClipboard = false, account = DEFAULT_ACCOUNT, install = true } = {}) {
+358 < 1   const p = pkce(deps.random)
+359 < 1   const url = authorizeUrlFor(p)
+360 < 1   deps.log('Opening claude.ai to authorize the fleet. Approve, then copy the code it shows.')
+361 < 1   if (!deps.open(url) || codeFromClipboard) deps.log(`Open this URL yourself:\n${url}`)
+362 < 1   let code
+363 < 1   if (codeFromClipboard) {
+364 < 1     deps.log('Waiting for the code on the clipboard — approve in the browser and copy it.')
+365 < 1     code = await pollClipboardForCode(deps, p.state)
+366 < 1   } else {
+367 < 1     await deps.prompt('When the code is on your clipboard, press Enter… ')
+368 < 1     code = cleanCode(deps.clipboard())
+369 < 1     if (!code) throw new Error('the clipboard holds no code — copy it from the callback page and run login again')
+370 < 1   }
+371 < 1   const tokens = await exchange(deps, { code, verifier: p.verifier, state: p.state })
+372 < 1   writeRecord(deps, tokens, account)
+373 < 1   // `--no-install` adds an account without moving the edge: the keychain grows
+374 < 1   // an item and no lobby verb is issued at all.
+375 < 1   const how = install ? installBearer(deps, tokens.accessToken, account) : null
+376 < 1   deps.log(how
+377 < 1     ? `${INTEGRATION}: bearer ${how} for ${account}; access token fresh until ${iso(tokens.expiresAt)}; refresh token in the keychain.`
+378 < 1     : `${account}: access token fresh until ${iso(tokens.expiresAt)}; refresh token in the keychain; the edge was not touched (--no-install).`)
+379 < 1   return { expiresAt: tokens.expiresAt, how }
+380 < 1 }
+381 < 1 
+382 < 1 export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT, install = true } = {}) {
+383 < 1   // The record is read AFTER the lock is held: a launch that queued behind a
+384 < 1   // sibling's refresh sees the rotated pair and finds nothing to do.
+385 < 1   const release = deps.lock ? deps.lock() : () => {}
+386 < 1   try {
+387 < 1     const rec = readRecord(deps, account)
+388 < 1     if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
+389 < 1     const remaining = rec.expiresAt - deps.now()
+390 < 1     // A record with no `accessToken` is the pre-`usage` shape (`readRecord` asks
+391 < 1     // only for `refreshToken` and `expiresAt`): there is nothing to install, so
+392 < 1     // it rotates as if it were inside the window.
+393 < 1     if (!force && remaining > REFRESH_AHEAD_MS && typeof rec.accessToken === 'string') {
+394 < 1       // Fresh, so no grant is spent — but the bearer still goes on, because the
+395 < 1       // edge may be carrying a token something else rotated away (see the header).
+396 < 1       const how = install ? installBearer(deps, rec.accessToken, account) : null
+397 < 1       deps.log(how
+398 < 1         ? `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — bearer ${how} for ${account}`
+399 < 1         : `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
+400 < 1       return { refreshed: false, installed: install, expiresAt: rec.expiresAt }
+401 < 1     }
+402 < 1     // The function has now decided it would spend a grant — so the fleet is
+403 < 1     // checked BEFORE it does. Anthropic's refresh grant revokes the previous
+404 < 1     // access token at once, and the edge carries one bearer for every run, so
+405 < 1     // rotating while a run is up kills it on its next call (runs 92, 100,
+406 < 1     // 103, 178). The two log/error lines below are shared, byte for byte,
+407 < 1     // with the launcher, which greps this tool's output for them.
+408 < 1     const liveVms = listLiveFleet(deps)
+409 < 1     if (liveVms.length > 0) {
+410 < 1       if (remaining >= LIVE_FLOOR_MS && typeof rec.accessToken === 'string') {
+411 < 1         const how = install ? installBearer(deps, rec.accessToken, account) : null
+412 < 1         deps.log(`token: fresh until ${iso(rec.expiresAt)}; ${liveVms.length} run(s) live — not rotated`)
+413 < 1         return { refreshed: false, installed: install, expiresAt: rec.expiresAt, held: true }
+414 < 1       }
+415 < 1       throw new Error(`token: expires ${iso(rec.expiresAt)}; ${liveVms.length} run(s) live (${liveVms.join(', ')}) — not rotated; under 90 minutes is too short to launch on, so wait for the runs to end or remove their VMs`)
+416 < 1     }
+417 < 1     const tokens = await refreshGrant(deps, rec.refreshToken)
+418 < 1     // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
+419 < 1     // refresh token is dead, so a crash between the two steps must not leave the
+420 < 1     // keychain holding it.
+421 < 1     writeRecord(deps, tokens, account)
+422 < 1     if (install) installBearer(deps, tokens.accessToken, account)
+423 < 1     deps.log(`${INTEGRATION}: refreshed ${account}; fresh until ${iso(tokens.expiresAt)}`)
+424 < 1     return { refreshed: true, installed: install, expiresAt: tokens.expiresAt }
+425 < 1   } finally {
+426 < 1     release()
+427 < 1   }
+428 < 1 }
+429 < 1 
+430 < 1 export function status (deps, { account = DEFAULT_ACCOUNT } = {}) {
+431 < 1   const rec = readRecord(deps, account)
+432 < 1   if (!rec) { deps.log(`${account}: no record in the keychain`); return { present: false } }
+433 < 1   deps.log(`${account}: access token expires ${iso(rec.expiresAt)} (${minutes(rec.expiresAt - deps.now())} min)`)
+434 < 1   return { present: true, expiresAt: rec.expiresAt }
+435 < 1 }
+436 < 1 
+437 < 1 // One entry per keychain item under the service. Synchronous over the seams: a
+438 < 1 // list, then one read each. A name whose record does not parse is skipped.
+439 < 1 export function accounts (deps) {
+440 < 1   const rows = []
+441 < 1   for (const name of deps.keychainList() ?? []) {
+442 < 1     const rec = readRecord(deps, name)
+443 < 1     if (!rec) continue
+444 < 1     rows.push({ name, expiresAt: iso(rec.expiresAt), fresh: rec.expiresAt > deps.now() })
+445 < 1   }
+446 < 1   return rows
+447 < 1 }
+448 < 1 
+449 < 1 // One row per entry. An entry whose record already holds an unexpired access
+450 < 1 // token is read with it; any other is rotated first — under the lock, one grant,
+451 < 1 // and never installed at the edge (see the header) — unless `rotate` is false,
+452 < 1 // in which case an expired (or accessToken-less) record answers `unread`
+453 < 1 // without ever touching `refresh`: no lock, no grant, no keychain write.
+454 < 1 async function usageRow (deps, name, { rotate = true } = {}) {
+455 < 1   const unread = (reason) => ({ name, fiveHour: null, sevenDay: null, unread: true, reason })
+456 < 1   const rec = readRecord(deps, name)
+457 < 1   const now = deps.now()
+458 < 1   let accessToken = rec?.accessToken && rec.expiresAt > now ? rec.accessToken : null
+459 < 1   if (!accessToken) {
+460 < 1     if (!rotate) {
+461 < 1       return unread(`access token expired ${iso(rec?.expiresAt ?? now)}; not rotated (--no-rotate)`)
+462 < 1     }
+463 < 1     try {
+464 < 1       await refresh(deps, { force: true, account: name, install: false })
+465 < 1     } catch (err) {
+466 < 1       return unread(err.message)
+467 < 1     }
+468 < 1     accessToken = readRecord(deps, name)?.accessToken
+469 < 1     if (!accessToken) return unread('the keychain holds no access token after the refresh')
+470 < 1   }
+471 < 1   let resp
+472 < 1   try {
+473 < 1     resp = await deps.fetch(USAGE_URL, { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } })
+474 < 1   } catch (err) {
+475 < 1     return unread(`usage request failed: ${err.message}`)
+476 < 1   }
+477 < 1   const code = resp?.status ?? (resp?.ok ? 200 : 0)
+478 < 1   if (code !== 200) return unread(`usage answered ${code}`)
+479 < 1   let body
+480 < 1   try { body = await resp.json() } catch (err) { return unread(`usage answered unreadable JSON: ${err.message}`) }
+481 < 1   const window = (w) => (w && typeof w === 'object' ? { utilization: w.utilization, resetsAt: w.resets_at } : null)
+482 < 1   const fiveHour = window(body?.five_hour)
+483 < 1   const sevenDay = window(body?.seven_day)
+485 > 1   // A null or absent window is one the account does not have; the row is
+486 < 1   // unread only when it has neither.
+487 < 1   if (!fiveHour && !sevenDay) return unread('usage answered without five_hour/seven_day')
+484 < 2   if (!fiveHour || !sevenDay) return unread('usage answered without five_hour/seven_day')
+485 < 1   return { name, fiveHour, sevenDay, unread: false, reason: null }
+486 < 1 }
+487 < 1 
+488 < 1 export async function usage (deps, { account = null, rotate = true } = {}) {
+489 < 1   const rows = []
+490 < 1   // `account` given: meter only that name, whether or not `keychainList()`
+491 < 1   // lists it (an account added with `login --no-install` still meters).
+492 < 1   // `account` null: every listed name, today's behaviour.
+493 < 1   const names = account != null ? [account] : (deps.keychainList() ?? [])
+494 < 1   // Serial, not parallel: the rotation legs share one lock, and a row that
+495 < 1   // cannot be read is still answered, so no failure takes the table down.
+496 < 1   for (const name of names) rows.push(await usageRow(deps, name, { rotate }))
+497 < 1   return rows
+498 < 1 }
+499 < 1 
+500 < 1 const USAGE_HEADER = 'account | 5h % | 5h resets | 7d % | 7d resets'
+501 < 1 
+503 > 1 // A window the account does not have prints `none` in both of its cells.
+504 < 1 const windowCells = (w) => (w ? [`${w.utilization}`, `${w.resetsAt}`] : ['none', 'none'])
+505 < 1 
+502 < 1 function renderUsage (rows) {
+503 < 1   const lines = [USAGE_HEADER]
+504 < 1   for (const row of rows ?? []) {
+505 < 1     const cells = row.unread
+506 < 1       ? [row.name, `unread: ${row.reason}`, '', '', '']
+508 > 1       : [row.name, ...windowCells(row.fiveHour), ...windowCells(row.sevenDay)]
+507 < 2       : [row.name, `${row.fiveHour?.utilization}`, `${row.fiveHour?.resetsAt}`, `${row.sevenDay?.utilization}`, `${row.sevenDay?.resetsAt}`]
+508 < 1     lines.push(cells.join(' | ').replace(/[\s|]+$/, ''))
+509 < 1   }
+510 < 1   return lines.join('\n')
+511 < 1 }
+512 < 1 
+513 < 1 // ---- the command line ---------------------------------------------------------
+514 < 1 
+515 < 1 const VERBS = ['login', 'refresh', 'status', 'accounts', 'usage']
+516 < 1 const USAGE_LINE = 'usage: node fleet/claude-token.mjs login [--code-from-clipboard] [--account <name>] [--no-install] | refresh [--force] [--account <name>] [--no-install] | status [--account <name>] | accounts [--json] | usage [--json] [--account <name>] [--no-rotate]'
+517 < 1 
+518 < 1 // `--account` takes the token after the flag; the rest are bare. Every value is
+519 < 1 // checked here, which is before any keychain read, token request or lobby verb.
+520 < 1 const BARE = { 'no-install': ['install', false], force: ['force', true], 'code-from-clipboard': ['codeFromClipboard', true], json: ['json', true], 'no-rotate': ['rotate', false] }
+521 < 1 
+522 < 1 function parseArgs (rest) {
+523 < 1   const opts = { account: DEFAULT_ACCOUNT, accountGiven: false, install: true, force: false, codeFromClipboard: false, json: false, rotate: true }
+524 < 1   const { opts: given, positional } = parseFlags(rest, { flags: Object.keys(BARE) })
+525 < 1   if (positional.length > 0) throw new Error(USAGE_LINE)
+526 < 1   for (const [key, value] of Object.entries(given)) {
+527 < 1     if (key === 'account') {
+528 < 1       if (value === true) throw new Error('--account needs a name: --account <name>')
+529 < 1       if (!ACCOUNT_RE.test(value)) throw new Error(`--account ${JSON.stringify(value)} is not a name matching ${ACCOUNT_RE.source}`)
+530 < 1       opts.account = value
+531 < 1       opts.accountGiven = true
+532 < 1     } else if (Object.hasOwn(BARE, key) && value === true) {
+533 < 1       const [field, set] = BARE[key]
+534 < 1       opts[field] = set
+535 < 1     } else throw new Error(USAGE_LINE)
+536 < 1   }
+537 < 1   return opts
+538 < 1 }
+539 < 1 
+540 < 1 export async function main (argv, deps = defaultDeps()) {
+541 < 1   const [verb, ...rest] = argv
+542 < 1   if (!VERBS.includes(verb)) throw new Error(USAGE_LINE)
+543 < 1   const opts = parseArgs(rest)
+544 < 1   const write = (text) => (deps.stdout ? deps.stdout(text) : process.stdout.write(text))
+545 < 1   if (verb === 'login') return login(deps, { codeFromClipboard: opts.codeFromClipboard, account: opts.account, install: opts.install })
+546 < 1   if (verb === 'refresh') return refresh(deps, { force: opts.force, account: opts.account, install: opts.install })
+547 < 1   if (verb === 'status') return status(deps, { account: opts.account })
+548 < 1   if (verb === 'accounts') {
+549 < 1     const rows = accounts(deps)
+550 < 1     if (opts.json) write(`${JSON.stringify(rows)}\n`)
+551 < 1     else for (const row of rows) deps.log(`${row.name} expires ${row.expiresAt} (${minutes(Date.parse(row.expiresAt) - deps.now())} min)`)
+552 < 1     return rows
+553 < 1   }
+554 < 1   const rows = await usage(deps, { account: opts.accountGiven ? opts.account : null, rotate: opts.rotate })
+555 < 1   write(opts.json ? `${JSON.stringify(rows)}\n` : `${renderUsage(rows)}\n`)
+556 < 1   return rows
+557 < 1 }
+558 < 1 
+559 < 1 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+560 < 1   // `process.exit` after the exit code is set: a login's clipboard poll or
+561 < 1   // prompt must not hold the process open once `main` has answered.
+562 < 1   runCli(main, process.argv.slice(2)).then(() => process.exit())
+563 < 1 }
+564 < 1 

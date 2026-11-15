@@ -306,7 +306,8 @@
 291 < 1  * `usage answered code <code>`, an `unread: true` row as its own `reason`.
 292 < 1  * A read never rotates the token; that is the point of `--no-rotate`.
 293 < 1  */
-294 < 1 function usageSuffix (usageRes) {
+295 > 1 export function usageSuffix (usageRes) {
+294 < 2 function usageSuffix (usageRes) {
 295 < 1   if (usageRes.code !== 0) {
 296 < 1     return `; usage unread — usage answered code ${usageRes.code}`
 297 < 1   }
@@ -322,8 +323,11 @@
 307 < 1     return `; usage unread — ${reason}`
 308 < 1   }
 309 < 1   const { sevenDay, fiveHour } = first
-310 < 1   return `; 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}` +
-311 < 1     `; 5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+311 > 1   // A null window is one the account does not have.
+312 < 1   const windowText = (w) => w === null ? 'none' : `${w.utilization}% resets ${w.resetsAt}`
+313 < 1   return `; 7d ${windowText(sevenDay)}; 5h ${windowText(fiveHour)}`
+310 < 2   return `; 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}` +
+311 < 2     `; 5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
 312 < 1 }
 313 < 1 
 314 < 1 /**
