@@ -293,7 +293,7 @@ export function attachRowFor (name, { id, found, absentIsOk = false, absentDetai
  * `usage answered code <code>`, an `unread: true` row as its own `reason`.
  * A read never rotates the token; that is the point of `--no-rotate`.
  */
-function usageSuffix (usageRes) {
+export function usageSuffix (usageRes) {
   if (usageRes.code !== 0) {
     return `; usage unread — usage answered code ${usageRes.code}`
   }
@@ -309,8 +309,9 @@ function usageSuffix (usageRes) {
     return `; usage unread — ${reason}`
   }
   const { sevenDay, fiveHour } = first
-  return `; 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}` +
-    `; 5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+  // A null window is one the account does not have.
+  const windowText = (w) => w === null ? 'none' : `${w.utilization}% resets ${w.resetsAt}`
+  return `; 7d ${windowText(sevenDay)}; 5h ${windowText(fiveHour)}`
 }
 
 /**

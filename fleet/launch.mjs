@@ -596,7 +596,7 @@ async function refuseUnlaunchable ({ exec, repoDir, base, compiled, integrations
  * refusal before any push; an unread row is never a refusal (#1114). Answers
  * the refresh's own answer and the launch line's `usage:` line.
  */
-function readCredential ({ account, refreshCredential, readUsage }) {
+export function readCredential ({ account, refreshCredential, readUsage }) {
   const cred = refreshCredential(account)
   if (cred.refused) {
     throw new Refusal(`launch: ${cred.refused} — no VM was created and nothing was pushed`)
@@ -610,14 +610,15 @@ function readCredential ({ account, refreshCredential, readUsage }) {
     return { cred, usageLine: `usage: ${account} unread — ${usageRow.reason}` }
   }
   const { sevenDay, fiveHour } = usageRow
-  if (sevenDay.utilization >= USAGE_REFUSE_PCT) {
+  if (sevenDay && sevenDay.utilization >= USAGE_REFUSE_PCT) {
     throw new Refusal(usageRefusal(account, 'seven-day', sevenDay))
   }
-  if (fiveHour.utilization >= USAGE_REFUSE_PCT) {
+  if (fiveHour && fiveHour.utilization >= USAGE_REFUSE_PCT) {
     throw new Refusal(usageRefusal(account, 'five-hour', fiveHour))
   }
-  const usageLine = `usage: ${account} 7d ${sevenDay.utilization}% resets ${sevenDay.resetsAt}; ` +
-    `5h ${fiveHour.utilization}% resets ${fiveHour.resetsAt}`
+  // A null window is one the account does not have: never refused, printed `none`.
+  const shown = (window) => window ? `${window.utilization}% resets ${window.resetsAt}` : 'none'
+  const usageLine = `usage: ${account} 7d ${shown(sevenDay)}; 5h ${shown(fiveHour)}`
   return { cred, usageLine }
 }
 

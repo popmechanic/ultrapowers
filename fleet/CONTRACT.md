@@ -208,7 +208,8 @@ evidence repository.
   read the account's usage windows (`node fleet/claude-token.mjs usage --json --account <account>
   --no-rotate`) and refuse a reading at or past 95% of either window, naming the account and the
   reset time, before any push (#1114); under the wall, the launch line carries
-  `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>` →
+  `usage: <account> 7d <n>% resets <iso>; 5h <n>% resets <iso>`; a window the account does not have
+  is never refused and prints `none` after its label, as in `5h none` →
   push the parentless plan commit to `live/<owner>-<repo>/run-<N>` in the evidence repository → ONE
   verb:
 
