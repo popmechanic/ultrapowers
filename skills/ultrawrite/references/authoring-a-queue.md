@@ -5,13 +5,13 @@
 
 A sitting's queue of well-defined issues drains by cutting it into bundles an author
 can hold, one author per bundle. Plans may share files. Same-file edits from two runs
-meet on main's stored weave (`flock.main.mode = peer`): a live run takes a moved main
+meet on main's stored weave: a live run takes a moved main
 in like a builder's work, and a run that finished before main moved catches up to it
 and merges (flock-baseline runs 16–21, n=6 runs, 2026-11-13: five ready, one draft;
 an experiment on one fixture, whose rollback is cutting the queue by files again).
 Two plans that each create a file at one path may launch apart too: the run that meets
 the other's file opens a conflict and a builder makes one file of the two
-(`flock.main.created = conflict`; flock-baseline run-24, n=1 run, 2026-11-13, merged
+(flock-baseline run-24, n=1 run, 2026-11-13, merged
 ready; an experiment, whose rollback is putting two such plans in one bundle again, as
 the 2026-09-17 drain did by hand for #1095 and #1096). A run that had already settled
 when the other file reached main ends a draft. One thing still shapes the cut:

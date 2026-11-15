@@ -4,8 +4,7 @@
  * This module decides nothing: it takes what the boot and `factory/publish.mjs` already know
  * and turns it into the bytes they write — the twelve-cell status page (`status`, the
  * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
- * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
- * closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
+ * plan's summary, the receipt, provenance, a draft's reason and the closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
  * one thing to stdout and its exit code says whether that printing happened. The JSON the
  * publish used to build here by hand is `publish.mjs`'s own now (#1441).
  */
@@ -204,22 +203,6 @@ function receiptLines (planPath, planJson, rows, evidenceUrl) {
   return out
 }
 
-/** `### Jev read each story step (record only)` — a two-column table, one row
- *  per clause naming the latest `jev:step` row for it (file order breaks a
- *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
-function jevStepLines (rows) {
-  const last = new Map()
-  for (const row of rows) {
-    if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
-  }
-  if (!last.size) return []
-  const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
-  for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
-    out.push(`| ${clause} | ${r.answer == null ? 'no reading' : safeText(r.answer).replace(/\|/g, '\\|')} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
-  }
-  return out
-}
-
 /** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
  *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
  *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
@@ -329,7 +312,7 @@ function stepReceiptLines (events) {
 /** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
  *  empty line, the receipt, an empty line, the closes; every line, including
  *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
- *  ends follow that, a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
+ *  ends follow that, and a draft's reason follows that. */
 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -339,7 +322,6 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const provenance = provenanceLines(provenancePath)
   let looseEnds = looseEndsLines(events)
   const draft = draftReasonLines(events)
-  const readings = jevStepLines(events)
   let changes = stepReceiptLines(events)
   const assemble = () => {
     let out = ''
@@ -347,7 +329,7 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
     out += '\n'
     for (const line of rows) out += line + '\n'
     out += '\n'
-    for (const section of [provenance, looseEnds, draft, readings, changes]) {
+    for (const section of [provenance, looseEnds, draft, changes]) {
       for (const line of section) out += line + '\n'
       if (section.length) out += '\n'
     }

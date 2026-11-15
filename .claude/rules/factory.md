@@ -30,36 +30,36 @@ keeps the name `factory/`. Models never run git.
   alone, so the boot opens a draft.
 - Supporting modules: `flock/flock_board.mjs` (the board, in memory; its moves are rows in
   `events.jsonl`), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
-  `flock/edit_spans.mjs`, `flock/step_reading.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
+  `flock/edit_spans.mjs`, `flock/step_receipts.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
   wrapper, the weave keeper client, snapshot writes and `events.jsonl` rows the engine and the
   catch-up share), `flock/nogit/git` (the refusing git first on every builder's PATH),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body).
 - A builder that finds its task cannot be done as the plan is written, by any code, files an
-  objection (`object`, row `objection`, policy `flock.objection.mode`): the task parks at once for
+  objection (`object`, row `objection`): the task parks at once for
   the operator and is not handed round, and a run with nothing else left ends a draft whose reason
   is the objection (flock-baseline run-32, 2026-11-13: without it the task was given back three
   times and the run ended `deadlock`).
 - A builder's copy is a whole, current tree: every pull takes in every published change, and
-  `flock.pulls.mode` (`flock/pulls.mjs`) narrows only what the builder is told of, a change outside
+  the pull scope (`flock/pulls.mjs`) narrows only what the builder is told of, a change outside
   its scope landing as a `pull` row marked `quiet` (flock-baseline run-10, 2026-11-13: a scope that
   held changes back starved a builder of a file its task needed, and the run ended a draft). A task
   reopened red is told of each same-spot insertion in its files, since the merge orders two
   insertions at one spot by their text.
-- Under `flock.main.mode = peer` a run follows the target's default branch (`absorbMain` in
+- A run follows the target's default branch (`absorbMain` in
   `flock/engine.mjs`: a look before the first builder opens, one every `flock.main.poll_seconds` by
   the clock, and one before a green settle):
   a moved main is published into the run as the peer `main` (keeper op `main`, row `main:moved`),
   its text reaching every copy through the pulls, a clash with a builder an ordinary conflict, and
   a path main and a builder each created apart a conflict too (`conflict:open` with `created: both`,
-  policy `flock.main.created`; the kernel marks it adds-only and the union is two whole files one
+  flock-baseline run-24; the kernel marks it adds-only and the union is two whole files one
   after the other, which two builders of one run still get, their probes both running on the join), and
   the run's base moves to the tip: `ULTRA_BASE`, the scope rule, each copy's git index and the
   landing commit read it, the setup runs again when main changed a manifest or lockfile, and the
   boot reads the moved base from `$RUN_DIR/base`. A move that cannot be taken in ends the following
   (`main:off`) and never the run; the publish's catch-up still meets a main that moves after the
   engine exits.
-- `flock/weave_store.py` is main's memory (the main-is-a-peer design; policy
-  `flock.main.mode`: `peer`, `memory`, or the rollback `frozen`): one stored weave per tree of the default
+- `flock/weave_store.py` is main's memory (the main-is-a-peer design; the `memory` and `frozen`
+  modes were cut on 2026-11-14): one stored weave per tree of the default
   branch, on the target's ref `refs/ultrapowers/weave/v1`. The engine starts every copy from the
   entry of `--base`'s tree (keeper op `memory`, row `weave:memory`) and stores the landed commit's
   entry (`store`, row `weave:store`), its lines authored `@r<N>:<task>`; `catchup.mjs` joins the
@@ -73,11 +73,17 @@ keeps the name `factory/`. Models never run git.
 
 ## Judgment and policy
 
-- **Every judgment is a question** in `factory/questions.json` (the engine's three `flock_*`
-  sets, `flock_peer_settled` the second look before a draft for a line of main's read as lost; the authoring sets live beside ultrawrite, #1449), sent over
-  `jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
+- **The engine asks Jev nothing.** Its step and peer-rewrite reads were cut on 2026-11-14 (n=110
+  runs: the step reads were never read, and the peer-rewrite read drafted 4 green runs and caught no
+  lost line), and `factory/questions.json` with them. Every judgment is a question beside its reader:
+  the authoring sets live in `skills/ultrawrite/stories/questions.json` (#1449), sent over
+  `factory/jev-client.mjs` (one POST to TypeSafe, no key, `null` on anything unexpected).
 - **Every threshold is a cell of `policy.json`** (`publish`, `flock`) carrying its `n`,
-  `window`, `experiment` and `rollback`; flipping a cell is the rollback of whatever it gates.
+  `window` and `rollback`, and `experiment` while it is read under the floor. On 2026-11-14 the
+  operator settled the Flock's experiments over 110 runs: the narrow pulls, the scope rule, the
+  loose-ends task, the objection, following main and the self-merge are the only behaviour, each
+  unused mode cut, its way back a checkout before the cut; only `publish.probe` is still an
+  experiment.
 
 ## No issue board
 

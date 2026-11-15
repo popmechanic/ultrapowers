@@ -8,13 +8,13 @@ import { simEnv } from './_helpers.mjs'
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's; Jev is
-// off (TYPESAFE_BASE_URL empty) unless `env` names it. `git` throws on a non-zero exit.
+// A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's.
+// `git` throws on a non-zero exit.
 export function flockTarget (files, { env = {} } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-sim-'))
   const T = path.join(tmp, 'target')
   fs.mkdirSync(T)
-  const over = { TYPESAFE_BASE_URL: '', ...env }
+  const over = { ...env }
   const ENV = simEnv({ home: tmp, env: over })
   const git = (...a) => {
     const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', '-c', 'init.defaultBranch=main', ...a], { cwd: T, encoding: 'utf8', env: ENV })
@@ -78,7 +78,7 @@ export async function flockRun (t, { plan, script, args = [] }) {
   fs.writeFileSync(scriptFile, JSON.stringify(script))
   const { code, out } = await new Promise((resolve) => {
     const p = spawn('node', [path.join(REPO, 'factory', 'flock', 'engine.mjs'), '--plan', plan, '--target', t.T, '--base', t.base,
-      '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', '--stall-minutes', '2', ...args], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
+      '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', ...args], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
     let out = ''
     p.stdout.on('data', (c) => { out += c }); p.stderr.on('data', (c) => { out += c })
     const kill = setTimeout(() => p.kill('SIGKILL'), 180000)

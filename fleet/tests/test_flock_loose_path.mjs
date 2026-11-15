@@ -2,7 +2,7 @@
 // The loose-path sim (#1531): a loose end whose path the run cannot read is reported as not checked,
 // never counted as resolved. The base holds a.txt (`x y z`) and b.txt (`b`); task 1 writes `x WIPE z`
 // into a.txt and task 2 writes an empty b.txt, which the weave reads as the file gone. Three loose ends
-// are posted, and the run's last `loose-ends` row (`--loose-ends record`) reads:
+// are posted, and the run's last `loose-ends` row reads:
 //   - `./a.txt` (no file has that exact path at the base or in the settled snapshot): unchecked;
 //   - `b.txt`, stale `b` (at the base, gone from the settled snapshot): resolved;
 //   - `a.txt`, stale `x WIPE z` (still in the settled a.txt): open.
@@ -19,7 +19,7 @@ const plan = writePlan(t, {
   ],
 })
 const r = await flockRun(t, {
-  plan, args: ['--loose-ends', 'record'],
+  plan,
   script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': '' },
     '@beliefs': [
       { task: '1', about: 'app', path: './a.txt', claim: 'a.txt by another name', stale: 'x WIPE z' },

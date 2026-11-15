@@ -12,7 +12,6 @@
 // answers { hunks, exceptions }. The final empty line of a text ending in a newline is not a hunk line.
 
 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
-const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
 // a label's task: the text after its dot; several labels give their tasks joined `|` in label
 // order; `base` or any label with no dot answers null
@@ -59,8 +58,7 @@ export function buildProvenance ({ landed, blame, events = [], lost = [] }) {
     const mine = text.map((l, i) => (String(labels[i] ?? '').split('|').includes(own) ? l : undefined))
     if (!w.after.every((l) => mine.includes(l))) continue
     const line = mine.findIndex((l) => l !== undefined && w.after.includes(l)) + 1
-    const read = rows.find((e) => e.kind === 'jev:peer-rewrite' && e.path === w.path && same(e.after, w.after))
-    contested.push({ kind: 'contested', path: w.path, line, wrote: w.task ?? null, over: (w.peers || []).map((l) => taskOf(l) ?? l).join('|'), jev: read ? (read.answer ?? null) : null })
+    contested.push({ kind: 'contested', path: w.path, line, wrote: w.task ?? null, over: (w.peers || []).map((l) => taskOf(l) ?? l).join('|') })
   }
   contested.sort((a, b) => cmp(a.path, b.path) || a.line - b.line)
   const lostRows = (lost || []).map((e) => ({ kind: 'lost', path: e.path, author: e.author, by: e.by, lines: e.lines }))

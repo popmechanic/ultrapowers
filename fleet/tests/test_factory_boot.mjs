@@ -89,9 +89,9 @@
  * of context a later reader lacks: that credential-probe failure and engine
  * failure both still route through `fail()` writing `status.json` onto the
  * live branch and cutting the run's tag before exiting non-zero (so (a) and
- * (c) can read it back at the tag); that `factory/policy.json`'s
- * `publish.self_merge.enabled: true` (already in this repo) is what makes
- * (b)'s merge actually happen; and that the `publish:pr` event row's own
+ * (c) can read it back at the tag); that the publish's self-merge, which
+ * always runs unless the run is held, is what makes (b)'s merge actually
+ * happen; and that the `publish:pr` event row's own
  * `ts` field is out of this task's own diff — this exam still asserts M1's
  * "every row carries a non-empty string `ts`" exactly as written, since a
  * clause is asserted as it reads, not as it is comfortable to satisfy today.

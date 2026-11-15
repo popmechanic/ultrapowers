@@ -3,7 +3,7 @@
 // (flock-runroom's host.mjs).
 //
 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
-//        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
+//        [--builder sdk|scripted:<json>] [--clock 13800]
 //
 // With N builders working one plan together, each on its own copy, merging with each other
 // between tool batches, the swarm settles on green code; the engine then leaves the target one
@@ -25,13 +25,10 @@ import { scopeOf } from './scope.mjs'
 import { editSpans } from './edit_spans.mjs'
 import { compactRecord } from './compact_record.mjs'
 import { pullScope } from './pulls.mjs'
-import { makeJevClient, JEV_TIMEOUT_MS } from '../jev-client.mjs'
-import { readTrial, claimOf } from './trial_reading.mjs'
 import { looseEnds } from './loose_ends.mjs'
 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
-import { lastSteps, latestResults, readSteps } from './step_reading.mjs'
 import { pastItems } from './past.mjs'
-import { stepReceipts } from './step_receipts.mjs'
+import { stepReceipts, latestResults } from './step_receipts.mjs'
 import { checkDigest } from './check_digest.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
@@ -69,51 +66,15 @@ const CAP = 16
 const MODEL = 'claude-opus-5-5'
 // under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
-// A policy cell of flock: its value, else the default; a value outside `allowed` stops the engine.
-const mode = (cell, allowed, dflt) => {
-  const v = cell.split('.').reduce((o, k) => o?.[k], POLICY_FLOCK) ?? dflt
-  if (!allowed.includes(v)) { console.error(`engine: policy flock.${cell} is ${allowed.join(', ')}`); process.exit(2) }
-  return v
-}
-// pulls `narrow` (#1292): a builder is told only of the peer changes its work touches (pulls.mjs);
-// `all`, told of every published change, is the rollback. Either way every change reaches its copy
-// (pullInto). The policy cell flock.pulls.mode, else all.
-const PULLS = mode('pulls.mode', ['narrow', 'all'], 'all')
-// record-only Jev reading per green story step (state-probe runner spec §7): `record` mode and
-// a reachable TypeSafe edge, or it never asks and never writes a `jev:step` row.
-const TYPESAFE = !!process.env.TYPESAFE_BASE_URL
-const JEV_STEP = mode('jev_step.mode', ['record', 'off'], 'off') === 'record' && TYPESAFE
-// the peer-rewrite read (#1401): an edit that replaces or deletes lines a peer wrote is put to Jev
-// (run-277: a builder's own Edit ran two of a peer's words together and the run went green).
-// `enforce`: a `loses` answer whose text is still in the settled snapshot ends the run a draft;
-// `record` only writes the `jev:peer-rewrite` row; `off` never asks. Absent, record. A `null`
-// answer never drafts: it takes the set's rollback, record.
-const PEER_MODE = mode('jev_peer_rewrite.mode', ['enforce', 'record', 'off'], 'record')
-const JEV_PEER = PEER_MODE !== 'off' && TYPESAFE
-// the scope rule (#1333, scope.mjs): `enforce` folds a change outside every task's Files that no
-// builder wrote into the edge's verdict; `record` only writes the `scope:outside` row. Absent, enforce.
-const SCOPE_MODE = mode('scope.mode', ['enforce', 'record'], 'enforce')
-// loose ends (#1419, loose_ends.mjs): a builder's belief naming a path outside its task. `work`: when
-// the edge first goes green with one still open or unchecked, the engine adds the task `L:loose` (at
-// most once a run) instead of settling; `record` only writes the run's `loose-ends` row. `--loose-ends`,
-// else the policy cell flock.loose_ends.mode, else record.
-const LOOSE_MODE = arg('loose-ends') ?? mode('loose_ends.mode', ['work', 'record'], 'record')
-// objections (the wrong-plans reading, 2026-11-13): a builder may say its task's plan cannot be
-// satisfied as written; the task then parks at once for the operator. `--objection`, else the policy
-// cell flock.objection.mode, else off, where a builder can only give the task back.
-const OBJECTION = arg('objection') ?? mode('objection.mode', ['on', 'off'], 'off')
-if (!['work', 'record'].includes(LOOSE_MODE)) { console.error('engine: --loose-ends is work or record'); process.exit(2) }
-// main's memory (the main-is-a-peer design; weave_store.py): `memory` starts the run's weaves
-// from the entry stored for --base's tree on the target's ref refs/ultrapowers/weave/v1 and stores the
-// landed commit's entry there, so a line keeps one identity across runs; `peer` does that and also
-// follows the default branch while the run is live (absorbMain: a moved main is published into the
-// run as the peer `main`, and the run's base moves to it); `frozen`, every weave begun from the
-// base's text and gone with the run, is the rollback. Absent, frozen. Nothing here fails a run: a
-// store that cannot be read or written leaves the run frozen, with the reason on its row.
-const MAIN_MODE = mode('main.mode', ['peer', 'memory', 'frozen'], 'frozen')
-// a path main and a builder each created apart: `conflict` (a builder makes them one file) or `union`
-const MAIN_CREATED = mode('main.created', ['conflict', 'union'], 'union')
-// how often a `peer` run looks at the default branch: `--main-poll <seconds>`, else the policy cell
+// The settled cells (operator 2026-11-14, n=110 Flock runs 2026-09-26..11-15; each mode no run
+// used was cut, and the way back is a checkout before the cut): a builder is told only of the peer
+// changes its work touches (pulls.mjs; 72 runs, 146 changes held quiet); a change outside every
+// task's Files that no builder wrote fails the edge (scope.mjs; 0 refusals); a builder's loose ends
+// become the task `L:loose` at the first green (7 runs, 5 settled green, 2 drafted for other
+// reasons); a builder may object to a plan it cannot satisfy (2 objections, both the wrong-plans
+// test); and the run follows main as a peer from main's stored memory (13 moves, no clash drafted).
+// a path main and a builder each created apart is a conflict a builder makes one file
+// how often the run looks at the default branch: `--main-poll <seconds>`, else the policy cell
 // flock.main.poll_seconds, else 60
 const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
 if (!Number.isFinite(MAIN_POLL_MS) || MAIN_POLL_MS < 1000) { console.error('engine: --main-poll (or flock.main.poll_seconds) is a number of seconds, 1 or more'); process.exit(2) }
@@ -128,11 +89,11 @@ const MAX_REOPEN = 3
 // task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
 const MAX_RELEASE = 3
 // no progress (#1334): a run whose best-green count has not risen for this many minutes ends a
-// draft and interrupts every live session, instead of running to its clock. `--stall-minutes`, else
-// the policy cell flock.stall.minutes, else 20; 0 is off. Readings: over 7 runs (247, 251-255,
-// radio-station run-1) the longest wait for a rise was 2.0 min; run-252 ran 229.7 min past its last.
-const STALL_MIN = Number(arg('stall-minutes', POLICY_FLOCK?.stall?.minutes ?? 20))
-if (!Number.isFinite(STALL_MIN) || STALL_MIN < 0) { console.error('engine: --stall-minutes (or flock.stall.minutes) is a number of minutes, 0 or more'); process.exit(2) }
+// draft and interrupts every live session, instead of running to its clock. The policy cell
+// flock.stall.minutes, else 20. Readings: over 7 runs (247, 251-255, radio-station run-1) the longest
+// wait for a rise was 2.0 min; run-252 ran 229.7 min past its last; over 110 runs it never fired.
+const STALL_MIN = Number(POLICY_FLOCK?.stall?.minutes ?? 20)
+if (!Number.isFinite(STALL_MIN) || STALL_MIN <= 0) { console.error('engine: flock.stall.minutes is a number of minutes above 0'); process.exit(2) }
 const STALL_MS = STALL_MIN * 60000
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
@@ -157,70 +118,19 @@ const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, .
 const log = (...a) => console.log(util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// record-only Jev reading of each story at its last step (state-probe runner spec §7, #1369),
-// once, at a ready settle: never blocks a PR, and a missing answer is recorded as `null`
-// (step_reading.mjs `readSteps`). No read at a builder's done: the edge's spawnSync blocked
-// the loop past the client's timeout, so 0 of 42 answered (radio-station runs 1-6).
-const STEP_QUESTION = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets.flock_step.questions.delivered
-// one client for the step reading and the peer-rewrite read
-const jev = (JEV_STEP || JEV_PEER) ? makeJevClient({ baseUrl: process.env.TYPESAFE_BASE_URL, log: (m) => log('jev', m) }) : null
-// the peer-rewrite read: nothing waits on an answer. Each pending read is kept here, and before
-// summary.json the engine waits for them at most JEV_TIMEOUT_MS; a late answer is simply absent.
-const QSETS = JSON.parse(fs.readFileSync(path.join(HERE, '..', 'questions.json'), 'utf8')).sets
-const PEER_QUESTION = QSETS.flock_peer_rewrite.questions.kept
-// the second look (flock.jev_peer_rewrite.second_look): before a draft for a line of main's read as
-// lost, Jev reads the lost lines against the whole settled file. `mode` main or off (the rollback);
-// an answer under `min_confidence`, or a file over `max_lines`, excuses nothing
-const SETTLED_QUESTION = QSETS.flock_peer_settled.questions.carried
-const SECOND_MODE = mode('jev_peer_rewrite.second_look.mode', ['main', 'off'], 'off')
-const SECOND_MIN = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.min_confidence ?? 0.6)
-const SECOND_MAX_LINES = Number(POLICY_FLOCK?.jev_peer_rewrite?.second_look?.max_lines ?? 400)
-const trialsPending = new Set()
-const trial = (key, question, state, kind, row, then) => {
-  if (!jev) return
-  const p = readTrial({ ask: jev.ask, key, question, state, row, emit: (o) => { ev(kind, o); if (then) then(o) } }).catch(() => {})
-  trialsPending.add(p); p.finally(() => trialsPending.delete(p))
-}
-// #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), and
-// its Jev read; the reads are kept for the settle's check (peerRewriteDraft)
+// #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), a fact
+// the record keeps. Jev's read of each, and the draft on a `loses` answer, were cut on 2026-11-14
+// (operator's pick: over 110 runs it drafted 4 green runs, two merged by hand, and caught no lost line)
 const taskOf = {}   // agent -> the task its current session holds
 // the weave's authorship label (weave.py task_label): `A.2` is builder A on task 2, so a reused
 // builder's later task meets its earlier task's lines as a peer's; a label's task is after the dot
 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
-const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
-const peerReads = []
-// the loose ends the `L:loose` task was opened for ({path, claim}); a path's reasons reach Jev as the
-// problem the builder was asked to fix there (`asked_to_fix`)
-let looseWhy = []
 const LOOSE_TITLE = 'Close the loose ends builders reported'
 function peerRewrites (agent, rel, rewrites) {
   for (const w of rewrites || []) {
     const mine = taskOf[agent]
-    const row = { agent, task: mine && mine.id, path: rel, peers: w.peers, before: w.before, peer: w.peer, after: w.after }
-    ev('peer:rewrite', row)
-    if (!JEV_PEER) continue
-    const side = (a) => {
-      const i = a.indexOf('.'); const id = i < 0 ? null : a.slice(i + 1)
-      // the loose-ends task is added at run time, so it is not among the plan's tasks: its side is
-      // its board title plus, only for a path a loose end names, that reason as `asked_to_fix`, the
-      // problem the builder was asked to fix, never a claim; a rewrite in an unflagged file gets the
-      // title alone (#1520). Given the reason, Jev read run-296's narrowing as `supersedes`
-      // (n=5, 2026-10-01, read under the field name `claim`)
-      if (id === 'L:loose') {
-        const why = looseWhy.filter((x) => x.path === rel).map((x) => x.claim)
-        return why.length ? { agent: a, title: LOOSE_TITLE, asked_to_fix: why.join(' ') } : { agent: a, title: LOOSE_TITLE }
-      }
-      const t = id == null ? null : W.tasks.find((x) => x.id === id)
-      return t ? { agent: a, title: t.title, claim: claimOf(t.body) } : { agent: a }
-    }
-    trial('kept', PEER_QUESTION, { path: rel, before: w.before, peer: w.peer, after: w.after, tasks: [side(labelOf(agent)), ...w.peers.map(side)] },
-      'jev:peer-rewrite', row, (o) => peerReads.push(o))
+    ev('peer:rewrite', { agent, task: mine && mine.id, path: rel, peers: w.peers, before: w.before, peer: w.peer, after: w.after })
   }
-}
-const readAndRecord = () => {
-  if (!JEV_STEP || !W.stories) return Promise.resolve()
-  const all = latestResults(CHECK_OUT)
-  return readSteps({ ask: jev.ask, results: [...all.values()], sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
 }
 
 // ── the engine's own git, on the target ───────────────────────────────────────
@@ -409,8 +319,8 @@ async function openConflict (p, info) {
   const e = ledger.get(p + '\u0000' + reg)
   if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
   // a file main and a builder each began apart is two whole files, and no probe of this run speaks
-  // for main's: a builder makes them one (policy flock.main.created; `union` is the rollback)
-  const made = !!info.bothCreated && MAIN_CREATED === 'conflict'
+  // for main's: a builder makes them one (flock-baseline run-24, 2026-11-13: closed in 20 s, ready)
+  const made = !!info.bothCreated
   if (info.addsOnly && !made) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
   ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), annotated: info.annotated, between: info.between, party: info.party, made })
   lastChange = now()
@@ -496,8 +406,8 @@ function scopeAt (m, snap) {
   const written = Object.values(lastEditT).flatMap((ps) => Object.keys(ps))
   const { outside, amended } = scopeOf({ changed, files, written })
   for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
-  if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
-  return SCOPE_MODE === 'enforce' ? outside : []
+  if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(',')) }
+  return outside
 }
 // a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there,
 // undefined when no file has that exact path at the base or in the snapshot (the path cannot be read)
@@ -570,7 +480,8 @@ Rules:
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 - Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
-${OBJECTION === 'on' ? '- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again.\n' : ''}- If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
+- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again.
+- If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
 // What a pull brought that its builder has not been told of yet: agent -> path -> the change.
@@ -588,7 +499,7 @@ async function pullInto (agent, task) {
   // new files peers created cannot conflict with anything here, so they are always in scope (#1405)
   const base = new Set(BASE_PATHS)
   const created = [...new Set(Object.entries(lastEditT).filter(([a]) => a !== agent).flatMap(([, ps]) => Object.keys(ps)))].filter((p) => !base.has(p))
-  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], mode: PULLS, created }) : null
+  const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], created }) : null
   const r = await must({ op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) known[agent].add(c.path)
@@ -706,14 +617,13 @@ async function scriptedSession (agent, task) {
   }
   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
-  // test seam: `@object` maps a task to the objection its session files instead of writing; with
-  // objections off it is a give-back, as the `object` tool's absence leaves a builder
+  // test seam: `@object` maps a task to the objection its session files instead of writing
   const objected = (SCRIPT['@object'] || {})[task.id]
   if (objected) {
     usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
-    ev('session:end', { agent, task: task.id, released: OBJECTION === 'on' ? false : objected, objected: OBJECTION === 'on' ? objected : undefined, done: false })
+    ev('session:end', { agent, task: task.id, released: false, objected, done: false })
     live.delete(agent); lastChange = now()
-    if (OBJECTION === 'on') await objectTo(agent, task, objected); else await giveBack(agent, task, objected)
+    await objectTo(agent, task, objected)
     return
   }
   if (files) {
@@ -843,8 +753,8 @@ async function session (agent, task) {
       }),
     tool('release', 'Give your task back to the board because you are blocked. Say why.', { reason: z.string() },
       async (a) => { st.released = a.reason; return say('released; end your turn now') }),
-    ...(OBJECTION === 'on' ? [tool('object', 'Say that your task cannot be done as the plan is written, by any code: two clauses that cannot both be true, or a proof nothing can pass. Name the clauses and say why. The task then waits for the operator and is not handed to another builder. When you are only blocked for now, use release.', { reason: z.string().max(600) },
-      async (a) => { st.objected = a.reason; return say('objection filed; end your turn now') })] : []),
+    tool('object', 'Say that your task cannot be done as the plan is written, by any code: two clauses that cannot both be true, or a proof nothing can pass. Name the clauses and say why. The task then waits for the operator and is not handed to another builder. When you are only blocked for now, use release.', { reason: z.string().max(600) },
+      async (a) => { st.objected = a.reason; return say('objection filed; end your turn now') }),
     tool('done', 'Your task is finished: its facts pass on your copy. This publishes your copy and closes it.', { summary: z.string() },
       async (a) => {
         const red = redOf(runFacts(cwd, task))
@@ -1012,7 +922,7 @@ let mainOff = null        // why this run stopped following main
 // a changed file that means the installed dependencies may be stale: the setup runs again
 const MANIFEST = /(^|\/)(package\.json|bun\.lockb?|package-lock\.json|requirements[^/]*\.txt|pyproject\.toml|uv\.lock|poetry\.lock|Pipfile\.lock|Cargo\.(toml|lock)|go\.(mod|sum))$/
 function followMain () {
-  if (MAIN_MODE !== 'peer' || !MEMORY) return
+  if (!MEMORY) return
   const ref = gitIn(TARGET, ['symbolic-ref', '-q', 'refs/remotes/origin/HEAD'], { ok: true })
   const name = ref.status === 0 ? ref.stdout.trim() : ''
   if (name.startsWith('refs/remotes/origin/')) MAIN_BRANCH = name.slice('refs/remotes/origin/'.length)
@@ -1130,7 +1040,7 @@ function terminal (pr, why, r) {
 async function settle () {
   while (!settled && !outcome && now() < CLOCK_MS) {
     await sleep(500)
-    const stalled = () => STALL_MS > 0 && now() - lastRise > STALL_MS && lastSessionEnd > lastRise
+    const stalled = () => now() - lastRise > STALL_MS && lastSessionEnd > lastRise
     if (stalled() && (await edgeChain, stalled())) {
       // no progress (#1334): the best-green count has not risen within the limit, a builder session
       // has ended since it last did, and no queued snapshot raised it (the edge chain is drained)
@@ -1161,11 +1071,10 @@ async function settle () {
     const r = await edge('settle check')
     // one more look at main before a green run ends: a move is taken in and tested like any other
     if (r.green && await absorbMain('settle')) { edge('main moved'); continue }
-    if (r.green && LOOSE_MODE === 'work' && !board.tasks.has('L:loose')) {
+    if (r.green && !board.tasks.has('L:loose')) {
       const loose = looseEnds(board.beliefs, textAt(r.snap)).filter((x) => x.state !== 'resolved')
       if (loose.length) {
         const paths = [...new Set(loose.map((x) => x.path))]
-        looseWhy = loose.map((x) => ({ path: x.path, claim: x.claim }))
         preLoose = r
         const body = `Every task's facts and the run-wide check pass, but builders reported loose ends: things outside their tasks' files their changes left stale or broken.\n\n` +
           loose.map((x) => `- \`${x.path}\`: ${x.claim} (posted by ${x.by})${x.stale !== undefined ? `; the text still wrong there: ${JSON.stringify(x.stale)}` : ''}`).join('\n') +
@@ -1228,14 +1137,13 @@ async function settle () {
 
 // ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-let MEMORY = false   // the run's weaves began from main's memory
-if (MAIN_MODE !== 'frozen') {
-  const r = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
-  MEMORY = !!(r.ok && r.memory)
-  ev('weave:memory', r.ok ? { ...r, ok: undefined } : { memory: false, reason: String(r.error).slice(0, 300) })
-  log('memory', MEMORY ? `${r.via} entry, ${r.installed} of ${r.stored} stored paths at base` : 'none: ' + (r.reason || r.error))
-}
-ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: PULLS, chain: Object.fromEntries(board.cp) })
+// the run's weaves begin from main's memory: a store that cannot be read leaves them begun from the
+// base's text, with the reason on the row, and the run follows nothing (followMain)
+const memoryRead = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
+const MEMORY = !!(memoryRead.ok && memoryRead.memory)
+ev('weave:memory', memoryRead.ok ? { ...memoryRead, ok: undefined } : { memory: false, reason: String(memoryRead.error).slice(0, 300) })
+log('memory', MEMORY ? `${memoryRead.via} entry, ${memoryRead.installed} of ${memoryRead.stored} stored paths at base` : 'none: ' + (memoryRead.reason || memoryRead.error))
+ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: 'narrow', chain: Object.fromEntries(board.cp) })
 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
 // the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
 // (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
@@ -1312,8 +1220,6 @@ await edgeChain
 for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
 // checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
 try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
-if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
-await peerRewriteDraft()
 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
@@ -1343,61 +1249,6 @@ const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await 
 const landed = await land()
 keeper.end()
 process.exit(landed)
-
-// #1401: under `enforce`, a settled green whose snapshot lost a peer's line (the survival fact,
-// weave `lost`) that a peer rewrite Jev read as `loses` covers ends a draft. A read covers a lost
-// line when it is on the line's path, names the line's author among its peers and holds the line.
-// A lost line no read answers (Jev off, a null, never asked) is recorded, never drafted.
-// The second look. The first read judges one edit alone, and a builder that folds main's line into
-// a line of its own deletes main's in an edit that puts nothing in its place: flock-baseline run-23
-// ended a draft with nothing lost. Only main's lines (stored labels, `@…`) are looked at again: what
-// main wrote is a fixed text, and a builder of this run still answers for its own lines on the board.
-// True when Jev reads every lost line as carried by the settled file.
-async function carriedBySettled (s, e, read) {
-  const labels = String(e.author).split('|')
-  if (SECOND_MODE !== 'main' || !jev || !labels.every((a) => a.startsWith('@'))) return false
-  const row = { snap: s.snap, path: e.path, author: e.author, agent: read.agent, task: read.task, lost: e.lines }
-  const settled = String(s.files[e.path] ?? '').split('\n')
-  if (settled.length > SECOND_MAX_LINES) { ev('jev:peer-settled', { ...row, skipped: 'long', lines: settled.length, excused: false }); return false }
-  const wrote = await weave({ op: 'wrote', path: e.path, authors: labels })
-  // a hand commit says what it meant in its subject; a line another run landed has no sentence here
-  const subjects = labels.filter((a) => a.startsWith('@c:')).map((a) => gitIn(TARGET, ['log', '-1', '--format=%s', a.slice(3)], { ok: true }).stdout.trim()).filter(Boolean)
-  const t = W.tasks.find((x) => x.id === read.task)
-  const sides = {
-    theirs: { title: 'A commit on the main branch, merged while this run was at work', ...(subjects.length ? { claim: subjects.join('; ') } : {}) },
-    ours: t ? { title: t.title, claim: claimOf(t.body) } : { title: board.tasks.get(read.task)?.title ?? 'A task of this run' },
-  }
-  let out = null
-  await readTrial({ ask: jev.ask, key: 'carried', question: SETTLED_QUESTION, row, emit: (o) => { out = o },
-    state: { path: e.path, theirs: (wrote.ok && wrote.lines) || e.lines, lost: e.lines, settled, sides } })
-  const excused = !!out && out.answer === 'carried' && (out.confidence ?? 0) >= SECOND_MIN
-  ev('jev:peer-settled', { ...(out || row), excused })
-  return excused
-}
-async function peerRewriteDraft () {
-  if (PEER_MODE !== 'enforce' || !outcome || outcome.pr !== 'ready') return
-  const s = snapshots.findLast((x) => x.snap === outcome.snap)
-  if (!s || !s.lost) return
-  // a line restored with the same text is a new identity in the weave: the deleted one stays lost,
-  // but the snapshot shows its text, so nothing was lost
-  const shown = (e) => new Set(String(s.files[e.path] ?? '').split('\n'))
-  const lost = s.lost.map((e) => ({ ...e, lines: e.lines.filter((l) => !shown(e).has(l)) })).filter((e) => e.lines.length)
-  const losing = []
-  for (const e of lost) {
-    const covers = (l) => (r) => r.path === e.path && String(e.author).split('|').some((a) => (r.peers || []).includes(a)) && (r.peer || []).includes(l)
-    const unread = e.lines.filter((l) => !peerReads.some((r) => covers(l)(r) && (r.answer === 'loses' || r.answer === 'keeps')))
-    const mine = []
-    for (const l of e.lines) for (const r of peerReads.filter(covers(l))) if (r.answer === 'loses' && !mine.includes(r)) mine.push(r)
-    if (unread.length) ev('survival:unread', { snap: s.snap, path: e.path, author: e.author, lines: unread })
-    if (mine.length && await carriedBySettled(s, e, mine[0])) continue
-    for (const r of mine) if (!losing.includes(r)) losing.push(r)
-  }
-  if (!losing.length) return
-  if (preLoose && outcome.snap === preLoose.snap) fellBack = true   // a verdict on the pre-cleanup snapshot itself has nothing to fall back to
-  ev('peer:rewrite:draft', { rewrites: losing.map((r) => ({ agent: r.agent, path: r.path, peers: r.peers, after: r.after })) })
-  terminal('draft', `a peer rewrite Jev read as losing the peer's change: ${[...new Set(losing.map((r) => r.path))].join(', ')}`, outcome)
-  if (outcome.pr === 'ready') await peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
-}
 
 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's
 // ops with file texts as fingerprints (compact_record.mjs) ──
@@ -1436,19 +1287,15 @@ async function land () {
     // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
-    // it still offers every checked step to the Jev step reading, as a landed run does (#1509)
     if (!sha) {
       ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
       // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
-      if (W.grammar !== 'stories-v1') return 1
-      await Promise.race([readAndRecord().catch(() => {}), sleep(20000)])
-      return 0
+      return W.grammar === 'stories-v1' ? 0 : 1
     }
     // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     await storeEntry(sha)
     writeProvenance(outcome.snap)
-    await Promise.race([readAndRecord().catch(() => {}), sleep(20000)])
     return 0
   }
   if (lastEdge) {

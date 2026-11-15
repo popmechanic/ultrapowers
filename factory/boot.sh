@@ -11,7 +11,6 @@ set -euo pipefail
 FLEET_HOME="${FLEET_HOME:-/home/exedev}"
 REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
-TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 # 10 s since 2026-11-13: the record is what a reader watches a run through (fleet/run-read.mjs), so it
 # is at most one tick behind. It was 60 while the hub carried the live view.
@@ -280,7 +279,7 @@ run_engine() {
     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-        "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
+        CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
         --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
         ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
@@ -309,7 +308,7 @@ publish() { # $1 = the engine's exit code
     --target-repo "$TARGET_REPO" --target-dir "$TARGET_DIR" --branch "$BRANCH" --base-sha "$BASE_SHA" \
     --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --run-dir "$RUN_DIR" --evidence-dir "$EVIDENCE_DIR/$EVIDENCE_REL" \
     --evidence-url "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --github-host "$GITHUB_INT_HOST" \
-    --anthropic-url "$ANTHROPIC_PROXY_URL" --typesafe-url "$TYPESAFE_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
+    --anthropic-url "$ANTHROPIC_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
   [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
   state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
@@ -340,7 +339,7 @@ boot() {
   write_status running "the engine is starting"; evidence_commit "$RUN_ID: running"
   engine_deps; claude_current; preflight; run_engine
   code="$(cat "$DONE_MARKER")"; collect_evidence
-  # a run that followed main (policy flock.main.mode `peer`) ends on the main it moved to, and says
+  # a run whose main moved while it ran ends on the main it moved to, and says
   # so in $RUN_DIR/base: "nothing ahead of base" and the publish's catch-up are judged against that
   moved="$(head -n 1 "$RUN_DIR/base" 2>/dev/null || true)"
   if is_sha "$moved" && [ "$moved" != "$BASE_SHA" ]; then log "engine: the run's base moved to $moved (was $BASE_SHA)"; BASE_SHA="$moved"; fi

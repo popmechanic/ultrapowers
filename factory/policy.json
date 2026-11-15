@@ -1,16 +1,14 @@
 {
   "version": "policy-v1",
-  "about": "Every threshold the Flock and the record read, one file: `flock` holds the Flock's cells and `publish` the self-merge and probe cells publish.mjs reads. A threshold is chosen on the record's readings and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named.",
+  "about": "Every threshold the Flock and the record read, one file: `flock` holds the Flock's cells and `publish` the self-merge and probe cells publish.mjs reads. A threshold is chosen on the record's readings and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named. On 2026-11-14 the operator settled the Flock's experiments over 110 runs: the narrow pulls, the scope rule, the loose-ends task and the objection are the engine's only behaviour and carry no cell; the Jev step and peer-rewrite reads were cut.",
   "publish": {
     "self_merge": {
-      "enabled": true,
       "max_refolds": 3,
       "mergeable_wait_seconds": 120,
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "experiment": true,
-      "rollback": "enabled = false"
+      "n": 110,
+      "window": "the Flock runs 2026-09-26..11-15",
+      "basis": "62 runs merged themselves; 2 merge requests were refused after a refold (a conflict, a red). Settled operator 2026-11-14, over n=110 Flock runs (2026-09-26..11-15, every tag in the evidence repository): the self-merge always runs, and a held run is the way to keep one open",
+      "rollback": "the way back is a checkout before 2026-11-14's settling (the cut modes' code left with it)"
     },
     "probe": {
       "enabled": true,
@@ -32,80 +30,19 @@
       "basis": "the engine's limits before #1448; the catch-up reads the same cells, so a caught-up run is examined as strictly as the run",
       "rollback": "none: catch-up's former 120 / 1800 let a fact red on time in the run pass at publish (#1448)"
     },
-    "pulls": {
-      "mode": "narrow",
-      "n": 1,
-      "window": "run-268",
-      "basis": "run-268: 15 conflict-marked pulls, 13 of them to builders whose task never touched the file. Since flock-baseline run-10 (2026-11-13, n=1 run: a builder never received a file its task needed, three give-backs over 22 min, a draft) the scope narrows only what a builder is told; every published change reaches every copy in both modes",
-      "experiment": true,
-      "rollback": "mode = all",
-      "unread": "the conflict-marked pull notes each builder got in files outside its own task, the pull rows marked quiet, and run cost, over the 5 trial runs against runs 268–272 (operator review decision 2, 2026-09-29)"
-    },
-    "jev_step": {
-      "mode": "record",
-      "n": 0,
-      "window": "none",
-      "basis": "judgment",
-      "experiment": true,
-      "rollback": "mode = off",
-      "unread": "per-step Jev readings joined to the operator's smoke (state-probe runner spec §10)"
-    },
-    "jev_peer_rewrite": {
-      "mode": "enforce",
-      "second_look": { "mode": "main", "min_confidence": 0.6, "max_lines": 400 },
-      "n": 1,
-      "window": "run-277 (2026-09-29)",
-      "basis": "weave census #1401: in 43 Flock runs (2026-09-26..30) no merge wrote a line neither side wrote; the one edit over a peer's line (run-277) ran two of the peer's words together, and the run went green",
-      "experiment": true,
-      "rollback": "mode = record. second_look.mode = off (a `loses` on main's line drafts on the first read alone, as flock-baseline run-23 did)",
-      "unread": "jev:peer-rewrite answers against the landed line, over 20 peer rewrites; the drafts it causes per run; jev:peer-settled rows (the second look, questions.json flock_peer_settled, n=0 runs): each answer against the landed file, and every draft it excused (read live once: flock-baseline run-24, 2026-11-13, carried at 0.94 over a first read of loses at 0.38, the landed file keeping both sides)"
-    },
-    "scope": {
-      "mode": "enforce",
-      "n": 0,
-      "window": "none",
-      "basis": "run-247",
-      "experiment": true,
-      "rollback": "mode = record",
-      "unread": "scope:outside refusals and driver:amendment rows per run (#1322: a green run merged a corrupted file no task listed)"
-    },
     "stall": {
       "minutes": 20,
-      "n": 7,
-      "window": "the 7 Flock runs 247, 251–255 and radio-station run-1 (2026-09-26..28)",
-      "basis": "the longest wait for a rise in the green count was 2.0 min; run-252 ran 229.7 min after its last rise",
-      "experiment": true,
-      "rollback": "minutes = 0",
-      "unread": "stall:no-progress rows per run and the wall a stalled run no longer spends (#1334)"
-    },
-    "loose_ends": {
-      "mode": "work",
-      "n": 0,
-      "window": "none",
-      "basis": "#1419: 21 builder beliefs over n=15 runs (run-277..291), almost all loose ends; 10 of 21 reached no later session",
-      "experiment": true,
-      "rollback": "mode = record",
-      "unread": "loose ends per run, the share resolved in the run, and the drafts or wall the L:loose task adds"
-    },
-    "objection": {
-      "mode": "on",
-      "n": 1,
-      "window": "flock-baseline run-32 (2026-11-13)",
-      "basis": "the wrong-plans reading (evals/fixtures/wrong_plans): on a plan whose two tasks pin one line two ways, the builder named the contradiction in its first note, the task was given back three times and the run ended `deadlock` after 69 s and 4 sessions, against 27 s and 2 sessions for the correct control; four other flawed plans ended ready",
-      "experiment": true,
-      "rollback": "mode = off (no `object` tool: a builder can only give the task back)",
-      "unread": "objection rows per run and the share the operator upholds; whether builders object where a give-back or more work was right, over the wrong-plans set and 20 real runs"
+      "n": 110,
+      "window": "the Flock runs 2026-09-26..11-15",
+      "basis": "over 7 runs (247, 251–255, radio-station run-1, 2026-09-26..28) the longest wait for a rise in the green count was 2.0 min, and run-252 ran 229.7 min after its last rise; over 110 runs the stop never fired (0 stall:no-progress rows). Settled operator 2026-11-14, over n=110 Flock runs (2026-09-26..11-15, every tag in the evidence repository)",
+      "rollback": "the way back is a checkout before 2026-11-14's settling (the cut modes' code left with it); 0 turned the stop off there"
     },
     "main": {
-      "mode": "peer",
       "poll_seconds": 60,
-      "created": "conflict",
-      "n": 0,
-      "window": "none",
-      "basis": "audit 2026-11-12: the weave lived for one run and the catch-up rebuilt it from three texts, so the queue was cut by file; over 65 Flock runs (2026-09-26..10-02) 54 of 783 written files had more than one builder. Probe (n=25 files, 917 commits): a stored weave reloads exactly, and two weaves of one text built by different routes never agree, so a tree's weave is stored once and shared. Stage 2 live: flock-baseline run-10 and run-11 (2026-11-13, n=2 runs) each answered weave:memory true, weave:store stored true and weave:push pushed true, and run-11 started from the entry run-10's sandbox had pushed. `peer` (a moved main arrives mid-run) has run only in a sim",
-      "experiment": true,
-      "rollback": "mode = memory (main's memory without following main: a moved main is met at the publish's catch-up), then mode = frozen (every weave begun from the base's text; the catch-up joins three texts); deleting the target's ref refs/ultrapowers/weave/v1 forgets the memory. created = union (a file main and a builder each created apart lands as one whole file after the other, with no conflict opened)",
-      "unread": "main:moved and main:off rows per run and what each move cost (wall, a setup run again, conflicts opened against main); refolds at publish per run against runs before; weave:memory, weave:store and weave:push rows, over the first 5 runs; conflict:open rows carrying created: both, who closed each and whether the run ended ready (created = conflict read live once: flock-baseline run-24, 2026-11-13, n=1 run, opened, closed by a builder in 20 s, merged ready; run-23 the same file, drafted by the peer-rewrite read before the second look)"
+      "n": 110,
+      "window": "the Flock runs 2026-09-26..11-15",
+      "basis": "the run follows main as a peer from main's stored memory (weave_store.py): 45 runs read and stored the memory, 13 took in a moved main (11 ready; the 2 drafts were the lost-line read, since cut), none stopped following (0 main:off), and a file main and a builder each created is a conflict a builder closes (flock-baseline run-24, closed in 20 s, ready). Settled operator 2026-11-14, over n=110 Flock runs (2026-09-26..11-15, every tag in the evidence repository); the `memory` and `frozen` modes and `created = union` were cut",
+      "rollback": "the way back is a checkout before 2026-11-14's settling (the cut modes' code left with it); deleting the target's ref refs/ultrapowers/weave/v1 forgets the memory"
     }
   }
 }
