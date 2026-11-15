@@ -37,12 +37,12 @@ and the default branch moved underneath it, catches the run up to the target's t
 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
 opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
 failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
-`git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
-whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
-removes the calling VM only when the run's `status.json` at that tag, read from the evidence
-repository, says `state` `done` (#1470); the janitor still reaps what
-never asks. The PR is the human gate: the target's
-integration and the evidence repository's ride the VM for the run's whole life, and there is no
+`git ls-remote --tags`, and deletes the live branch. Nothing on the VM asks to be removed:
+the janitor removes a finished run's VM, at each launch or by hand. The hub's reaper (#1470),
+which removed a done run's VM on its request, retired on 2026-11-14: its `rm`-only key expired
+unnoticed for two weeks while the janitor covered, and exe.dev offers no VM expiry, tokenless
+self-removal or remove-only-yourself key (Shelley, 2026-11-14). The PR is the human gate: the
+target's integration and the evidence repository's ride the VM for the run's whole life, and there is no
 grant step. There is no image to keep fresh, no orchestrator, no control VM, and no token on any VM.
 The product repository receives only `ultra/integration-run-<N>`; what a run leaves is one tag in the
 evidence repository.
@@ -475,19 +475,15 @@ evidence repository.
   else: no `--integration` on `new`, no per-VM grant.
   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
-  Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's
-  `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
-  (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are
-  attached to a VM by name and never to the tag: `lobby-rm`, the `rm`-only lobby key, on
-  `vm:kata-hub`; and `evidence-read`, a `github --readonly` integration naming the evidence
-  repository, on `vm:kata-hub` and on `vm:ultraviz` (the run viewer, popmechanic/ultraviz, a
-  persistent VM that carries no tag and holds this one grant since 2026-11-13: it reads each run's
-  record and a write through it is refused, `integration is read-only`). Through it
-  the hub's reaper reads one file — `GET https://github.int.exe.xyz/api/v3/repos/<evidence
-  repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>` — and
-  can write nothing. It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
+  Every object reaches a fleet VM by its own `tag:fleet` attachment — including Jev's `typesafe`
+  **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one
+  exception is attached to a VM by name and never to the tag: `evidence-read`, a `github --readonly`
+  integration naming the evidence repository, on `vm:ultraviz` (the run viewer,
+  popmechanic/ultraviz, a persistent VM that carries no tag and holds this one grant since
+  2026-11-13: it reads each run's record and a write through it is refused, `integration is
+  read-only`). It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
   attached to `tag:fleet`: two GitHub integrations for one repository on one VM have no tie-break.
-- **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
+- **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
   | id | what it reads | green when |
   |---|---|---|
   | `exe-dev` | `ssh exe.dev whoami` | the alias answers with a username |
@@ -499,7 +495,6 @@ evidence repository.
   | `evidence` | `fleet.json`'s `"evidence"` + `gh repo view <owner>/<repo>` + `integrations list --json` | the one-time setup, three checks in order, the red naming the first that fails and its fix: the key is set (`"evidence": "<owner>/<repo>"`); the repository exists (`gh repo create <owner>/<repo> --private`); its integration `gh-<owner>-<repo>` exists on `tag:fleet` (`node fleet/target.mjs <owner>/<repo>`) |
   | `verb-drift` | `help <verb>` for every verb in `fleet/exe-verbs.json` | the record is readable; a flag that appeared or vanished is a finding in a green row, and only an unreadable record is red |
   | `cloudflare` | `integrations list --json` | green when the object is absent (only a plan with a `**Publish:**` line needs it) or attached to `tag:fleet`; red for a present object that is not, naming `integrations attach cloudflare tag:fleet` |
-  | `reaper` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` (the hub VM's `ssh_dest`) + `ssh <the hub's ssh_dest> "curl … lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor); otherwise red when the remover, asked from the hub to remove a VM that cannot exist, answers `invalid token`, and red when no key named `hub-reaper…` exists or the one that lasts longest has expired, since the hub then answers a finished VM `202` and removes nothing; green with the key's day and days left, the detail saying whether the remover answered. `bash fleet/reaper-key.sh` renews the key |
 
   The doctor imports `node:`-prefixed specifiers and `fleet/lobby.mjs`, and every row id is a
   `## ` heading in `skills/ultrapowers/references/first-run.md`. The `kata` row left with the kata
@@ -541,19 +536,19 @@ evidence repository.
   the page it has and the seal is the next pass's. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
   highest-numbered pull request (`pulls?state=all&per_page=100&head=<owner>:ultra/integration-run-<N>`, every page) is
   closed with `merged_at` null; an open, merged or absent one keeps the branch.
-- **The hub VM:** ONE persistent VM, named `kata-hub` since the days it ran the kata issue daemon,
-  comment ending `persistent service, do not reap`, and NO tag — the janitor's `fleet-r*` never lists
-  it, and the comment is the second lock. What it runs for the fleet is the VM remover
-  (`fleet/reaper.py` as `reaper.service`, port 8001, fronted by the `reaper` `http-proxy --peer` on
-  `tag:fleet`); what it holds is `/etc/reaper/reaper.env` (`REAPER_EVIDENCE_REPO=<owner>/<repo>`) and
-  two integrations on `vm:kata-hub`, `lobby-rm` and `evidence-read` (the second shared with the
-  viewer's VM). No tool builds it:
-  `fleet/RUNBOOK.md` §The hub's reaper is the hand procedure, and a fleet without one works, each
-  finished VM waiting for the janitor. exe.dev re-runs a VM's stored setup script on every
-  restart (RUNBOOK §Traps, systemd on the VM), so the hub also carries
-  `/etc/systemd/system/exe-setup.service.d/99-disabled.conf`
-  (`[Unit] ConditionPathExists=!/var/lib/exe-setup.disabled`) and the empty marker
-  `/var/lib/exe-setup.disabled`, both placed by hand on 2026-10-22.
+- **The hub VM (retired 2026-11-14):** the persistent VM `kata-hub` ran the kata daemon until
+  2026-11-13 and then only the VM remover, `fleet/reaper.py`. The janitor removes a finished run's
+  VM, at each launch or by hand. The hub's reaper (#1470), which removed a done run's VM on its
+  request, retired on 2026-11-14: its `rm`-only key expired unnoticed for two weeks while the
+  janitor covered, and exe.dev offers no VM expiry, tokenless self-removal or remove-only-yourself
+  key (Shelley, 2026-11-14).
+  Gone from the repository: `fleet/reaper.py`, `reaper.service`, `reaper-key.sh`,
+  `tests/test_reaper.py`, the doctor's `reaper` row and its sim, and the boot's `POST /reap`. Left
+  for the operator to remove by hand: the `kata-hub` VM, the `reaper` peer and `lobby-rm`
+  integrations, the `hub-reaper…` keys, and `evidence-read`'s attachment to `vm:kata-hub`.
+  Removing the VM also deletes `/var/lib/kata`, the data the Kata rollback below starts from. The
+  way back is a launch from a checkout made before that day, with the hub rebuilt from that
+  checkout's RUNBOOK §The hub's reaper.
   **Kata left on 2026-11-13** (the operator's decision: no agent read it, the evidence repository
   holds every run in full, and it cost about 3,500 lines, a launch gate and a second record). Gone
   from the repository: `fleet/kata-client.mjs`, `kata-file.mjs`, `kata-hub.mjs`,

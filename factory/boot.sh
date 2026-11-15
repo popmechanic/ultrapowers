@@ -13,8 +13,6 @@ REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
-# The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
-REAPER_URL="https://reaper.int.exe.xyz"
 # 10 s since 2026-11-13: the record is what a reader watches a run through (fleet/run-read.mjs), so it
 # is at most one tick behind. It was 60 while the hub carried the live view.
 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-10}"
@@ -31,8 +29,6 @@ RUN_N=""; PLAN_SHA=""; TARGET_REPO=""; BASE_SHA=""; ENGINE_SHA=""; RUN_ID=""
 BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PLAN_JSON=""; PAST_DIR=""
 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
-# RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
-RECORDED=""
 # MERGED_SHA is the merge commit `factory/publish.mjs` reported (else empty, which `write_status` renders as `null`).
 MERGED_SHA=""
 fleet_curl()        { curl "$@"; }
@@ -320,15 +316,10 @@ publish() { # $1 = the engine's exit code
   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
   finish "$state" "$phase_text"
 }
-# A run's end, in plain sequence: the record, the tag, the reap request.
+# A run's end, in plain sequence: the record, then the tag. A finished VM is removed by the janitor.
 finish() { # $1 = state, $2 = phase
   write_status "$1" "$2"; evidence_commit "$RUN_ID: $1"
   record_tags
-  # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
-  if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
-    fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
-    log "reap: asked the hub to remove this VM"
-  fi
 }
 # What a run leaves behind is its one tag in the evidence repository; the live branch is only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
 record_tags() {
@@ -338,7 +329,6 @@ record_tags() {
   fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$tag" || { log "record: pushing $tag at $head was rejected — $LIVE_BRANCH kept"; return 0; }
   listed="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "$tag" 2>/dev/null | awk -v r="$tag" '$2 == r { print $1 }' || true)"
   [ "$listed" = "$head" ] || { log "record: $EVIDENCE_REPO lists $tag at '${listed:-<nothing>}', not $head — $LIVE_BRANCH kept"; return 0; }
-  RECORDED=1
   fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
   log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
 }
