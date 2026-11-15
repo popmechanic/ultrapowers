@@ -24,9 +24,10 @@
  *       with no `**Closes:**` line and no events file, to the paragraph
  *       followed by two blank lines and nothing else.
  *   (d) [M4] `publishPolicy` over the repo's own `factory/policy.json` reads
- *       both cells enabled with their bounds; over cells carrying no `enabled`
- *       key, and over a path that does not exist, both read disabled with the
- *       defaults (3 refolds, 120 s, 600 s).
+ *       the self-merge's bounds and the probe enabled; over a probe cell
+ *       carrying no `enabled` key the probe reads disabled and the bounds are
+ *       the cell's; over a path that does not exist, the probe reads disabled
+ *       with the defaults (3 refolds, 120 s, 600 s).
  *
  * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
  * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
@@ -240,20 +241,19 @@ ${F}
 {
   assert.deepEqual(
     publishPolicy(POLICY_JSON),
-    { memory: true, selfMerge: { enabled: true, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
-    "(d) [M4] the repo's own factory/policy.json: main's memory on, self_merge enabled, 3 refolds, 120 s; probe enabled, 600 s"
+    { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+    "(d) [M4] the repo's own factory/policy.json: 3 refolds, 120 s; probe enabled, 600 s"
   )
   const noEnabledPath = path.join(FIXTURES, 'policy-no-enabled.json')
   fs.writeFileSync(noEnabledPath, JSON.stringify({
     publish: { self_merge: { max_refolds: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
   }))
-  const disabled = { memory: false, selfMerge: { enabled: false, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } }
   assert.deepEqual(
-    publishPolicy(noEnabledPath), disabled,
-    '(d) [M4] cells with no "enabled" key read as disabled with the defaults — the whole read falls back, not just the missing key'
+    publishPolicy(noEnabledPath), { selfMerge: { maxRefolds: 9, waitSeconds: 9 }, probe: { enabled: false, timeoutSeconds: 600 } },
+    '(d) [M4] a probe cell with no "enabled" key reads as disabled with the default budget; the self-merge bounds are the cell\'s'
   )
   assert.deepEqual(
-    publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), disabled,
+    publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } },
     '(d) [M4] a policy path that does not exist reads as disabled with the defaults'
   )
 }

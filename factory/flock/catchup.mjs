@@ -48,11 +48,11 @@ for (const p of ours) {
   both.push(p)
 }
 
-// main's memory (policy flock.main.mode `memory` or `peer`): the paths the store decides are joined there, on
-// the weaves the run and main really wrote; a path it does not hold (never text, or a run that began
-// frozen) falls to the three-text join below, which is also the rollback (`frozen`).
+// main's memory: the paths the store decides are joined there, on the weaves the run and main really
+// wrote; a path it does not hold (never text, or a run whose store could not be read) falls to the
+// three-text join below.
 let memory = null   // { file, stored }: the joined Memory, kept for the commit this catch-up makes
-if (both.length && ['memory', 'peer'].includes(POLICY_FLOCK?.main?.mode)) {
+if (both.length) {
   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'catchup-memory-')), 'memory.json')
   const j = store('join', '--repo', T, '--run', runSha, '--onto', ONTO, '--remote', 'origin', '--out', file)
   if (j && j.joined) {

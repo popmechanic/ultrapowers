@@ -90,7 +90,7 @@ the engine's exit code is the merge decision.
 - **The engine's values, in tie-break order (map #1131):** the mechanical facts (never
   traded), then clock speed, then simplicity in lines and roles, then tokens. **A judgment is
   a question, never a sentence or a regex** (each lives in the `questions.json` beside its
-  reader — `factory/` for the engine, `skills/ultrawrite/stories/` for authoring — and every
+  reader — `skills/ultrawrite/stories/` for authoring; the engine asks none since 2026-11-14 — and every
   threshold is a cell of the `policy.json` beside its reader, with its rollback). Hand work has its own
   tie-break (§Working with the operator).
 - **Don't vendor the vendor.** Before building a mechanism, ask whether exe.dev already
@@ -101,14 +101,15 @@ the engine's exit code is the merge decision.
   `fleet-counsel`; `--model=claude-opus-5` reads files; read long answers back with
   `shelley client read`) before editing a script. A hack is only a bridge she has blessed.
 - **Run in parallel; same-file overlap meets in the weave.** Launch plans concurrently whatever
-  files they share. A live run follows main (policy `flock.main.mode = peer`): a main that moves
+  files they share. A live run follows main: a main that moves
   mid-run is merged into the run like a builder's work, and a clash is a conflict a builder
   resolves. For a main that moves after the engine exits, a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
   and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, on main's stored
-  weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
+  weave where the run has one — `factory/flock/weave_store.py` — else through the
   weave), so overlaps meet in Manyana (decision 11, #715; read live on flock-baseline runs 16–21,
-  n=6 runs, 2026-11-13: five ready, one draft). A run whose builder must delete a line main wrote
-  ends a draft for the operator (#1401's read, operator's pick 2026-11-12). A conflict is the
+  n=6 runs, 2026-11-13: five ready, one draft). A builder's edit over a line main or a peer wrote is
+  recorded (`peer:rewrite`) and never drafts a run: the Jev read that drafted it was cut (operator's
+  pick 2026-11-14; n=110 runs, it drafted 4 green runs and caught no lost line). A conflict is the
   resolver's measurement, not a reason to serialize. Contention, not allocated vCPU, bounds
   concurrent runs.
 - **One merge, many writers (#1292).** Every builder writes its own weave replica and merges its
@@ -156,8 +157,8 @@ the engine's exit code is the merge decision.
   reports, never a clause. Publish runs after the engine, in plain sequence, never inside it
   (`factory/publish.mjs`, #1441).
 - **The plan is a submission, not a contract (#990).** A builder that outgrows a clause or its
-  Files set writes outside it in the open (the engine's `driver:amendment` row, which policy
-  `flock.scope` and `evals/readings/wrong_plans.py` read), and nothing reverts it for being
+  Files set writes outside it in the open (the engine's `driver:amendment` row, which the scope rule (`factory/flock/scope.mjs`) and
+  `evals/readings/wrong_plans.py` read), and nothing reverts it for being
   outside the plan. A task no implementation can pass is the builder's objection (`object`),
   which parks it for the operator.
 
@@ -205,8 +206,8 @@ the engine's exit code is the merge decision.
   LLM work runs inside Claude Code on the user's subscription. On the fleet it arrives as an
   edge-injected bearer (`ANTHROPIC_BASE_URL` → `claude-max.int.exe.xyz`,
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
-  run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
-  same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
+  run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached only
+  from the laptop, by ultrawrite's authoring checks (the sandbox asks Jev nothing since 2026-11-14)
   (`skills/ultrawrite/stories/jev_checks.ts` and `skills/ultrawrite/stories/arrange.ts`, key
   in `~/.ultrapowers/typesafe.env`) — for judgments over prose, never generation or facts
   (Jev choosing and placing a screen's pieces is a judgment, never generation).

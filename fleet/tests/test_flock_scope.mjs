@@ -20,7 +20,7 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-scope-'))
 const T = path.join(tmp, 'target')
 const RUN = path.join(tmp, 'run')
 fs.mkdirSync(T)
-const ENV = simEnv({ home: tmp, env: { TYPESAFE_BASE_URL: '' } })
+const ENV = simEnv({ home: tmp })
 const git = (...a) => {
   const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', '-c', 'init.defaultBranch=main', ...a], { cwd: T, encoding: 'utf8', env: ENV })
   if (r.status !== 0) { console.log(`git ${a.join(' ')} failed: ${r.stderr}`); process.exit(1) }
@@ -76,7 +76,7 @@ const script = path.join(tmp, 'script.json')
 fs.writeFileSync(script, JSON.stringify({ 1: { 'gone.txt': null, 'keep.txt': 'KEPT\n' }, '@unwritten': { 'other.txt': 'CORRUPT\n' } }))
 
 const r = spawnSync('node', [path.join(REPO, 'factory', 'flock', 'engine.mjs'), '--plan', plan, '--target', T, '--base', base,
-  '--run-dir', RUN, '--builder', `scripted:${script}`, '--clock', '120', '--stall-minutes', '2'],
+  '--run-dir', RUN, '--builder', `scripted:${script}`, '--clock', '120'],
 { encoding: 'utf8', timeout: 180000, env: ENV })
 const tail = ((r.stdout || '') + (r.stderr || '')).slice(-600)
 if (r.status === 0) fail(`the engine exited 0: a run carrying other.txt settled green; its output ends: ${tail}`)

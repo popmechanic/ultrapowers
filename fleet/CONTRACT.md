@@ -110,12 +110,11 @@ evidence repository.
     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
     and the retire sweep deletes one whose pull request is closed and not merged.
 - **`$RUN_DIR/base`** — one line, a 40-hex sha, written by the engine only when a run that follows
-  main (policy `flock.main.mode = peer`) moved its base: the main the run's commit sits on. The boot
+  main moved its base: the main the run's commit sits on. The boot
   reads it after the engine exits and judges "nothing ahead of base" and the publish's catch-up
   against it; absent, the base is the assignment's `base=`.
 - **`refs/ultrapowers/weave/v1` on the target** — main's memory (`factory/flock/weave_store.py`), the
-  one ref outside `refs/heads/` the product repository receives, and only under policy
-  `flock.main.mode = memory`. One commit per tree of the default branch, subject `weave <tree sha>`,
+  one ref outside `refs/heads/` the product repository receives. One commit per tree of the default branch, subject `weave <tree sha>`,
   holding the Manyana weave of every path changed since the store began. It is not a branch: a
   clone does not fetch it, branch protection does not cover it, and nothing reads it but a sandbox.
   The publish pushes it after the pull request is open and after each catch-up, always before a
@@ -319,7 +318,7 @@ evidence repository.
   unit itself:
   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
     -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
-    TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
+    ULTRAPOWERS_FLEET_RUN=<run id> node
     <engine>/factory/flock/engine.mjs --plan <plan> --plan-json <parse> --target <target> --base <sha> --run-dir <dir>`,
     stdout+stderr teed to `engine.log`.
     cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
@@ -331,21 +330,20 @@ evidence repository.
   run-277..291, never revised) ranked a wrong belief over its correction. Every belief posted is
   kept as one `belief` row in `events.jsonl`, whatever its `about`, and `fleet/run-read.mjs` prints
   each builder's as a `<builder> noted: <claim>` line, in `--follow` while the run is still going.
-  (Until 2026-11-13 an `engine` belief was also posted to the kata hub as a comment.) A belief naming a `path` is a loose end: with
-  `flock.loose_ends.mode` `work` (policy; rollback `record`) the engine adds one `L:loose` task
+  (Until 2026-11-13 an `engine` belief was also posted to the kata hub as a comment.) A belief naming a `path` is a loose end: the engine adds one `L:loose` task
   before settling when a loose end is open or not checked. One `loose-ends` row per run marks each
   loose end open, resolved or unchecked against the final snapshot, and the PR body lists the open
   and unchecked ones under `### Loose ends`.
   A draft after `L:loose` is added lands the pre-cleanup green snapshot as ready, recorded as a
   `loose:fallback` row and a second `settled` row, and the PR's Loose ends section says the cleanup
-  was dropped; a losing peer-rewrite read on that pre-cleanup snapshot still ends draft.
+  was dropped.
 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot
   does not settle. A builder's own change to a path outside every task's Files is let through and
-  recorded as a `driver:amendment` row naming the builder and the path. The switch is
-  `flock.scope` in `factory/policy.json` (`mode = enforce`); `flock.scope.mode = record` is the
-  rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
+  recorded as a `driver:amendment` row naming the builder and the path. Over 110 runs
+  (2026-09-26..11-15) it refused nothing and let 59 amendments through in 15 runs, all done; its
+  `record` mode was cut on 2026-11-14. Before this (run-247, #1322) a
   green run merged a corrupted file no task listed.
 - **Stall (Flock, the `stall:no-progress` row, #1334):** a Flock run whose best-green count has not
   risen for `flock.stall.minutes` (20), with at least one builder session ended since it last rose
@@ -353,20 +351,16 @@ evidence repository.
   `stall:no-progress` row in `events.jsonl` and ends as a draft, alerting, instead of running to its
   clock. The window opens when the builders start, not before setup. The stop interrupts every live
   session, starts no new one, and counts none of them as a give-back. Every stall row is named
-  `stall:<kind>`. `--stall-minutes <n>` is an engine flag for a hand run (the launcher and boot do
-  not pass it; a fleet run reads the cell), and a value that is not a number of minutes, 0 or more,
-  refuses with exit 2. The cell is
-  `flock.stall` in `factory/policy.json`; `flock.stall.minutes = 0` is the rollback — no limit, the
-  run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
+  `stall:<kind>`. The cell is `flock.stall` in `factory/policy.json`; a value that is not a number of
+  minutes above 0 refuses with exit 2. Over 110 runs (2026-09-26..11-15) the stop never fired, and
+  its off switch (`0`) and the `--stall-minutes` flag were cut on 2026-11-14. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
   n=7) the longest wait for a rise in the green count was 2.0 min, while run-252 ran 229.7 min
   after its last rise.
-- **Jev (2026-09-16, the `jev:` seam):** one event kind rides the run's own event log exactly as
-  a `driver:` row does — `jev:step` (the step read for a plan clause, one row per clause asked;
-  `factory/record.mjs` reads the latest row per clause) — each one a `POST /v1/systemone` against
-  the typesafe host, asked only over a reachable TypeSafe edge; a failed call is one log line and
-  no row.
-    Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
-  neither is persisted anywhere this engine reads again.
+- **Jev:** the engine asks Jev nothing. Its two reads, `jev:step` (each green story step, record
+  only) and `jev:peer-rewrite` with its second look `jev:peer-settled` (an edit over a peer's line,
+  drafting on `loses`), were cut on 2026-11-14 (operator's pick; n=110 runs: the step reads were
+  never read, and the peer-rewrite read drafted 4 green runs and caught no lost line). A past run's
+  record may still carry those rows; nothing reads them.
 - **status.json:** `{"run":"<N>","state":"running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
   — committed to
   `runs/<owner>-<repo>/<N>/status.json` on `live/<owner>-<repo>/run-<N>` in the evidence repository
@@ -403,8 +397,8 @@ evidence repository.
   nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the run tag's folder>` —
   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — then,
   each only where the run has it and each its own `###` section or line, the provenance of its
-  lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`), Jev's
-  readings of each story step and what each step changed, and last one `Closes #<n>` line per
+  lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`) and
+  what each story step changed, and last one `Closes #<n>` line per
   number on the plan's `**Closes:**` line, all rendered by `factory/record.mjs pr-body`. A body
   over GitHub's cap gives up builders' lines first, never the summary or the closes. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —
@@ -452,8 +446,9 @@ evidence repository.
   else: no `--integration` on `new`, no per-VM grant.
   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
-  Every object reaches a fleet VM by its own `tag:fleet` attachment — including Jev's `typesafe`
-  **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one
+  Every object reaches a fleet VM by its own `tag:fleet` attachment. (Jev's `typesafe`
+  **http-proxy**, `https://typesafe.int.exe.xyz`, is attached there too, but no fleet code calls it
+  since 2026-11-14, when the engine's Jev reads were cut; the operator may detach it.) The one
   exception is attached to a VM by name and never to the tag: `evidence-read`, a `github --readonly`
   integration naming the evidence repository, on `vm:ultraviz` (the run viewer,
   popmechanic/ultraviz, a persistent VM that carries no tag and holds this one grant since

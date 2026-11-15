@@ -10,7 +10,7 @@
  *   node factory/publish.mjs --engine-exit <code> --hold 0|1 --run-id <run-N> --target-repo <o/r>
  *     --target-dir <dir> --branch <ultra/integration-run-N> --base-sha <sha> --plan <plan.md>
  *     --plan-json <parse> --run-dir <dir> --evidence-dir <runs/<slug>/<N> in the clone>
- *     --evidence-url <url> --github-host <host> --anthropic-url <url> --typesafe-url <url> --log <boot log>
+ *     --evidence-url <url> --github-host <host> --anthropic-url <url> --log <boot log>
  *
  * It appends its rows to the evidence folder's `events.jsonl`, writes `publish.json` and the
  * three publish logs beside it, logs to the boot log, and prints five lines for the boot:
@@ -32,9 +32,11 @@ const CATCHUP = path.join(path.dirname(fileURLToPath(import.meta.url)), 'flock',
 const STORE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'flock', 'weave_store.py')
 const CLOUDFLARE_API_BASE_URL = 'https://cloudflare.int.exe.xyz/client/v4'
 
-/** `publish.self_merge` and `publish.probe` off `policyPath`. A missing file, unparseable
- *  JSON, or a cell that is not an object carrying an `enabled` key reads as disabled, never
- *  a default a broken read falls into; the bounds' defaults live here alone. */
+/** `publish.self_merge`'s bounds and `publish.probe` off `policyPath`. The self-merge always
+ *  runs (a held run is the way to keep one open; settled 2026-11-14 over 62 self-merges in 110
+ *  runs); the probe is still an experiment, so a missing file, unparseable JSON, or a probe cell
+ *  that is not an object carrying an `enabled` key reads it as disabled. The bounds' defaults
+ *  live here alone. */
 export function publishPolicy (policyPath = POLICY) {
   let doc
   try { doc = JSON.parse(fs.readFileSync(policyPath, 'utf8')) } catch { doc = null }
@@ -43,13 +45,10 @@ export function publishPolicy (policyPath = POLICY) {
     return c && typeof c === 'object' && !Array.isArray(c) && Object.hasOwn(c, 'enabled') ? c : null
   }
   const int = (v, d) => (v === undefined ? d : Math.trunc(Number(v)))
-  const sm = cell('self_merge')
+  const sm = doc && typeof doc === 'object' && doc.publish && typeof doc.publish === 'object' ? doc.publish.self_merge : undefined
   const probe = cell('probe')
-  const main = doc && typeof doc === 'object' && doc.flock && typeof doc.flock === 'object' ? doc.flock.main : undefined
   return {
-    // main's memory (flock.main.mode `memory` or `peer`): anything else pushes no weave entry
-    memory: Boolean(main && typeof main === 'object' && (main.mode === 'memory' || main.mode === 'peer')),
-    selfMerge: { enabled: Boolean(sm?.enabled), maxRefolds: int(sm?.max_refolds, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
+    selfMerge: { maxRefolds: int(sm?.max_refolds, 3), waitSeconds: int(sm?.mergeable_wait_seconds, 120) },
     probe: { enabled: Boolean(probe?.enabled), timeoutSeconds: int(probe?.timeout_seconds, 600) }
   }
 }
@@ -136,7 +135,6 @@ export async function publish (o) {
   // a merge request and never after one, so main never shows a tree whose stored weave could still
   // arrive late. A push that fails only costs the memory of this landing: the next reader replays it.
   const pushWeave = (when) => {
-    if (!policy.memory) return
     const r = spawnSync('python3', [STORE, 'push', '--repo', o.targetDir, '--remote', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
     const res = json((r.stdout ?? '').trimEnd().split('\n').pop()) ?? {}
     const forks = Array.isArray(res.forks) ? res.forks : []
@@ -155,7 +153,6 @@ export async function publish (o) {
     const env = {
       ...process.env,
       ANTHROPIC_BASE_URL: o.anthropicUrl,
-      TYPESAFE_BASE_URL: o.typesafeUrl,
       CLAUDE_CODE_OAUTH_TOKEN: 'placeholder',
       ULTRAPOWERS_FLEET_RUN: o.runId
     }
@@ -194,8 +191,7 @@ export async function publish (o) {
   // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_refolds` merge requests
   // in all; anything else parks.
   const selfMerge = async () => {
-    const { enabled, maxRefolds, waitSeconds } = policy.selfMerge
-    if (!enabled) return
+    const { maxRefolds, waitSeconds } = policy.selfMerge
     let curBase = o.baseSha
     for (let attempts = 0; attempts < maxRefolds;) {
       const fetched = git(['fetch', 'origin', `refs/heads/${base}`], { quiet: true })
@@ -322,7 +318,7 @@ export async function publish (o) {
 }
 
 const FLAGS = ['engine-exit', 'hold', 'run-id', 'target-repo', 'target-dir', 'branch', 'base-sha', 'plan', 'plan-json',
-  'run-dir', 'evidence-dir', 'evidence-url', 'github-host', 'anthropic-url', 'typesafe-url', 'log']
+  'run-dir', 'evidence-dir', 'evidence-url', 'github-host', 'anthropic-url', 'log']
 
 async function main (argv) {
   const o = {}
