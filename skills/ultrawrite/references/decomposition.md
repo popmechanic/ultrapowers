@@ -91,8 +91,8 @@ could ever check them.
 
 The section holds two kinds of bullet, and only one of them reaches the run. A `- Check:`
 bullet is a command that runs across the whole run: the Flock reads the plan's `checks`
-and the run settles green only when every one exits 0 — unless it ends `(minor)`, which is
-never run. A prose bullet is read by people only: nothing runs it and nothing forwards it,
+and the run settles green only when every one exits 0 (a `(minor)` suffix, which once meant
+never run, is refused). A prose bullet is read by people only: nothing runs it and nothing forwards it,
 and no builder sees it, because a builder's task body is its own `### Task` section and
 nothing else. So a constraint a command can decide is written as a Check:, never as
 prose — prose is where the undecidable half goes, and a constraint a builder must honour is

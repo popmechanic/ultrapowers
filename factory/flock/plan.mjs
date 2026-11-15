@@ -76,7 +76,7 @@ export function workloadFromPlan(planPath, planJson) {
     factClauses: t.proofRunClauses || [],
   }));
 
-  const cmds = (parsed.checks || []).filter((c) => !c.minor).map((c) => c.cmd);
+  const cmds = (parsed.checks || []).map((c) => c.cmd);
   const check = cmds.length ? bash(cmds.join(' && ')) : null;
   const setup = parsed.bootstrapCmd ? bash(parsed.bootstrapCmd) : null;
 

@@ -118,7 +118,7 @@ export function probeWordsOf (line) {
 }
 
 /**
- * Every command word of every task's `proofRuns` across `compiled.waves`, and
+ * Every command word of every task's `proofRuns` in `compiled.payload.tasks`, and
  * of every `compiled.payload.checks[].cmd` (task `check`), that
  * `SANDBOX_TOOLCHAIN` lacks — one `{ task, word, cmd }` per (task, word), in
  * document order. Pure; empty means every probe and check can run on the box.
@@ -135,13 +135,10 @@ export function toolchainViolations (compiled) {
       out.push({ task: String(task), word, cmd: String(cmd) })
     }
   }
-  const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
-  for (const wave of waves) {
-    if (!Array.isArray(wave)) continue
-    for (const task of wave) {
-      const runs = Array.isArray(task?.proofRuns) ? task.proofRuns : []
-      for (const cmd of runs) note(task?.id ?? '?', cmd)
-    }
+  const tasks = Array.isArray(compiled?.payload?.tasks) ? compiled.payload.tasks : []
+  for (const task of tasks) {
+    const runs = Array.isArray(task?.proofRuns) ? task.proofRuns : []
+    for (const cmd of runs) note(task?.id ?? '?', cmd)
   }
   const checks = Array.isArray(compiled?.payload?.checks) ? compiled.payload.checks : []
   for (const check of checks) if (check && typeof check.cmd === 'string') note('check', check.cmd)

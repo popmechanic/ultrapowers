@@ -92,11 +92,13 @@ const isFunction = (leg, name, value) => assert.equal(
     '(b) [M2] no duplicate in the toolchain')
 
   const fixture = {
-    waves: [
-      [{ id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] }],
-      [{ id: '2', proofRuns: ['go test ./...'] }]
-    ],
-    payload: { checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }] }
+    payload: {
+      tasks: [
+        { id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] },
+        { id: '2', proofRuns: ['go test ./...'] }
+      ],
+      checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }]
+    }
   }
   const v = toolchainViolations(fixture)
   assert.deepEqual(
@@ -107,13 +109,15 @@ const isFunction = (leg, name, value) => assert.equal(
     '(b) [M2] a violation carries task, word and the offending line')
   assert.deepEqual(
     toolchainViolations({
-      waves: [[{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }]],
-      payload: { checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }] }
+      payload: {
+        tasks: [{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }],
+        checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }]
+      }
     }),
     [],
     '(b) [M2] a plan whose probes and checks use only toolchain words answers []'
   )
-  assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no waves, no checks: []')
+  assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no tasks, no checks: []')
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -133,11 +137,8 @@ const isFunction = (leg, name, value) => assert.equal(
   // The compiled plan the stubbed parser answers: one task, one probe the
   // sandbox cannot run.
   const COMPILED = {
-    launch_waves: [[{
-      id: '1', title: 'task 1', files: ['src/a.rs'], depends_on: [],
-      proofRuns: ['cargo test'], proofRunClauses: [['M1']], interfaces: { consumes: [], produces: [] }
-    }]],
-    dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
+    tasks: [{ id: '1', title: 'task 1', files: ['src/a.rs'], wave: 1, proofRuns: ['cargo test'], proofRunClauses: [['M1']] }],
+    dag_edges: [], width: 1, checks: [], bootstrapCmd: null
   }
 
   // The evidence repository's URL goes to its own bare; every other github.com

@@ -23,7 +23,7 @@ made before the retirement.
 ```bash
 python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs)
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
-python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
+python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, width, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a plan's Run: probes on the working tree, one line each (never a hand loop)
 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)

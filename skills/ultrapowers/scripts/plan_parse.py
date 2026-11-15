@@ -4,18 +4,18 @@
 Usage: python3 plan_parse.py <plan.md>
 
 Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
-`launch_waves`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
+`width`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
 itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
 
-Each task's files is the sorted set of its Create, Modify and Delete paths.
+Each task's files is the sorted set of its Create, Modify and Delete paths, and
+its `wave` is its 1-based layer in the dependency order; `width` is the widest
+layer, the most tasks that can be ready at once, which the launcher sizes the VM
+from.
 
-This is a grammar parser, not the old semantic compiler
-(`compile_plan.py`, deleted at cut B, 2026-09-21): it refuses (exit 2, one
-stderr line) only what it cannot parse -- no `### Task <id>:` heading found,
-a duplicate task id, or a cycle in the derived dependency edges. Everything
-else the old compiler would treat as a semantic violation (missing gate
-verdicts, slot-shape complaints, disjointness, clause citations, ...) is not
-this parser's business.
+A grammar parser: it refuses (exit 2, one stderr line) only what it cannot
+parse or must not run -- no `### Task <id>:` heading found, a duplicate task id,
+a cycle in the derived dependency edges, or a `(minor)` Check. Gate verdicts,
+slot shapes and clause citations are `plan_check.py`'s business.
 """
 
 import json
@@ -24,7 +24,7 @@ import sys
 
 
 class Refusal(Exception):
-    """Raised for the three grammar-level refusals (M5)."""
+    """Raised for a grammar-level refusal."""
 
 
 # --------------------------------------------------------------------------- #
@@ -88,7 +88,6 @@ def _claims_run_cites(value):
     return value[:m.start()], cites
 
 
-TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
 BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
 PUBLISH_LINE = re.compile(r'^\*\*Publish:\*\*\s*(.+?)\s*$', re.I)
 VERIFY_LINE = re.compile(r'^\*\*Verify:\*\*\s*(.+?)\s*$', re.I)
@@ -208,8 +207,8 @@ def _parse_header(header_lines):
 
 def _parse_checks(header_lines):
     """`- Check:` bullets under the `## Global Constraints` heading in the
-    plan header, in order; a trailing `(minor)` marks `minor` true and is
-    stripped from `cmd`."""
+    plan header, in order, each `{"cmd"}`. A trailing `(minor)` is refused: it
+    once marked a Check never run, and a Check is always run now."""
     checks = []
     in_section = False
     for line, fenced in header_lines:
@@ -225,15 +224,14 @@ def _parse_checks(header_lines):
         if not m:
             continue
         val = m.group(1).strip()
-        minor = False
-        mm = MINOR_SUFFIX_RE.search(val)
-        if mm:
-            minor = True
-            val = val[:mm.start()].rstrip()
+        if MINOR_SUFFIX_RE.search(val):
+            raise Refusal(
+                "grammar: Check `%s` ends `(minor)`, which is never run — every "
+                "Check runs; drop the suffix, or the line" % val)
         bm = re.match(r'^`([^`]+)`$', val)
         if bm:
             val = bm.group(1).strip()
-        checks.append({"cmd": val, "minor": minor})
+        checks.append({"cmd": val})
     return checks
 
 
@@ -270,7 +268,7 @@ def _span_text(body_lines, span):
 
 def _pre_slot(body_lines):
     """The task body's lines between its heading and its first slot label --
-    the region its `**Type:**` line and Files bullets are read from."""
+    the region its Files bullets are read from."""
     spans = _slot_spans(body_lines)
     return body_lines[1:spans[0][0] if spans else len(body_lines)]
 
@@ -307,16 +305,6 @@ def _parse_task_body(body_lines):
                                     for l in slot_text("stale-if").splitlines())
                         if e]
 
-    # Type marker.
-    ttype = None
-    for line, fenced in pre_slot:
-        if fenced:
-            continue
-        m = TYPE_LINE.match(line.strip())
-        if m:
-            ttype = m.group(1).strip().lower()
-            break
-
     # Files block.
     files = {"create": [], "modify": [], "delete": []}
     for label, paths in _file_bullets(pre_slot):
@@ -348,7 +336,6 @@ def _parse_task_body(body_lines):
             proof_run_clauses.append(clauses)
 
     return {
-        "type": ttype,
         "creates": files["create"],
         "modifies": files["modify"],
         "deletes": files["delete"],
@@ -360,10 +347,6 @@ def _parse_task_body(body_lines):
         "proof": slot_text("proof"),
         "stale_if_entries": stale_if_entries,
     }
-
-
-def _is_implementation(ttype):
-    return ttype is None or ttype == "implementation"
 
 
 # --------------------------------------------------------------------------- #
@@ -655,66 +638,47 @@ def parse_plan_text(text):
 
 def parse_plan_full(text):
     """`(result, all_tasks)`: the public object `parse_plan_text` answers,
-    and beside it every task of the plan -- whatever its `**Type:**` -- with
-    the fields the laptop's check and the authoring scripts read and the
-    sandbox does not: `body`, `type`, `deletes`, the `claim`,
-    `authorized_by` and `proof` slot texts, and `stale_if_entries`."""
+    and beside it every task of the plan with the fields the laptop's check
+    and the authoring scripts read and the sandbox does not: `body`,
+    `deletes`, the `claim`, `authorized_by` and `proof` slot texts, and
+    `stale_if_entries`."""
     header_lines, task_bodies = _split_plan(text)
     bootstrap_cmd, publish = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
     sections = task_sections(text)
 
     all_tasks = []
-    for tid, title, order, body_lines in task_bodies:
+    for tid, title, _order, body_lines in task_bodies:
         parsed = _parse_task_body(body_lines)
         all_tasks.append({
             "id": tid,
             "title": title,
-            "order": order,
             **parsed,
             "files": sorted(set(parsed["creates"]) | set(parsed["modifies"])),
-            "depends_on": [],
             "body": "\n".join(l for l, _ in body_lines).strip(),
         })
 
-    # the engine runs only implementation tasks, so any other Type would be
-    # dropped without a word: refused instead
-    for t in all_tasks:
-        if not _is_implementation(t["type"]):
-            raise Refusal(
-                "grammar: task %s: Type `%s` is never run — only `implementation` "
-                "tasks run; publishing goes through the plan's `**Publish:**` header."
-                % (t["id"], t["type"]))
-    impl = all_tasks
-    ids = [t["id"] for t in impl]
+    ids = [t["id"] for t in all_tasks]
+    edges = _build_edges(all_tasks)
+    layers = _kahn_layers(ids, edges)
+    wave_of = {i: n + 1 for n, layer in enumerate(layers) for i in layer}
 
-    edges = _build_edges(impl)
-    waves_ids = _kahn_layers(ids, edges)
-
-    def public_view(t):
-        view = {
-            "id": t["id"],
-            "title": t["title"],
-            # a Delete: path is the task's own too, or the engine's scope rule reads a
-            # planned deletion as an amendment (run-263: all 44 amendment rows)
-            "files": sorted(set(t["files"]) | set(t["deletes"])),
-            "depends_on": t["depends_on"],
-            "proofRuns": t["proofRuns"],
-            "proofRunClauses": t["proofRunClauses"],
-            "interfaces": t["interfaces"],
-            "body": sections.get(t["id"], ""),
-        }
-        return view
-
-    by_id = {t["id"]: t for t in impl}
-    tasks_out = [public_view(t) for t in impl]
-    dag_edges = [{"from": e["from"], "to": e["to"], "why": e["why"]} for e in edges]
-    launch_waves = [[public_view(by_id[i]) for i in wave] for wave in waves_ids]
+    tasks_out = [{
+        "id": t["id"],
+        "title": t["title"],
+        # a Delete: path is the task's own too, or the engine's scope rule reads a
+        # planned deletion as an amendment (run-263: all 44 amendment rows)
+        "files": sorted(set(t["files"]) | set(t["deletes"])),
+        "wave": wave_of[t["id"]],
+        "proofRuns": t["proofRuns"],
+        "proofRunClauses": t["proofRunClauses"],
+        "body": sections.get(t["id"], ""),
+    } for t in all_tasks]
 
     return {
         "tasks": tasks_out,
-        "dag_edges": dag_edges,
-        "launch_waves": launch_waves,
+        "dag_edges": [{"from": e["from"], "to": e["to"], "why": e["why"]} for e in edges],
+        "width": max((len(layer) for layer in layers), default=0),
         "checks": checks,
         "bootstrapCmd": bootstrap_cmd,
         "publish": publish,
