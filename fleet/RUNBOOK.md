@@ -34,8 +34,8 @@ the one engine since the factory's retirement (map #1292 rule 8); an
 assignment with `kind=factory` is refused. The boot script clones the target at `base=`,
 fetches the evidence repository's live branch (shallow, through the same edge
 host) and checks its tip against the assignment's `plan=`, runs the engine as a
-transient user unit with a memory cap — no status page, git is the record —
-commits the record to `live/<owner>-<repo>/run-<N>` every 10 s and at each
+transient user unit with a memory cap — no status server: the record is git —
+commits the record (`status.json`, `events.jsonl` and the logs) to `live/<owner>-<repo>/run-<N>` every 10 s and at each
 transition, and — only when there is something to publish — pushes
 `ultra/integration-run-<N>` to the target and opens the PR over GitHub's REST
 API through the edge. The PR is the human gate; there is no approval step
@@ -73,12 +73,6 @@ Host *.exe.xyz exe.dev
 
 `ssh exe.dev whoami` printing your username is the whole of this step. This
 account key is what `launch.mjs` uses.
-
-A second key, tag-scoped, is the right one for anything that only reaps.
-Register it with `ssh-key add --tag=fleet`. Measured 2026-09-03: such a key
-sees only fleet-tagged VMs in `ls --json`, can `comment` and `rm` them, and gets
-"not found" for anything else. That is the key for a machine that only reaps by
-hand.
 
 **2. `capacity` — the ceiling a run may ask for.** `ssh exe.dev "billing plan
 --json"` is the account's pool; `~/.ultrapowers/fleet.json` is the **ceiling**
@@ -245,7 +239,7 @@ exe.dev app).
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha>
 ```
 
-The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any worker touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: a bare `--check` prints none of this. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, with each field the record does not say (or says oddly) read as `-`, or `AUTHORING fact: none recorded` when the gate record carries no `authoring` key; the record never refuses a plan (#1440) — so the cost of the plan is read beside the run it launched, without opening the record.
+The launcher checks the plan against `--base` itself (`plan_check.py --base`, on `plan_parse.py` — the sandbox's own parser — after the hash pins and before any lobby verb) and refuses on anything but `PLAN OK`; the `STALE fact:` lines, the `GREEN-AT-BASE fact:` lines and the `AUTHORING fact:` line of a clean check are printed on the launch line after the engine line, in the order the compiler printed them. A `STALE fact:` line on a clean compile is an advisory — a Stale-if predicate the compiler could not read at `--base` (`STALE fact: task <id>: <entry> unreadable at BASE — <reason>`); a predicate that holds is a refusal instead, and the compiler's own `STALE fact: task <id>: <entry> holds at BASE` line comes back verbatim in it. A `GREEN-AT-BASE fact:` line is a fact this release and not a refusal — the compile still prints `PLAN OK` and exits 0 however many of them there are — and it says a Proof `Run:` line was already green on the tree at `--base`, before any builder touched it: `GREEN-AT-BASE fact: task <id>: Run: <command> — exits 0 at BASE; this line cannot falsify its clause` for a prover, `… — exits 0 at BASE; a guard, no leg cites it` for a guard, `… — not run (timeout after 30 s)` for a line the compiler gave up on, and last one `GREEN-AT-BASE fact: <S> s over <R> lines run, <T> not run (timeout)` totalling what the reads cost. Only Proof `Run:` lines are run at `--base`, never a `Check:` line, and only under `--base`: without it none of this prints. The `AUTHORING fact:` line is what the plan cost to author — `AUTHORING fact: <minutes> min to PLAN OK, <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>, <n> questions, <p>/<q> recommended picked`, with each field the record does not say (or says oddly) read as `-`, or `AUTHORING fact: none recorded` when the gate record carries no `authoring` key; the record never refuses a plan (#1440) — so the cost of the plan is read beside the run it launched, without opening the record.
 
 The launcher, in this order: validates the plan, the target and the base;
 reads every command word of every `Run:` probe and `Check:` line against the
@@ -292,30 +286,29 @@ plan build the same change twice, #1036).
   read-only command, so it may run in the foreground or the background for as
   long as the run lasts; what never runs on a timer here is a writer (the reap, a merge).
 
-  A run writes to no issue board: the kata hub left on 2026-11-13, and
-  `fleet/board-read.mjs` with it.
+  A run writes to no issue board: the kata hub left on 2026-11-13.
 
 **The PR.** There is no approval step between the gate and the PR. Once the
 engine service is inactive and the branch is ahead of base, the sandbox pushes
 `ultra/integration-run-<N>` and opens the PR itself, over one REST call
 through the edge (`POST /api/v3/repos/<owner>/<repo>/pulls`, never `gh`):
-ready on PASS or on the two-move rule's approval, a draft carrying the gate
-receipt otherwise, against the target's default branch. Its body links the plan blob and the evidence tree, so
-the PR is the whole index of the run. It opens with the summary the operator
-signed, the answer line, the plan's Claim and one table row per task saying what
-was promised and how it was proved, with the record — receipt, shas, evidence
-listing and residuals checklist — folded away below. `pr` and `prAuthor` in `status.json` are
-the answer's `html_url` and `user.login`.
+ready when the engine exited 0, a draft otherwise, against the target's default
+branch. Its body (`factory/record.mjs pr-body`, CONTRACT §Publish) is the
+summary the operator signed, then the `### Receipt` table — one row per `Run:`
+probe with the exit it got — the run-wide checks' exit and the link to the
+run's evidence folder, then, where the run has them, the provenance of its
+lines, the builders' loose ends, a draft's reason (`**Draft:**`, from the
+engine's `terminal` row), Jev's readings of each story step and what each step
+changed, and last the plan's `Closes #<n>` lines. `pr` and `prAuthor` in
+`status.json` are the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: when the
 default branch moved, the catch-up (`factory/flock/catchup.mjs`) joined the run's
 work onto its tip and re-ran the plan's setup, probes and check there, so the
 sandbox squash-merges once its gate is green and that tip is still the base's —
 it asks the target for no second opinion. A base that moved buys another
 catch-up rather than another ask; a conflict or a red check in the catch-up, a
-refused merge, `--hold` on the launch line, or a gate whose suite went red on a
-path no task owns leaves the PR open for you, and `status.json`'s `merged` cell
-says which. A held PR's card carries a `## Held` section: what went red, the
-`gh pr merge` line that finishes it, and the path to fix. A draft is yours to
+refused merge, or `--hold` on the launch line leaves the PR open for you: then
+`merged` is null and `status.json`'s `phase` says why. A draft is yours to
 merge or close. A squash-merge takes the plan's title as its subject.
 A `prAuthor` that is the installation bot rather than you means
 `--act-as-user` did not take — link your GitHub account on exe.dev's
@@ -373,8 +366,8 @@ after a sleep.
 A run that dies before the boot has cloned the evidence repository has no page
 at all; the janitor reports it `unread` and the VM's own logs say why.
 
-An engine exit of 1 with a gate receipt is a verdict, not a failure. A branch
-zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
+A non-zero engine exit is a verdict, not a failure: the run is `parked` with a
+draft PR whose body says why. A branch zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
 `done` (every proof already passed at the base), anything else is `failed:
 engine exit <code>`, because a claims-v1 probe already green at the base proves nothing. A page already `done`, `parked` or `failed` is final:
 restarting the unit exits 0 and opens nothing twice.
@@ -562,9 +555,8 @@ on the next one, ask her before editing a script.
   and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
   sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
   VM's disk or in any argv (measured 2026-09-16, probe `http=200 time=0.299s`).
-- Jev never gates. A failed request is one `jev:` log line and nothing else — the row keeps the
-  rule's `kind`, the card is written as before, and the run makes one request per residual per run
-  whether it succeeded or failed (2026-09-16).
+- A failed Jev request never fails a run: the client answers `null`, and the reading falls to its
+  set's stated rollback (`factory/questions.json`).
 
 **The GitHub edge.**
 
@@ -632,10 +624,6 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
   pressure metric and no consumption refusal — over-commit degrades, never errors. The
   instrument is in-guest: `/proc/stat` steal and `/proc/pressure/{cpu,memory}` sampled
   every 5 s (Shelley, 2026-09-05).
-- The evidence branch lags by a whole wave: `commit_phase_evidence` fires when the phase
-  STRING changes and a wave is one string, so mid-wave the branch is frozen at
-  `worker:start`. Silence is not a hang; the status page and the hub's events feed are
-  live (#877).
 - `ls --json` is `{"shared_vms": [...], "vms": [...]}`. Read `.vms[]` only;
   `shared_vms` are other people's, and a first-array parse hid every fleet VM
   once. `vm_name`, `ssh_dest`, `ssh_host` and `status` are documented;
@@ -698,15 +686,10 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 - macOS has no `timeout`. A wait loop in a shell script gets its deadline
   from a counter, or the script is a `.mjs`.
 - **A sim that names a file differing only in case from a fixture's own is a
-  Mac-only red.** `makeRepo` in `fleet/tests/_engine_helpers.mjs` seeds
-  `a.txt`; three sims wrote and asserted on `A.txt`, which on macOS's
-  case-insensitive filesystem IS that file — git reports `a/a.txt b/a.txt`
-  with `core.ignorecase=true`, so a hunk lookup for `A.txt` finds nothing, and
-  a suite script reading `[ ! -f A.txt ]` is RED at BASE, which parks the run
-  before a single worker is dispatched (measured 2026-09-17; the three were
-  `test_run_engine_jev_finding`, `_jev_suite_red` and `_reconcile_retry`, and
-  the fix renamed their paths). Name a fixture path so it differs from every
-  other by more than case.
+  Mac-only red.** On macOS's case-insensitive filesystem `A.txt` IS a fixture's
+  `a.txt`: git reports `a/a.txt b/a.txt` with `core.ignorecase=true`, so a
+  lookup for `A.txt` finds nothing (measured 2026-09-17, on three sims since
+  deleted). Name a fixture path so it differs from every other by more than case.
 - The plugin cache's `plan_check.py` and `plan_parse.py` are not the sandbox's. The installed
   plugin on the laptop is whatever the last `plugin install` left behind, while
   the sandbox's preflight runs the engine checkout at `engine=` — main's tip
@@ -777,7 +760,7 @@ Read the meter, never sum the allocation: `billing usage --json --range=24h`
 against `billing plan --json`. The plan meters `avg_cpu_cores` and
 `disk_used_bytes`, and on 2026-08-28 both read under a tenth of their limits
 while the summed allocations looked oversubscribed. RAM is the binding shared
-pool — about 3 GB per busy implementer — and `MemoryMax=40G` on the engine
+pool — about 3 GB per busy builder — and `MemoryMax=40G` on the engine
 service turns an overrun into a killed run rather than a frozen VM. The
 `capacity` doctor row reports rather than divides: the pool `billing plan
 --json` answered, beside the `cpu` one run asks for in
@@ -806,9 +789,7 @@ laptop:
    (untracked): what changed for someone launching a plan, what was read and
    not flipped, and the authoring census `totals:` line.
 2. One hand PR, `chore: version 0.x.y — …`, that bumps `plugin.json` (the
-   marketplace entry carries no version) and the CLAUDE.md Versioning bullet. The notes
-   are its body, beside the prose sizes (`wc -l factory/boot.sh`, `wc -w factory/roles/*.md`).
-   Squash-merge it.
+   marketplace entry carries no version). The notes are its body. Squash-merge it.
 3. Push a bare tag on the squash commit: `git tag v0.x.y <sha> && git push
    origin v0.x.y`. A tag is a ref only. No `gh release create`.
 
@@ -841,15 +822,7 @@ The launcher refuses `--kind` and the boot refuses `kind=factory`. The rollback 
 from a checkout made before the retirement: that checkout's launcher, with `--kind factory` and an
 `--engine` sha from before it, still boots the factory.
 
-The move onto the target is one release. If it does not hold:
-
-```
-/plugin marketplace update ultrapowers      # then pin 0.3.7
-```
-
-0.3.7 is the last release of the previous shape, and rolling the plugin back is
-the whole of the rollback: nothing in the new path writes anywhere the old path
-read. A run leaves no branch behind to clean up: since #1395 its record is one
+**The evidence repository (#1395).** A run leaves no branch behind to clean up: since #1395 its record is one
 tag, `<owner>-<repo>/run-<N>`, in the operator's evidence repository, and it is
 kept — deleting it is deleting the run. Runs from before that move still have
 their `ultra/*` refs on their target, and a copy of each in the evidence

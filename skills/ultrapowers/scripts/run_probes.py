@@ -4,7 +4,7 @@
 Usage: python3 run_probes.py <plan.md> [<task id> ...]
 
 Reads the plan through `plan_parse` (the sandbox's parser, so the tags are
-stripped exactly as the driver strips them) and runs each task's `Run:` lines
+stripped exactly as the engine strips them) and runs each task's `Run:` lines
 in the current directory, one `bash -c` per line with stdin closed, printing
 one line per probe:
 

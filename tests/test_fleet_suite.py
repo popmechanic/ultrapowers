@@ -1,4 +1,3 @@
-# catch-counter: runner
 import fcntl
 import glob, os, shutil, subprocess, tempfile, pytest
 

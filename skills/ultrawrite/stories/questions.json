@@ -10,7 +10,7 @@
         "ask",
         "sentences"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "two_apps": {
@@ -33,7 +33,7 @@
       "state": [
         "piece"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "one_need": {
@@ -64,7 +64,7 @@
         "story_steps",
         "near_miss"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "story_passes_near_miss": {
@@ -88,7 +88,7 @@
         "store_module",
         "actions"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "branches_on_text": {
@@ -111,7 +111,7 @@
       "state": [
         "pieces"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "same_need": {
@@ -132,7 +132,7 @@
         "ask",
         "assumption"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "assumption_surprises": {
@@ -158,7 +158,7 @@
         "piece",
         "other_purposes"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "essential": {
@@ -195,7 +195,7 @@
         "plan",
         "built_before"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "stands_alone": {
@@ -291,7 +291,7 @@
         "summary",
         "link"
       ],
-      "provenance": "moved from skills/ultrawrite/stories/questions.json (authoring-questions-v2), 2026-09-29",
+      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
       "calibrated": false,
       "questions": {
         "link_expected": {

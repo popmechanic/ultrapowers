@@ -91,7 +91,7 @@ def gate_verdict_violations(plan_path, tasks):
     if not path.exists():
         return ["grammar: gate verdicts missing — expected `%s` beside the "
                 "plan; the proof gate's verdict is an artifact, not a memory "
-                "(spec §4.5). Run the gate and commit its record."
+                "(ultrawrite §The proof gate). Run the gate and commit its record."
                 % path.name]
     try:
         record = json.loads(path.read_text())

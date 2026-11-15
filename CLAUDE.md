@@ -71,8 +71,8 @@ the engine's exit code is the merge decision.
   ultrapowers declare in frontmatter: once either skill is invoked it blocks a turn's first
   stop while background work is running, and allows the second. `register.js` is the intent
   tray's hooks module, listed under the `modules` key of `hooks/hooks.json`.
-- `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; the
-  version lives in both.
+- `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; only
+  `plugin.json` carries the version (§Releasing).
 - `docs/superpowers/{specs,plans}/` — design docs, `YYYY-MM-DD-<topic>.md`. **Untracked**
   (`.git/info/exclude`; `docs/README.md` is the tracked stub). A plan reaches the fleet only
   as `.ultrapowers/plan.md`, one commit on the run's base, so a plan may never ask a worker to
@@ -155,10 +155,11 @@ the engine's exit code is the merge decision.
   gate rejection by narrowing the clause, never by adding legs. A size budget is a note the PR
   reports, never a clause. Publish runs after the engine, in plain sequence, never inside it
   (`factory/publish.mjs`, #1441).
-- **The plan is a submission, not a contract (#990).** A worker that outgrows a clause or its
-  Files set declares an amendment in the open (`driver:amendment` row, the reviewer's lens,
-  the PR card, the release census); a reviewer judges it on merits and never reverts it for
-  being outside the plan. The plan-defect park is only for a leg no implementation can pass.
+- **The plan is a submission, not a contract (#990).** A builder that outgrows a clause or its
+  Files set writes outside it in the open (the engine's `driver:amendment` row, which policy
+  `flock.scope` and `evals/readings/wrong_plans.py` read), and nothing reverts it for being
+  outside the plan. A task no implementation can pass is the builder's objection (`object`),
+  which parks it for the operator.
 
 ## Working with the operator
 

@@ -1,7 +1,7 @@
 # fleet/tests probes
 
-A `probe_*.mjs` file is either a live measurement or a design gate — never a
-suite test. A live measurement spends real tokens against a real `claude -p`; a
+A `probe_*.mjs` file (and a Bun `*_probe.mjs`) is either a live measurement or a design
+gate — never a suite test. A live measurement spends real tokens against a real `claude -p`; a
 design gate is model-free and spends only minutes, but it is a reading a person
 takes before a change rather than a verdict CI owes on every commit. Either way
 the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`

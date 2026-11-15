@@ -1,6 +1,6 @@
 ---
 name: ultrawrite
-description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers runs as a pool of tasks on the fleet. Replaces the marker-layering skill and the external writing-plans dependency for plan bodies.
+description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers runs as a pool of tasks on the fleet.
 hooks:
   Stop:
     - hooks:
@@ -37,7 +37,7 @@ is, why it exists and how it benefits the user. The author writes those sentence
 operator confirms them in the same touch as the Claim, never a second one, and the pull
 request the run opens quotes them verbatim, so what a reader meets is what the operator
 signed. It is one paragraph running to the next blank line, no markdown inside; like
-`**Closes:**` it is free prose to the compiler — nothing parses it.
+`**Closes:**` it is free prose to `plan_check.py` — nothing parses it.
 
 Beside `**Tech Stack:**`, an optional `**Dependencies:**` line declares every package the run installs:
 one line, space-separated specs, each `name` or `name@range`, with the single word `dev:`
@@ -48,7 +48,7 @@ word: `^4`, `~1.2`, `4.x` and `==1.0` are specs; nothing today reads this line t
 wider range, a second `dev:`, or a line naming no package — the alphabet is the author's own
 to keep. A package is declared here and never discovered later: no task of the plan adds
 one by editing `package.json`, `pyproject.toml` or a lockfile. A manifest on a task's
-Files list is edited for a script or a config field, not for a dependency — the driver
+Files list is edited for a script or a config field, not for a dependency — the engine
 reds a manifest edit outside a task's Files, so a package that is not on this line is a
 package the run never gets.
 
@@ -68,7 +68,7 @@ space-separated, each an issue of the target repository (a bare `#N` means the t
 GitHub, so a foreign target's plan names that repository's issues, never this plugin's).
 The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one
 `Closes #N` per number to the pull request body, so the run's merge closes them; a plan
-without the line closes nothing. The line is free prose to the compiler — nothing parses
+without the line closes nothing. The line is free prose to `plan_check.py` — nothing parses
 it, so a number scraped from `**Goal:**` is never used: the Goal line cites decisions as
 well as tickets, which is why scraping it was rejected.
 
@@ -96,10 +96,9 @@ nothing.)
 The Files block carries canonical `Create:` / `Modify:` / `Delete:` bullets, backticked
 paths, no globs and no open write sets. It is load-bearing for edge derivation.
 
-That block is the expected footprint of a submission, not a fence. A worker that must go outside
-it, that must read a clause otherwise, or that must re-aim a sim declares an amendment: the record
-carries it as a `driver:amendment` row and on the pull request card, and Jev reads it as a
-lens on the diff rather than as a breach to revert. So the author still lists every file they can
+That block is the expected footprint of a submission, not a fence. A builder that must go outside
+it writes there in the open: the record carries it as a `driver:amendment` row, and nothing
+reverts it as a breach. So the author still lists every file they can
 foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
 reads a run's amendments as the next plan's input, since what the workers had to declare is exactly
 where this plan's Files sets were wrong.
@@ -115,7 +114,7 @@ where this plan's Files sets were wrong.
   between the two halves is a defect the gate checks.
 - **Authorized-by:** the reference licensing this task — issue, spec §, decision record.
 - **Interfaces:** `Consumes:` / `Produces:` — exact signatures, exact test names, **one
-  symbol per bullet** (the compiler reads the first symbol of a bullet and nothing after
+  symbol per bullet** (`plan_parse.py` reads the first symbol of a bullet and nothing after
   a comma, so a line listing three symbols derives no edge for the other two). **A test's
   import of a sibling's symbol is a `Consumes:`**; that is now the whole ordering story
   for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet. Read every
@@ -144,12 +143,12 @@ where this plan's Files sets were wrong.
   exit keeps the builder at work on it. A task whose
   deliverable is prose proves itself with `Run:` commands, never with a test that
   matches sentences of a document.
-  And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
+  And one `Run:` names one probe — a command the engine pays once, never a loop over a glob
   of sims (run-87 paid 175 s per boot sim, three passes, for two such lines). A sweep over
   every sim belongs to the one task that owns the sims, as one line, or nowhere.
   A `Run:` whose command ends in a citation tag of the same shape a leg carries —
-  `- Run: grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
-  paired with the clause it names: `plan_check.py` strips the tag before the driver runs the
+  `- Run: grep -q 'evidence-read' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
+  paired with the clause it names: `plan_parse.py` strips the tag before the engine runs the
   command, refuses a tag naming a clause the Machine line does not number, and never counts
   the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
   `bash -n`, a sim that must stay green. **An untagged prover settles nothing**: the
@@ -169,7 +168,7 @@ where this plan's Files sets were wrong.
   Without `--base` nothing is run.
   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
   integration head**, where HEAD already carries the edit — so a BASE comparison is a
-  `Check:` with `$ULTRA_BASE`, which the driver sets in the environment of every `Check:`
+  `Check:` with `$ULTRA_BASE`, which the engine sets in the environment of every `Check:`
   and `Run:` it executes, or a probe carries the value measured *before* the edit: a
   **frozen pre-edit literal**, such as a `git hash-object` sha
   written into it, or a full **40-hex sha** fetched with
@@ -177,7 +176,7 @@ where this plan's Files sets were wrong.
   depth 1 and a short or unfetched sha is not in it.
   That frozen literal is the *only* lawful sha a probe carries: a committed probe
   **never reads ULTRA_BASE** and never **freezes a commit sha** of the plan's own
-  repository, because a BASE comparison is a `Check:` or `Run:` — the driver hands that
+  repository, because a BASE comparison is a `Check:` or `Run:` — the engine hands that
   command the sha, and a depth-1 clone holds no other commit to compare against.
 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`.
@@ -289,7 +288,7 @@ Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — an
 passed the legs on shape without ever computing the number, where a reader asked exactly
 this computed six on the re-read and passed the corrected plan.
 Nothing mechanical closes the citation gaps any more (an uncited clause, an uncited leg
-— the compiler that refused them left at cut B, 2026-09-21), so the gate reads the pair
+— the old compiler that refused them left at cut B, 2026-09-21), so the gate reads the pair
 clause by clause and names those too, beside the species only it can see — does leg (b)
 actually falsify M2, or merely mention it?
 
@@ -319,7 +318,7 @@ handed six readers exactly that on 2026-09-15, #1025).
 
 Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
 each verdict, keyed on the hash the extractor prints, into the sibling
-`<plan-stem>.gate-verdicts.json`, with the run's `tally`. The compiler reads exactly this
+`<plan-stem>.gate-verdicts.json`, with the run's `tally`. `plan_check.py` reads exactly this
 shape: `{"tasks": {"<id>": {"hash": "<the extractor's hash>", "verdict": "pass" | "fail",
 "reason": "<one sentence>"}, …}, "tally": {…}}` — `tasks` keyed by task id with those three
 fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispatched`,
@@ -334,14 +333,14 @@ where `minutes` is the sitting's wall-clock minutes to `PLAN OK`,
 AskUserQuestion of the sitting — the execute question included, `recommended` null when no
 option carried the tag, and `explain_rounds` the number of Please explain rounds that question
 took (absent reads 0). The author writes the whole object once, at the execution handoff after
-`PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
+`PLAN OK` and before the launch; `plan_check.py` prints it as one `AUTHORING fact:` line under
 `plan_check.py --base`, ending with the explain count, and the launcher carries that line onto the
 launch line. The record is telemetry: a field it does not say, or says oddly, prints `-` and never
 refuses the plan (#1440). A release reads a run
 range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
 and its last `totals:` line is what the release notes carry. A missing task, a
-stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
-a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
+stale hash, or a `fail` is a `plan_check.py` refusal. The verdict is an artifact, not
+a memory: `plan_check.py` refuses a plan whose record is missing or whose hashes are stale,
 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
 plan author never chooses which proof a task satisfies.
 

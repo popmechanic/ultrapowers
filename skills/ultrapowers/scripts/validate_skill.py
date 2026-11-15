@@ -24,8 +24,8 @@ def validate(skill_dir: pathlib.Path):
     if len(desc) > 1024:
         errors.append("frontmatter: 'description' exceeds 1024 chars")
     # A reference prefixed `skills/<name>/` names a sibling skill's file
-    # (e.g. ultrapowers' SKILL.md invoking ultradocket's record_wf_run.py,
-    # #159) and resolves against that skill dir; a bare `scripts/x` resolves
+    # (e.g. ultrapowers' SKILL.md naming `skills/ultrawrite/scripts/routing.py`)
+    # and resolves against that skill dir; a bare `scripts/x` resolves
     # against this skill. Either way the file must exist.
     for sibling, sub, ref in re.findall(
             r"(?:\bskills/([A-Za-z0-9_-]+)/)?\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):

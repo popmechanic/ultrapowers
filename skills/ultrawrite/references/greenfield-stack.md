@@ -1,7 +1,7 @@
 # Greenfield stack — Bun + TypeScript + TinyBase authoring defaults
 
-Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
-a greenfield plan hands the engine, the one tsconfig detail that costs an
+Load this when a plan **creates a new codebase** (#425). It fixes the setup and
+check lines a greenfield plan hands the engine, the one tsconfig detail that costs an
 author an hour when it is guessed wrong, and the store the app keeps its state in.
 
 ## When it applies
@@ -12,11 +12,11 @@ already chosen and whose suite already runs), never on ultrapowers' own suite
 (pytest), and never on the fleet driver (Node — its spawn/SIGTERM semantics are
 what the driver measures, so it stays where it is).
 
-## The two knobs, verbatim
+## The header lines, verbatim
 
-- **testCmd:** bunx tsc --noEmit && bun test
-- **bootstrapCmd:** bun install
-- **Dependencies:** tinybase react react-dom dev: @types/bun typescript
+- `**Bootstrap:** bun install` — the setup the engine runs before any builder opens
+- `- Check: bunx tsc --noEmit && bun test` — under `## Global Constraints`, run on every tested snapshot
+- `**Dependencies:** tinybase react react-dom dev: @types/bun typescript`
 
 Write the first two exactly as above. Bare `tsc` requires a global TypeScript
 install; `bunx tsc` resolves the project's own devDependency — which is what
@@ -32,11 +32,11 @@ a script or a config field, never for a dependency.
 
 ## Why it earns the restriction
 
-`Consumes:`/`Produces:` stop being prose a reviewer has to eyeball. Running
+`Consumes:`/`Produces:` stop being prose a person has to eyeball. Running
 `tsc --noEmit` over the integrated tree catches cross-task interface drift
 deterministically, and interface drift is *the* characteristic failure of
 parallel implementation: each task is green alone and the seam between them is
-not. `bun test` is fast enough that an implementer can afford the whole suite
+not. `bun test` is fast enough that a builder can afford the whole suite
 on every iteration, so a task never trades coverage for turnaround.
 
 ## The tsconfig gotcha
@@ -192,13 +192,14 @@ experiment).
 
 ## The engine boundary
 
-The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing
-about Bun. This page is **authoring guidance**: it changes what a plan writes
+The ultrapowers engine runs whatever `**Bootstrap:**` and `Check:` lines the plan
+names and knows nothing about Bun. This page is **authoring guidance**: it changes what a plan writes
 down, never how a run executes.
 
 ## The baseline rule
 
-Any Bun fixture or greenfield plan run on the fleet must start from a tree that
-is **green at BASE**. A tree whose tests do not exist yet cannot pass knob
-validation, so a greenfield plan driven through `/ultrapowers` starts from a
-seeded, passing skeleton — see the Bun eval fixture for the shape.
+Any greenfield plan run on the fleet must start from a tree whose run-wide
+`Check:` is **green at BASE**: a Check already red before any work is a red no
+task owns (authoring-gotchas.md). So a greenfield plan driven through
+`/ultrapowers` starts from a seeded, passing skeleton — for a TinyApp,
+`skills/ultrawrite/stories/scaffold.ts`.

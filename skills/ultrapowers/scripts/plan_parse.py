@@ -67,17 +67,15 @@ FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete)\s*:\s*(.+)$', re.I)
 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
 
-# A Proof `Run:` bullet's citation tag (the old compiler's
-# RUN_CITE_RE exactly): the same bracket shape a Legs bullet's own citation
+# A Proof `Run:` bullet's citation tag: the same bracket shape a Legs bullet's own citation
 # carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
 # whitespace -- a tag mid-command is part of the command, not a tag.
 RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
 
 
 def _claims_run_cites(value):
-    """Split a Proof `Run:` value into (command text, sorted clause ids),
-    exactly as the old compiler's `_claims_run_cites` did. Untagged, the
-    value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
+    """Split a Proof `Run:` value into (command text, sorted clause ids).
+    Untagged, the value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
     before any backtick-wrapper stripping -- and its ids are returned
     sorted by number."""
     m = RUN_CITE_RE.search(value)

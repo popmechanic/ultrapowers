@@ -41,5 +41,5 @@ reading in a Context or the Summary carries its `n=`.
 - Every reading a plan's Context or Summary cites carries `n=… (window)` — `n=9 merged
   runs (131–140)`, never a bare count — and a plan whose default flip rests on a reading
   under the floor says `experiment` in its Summary and names its `rollback` there; the
-  floor is `CLAUDE.md`'s `Test doctrine` bullet (n = 5 runs, 20 tasks for a per-task
+  floor is `CLAUDE.md`'s `Readings carry their size (#994)` bullet (n = 5 runs, 20 tasks for a per-task
   reading).

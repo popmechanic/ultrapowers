@@ -4,20 +4,12 @@ __pycache__/
 .DS_Store
 .superpowers/
 
-# ultrapowers run artifacts (installed copies + engine worktrees)
-# .claude/workflows/ holds Step-4a saved-workflow copies of skills/ultrapowers/
-# harnesses/*.js — install artifacts, regenerated every run, never source of truth.
+# local worktrees and session handoffs; a plugin cache built from a directory
+# source once copied .claude/worktrees/ into every cached version (CLAUDE.md)
 .claude/worktrees/
-.claude/workflows/
 .claude/ultrapowers/
 
-# the catch ledger — the laptop's record of every run's catch-count row (#870);
-# ~600KB and growing, so untracked.
-docs/superpowers/observations/ledger.jsonl
-docs/superpowers/observations/ledger.md
-
-# A/B eval-cell evidence (#165): run dirs + transcripts copied out of the
-# OS temp dir per cell; multi-MB, operator-read locally, never committed.
+# the retired A/B cells' local leftovers (#165), multi-MB and never committed
 evals/results/cells/
 
 # frontier corpus + eval readings (#544 §Roadmap step 4): frozen replay evidence

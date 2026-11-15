@@ -6,7 +6,7 @@ _  _ _    ___ ____ ____ ___  ____ _ _ _ ____ ____ ____
 
 **Give your Superpowers Ultrapowers.**
 
-Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, reviewed work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
+Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, proven work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
 
 ## Ambition is expensive
 
@@ -28,14 +28,14 @@ outcome.
   the task must be true of, and the proof that decides it — never a script of steps to retype.
 - **Cheaper models build.** A contract that exact leaves the builder no invention to do about
   *what* to deliver, so a cheaper model does it well.
-- **Your frontier model checks the work.** Quality is the one place it never cuts corners.
+- **Every task is proved, not trusted.** A task counts only when the plan's own probes pass on it.
 - **Each task stays out of your main session.** You don't re-pay for one giant, ballooning
   transcript.
 - **It won't over-spend.** If a plan won't benefit from the heavy parallel machinery, ultrapowers
   tells you to use a lighter tool instead.
 
-Honest caveat: the parallel-and-review machinery *can* cost more than a plain sequential run — it's
-running extra reviewers and isolated build environments. What it saves you from is what you'd reach
+Honest caveat: the parallel machinery *can* cost more than a plain sequential run — it's
+running a pool of builders, each on its own copy of the code. What it saves you from is what you'd reach
 for otherwise: asking one frontier model to build the whole thing directly. Against that, the
 savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to waste your tokens.
 
@@ -44,7 +44,7 @@ savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to 
 **1. Affordable ambition.** You don't pay frontier prices to write boilerplate. Your frontier model
 plans and checks; cheaper models do the building in between.
 
-**2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
+**2. Quality you don't have to babysit.** Every task is proved by the plan's own probes before it
 counts — so you don't have to read the code yourself. You make one approval at the
 end, on the finished result, instead of signing off on code you can't (or don't want to) judge.
 
@@ -77,7 +77,7 @@ less babysitting.
 ## When to use it — and when not
 
 Reach for ultrapowers on big, ambitious plans with independent pieces — the kind where parallel
-work and independent review pay off.
+work pays off.
 
 Skip it for small or tightly-connected plans, where the work has to happen in order anyway. There,
 a plain sequential run is the better tool — and ultrapowers will tell you so rather than spin up
@@ -87,8 +87,7 @@ In field use the human surface compresses to exactly the designed touchpoints:
 on a recent 7-task production run the operator's entire involvement was the
 planning decisions and one physical-world check no tooling could reach
 (confirming an email landed in a personal inbox) — everything between launch
-and the pre-merge gate ran autonomously, and the operator's unrelated
-work-in-progress was restored byte-for-byte.
+and the pre-merge gate ran autonomously.
 
 ## How it works
 
@@ -260,7 +259,7 @@ pull request a run opens is authored by `exe-dev-github-integration[bot]` rather
 nothing downstream can undo it. Set the fleet up on your personal exe.dev account, and if setup
 offers you a choice of accounts, the GitHub integration has to stay personal.
 
-**Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
+**Go deeper.** The full mechanics — how plans become parallel work, how a task is proved, how
 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
 and [`skills/ultrapowers/references/`](skills/ultrapowers/references/).
 
