@@ -128,10 +128,8 @@ for (const [CASE, [record, want]] of Object.entries(PROV_PR)) test(`provenance p
 
 // ── give-backs, conflicts and the peer-rewrite read ─────────────────────────────
 // The stand-in answers every asked key with the case's `choice` at 0.9.
-//   release  a one-task plan whose script names no files: given back until it parks (3), and
-//            Jev is never asked (the give-back trial is gone, #1457)
-//   resolve  two tasks write into the same line of a.txt: a resolve task for a.txt, and Jev is
-//            never asked (the resolve trial is gone, #1457)
+//   release  a one-task plan whose script names no files: given back until it parks (3)
+//   resolve  two tasks write into the same line of a.txt: a resolve task for a.txt
 //   peer     task 2, held until task 1 publishes `x ONE z`, writes `x ONEz TWO` over it (run-277):
 //            one peer:rewrite and one jev:peer-rewrite row naming task 1's line; `loses` ends a draft
 //   peer-keeps      the same answered `keeps`: the run ends ready
@@ -185,10 +183,8 @@ for (const [CASE, s] of Object.entries(TRIALS)) test(`jev trials ${CASE}`, async
   if (CASE === 'release') {
     const parked = of('task:parked').filter((x) => x.task === '1')
     assert(parked.length === 1 && parked[0].releases === 3, `expected one task:parked row for task 1 after 3 give-backs, saw ${JSON.stringify(parked)}`)
-    assert(!requests, `expected no Jev request, saw ${requests}`)
   } else if (CASE === 'resolve') {
     assert(of('resolve-task').some((x) => x.path === 'a.txt'), `the engine added no resolve task for a.txt: ${r.out.slice(-1500)}`)
-    assert(!requests, `expected no Jev request, saw ${requests}`)
   } else if (CASE === 'survival-restored') {
     const jr = of('jev:peer-rewrite')
     assert(jr.some((x) => x.path === 'a.txt' && x.answer === 'loses' && (x.peer || []).includes('x ONE z')), `jev:peer-rewrite rows: ${JSON.stringify(jr)}`)

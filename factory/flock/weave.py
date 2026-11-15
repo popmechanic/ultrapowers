@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PROTOTYPE (map #1292, ticket 4). The weave keeper: every agent's copy of every
+"""The weave keeper (map #1292): every agent's copy of every
 file as a Manyana weave, driven over stdin/stdout, one JSON request per line.
 
 Line identity comes from edit calls (`edit`), never from diffing a finished
@@ -23,7 +23,7 @@ Requests (all answer {"ok": true, ...} or {"ok": false, "error": ...}):
 
 Added for ticket 2 (#359; every earlier request answers as before, plus fields):
   pull          also answers sameAnchor [{path, from, flags}] (see same_anchor)
-  merged        takes an optional order; also answers sameAnchor, digest
+  merged        takes an optional order; also answers sameAnchor
   authors_keyed {agent, path}             [author] per visible line, by identity
 
 Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
@@ -481,9 +481,7 @@ class Keeper:
         self.krep_pub[agent] = _copy_rep(self.reps(agent))
         return {"paths": len(self.published[agent])}
 
-    def r_pull(self, agent, paths=None):
-        # paths (optional): take in only these paths' published changes; absent, take in all
-        want = None if paths is None else set(paths)
+    def r_pull(self, agent):
         mine = self.copy(agent)
         changed, flagged = [], []
         for peer, pub in self.published.items():
@@ -491,8 +489,6 @@ class Keeper:
                 continue
             peer_auth = self.kauth_pub.get(peer, {})
             for p, st in pub.items():
-                if want is not None and p not in want:
-                    continue
                 before = mine.get(p)
                 flags, made = [], False
                 if before is not None and st == self.base.get(p):
@@ -557,10 +553,9 @@ class Keeper:
             _union_auth(auth, pauth)
         files = {p: "\n".join(strip(l) for l in visible_raw(st)) for p, st in out.items()}
         exists = {p: bool(visible_raw(st)) for p, st in out.items()}
-        digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
                 "bothCreated": made,
-                "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
+                "sameAnchor": {p: f for p, f in same.items() if f},
                 # the survival fact from this same join, so a snapshot and its lost lines never part
                 "lost": _lost_of(out, auth, dels)}
 

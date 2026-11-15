@@ -13,7 +13,7 @@ const rotate = (xs, who) => {
 // The final atlas race: each task's remaining chain, the longest run of dependent tasks from it to
 // the end, itself included (atlas: 1, 4 and 10 head chains of 3). A task added later (a resolve or
 // check task) has no consumers and counts 1.
-export function chainLengths (tasks) {
+function chainLengths (tasks) {
   const consumers = new Map(tasks.map((t) => [t.id, []]))
   for (const t of tasks) for (const d of t.depends_on) consumers.get(d).push(t.id)
   const cp = new Map()

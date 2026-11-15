@@ -134,7 +134,6 @@ if (memory) {
   if (!memory.stored) process.stderr.write(`catchup: the caught-up commit's entry was not stored (${r ? r.reason : 'no answer'})\n`)
   fs.rmSync(path.dirname(memory.file), { recursive: true, force: true })
 }
-if (RUN_DIR) { try { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSync(path.join(RUN_DIR, 'catchup.json'), JSON.stringify({ head, onto: ONTO, run: runSha, memory: memory ? { joined: true, stored: memory.stored } : { joined: false } }) + '\n') } catch {} }
 // The record's line numbers were the run's commit's; carry them to the caught-up commit's.
 const provFile = RUN_DIR && path.join(RUN_DIR, 'provenance.json')
 if (provFile && fs.existsSync(provFile)) {

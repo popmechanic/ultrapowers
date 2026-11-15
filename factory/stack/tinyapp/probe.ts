@@ -33,7 +33,7 @@ export function probeFromPlan(text: string, clause: string): Probe {
   throw new Error(`no probe for clause ${clause} in the plan`);
 }
 
-export function sameValue(a: unknown, b: unknown): boolean {
+function sameValue(a: unknown, b: unknown): boolean {
   if (Array.isArray(a) || Array.isArray(b)) {
     return Array.isArray(a) && Array.isArray(b) && a.length === b.length
       && a.every((x, i) => sameValue(x, b[i]));

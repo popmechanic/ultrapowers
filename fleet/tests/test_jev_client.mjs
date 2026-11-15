@@ -2,7 +2,6 @@
  * fleet/tests/test_jev_client.mjs — the exam for Task 1: *the Jev client* —
  * one POST at the edge hostname, `null` on any failure.
  *
- * This file is the Proof's `Test:`, written whole at the path the Proof names.
  * Every relative import is written for THIS directory: `../` is the
  * repository's `fleet/`, `./` is `fleet/tests/`.
  *

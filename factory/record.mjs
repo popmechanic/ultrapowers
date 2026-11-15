@@ -30,11 +30,6 @@ function renderObject (entries) {
   return '{' + entries.map(([k, v]) => JSON.stringify(k) + ':' + JSON.stringify(v)).join(',') + '}'
 }
 
-/** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
- *  parse is skipped — the projection is a fact over what did land, not a reason
- *  to fail over what didn't — and a file that is missing or empty gives no rows. */
-export { readEventRows }
-
 /** The status page's `tasks` cell: one entry per task a `landing` or
  *  `parked` row names, in the order each task first appears, its state and
  *  park overwritten (position kept) by a later row for the same task. */
@@ -480,10 +475,3 @@ export function main (argv) {
 }
 
 if (import.meta.main) { process.exitCode = main(process.argv) }
-
-export default {
-  renderStatus,
-  renderPrBody,
-  projectTasks,
-  main
-}

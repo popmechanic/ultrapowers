@@ -58,8 +58,6 @@ const last = (c.stdout || '').trim().split('\n').pop() || ''
 assert(c.status === 0 && JSON.parse(last).refolded === true, `the catch-up exited ${c.status}: ${last} ${(c.stderr || '').slice(-600)}`)
 const caught = t.git('rev-parse', 'HEAD')
 assert(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8') === lines(['RUN1', ...BODY.slice(1, -1), 'MAIN']), `a.txt after the catch-up is ${JSON.stringify(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8'))}`)
-const note = JSON.parse(fs.readFileSync(path.join(t.RUN, 'catchup.json'), 'utf8'))
-assert(note.memory && note.memory.joined === true && note.memory.stored === true, `catchup.json's memory is ${JSON.stringify(note.memory)}`)
 assert(entryOf(onto) && meta(entryOf(onto)).via === 'replay', 'the moved main has no replayed entry')
 assert(entryOf(caught) && meta(entryOf(caught)).via === 'run', 'the caught-up commit has no entry')
 

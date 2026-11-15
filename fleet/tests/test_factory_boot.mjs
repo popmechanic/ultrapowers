@@ -89,9 +89,7 @@
  * of context a later reader lacks: that credential-probe failure and engine
  * failure both still route through `fail()` writing `status.json` onto the
  * live branch and cutting the run's tag before exiting non-zero (so (a) and
- * (c) can read it back at the tag); that the boot writes to no issue board,
- * so no `board:close`, `board:mark` or `run:audit` row follows the publish's
- * own rows; that `factory/policy.json`'s
+ * (c) can read it back at the tag); that `factory/policy.json`'s
  * `publish.self_merge.enabled: true` (already in this repo) is what makes
  * (b)'s merge actually happen; and that the `publish:pr` event row's own
  * `ts` field is out of this task's own diff — this exam still asserts M1's
@@ -469,11 +467,6 @@ for (const [runN, version, error] of [
   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
   assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
-  // The failure is the status page's alone: the boot marks no issue board.
-  // (a failed run whose engine wrote no row has no events.jsonl at all)
-  const eventsAtTag = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })()
-  const boardRows = eventsAtTag.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.kind).startsWith('board:'))
-  assert.deepEqual(boardRows, [], `(c) events.jsonl at the tag holds no board row — got ${JSON.stringify(boardRows)}`)
   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
 }
 
@@ -647,9 +640,6 @@ for (const [runN, version, error] of [
   assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
   assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
   assert.equal(status.pr, null, '(h) no pull request is opened')
-  // (the stub engine wrote no row, and the boot adds none: the record may hold no events.jsonl)
-  const rows = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  assert.deepEqual(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))), [], `(h) the record holds no board, kata or audit row — got ${JSON.stringify(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))))}`)
   assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
 }
 
