@@ -79,9 +79,8 @@ const reapPlan = ({ finished, updatedAt, nowMs, ageMs }) => {
     : { action: 'pending', reapableAt: new Date(at).toISOString() }
 }
 /**
- * The comment that takes a VM out of the reap: the hub VM's own comment ends
- * `persistent service, do not reap`. The guard matches this substring,
- * case-sensitively, so any row someone marks by hand is kept the same way.
+ * The comment that takes a VM out of the reap: a fleet VM someone marks by
+ * hand with a comment holding `do not reap` (case-sensitive) is kept.
  */
 const NEVER_REAP = 'do not reap'
 // ── The record: the run's page, read off the evidence repository ────────────

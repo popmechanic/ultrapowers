@@ -227,68 +227,19 @@ ssh exe.dev "integrations add http-proxy --name cloudflare --target https://api.
 `skills/ultrapowers/references/first-run.md` §cloudflare walks the token that
 goes on its stdin.
 
-**7. The hub VM (optional).** One persistent VM, `kata-hub` (the name it has
-had since it ran the kata issue daemon, which left on 2026-11-13), is the home
-of the VM remover below. A fleet without one works: each finished run's VM
-then waits for the janitor, and the doctor's `reaper` row is green. To have
-one, create it by hand, small, with no tag and a comment the janitor honours:
+**7. Never `cp` a fleet VM without `--copy-tags=false`.** `cp --copy-tags` is on
+by default, so the copy inherits `tag:fleet` and with it every credential the tag
+grants. There is no persistent hub VM: the janitor removes a finished run's VM
+(at each launch, or `node fleet/janitor.mjs` by hand), and the hub's reaper
+retired on 2026-11-14 (CONTRACT §The hub VM).
 
-```bash
-ssh exe.dev "new --name kata-hub --cpu 1 --memory 2GB --disk 20GB --comment 'fleet hub — persistent service, do not reap'"
-```
-
-The hub carries no tag, so the janitor's `fleet-r*` never lists it; its comment
-says so a second time. Its 1 vCPU and 2 GB come out of the same pool step 2
-measures. Never `cp` the hub, or any fleet VM, without `--copy-tags=false`:
-`cp --copy-tags` is on by default, so the copy inherits `tag:fleet` and with it
-every credential the tag grants.
-
-### The hub's reaper (#1470)
-
-A fleet VM whose run ended done asks the hub to remove it: `POST /reap`
-with `{"run": <n>, "target": "<owner>/<repo>"}`. The reaper
-(`fleet/reaper.py`, stdlib Python on port 8001) reads the caller from the
-platform-set `X-Exedev-Source-Vm` header, checks that the caller's name carries
-the body's run, reads the run's `status.json` at its tag
-`<owner>-<repo>/run-<N>` in the evidence repository, and only when that page is
-there and says `state` `done` answers 202 and then removes that caller's VM,
-never any other. A run with no tag yet, or one that parked or failed, is
-answered 409 and waits for the janitor. One-time install:
-
-```bash
-ssh exe.dev "integrations add github --name evidence-read --repository <evidence owner>/<repo> --readonly --attach vm:kata-hub"
-ssh kata-hub.exe.xyz 'sudo install -d /etc/reaper && echo REAPER_EVIDENCE_REPO=<evidence owner>/<repo> | sudo tee /etc/reaper/reaper.env'
-scp fleet/reaper.py fleet/reaper.service kata-hub.exe.xyz:/tmp/
-ssh kata-hub.exe.xyz 'sudo install -D -m 0755 /tmp/reaper.py /usr/local/lib/reaper/reaper.py && sudo install -m 0644 /tmp/reaper.service /etc/systemd/system/reaper.service'
-ssh kata-hub.exe.xyz 'sudo systemctl daemon-reload && sudo systemctl enable --now reaper.service'
-ssh exe.dev "integrations add http-proxy --name=reaper --target=https://kata-hub.exe.xyz:8001/ --peer --attach=tag:fleet"
-```
-
-`evidence-read` is the hub's one road to the evidence repository: read-only,
-attached to `vm:kata-hub` (and, since 2026-11-13, to the run viewer's `vm:ultraviz`,
-which carries no tag: `ssh exe.dev "integrations attach evidence-read vm:ultraviz"`)
-and never to `tag:fleet`, where the read-write
-`gh-<owner>-<repo>` already names the same repository (Shelley, 2026-11-13:
-two integrations for one repository are routed apart only while no VM carries
-both; without `--act-as-user` it reads as the exe.dev app). Check the road from
-the hub with one read of a run that has ended — it prints that run's page:
-
-```bash
-ssh kata-hub.exe.xyz "curl -sS -H 'Accept: application/vnd.github.raw' 'https://github.int.exe.xyz/api/v3/repos/<evidence owner>/<repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>'"
-```
-
-A port other than 8000 rides in the target URL. The reaper removes through
-`lobby-rm`, the hub-only integration holding the `rm`-only key (`hub-reaper`).
-That key expired 2026-10-30 and nothing said so: on 2026-11-13 the journal read
-`removed=False` for all 8 finished runs of the day, each VM waiting for a janitor
-run. The doctor's `reaper` row now asks the remover itself from the hub and reads
-the key's expiry. Renew it with `bash fleet/reaper-key.sh`: it mints a new `rm`-only
-key whose label begins `hub-reaper` (a label is never reused), pipes it on stdin to
-`integrations edit lobby-rm --bearer=-`, and tests the remover (first-run.md §reaper).
-The journal (`journalctl -u reaper`) has one line per request: the caller, the
-run, the status and, on 202, whether the removal succeeded. Until 2026-11-13
-the reaper decided on the hub's kata run issue; that read is gone, and the way
-back is a checkout from before that day with `kata.service` started again.
+`evidence-read`, a read-only GitHub integration naming the evidence repository,
+is attached by name to the run viewer's `vm:ultraviz` (no tag:
+`ssh exe.dev "integrations attach evidence-read vm:ultraviz"`) and never to
+`tag:fleet`, where the read-write `gh-<owner>-<repo>` already names the same
+repository (Shelley, 2026-11-13: two integrations for one repository are routed
+apart only while no VM carries both; without `--act-as-user` it reads as the
+exe.dev app).
 
 ## Per run
 

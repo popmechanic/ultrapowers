@@ -29,14 +29,11 @@
  *       exactly `main` and the integration branch (M1); the PR body's
  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
  *       there being no earlier tag (M4); and `<home>/merge-put.json`
- *       byte-equal to the exam's own rendering of the merge payload; and
- *       `<home>/reap-post.json` parsing to `{ run: 502, target: 'o/r' }`
- *       with exactly one `reap: asked the hub` line in the boot log (#1470).
+ *       byte-equal to the exam's own rendering of the merge payload.
  *
  *   (c) [M2] the engine stub exits 3 — the boot fails with exactly `"engine
  *       exit 3"`, and the run is tagged all the same: `status.json` at
- *       `o-r/run-<N>` says `failed` and the live branch is gone; no
- *       `<home>/reap-post.json` is written (#1470).
+ *       `o-r/run-<N>` says `failed` and the live branch is gone.
  *
  *   (d) `node <engineDir>/factory/flock/engine.mjs` with no arguments,
  *       through the rig's own `buildEngineDir` symlink, exits 2
@@ -425,14 +422,6 @@ for (const [runN, version, error] of [
     `(b) [M5] the merge PUT payload is byte-equal to the exam's own rendering — got ${mergePut}`
   )
 
-  // #1470: the merged run whose tag verified asks the hub, once, to remove its VM.
-  assert.deepEqual(
-    JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 502, target: 'o/r' },
-    '(b) the reap request carries the run and its target'
-  )
-  const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
-  assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
-
   // [M3 of #1445] `boot.sh died` after a run that already ended leaves its tag where it was.
   const tagBefore = refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`]
   const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
@@ -486,8 +475,6 @@ for (const [runN, version, error] of [
   const boardRows = eventsAtTag.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.kind).startsWith('board:'))
   assert.deepEqual(boardRows, [], `(c) events.jsonl at the tag holds no board row — got ${JSON.stringify(boardRows)}`)
   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
-  // #1470: a failed run never asks the hub to remove its VM.
-  assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
 }
 
 // ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────
@@ -664,7 +651,6 @@ for (const [runN, version, error] of [
   const rows = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })().split('\n').filter(Boolean).map((l) => JSON.parse(l))
   assert.deepEqual(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))), [], `(h) the record holds no board, kata or audit row — got ${JSON.stringify(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))))}`)
   assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
-  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
 }
 
 // ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──

@@ -1,6 +1,6 @@
 # First run — one section per doctor row
 
-`node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
+`node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
 order. Each row that is not `ok` has a section here, named for the row's `id`.
 A section says what the piece is, what the agent runs for you, what you do in a
 browser, and the two or three things a newcomer would not know. The commands are
@@ -389,32 +389,3 @@ Three things a newcomer would not know:
   and stays built; `cloudflare` is the one the launcher checks fresh against
   each plan, refusing a `**Publish:**` plan that has no credential at the edge
   rather than a plan that will never ask for one.
-
-## reaper
-
-A finished run's VM asks the hub to remove it, and the hub removes it through `lobby-rm`, an
-integration only the hub may use. Its bearer is an exe.dev key named `hub-reaper` that can do one
-thing, `rm`. The key expires, and an expired key fails without a sound: the hub answers the VM and
-removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row asks the
-remover itself, from the hub, and is red when it answers `invalid token`; it is also red when the
-key has expired or is gone, and says how many days a live one has left.
-
-**The operator runs** one command, which types nothing and never prints the key:
-
-```bash
-bash fleet/reaper-key.sh
-```
-
-It mints a new key that can only `rm` (labelled `hub-reaper-<date>-<time>`, good for one year), hands
-it to `lobby-rm` on stdin, then asks the remover from the hub to remove a VM that does not exist. It
-ends `WORKING` when the remover answers anything but `invalid token`, and lists the older keys that
-can then be deleted. Run it from a terminal or a Run button alike: nothing secret is shown.
-
-Two things a newcomer would not know:
-
-- **The label is how the doctor finds the key, and exe.dev never reuses one.** A renewal under the
-  old label is refused (`a key named "hub-reaper" already exists`, 2026-11-13), so each new key
-  carries its month. Any label that begins `hub-reaper` is read, and the one that lasts longest is
-  the one reported, so an expired key left in the list does no harm.
-- **A missing `lobby-rm` is a green row.** Without it a finished VM waits for the janitor, which is
-  slower and never wrong; `fleet/RUNBOOK.md` §The hub's reaper installs it.

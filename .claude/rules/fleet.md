@@ -49,8 +49,7 @@ Read a past run at
 
 ## The other laptop tools
 
-- `doctor.mjs` — which of its ten rows is missing (the last, `reaper`, asks the hub's VM remover
-  whether its exe.dev key still works and reads that key's expiry; `reaper-key.sh` renews it; `exe-verbs.json` feeds its verb-drift row;
+- `doctor.mjs` — which of its nine rows is missing (`exe-verbs.json` feeds its verb-drift row;
   its `evidence` row checks the one-time evidence-repository setup).
 - `claude-token.mjs` — the credential: loom-style OAuth, refresh token in the keychain,
   refreshed before every launch, single-flight. **Never force-rotate while a run is live** (see
@@ -62,11 +61,9 @@ Read a past run at
   or orphaned run (`failRun`, then `sealRun`), seals a run that ended with its live branch left
   and no tag, and deletes the closed-unmerged `ultra/integration-run-*` branches, all on the
   targets its rows name (`--target` adds one no VM names).
-- `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
-  VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
-  its tag in the evidence repository says `done`, read through the read-only integration
-  `evidence-read` (attached to `vm:kata-hub` and to the viewer's `vm:ultraviz`, never to the tag). `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
-  keeps its name from the days it ran the kata daemon. Unit tests: `tests/test_reaper.py`.
+- No hub VM: the janitor is the one VM remover, at each launch or by hand. The hub's reaper
+  (`reaper.py` on `kata-hub`) retired on 2026-11-14; `fleet/CONTRACT.md` §The hub VM says what left
+  and what the operator removes by hand. `evidence-read` stays attached to the viewer's `vm:ultraviz`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `run-read.mjs` (print a run from its evidence record: every claim, give-back, objection,
   conflict, move of main and the pull request; `--follow` watches it; `projectRun` answers plain

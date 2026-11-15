@@ -79,8 +79,7 @@ const KNOWN = new Map([
   [lobbyKey('whoami'), { code: 1, stdout: '' }],
   [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
   [lobbyKey('integrations list --json'), { code: 0, stdout: LIST_STDOUT }],
-  [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
-  [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
+  [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }]
 ])
 
 /**
