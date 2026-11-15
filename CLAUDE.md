@@ -157,7 +157,7 @@ the engine's exit code is the merge decision.
   reports, never a clause. Publish runs after the engine, in plain sequence, never inside it
   (`factory/publish.mjs`, #1441).
 - **The plan is a submission, not a contract (#990).** A builder that outgrows a clause or its
-  Files set writes outside it in the open (the engine's `driver:amendment` row, which the scope rule (`factory/flock/scope.mjs`) and
+  Files set writes outside it in the open (the engine's `amendment` row, which the scope rule (`factory/flock/scope.mjs`) and
   `evals/readings/wrong_plans.py` read), and nothing reverts it for being
   outside the plan. A task no implementation can pass is the builder's objection (`object`),
   which parks it for the operator.

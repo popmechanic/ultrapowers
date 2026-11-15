@@ -3,11 +3,11 @@
   "about": "Every threshold the Flock and the record read, one file: `flock` holds the Flock's cells and `publish` the self-merge and probe cells publish.mjs reads. A threshold is chosen on the record's readings and never tuned live; each carries the n and the window it was read over, or says in terms that it was not read. No default flips under n = 5 runs / 20 tasks: a threshold read under that floor is an `experiment` with its `rollback` named. On 2026-11-14 the operator settled the Flock's experiments over 110 runs: the narrow pulls, the scope rule, the loose-ends task and the objection are the engine's only behaviour and carry no cell; the Jev step and peer-rewrite reads were cut.",
   "publish": {
     "self_merge": {
-      "max_refolds": 3,
+      "max_catchups": 3,
       "mergeable_wait_seconds": 120,
       "n": 110,
       "window": "the Flock runs 2026-09-26..11-15",
-      "basis": "62 runs merged themselves; 2 merge requests were refused after a refold (a conflict, a red). Settled operator 2026-11-14, over n=110 Flock runs (2026-09-26..11-15, every tag in the evidence repository): the self-merge always runs, and a held run is the way to keep one open",
+      "basis": "62 runs merged themselves; 2 merge requests were refused after a catch-up (a conflict, a red). Settled operator 2026-11-14, over n=110 Flock runs (2026-09-26..11-15, every tag in the evidence repository): the self-merge always runs, and a held run is the way to keep one open",
       "rollback": "the way back is a checkout before 2026-11-14's settling (the cut modes' code left with it)"
     },
     "probe": {

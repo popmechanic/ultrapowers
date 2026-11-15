@@ -27,7 +27,7 @@
  *       the self-merge's bounds and the probe enabled; over a probe cell
  *       carrying no `enabled` key the probe reads disabled and the bounds are
  *       the cell's; over a path that does not exist, the probe reads disabled
- *       with the defaults (3 refolds, 120 s, 600 s).
+ *       with the defaults (3 catch-ups, 120 s, 600 s).
  *
  * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
  * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
@@ -241,19 +241,19 @@ ${F}
 {
   assert.deepEqual(
     publishPolicy(POLICY_JSON),
-    { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
-    "(d) [M4] the repo's own factory/policy.json: 3 refolds, 120 s; probe enabled, 600 s"
+    { selfMerge: { maxCatchups: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+    "(d) [M4] the repo's own factory/policy.json: 3 catch-ups, 120 s; probe enabled, 600 s"
   )
   const noEnabledPath = path.join(FIXTURES, 'policy-no-enabled.json')
   fs.writeFileSync(noEnabledPath, JSON.stringify({
-    publish: { self_merge: { max_refolds: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
+    publish: { self_merge: { max_catchups: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
   }))
   assert.deepEqual(
-    publishPolicy(noEnabledPath), { selfMerge: { maxRefolds: 9, waitSeconds: 9 }, probe: { enabled: false, timeoutSeconds: 600 } },
+    publishPolicy(noEnabledPath), { selfMerge: { maxCatchups: 9, waitSeconds: 9 }, probe: { enabled: false, timeoutSeconds: 600 } },
     '(d) [M4] a probe cell with no "enabled" key reads as disabled with the default budget; the self-merge bounds are the cell\'s'
   )
   assert.deepEqual(
-    publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } },
+    publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), { selfMerge: { maxCatchups: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } },
     '(d) [M4] a policy path that does not exist reads as disabled with the defaults'
   )
 }

@@ -70,7 +70,7 @@ def read_run(evidence, slug, run):
         'sessions': len(sessions), 'red_proofs': sum(e.get('redRuns') or 0 for e in sessions),
         'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')), 'objected': len(of('objection')),
         'parked_tasks': len(of('task:parked')), 'conflicts': len(of('conflict:open')), 'engine_tasks': added,
-        'outside_plan': sorted({e.get('path') for e in of('driver:amendment') if e.get('path')}),
+        'outside_plan': sorted({e.get('path') for e in of('amendment') + of('driver:amendment') if e.get('path')}),
         'beliefs': len([e for e in of('belief') if e.get('by') != 'host']), 'cost_usd': cost, 'said': said,
     }
 

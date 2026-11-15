@@ -307,8 +307,8 @@ evidence repository.
   after the engine unit exits (#1441), GitHub over `curl` and the target over `git`, both off PATH. When the target's tip moved
   underneath the run, the boot catches the run up to the new main inline by running
   `node factory/flock/catchup.mjs --plan <plan> --plan-json <parse> --target <target> --base <run base> --onto <moved tip>
-  --run-dir <dir>`, whose last stdout line is JSON: `{"refolded": true, "head", "onto"}` (exit 0) or
-  `{"refolded": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
+  --run-dir <dir>`, whose last stdout line is JSON: `{"caughtUp": true, "head", "onto"}` (exit 0) or
+  `{"caughtUp": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
   the new main through the weave keeper (`factory/flock/weave.py`) and re-runs the plan's setup,
   every task's probes and the run-wide check with `ULTRA_BASE` set to the new main; on exit 0 the
   boot force-pushes the new head over the run's branch, and on a conflict or a red check it leaves
@@ -337,11 +337,11 @@ evidence repository.
   A draft after `L:loose` is added lands the pre-cleanup green snapshot as ready, recorded as a
   `loose:fallback` row and a second `settled` row, and the PR's Loose ends section says the cleanup
   was dropped.
-- **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
+- **Scope (Flock, the `scope:outside` and `amendment` rows, #1333):** the Flock's edge
   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot
   does not settle. A builder's own change to a path outside every task's Files is let through and
-  recorded as a `driver:amendment` row naming the builder and the path. Over 110 runs
+  recorded as an `amendment` row (`driver:amendment` before 2026-11-15) naming the builder and the path. Over 110 runs
   (2026-09-26..11-15) it refused nothing and let 59 amendments through in 15 runs, all done; its
   `record` mode was cut on 2026-11-14. Before this (run-247, #1322) a
   green run merged a corrupted file no task listed.
@@ -384,7 +384,7 @@ evidence repository.
   that phase event, so a phase followed only by bookkeeping reads as that phase alone.
   The `state` cell is a sequence, not a set: a run that published reads `running → publishing →
   done` (engine exit 0) or `running → publishing → parked` (any other exit, a draft PR;
-  `factory/publish.mjs`). A catch-up to a moved main (`publish.self_merge.max_refolds`) writes no
+  `factory/publish.mjs`). A catch-up to a moved main (`publish.self_merge.max_catchups`) writes no
   state of its own. `failed` is a step outside the engine breaking, and is terminal wherever it is
   reached; nothing writes a `booting` page (a run that dies before the boot clones its evidence has
   no page, and the janitor reads it `unread`).
@@ -403,7 +403,7 @@ evidence repository.
   over GitHub's cap gives up builders' lines first, never the summary or the closes. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —
   `{ts, kind, url, number, draft}` — is appended by `factory/publish.mjs`, as are its `merge`,
-  `refold` and `publish:*` rows.
+  `catchup` (`refold` before 2026-11-15) and `publish:*` rows.
 - **Publish probe (#835, in `factory/publish.mjs`, run once the merge answered a sha, before the
   boot's `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
   `**Rollback:**` header lines are read off the run's one parse (never grepped off the plan text);

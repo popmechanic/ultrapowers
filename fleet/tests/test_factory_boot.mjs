@@ -741,11 +741,11 @@ for (const [runN, version, error] of [
   )
 
   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-  const refoldAt = rows.findIndex((r) => r.kind === 'refold' && r.ok === true)
+  const catchupAt = rows.findIndex((r) => r.kind === 'catchup' && r.ok === true)
   const mergeAt = rows.findIndex((r) => r.kind === 'merge' && r.code === 200)
-  assert.ok(refoldAt >= 0, `(j) events.jsonl carries a refold row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+  assert.ok(catchupAt >= 0, `(j) events.jsonl carries a catchup row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
   assert.ok(mergeAt >= 0, `(j) events.jsonl carries a merge row with code 200 — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
-  assert.ok(refoldAt < mergeAt, `(j) the refold row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+  assert.ok(catchupAt < mergeAt, `(j) the catchup row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
 
   assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', '(j) status.json at the tag records state "done"')
   console.log('ok (j) the self-merge catches up to a moved main')

@@ -6,7 +6,7 @@
 // merged with the moved main's, every line's identity kept) when the run has one, else by the weave
 // keeper rebuilt from the three texts (weave.py); a clean join becomes one commit
 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
-// Last stdout line: {"refolded": true, "head", "onto"} (exit 0) or {"refolded": false, "reason":
+// Last stdout line: {"caughtUp": true, "head", "onto"} (exit 0) or {"caughtUp": false, "reason":
 // "conflict" | "red", "onto"} (exit 1). A conflict or a red leaves the run's own commit at HEAD.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -26,7 +26,7 @@ const store = (...args) => {
 
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined }
 const PLAN = arg('--plan'), T = arg('--target'), BASE = arg('--base'), ONTO = arg('--onto'), RUN_DIR = arg('--run-dir')
-if (!PLAN || !T || !BASE || !ONTO) { console.log(JSON.stringify({ refolded: false, reason: 'usage', onto: ONTO ?? null })); process.exit(2) }
+if (!PLAN || !T || !BASE || !ONTO) { console.log(JSON.stringify({ caughtUp: false, reason: 'usage', onto: ONTO ?? null })); process.exit(2) }
 
 const git = (args, opts) => gitIn(T, args, { identity: true, ...opts })
 const out = (args) => git(args).stdout.trim()
@@ -57,7 +57,7 @@ if (both.length) {
   const j = store('join', '--repo', T, '--run', runSha, '--onto', ONTO, '--remote', 'origin', '--out', file)
   if (j && j.joined) {
     const decided = new Set(j.paths)
-    if (j.conflicts.some((p) => both.includes(p))) finish({ refolded: false, reason: 'conflict' }, 1)
+    if (j.conflicts.some((p) => both.includes(p))) finish({ caughtUp: false, reason: 'conflict' }, 1)
     for (const p of both.filter((x) => decided.has(x))) {
       // absent from `files`: the join's text is the moved main's own, so nothing is written over it
       if (p in j.files) result.set(p, j.files[p] === null ? null : Buffer.from(j.files[p], 'utf8'))
@@ -72,7 +72,7 @@ if (both.length) {
   const texts = []
   for (const p of both) {
     const b = utf8(blob(BASE, p)), r = utf8(blob(runSha, p)), m = utf8(blob(ONTO, p))
-    if (b === undefined || r === undefined || m === undefined) finish({ refolded: false, reason: 'conflict' }, 1)
+    if (b === undefined || r === undefined || m === undefined) finish({ caughtUp: false, reason: 'conflict' }, 1)
     texts.push({ p, b, r, m })
   }
   const keeper = startWeave()
@@ -92,7 +92,7 @@ if (both.length) {
   const j = await ask({ op: 'merged', order: ['main', 'run'] })
   keeper.end()
   fs.rmSync(tmp, { recursive: true, force: true })
-  if ((j.conflicts || []).length) finish({ refolded: false, reason: 'conflict' }, 1)
+  if ((j.conflicts || []).length) finish({ caughtUp: false, reason: 'conflict' }, 1)
   for (const t of texts) {
     const gone = j.exists[t.p] === false || !(t.p in j.files)
     result.set(t.p, gone ? null : Buffer.from(j.files[t.p], 'utf8'))
@@ -110,7 +110,7 @@ const back = (why) => {
   process.stderr.write(`catchup: red — ${why}\n`)
   git(['reset', '-q', '--hard', runSha])
   git(['clean', '-qfd'], { ok: true })
-  finish({ refolded: false, reason: 'red' }, 1)
+  finish({ caughtUp: false, reason: 'red' }, 1)
 }
 let work
 try { work = workloadFromPlan(PLAN, arg('--plan-json')) } catch (e) { back(`plan: ${e.message}`) }
@@ -153,4 +153,4 @@ if (provFile && fs.existsSync(provFile)) {
     fs.writeFileSync(provFile, JSON.stringify({ ...prov, caughtUp: { run: runSha, head } }, null, 2) + '\n')
   } catch (e) { process.stderr.write(`catchup: provenance not remapped — ${e.message}\n`) }
 }
-finish({ refolded: true, head }, 0)
+finish({ caughtUp: true, head }, 0)

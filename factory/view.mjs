@@ -33,7 +33,8 @@ function lineOf (e) {
   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
-  if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
+  // `refold` is a past run's name for the catch-up row (before 2026-11-15)
+  if (k === 'catchup' || k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
   if (k === 'merge') return { task: null, what: `merge answered ${e.code}${e.message ? `: ${short(e.message, 80)}` : ''}` }
   return null

@@ -395,7 +395,7 @@ const snapshots = []
 let bestGreen = -1, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
-const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
+const amendedSeen = new Set()  // paths already written as an `amendment` row this run
 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
 // writes build output. Returns the paths outside every task's Files that no builder wrote.
 function scopeAt (m, snap) {
@@ -405,7 +405,7 @@ function scopeAt (m, snap) {
   const files = [...board.tasks.values()].flatMap((t) => t.files || (String(t.id).startsWith('R:') ? [t.id.slice(2)] : []))
   const written = Object.values(lastEditT).flatMap((ps) => Object.keys(ps))
   const { outside, amended } = scopeOf({ changed, files, written })
-  for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('driver:amendment', { path: p, snap }) }
+  for (const p of amended) if (!amendedSeen.has(p)) { amendedSeen.add(p); ev('amendment', { path: p, snap }) }
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(',')) }
   return outside
 }
