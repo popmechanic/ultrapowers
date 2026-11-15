@@ -482,7 +482,9 @@ async function usageRow (deps, name, { rotate = true } = {}) {
   const window = (w) => (w && typeof w === 'object' ? { utilization: w.utilization, resetsAt: w.resets_at } : null)
   const fiveHour = window(body?.five_hour)
   const sevenDay = window(body?.seven_day)
-  if (!fiveHour || !sevenDay) return unread('usage answered without five_hour/seven_day')
+  // A null or absent window is one the account does not have; the row is
+  // unread only when it has neither.
+  if (!fiveHour && !sevenDay) return unread('usage answered without five_hour/seven_day')
   return { name, fiveHour, sevenDay, unread: false, reason: null }
 }
 
@@ -500,12 +502,15 @@ export async function usage (deps, { account = null, rotate = true } = {}) {
 
 const USAGE_HEADER = 'account | 5h % | 5h resets | 7d % | 7d resets'
 
+// A window the account does not have prints `none` in both of its cells.
+const windowCells = (w) => (w ? [`${w.utilization}`, `${w.resetsAt}`] : ['none', 'none'])
+
 function renderUsage (rows) {
   const lines = [USAGE_HEADER]
   for (const row of rows ?? []) {
     const cells = row.unread
       ? [row.name, `unread: ${row.reason}`, '', '', '']
-      : [row.name, `${row.fiveHour?.utilization}`, `${row.fiveHour?.resetsAt}`, `${row.sevenDay?.utilization}`, `${row.sevenDay?.resetsAt}`]
+      : [row.name, ...windowCells(row.fiveHour), ...windowCells(row.sevenDay)]
     lines.push(cells.join(' | ').replace(/[\s|]+$/, ''))
   }
   return lines.join('\n')
