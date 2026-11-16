@@ -62,8 +62,8 @@ Read a past run at
   and no tag, and deletes the closed-unmerged `ultra/integration-run-*` branches, all on the
   targets its rows name (`--target` adds one no VM names).
 - No hub VM: the janitor is the one VM remover, at each launch or by hand. The hub's reaper
-  (`reaper.py` on `kata-hub`) retired on 2026-11-14; `fleet/CONTRACT.md` §The hub VM says what left
-  and what the operator removes by hand. `evidence-read` stays attached to the viewer's `vm:ultraviz`.
+  (`reaper.py` on `kata-hub`) retired on 2026-11-14; `fleet/CONTRACT.md` §The hub VM says what left;
+  the operator removed the VM, its integrations and key from exe.dev on 2026-11-16. `evidence-read` stays attached to the viewer's `vm:ultraviz`.
 - `target.mjs` (the per-repository integration, targets and the evidence repository alike),
   `run-read.mjs` (print a run from its evidence record: every claim, give-back, objection,
   conflict, move of main and the pull request; `--follow` watches it; `projectRun` answers plain

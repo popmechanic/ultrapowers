@@ -447,8 +447,8 @@ evidence repository.
   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
   Every object reaches a fleet VM by its own `tag:fleet` attachment. (Jev's `typesafe`
-  **http-proxy**, `https://typesafe.int.exe.xyz`, is attached there too, but no fleet code calls it
-  since 2026-11-14, when the engine's Jev reads were cut; the operator may detach it.) The one
+  **http-proxy** was detached from `tag:fleet` on 2026-11-16: no fleet code calls it since
+  2026-11-14, when the engine's Jev reads were cut; the integration stays, attached to nothing.) The one
   exception is attached to a VM by name and never to the tag: `evidence-read`, a `github --readonly`
   integration naming the evidence repository, on `vm:ultraviz` (the run viewer,
   popmechanic/ultraviz, a persistent VM that carries no tag and holds this one grant since
@@ -515,10 +515,10 @@ evidence repository.
   janitor covered, and exe.dev offers no VM expiry, tokenless self-removal or remove-only-yourself
   key (Shelley, 2026-11-14).
   Gone from the repository: `fleet/reaper.py`, `reaper.service`, `reaper-key.sh`,
-  `tests/test_reaper.py`, the doctor's `reaper` row and its sim, and the boot's `POST /reap`. Left
-  for the operator to remove by hand: the `kata-hub` VM, the `reaper` peer and `lobby-rm`
-  integrations, the `hub-reaper…` keys, and `evidence-read`'s attachment to `vm:kata-hub`.
-  Removing the VM also deletes `/var/lib/kata`, the data the Kata rollback below starts from. The
+  `tests/test_reaper.py`, the doctor's `reaper` row and its sim, and the boot's `POST /reap`. Removed
+  from exe.dev by the operator on 2026-11-16: the `kata-hub` VM, the `reaper` peer and `lobby-rm`
+  integrations, the `hub-reaper-2026-11b` key, and `evidence-read`'s attachment to `vm:kata-hub`.
+  Removing the VM deleted `/var/lib/kata`, the data the Kata rollback below started from. The
   way back is a launch from a checkout made before that day, with the hub rebuilt from that
   checkout's RUNBOOK §The hub's reaper.
   **Kata left on 2026-11-13** (the operator's decision: no agent read it, the evidence repository
