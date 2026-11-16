@@ -549,11 +549,11 @@ on the next one, ask her before editing a script.
 
 **TypeSafe.**
 
-- No fleet code calls it since 2026-11-14, when the engine's Jev reads were cut; the attachment
-  below is left for the operator to detach. Authoring reaches TypeSafe from the laptop with the key
-  in `~/.ultrapowers/typesafe.env`.
-- The classifier is an exe.dev `http-proxy` integration named `typesafe` attached to
-  `tag:fleet`, the same shape as `claude-max`, and a VM reaches it at
+- No fleet code calls it since 2026-11-14, when the engine's Jev reads were cut, and the
+  operator detached it from `tag:fleet` on 2026-11-16. Authoring reaches TypeSafe from the laptop
+  with the key in `~/.ultrapowers/typesafe.env`.
+- The classifier is an exe.dev `http-proxy` integration named `typesafe`, the same shape as
+  `claude-max`, now attached to nothing; while it rode `tag:fleet` a VM reached it at
   `https://typesafe.int.exe.xyz/v1/systemone` — `https` only, because the http form answers `301`
   and a followed 301 turns the POST into a GET and the body is lost (run-110's seam). The client
   sends no `Authorization` header: the edge injects the bearer, so no `TYPESAFE_API_KEY` is on any
