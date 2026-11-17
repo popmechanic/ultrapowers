@@ -180,7 +180,8 @@ experiment).
 - **The look.** 1st-Pouf (moji2002/1st-pouf, MIT, Copyright (c) 2026 Mojtaba
   Beheshti) is vendored byte-identical at `client/src/pouf/` from commit
   `1993b1ec9f2d93b6753929d1f70c89f8ef89b13e`, pinned by
-  `client/src/pouf.vendor.json`, and never patched. Tailwind v4 compiles its
+  `client/src/pouf.vendor.json`, and never patched; its `blocks/` and `demos/`
+  folders, which nothing imports, are left out (the manifest's `omitted`). Tailwind v4 compiles its
   theme at build through `bun-plugin-tailwind` in `scripts/build-client.ts`,
   which `bun run pack` and the story checker both run. The font is
   `@fontsource-variable/nunito`, bundled, so no font host is dialled.

@@ -551,7 +551,9 @@ async function refuseUnlaunchable ({ exec, repoDir, base, compiled, integrations
   // JWT is refused 401 (#1312) — a publishing plan against a target whose
   // `wrangler.jsonc` at --base declares `assets` can only die in
   // `publish:deploy`, after every task merged. Refused here, before the pool,
-  // the credential and the push. Retires with #1312's pack step.
+  // the credential and the push. The TinyApp template packs its page into the
+  // Worker (#1312's pack step) and declares no assets; this stays for any other
+  // target while the edge still replaces the header.
   const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base, compiled })
   if (assetsConfig !== null) {
     throw new Refusal(
