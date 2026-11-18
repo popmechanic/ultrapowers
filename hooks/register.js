@@ -160,10 +160,13 @@ async function run($, argv) {
   }
 }
 
+// Only a preview on this machine is opened (#1530): the url comes from the model.
+const LOCAL_URL = /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/;
+
 // macOS has `open`; elsewhere (Debian's `open` is openvt) fall back to xdg-open.
 async function openScreen($) {
   const url = screen && screen.url;
-  if (!url) return;
+  if (!url || !LOCAL_URL.test(url)) return;
   if (await run($, ["open", url])) return;
   await run($, ["xdg-open", url]);
 }
@@ -315,7 +318,8 @@ export function register(on) {
     const name = String(input.name || e.name || "Screen");
     const stage = input.stage != null ? String(input.stage) : e.stage != null ? String(e.stage) : "";
     const raw = Array.isArray(input.versions) ? input.versions : Array.isArray(e.versions) ? e.versions : [];
-    const url = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
+    const asked = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
+    const url = LOCAL_URL.test(asked) ? asked : "";
     empty();
     screen = { name, stage, versions: raw.map(String), url };
     await save($);
@@ -323,6 +327,7 @@ export function register(on) {
     return {
       result:
         `Showing "${name}" in the intent tray${screen.versions.length ? ` with versions ${screen.versions.join(", ")}` : ""}. ` +
+        (asked && !url ? `The url was not kept: only http://127.0.0.1:<port>/ or http://localhost:<port>/ opens. ` : "") +
         "Wait for the operator's feedback: it arrives as their next message with a json block of picks and notes.",
     };
   });

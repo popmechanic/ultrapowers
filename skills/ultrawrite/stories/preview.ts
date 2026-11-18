@@ -5,7 +5,9 @@
 // websocket so they redraw in place. /compare shows every version side by
 // side; picks and notes come back on POST /feedback as JSON lines. GET
 // /play?story=<id> has the open page play that story on the screen and answers
-// the report it posts back to POST /played.
+// the report it posts back to POST /played. Only this page talks to it (#1530):
+// every request must name the server's own host, and the data routes refuse a
+// browser request from any other site and a POST that is not JSON.
 //
 //   bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]
 import {appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch} from 'node:fs';
@@ -21,6 +23,27 @@ type Rec = Record<string, unknown>;
 function usage(): number {
   console.log('usage: preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]');
   return 2;
+}
+
+// The routes that read or change the operator's work; the page and its files
+// stay open to a link from anywhere (the request carries no data).
+const DATA = new Set(['/ws', '/bundle', '/specs', '/play', '/played', '/feedback']);
+
+/** Why this request is refused, or null: another host (a DNS-rebound name), or,
+ *  on a data route, a browser request from another site, or a POST not JSON.
+ *  A request with no Origin and no Sec-Fetch-Site (curl, Claude) passes. */
+export function foreign(req: Request, port: number): string | null {
+  const own = [`127.0.0.1:${port}`, `localhost:${port}`];
+  if (!own.includes(req.headers.get('host') ?? '')) return 'not this server\'s host';
+  if (!DATA.has(new URL(req.url).pathname)) return null;
+  const origin = req.headers.get('origin');
+  if (origin !== null && !own.some((h) => origin === `http://${h}`)) return 'another site';
+  const site = req.headers.get('sec-fetch-site');
+  if (site !== null && site !== 'same-origin' && site !== 'none') return 'another site';
+  if (req.method === 'POST' && !/^application\/json\s*(;|$)/i.test(req.headers.get('content-type') ?? '')) {
+    return 'not JSON';
+  }
+  return null;
 }
 
 /** The record to write, keys in their fixed order, or null when it is not one. */
@@ -124,6 +147,8 @@ async function main(argv: string[]): Promise<number> {
     // Seconds; longer than PLAY_WAIT so a slow play ends in its JSON answer.
     idleTimeout: Math.ceil(PLAY_WAIT / 1000) + 10,
     async fetch(req, srv) {
+      const refused = foreign(req, server.port);
+      if (refused) return new Response(`refused: ${refused}`, {status: 403});
       const url = new URL(req.url);
       const path = url.pathname;
       if (path === '/ws') {
