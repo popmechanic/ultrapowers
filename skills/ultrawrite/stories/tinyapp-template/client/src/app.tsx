@@ -16,6 +16,7 @@ import {createRoot} from 'react-dom/client';
 import {JSONUIProvider, Renderer} from '@json-render/react';
 import type {Spec} from '@json-render/core';
 import {registry} from './screens/registry';
+import {functions} from './screens/functions';
 import {tinybaseState} from './screens/state';
 import {pieceSpecs} from './screens/pieces' with {type: 'macro'};
 
@@ -41,7 +42,7 @@ window.__TINYAPP__ = hook;
 const pieces = Object.entries(pieceSpecs() as Record<string, Spec & {public?: boolean}>)
   .filter(([, spec]) => staff || spec.public === true);
 createRoot(document.getElementById('app')!).render(
-  <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools}>
+  <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools} functions={functions}>
     {pieces.map(([name, spec]) => (
       <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
     ))}
