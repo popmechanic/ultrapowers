@@ -19,14 +19,17 @@
    {
     "name": "addItem",
     "description": "Add an item to buy, with how many (one when left blank).",
+    "label": "Add",
     "inputSchema": {
      "type": "object",
      "properties": {
       "name": {
-       "type": "string"
+       "type": "string",
+       "x-label": "Item"
       },
       "qty": {
-       "type": "string"
+       "type": "string",
+       "x-label": "How many"
       }
      },
      "required": [
@@ -41,6 +44,8 @@
    {
     "name": "tickItem",
     "description": "Tick this item off, or untick it if it is already ticked.",
+    "label": "${qty} ${name}",
+    "control": "checkbox",
     "inputSchema": {
      "type": "object",
      "properties": {
@@ -60,6 +65,7 @@
    {
     "name": "removeItem",
     "description": "Remove this item from the list.",
+    "label": "Remove ${qty} ${name}",
     "inputSchema": {
      "type": "object",
      "properties": {
@@ -79,6 +85,7 @@
    {
     "name": "clearTicked",
     "description": "Remove every ticked item from the list.",
+    "label": "Clear ticked",
     "inputSchema": {
      "type": "object",
      "properties": {}

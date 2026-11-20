@@ -1,10 +1,10 @@
-// The preview page: the app's own kit draws each piece's spec over a store
-// filled from the bundle's stories. At / each piece's approved spec (else
-// ?v=<V>, else A); at /compare every version side by side, each with a
-// "Choose <V>" button; the chosen version (clicked here, else the one whose
-// spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
-// arrive over /ws and redraw in place; a piece whose versions change loses the
-// pick clicked here. Plays run one at a time on the one shared store.
+// The preview page: the app's own kit draws the one whole-page screen through
+// one Renderer over a store filled from the bundle's stories. At / the approved
+// spec (else ?v=<V>, else A); at /compare every whole-page version side by
+// side, each with a "Choose <V>" button; the chosen version (clicked here, else
+// the one whose spec equals the approved screen) reads "Chosen ✓" and is
+// outlined. Specs arrive over /ws and redraw in place; when the versions change
+// the pick clicked here is dropped. Plays run one at a time on the one shared store.
 import {createMergeableStore} from 'tinybase';
 import {createRoot} from 'react-dom/client';
 import {useEffect, useRef, useState} from 'react';
@@ -19,7 +19,7 @@ import {inTurn, play} from './play';
 
 type Tool = {name: string; inputSchema?: {properties?: Record<string, Record<string, unknown>>}; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 type Piece = {versions: Record<string, Spec>; approved?: Spec};
-type Pieces = Record<string, Piece>;
+type Pieces = {screen: Piece};
 type Story = {id: string; steps: {tool: string; args?: Record<string, unknown>; layer?: string}[]};
 
 declare global {
@@ -87,8 +87,8 @@ async function playOne(id: string) {
   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});
 }
 
-function choose(piece: string, v: string) {
-  void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece, chose: v})});
+function choose(v: string) {
+  void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece: 'screen', chose: v})});
 }
 
 // The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
@@ -96,14 +96,14 @@ function choose(piece: string, v: string) {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
 
-// The picks still standing once `next` replaces `prev`: a piece whose versions
-// changed was re-arranged, so its earlier click no longer names what is drawn.
-const kept = (picks: Record<string, string>, prev: Pieces, next: Pieces) =>
-  Object.fromEntries(Object.entries(picks).filter(([name]) => same(prev[name]?.versions ?? {}, next[name]?.versions ?? {})));
+// The pick still standing once `next` replaces `prev`: versions that changed
+// were re-arranged, so the earlier click no longer names what is drawn.
+const kept = (pick: string | null, prev: Pieces, next: Pieces) =>
+  same(prev.screen?.versions ?? {}, next.screen?.versions ?? {}) ? pick : null;
 
 function Page() {
   const [pieces, setPieces] = useState<Pieces>(initial);
-  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [picked, setPicked] = useState<string | null>(null);
   const shown = useRef<Pieces>(initial);
   useEffect(() => {
     let ws: WebSocket | null = null;
@@ -128,44 +128,37 @@ function Page() {
     return () => { stopped = true; ws?.close(); };
   }, []);
 
+  const screen: Piece = pieces.screen ?? {versions: {}};
   if (compare) {
     return (
-      <>
-        {Object.entries(pieces).map(([name, p]) => (
-          <div key={name} className="preview-compare" data-compare={name}>
-            {letters(p).map((v) => {
-              const chosen = (picked[name] ?? recorded(p)) === v;
-              const box = sandbox(`${name}\u0000${v}`);
-              return (
-                <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
-                  <div className="preview-version-head">
-                    <span>{v}</span>
-                    <button
-                      type="button"
-                      className="preview-choose"
-                      aria-pressed={chosen}
-                      onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(name, v); }}
-                    >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
-                  </div>
-                  <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
-                    <Renderer spec={p.versions[v]} registry={registry} />
-                  </JSONUIProvider>
-                </section>
-              );
-            })}
-          </div>
-        ))}
-      </>
+      <div className="preview-compare" data-compare="screen">
+        {letters(screen).map((v) => {
+          const chosen = (picked ?? recorded(screen)) === v;
+          const box = sandbox(v);
+          return (
+            <section key={v} data-piece="screen" data-version={v} data-chosen={chosen ? '' : undefined}>
+              <div className="preview-version-head">
+                <span>{v}</span>
+                <button
+                  type="button"
+                  className="preview-choose"
+                  aria-pressed={chosen}
+                  onClick={() => { setPicked(v); choose(v); }}
+                >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
+              </div>
+              <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
+                <Renderer spec={screen.versions[v]} registry={registry} />
+              </JSONUIProvider>
+            </section>
+          );
+        })}
+      </div>
     );
   }
+  const spec = screen.approved ?? (asked ? screen.versions?.[asked] : undefined) ?? screen.versions?.A;
   return (
     <div className="preview-single">
-      {Object.entries(pieces).map(([name, p]) => {
-        const spec = p.approved ?? (asked ? p.versions?.[asked] : undefined) ?? p.versions?.A;
-        return spec ? (
-          <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
-        ) : null;
-      })}
+      {spec ? <section data-piece="screen"><Renderer spec={spec} registry={registry} /></section> : null}
     </div>
   );
 }

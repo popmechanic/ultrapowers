@@ -378,9 +378,9 @@
       }
     },
     "authoring_arrange": {
-      "when": "At arrange.ts, once per card and version while a plan is drafted, and once per reshape from the notes pinned on an approved screen",
+      "when": "At arrange.ts, once per version of the whole page while a plan is drafted, before any story names a control, and once per reshape from the notes pinned on the approved page",
       "reader": "skills/ultrawrite/stories/arrange.ts",
-      "rollback": "flag off: the builder writes each screen from the stories alone",
+      "rollback": "flag off: the builder writes the page from the cards alone",
       "state": [
         "user_request",
         "context",
@@ -388,13 +388,13 @@
         "already_built",
         "selected_elements"
       ],
-      "provenance": "operator decisions 2026-10-01",
+      "provenance": "operator decisions 2026-10-01; whole page 2026-11-20",
       "calibrated": false,
-      "guidance": "Use only the controls and text offered; every control the stories name belongs on the screen.",
+      "guidance": "Use only the controls and text offered; every control offered belongs on the page.",
       "versions": {
-        "A": "A single calm column: what it is at the top, then the controls, then any list.",
-        "B": "Everything grouped in one card, each text box side by side with its button.",
-        "C": "Lists first and largest, the controls that add to them below."
+        "A": "One calm column for the whole page: what it is at the top, then the controls, then the lists.",
+        "B": "The whole page grouped in cards, each text box side by side with its button.",
+        "C": "The lists first and largest on the page, the controls that add to them below."
       }
     }
   }

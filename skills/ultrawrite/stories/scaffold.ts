@@ -1,14 +1,13 @@
 #!/usr/bin/env bun
 // Write the starting app a stories-v1 launch builds on: the template (given
-// code), the bundle's store module at client/src/store.js, and one
-// json-render spec per piece at client/src/pieces/<piece>.json: an empty
-// column that runs no action, so the screens check stays red on it until a
-// builder writes the screen. The page finds the specs itself at build time and
-// draws them in the build order client/src/screens/order.json gives.
+// code), the bundle's store module at client/src/store.js, and the page's one
+// json-render screen at client/src/screen.json: an empty column that runs no
+// action, so the screens check stays red on it until a builder writes the
+// screen. The page reads it itself at build time.
 // Refuses a directory that holds anything but .git.
 //
 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
-import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
+import {copyFileSync, cpSync, existsSync, readdirSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {loadBundle, writePageOrder} from './bundle';
 
@@ -32,12 +31,8 @@ function main(argv: string[]): number {
   cpSync(TEMPLATE, dst, {recursive: true});
   copyFileSync(join(b.dir, 'store.js'), join(dst, STORE));
   const pieces = b.cards.map((c) => c.piece);
-  const pdir = join(dst, 'client', 'src', 'pieces');
-  mkdirSync(pdir, {recursive: true});
-  for (const p of pieces) {
-    const spec = {root: p, elements: {[p]: {type: 'Stack', props: {}, children: []}}};
-    writeFileSync(join(pdir, `${p}.json`), JSON.stringify(spec, null, 2) + '\n');
-  }
+  const screen = {root: 'page', elements: {page: {type: 'Stack', props: {gap: 4}, children: []}}};
+  writeFileSync(join(dst, 'client', 'src', 'screen.json'), JSON.stringify(screen, null, 2) + '\n');
   writePageOrder(b, dst);
   console.log(`SCAFFOLDED ${dst}: pieces ${pieces.join(', ')}`);
   return 0;

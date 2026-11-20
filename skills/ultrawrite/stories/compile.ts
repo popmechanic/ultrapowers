@@ -98,12 +98,17 @@ const GROW = 'When a story needs something no part draws, add a part: its props 
 // The screen the operator approved for a piece while planning, committed with the bundle.
 const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
 const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
+// The one page the operator approved, when the bundle has one: every piece's actions live in it.
+const approvedScreenPath = (b: Bundle) => join(b.dir, 'screens', 'screen.json');
+const SCREEN = 'client/src/screen.json';
 
 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
 // draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
 // told to add a part, and every screen task may add one in the open.
-export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null): string {
+// onePage: the app draws one page, client/src/screen.json, that every piece's builder writes into.
+export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null, onePage = false): string {
+  const one = screens && onePage;
   const {page, cards} = b;
   const sentences = new Map(page.stories.map((s) => [s.id, s.sentence]));
   const out = [`# ${page.title}`, '',
@@ -132,13 +137,18 @@ export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: 
     out.push('', `### Task ${i + 1}: The ${c.piece} piece`, '',
       `**Piece:** ${c.piece}`,
       `**Depends-on-pieces:** ${(c.depends_on ?? []).join(', ') || 'none'}`,
-      '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+      '**Files:**', one ? `- Modify: \`${SCREEN}\`` : `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
       ...(lacking.length ? PART_FILES.map((f) => `- Modify: \`${f}\``) : []),
       `**Purpose:** ${c.purpose}`,
-      ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
-        + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
-        + ' and `$bindState` writes only under `/draft/`.'
-        + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')
+      ...(screens ? [(one
+        ? `**Screen:** the page is one json-render spec, \`${SCREEN}\`, shared by every piece's builder, over the catalog`
+          + ' in `client/src/screens/catalog.ts`: this piece\'s actions live in it beside the other pieces\','
+          + ' each running from an element\'s `action` prop, and `$bindState` writes only under `/draft/`.'
+          + (existsSync(approvedScreenPath(b)) ? ' It starts as the page the operator approved while planning: keep its arrangement and its names.' : '')
+        : `**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
+          + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
+          + ' and `$bindState` writes only under `/draft/`.'
+          + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : ''))
         + ' ' + GROW
         + (lacking.length ? ` No part draws ${lacking.map((r) => `a ${r}`).join(' or ')} yet, and this task's stories expect one: add it.` : '')] : []),
       '**Actions:**');
@@ -184,6 +194,8 @@ async function main(): Promise<number> {
   let text: string;
   // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
   const screens = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts'));
+  // ...and one page every piece writes into when the app or the bundle has it; else a screen per piece.
+  const onePage = screens && (existsSync(join(app, SCREEN)) || existsSync(approvedScreenPath(b)));
   const exportPath = join(app, 'stories', 'probes.jsonl');
   const older: Line[] = existsSync(exportPath)
     ? readFileSync(exportPath, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
@@ -191,7 +203,7 @@ async function main(): Promise<number> {
   const guards = older.filter((l) => l.plan !== planId);
   try {
     mine = probesOf(b, (await import(storeDst)) as StoreModule);
-    text = compilePlan(b, planId, mine, guards, screens, draws);
+    text = compilePlan(b, planId, mine, guards, screens, draws, onePage);
   } catch (e) {
     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
     if (kept) writeFileSync(storeDst, kept);
@@ -202,7 +214,8 @@ async function main(): Promise<number> {
   mkdirSync(dirname(resolve(v.out)), {recursive: true});
   writeFileSync(v.out, text);
   if (screens) writePageOrder(b, app);
-  // Each approved screen becomes the builder's starting spec for its piece.
+  // The approved page becomes the builders' starting spec; each approved piece screen, its piece's (the old flow).
+  if (onePage && existsSync(approvedScreenPath(b))) copyFileSync(approvedScreenPath(b), join(app, SCREEN));
   for (const c of b.cards) {
     if (!screens || !approved(b, c.piece)) continue;
     const dst = join(app, 'client', 'src', 'pieces', `${c.piece}.json`);

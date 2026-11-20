@@ -6,13 +6,13 @@
     "depends_on": [],
     "state": {"tables": {"todos": ["text", "completed"]}, "values": []},
     "actions": [
-      {"name": "addTodo", "description": "Add a todo with this text; it starts not done.",
-       "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+      {"name": "addTodo", "description": "Add a todo with this text; it starts not done.", "label": "Add",
+       "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "x-label": "New todo"}}, "required": ["text"]},
        "refuses": ["blank text"]},
-      {"name": "completeTodo", "description": "Mark this todo as done.",
+      {"name": "completeTodo", "description": "Mark this todo as done.", "label": "${text}", "control": "checkbox",
        "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
        "refuses": ["a todo that does not exist"]},
-      {"name": "deleteTodo", "description": "Remove this todo from the list.",
+      {"name": "deleteTodo", "description": "Remove this todo from the list.", "label": "Delete ${text}",
        "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
        "refuses": ["a todo that does not exist"]}
     ],

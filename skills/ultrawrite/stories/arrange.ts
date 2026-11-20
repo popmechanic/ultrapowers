@@ -1,18 +1,20 @@
 #!/usr/bin/env bun
-// Jev arranges each piece's screen from what the app can do. The candidates come
-// from the bundle by code: every control a story's `ui` step names (a bound
-// DraftInput, a bound ActionButton, a list of a table's rows), a few containers,
-// the page title and the card's purpose. Jev only chooses and places them, through
-// json-render's composer, once per version of questions.json's authoring_arrange.
+// Jev arranges the whole page from what the app can do, before any story names a
+// control. The candidates come from the cards and the store by code, never from a
+// story's `ui` or `see`: each card action's control (a bound ActionButton or
+// ActionCheckbox, its words the action's `label`), each string input's DraftInput (its
+// words the input's `x-label`), one list per table its row actions work on, a few
+// containers, the page title and each card's purpose. Jev only chooses and places them,
+// through json-render's composer, once per version of questions.json's authoring_arrange.
 // The kit is the installed TinyApp's: its catalog and store, and the composer copied
 // to <app>/.preview/json-render/ so it shares the app's zod.
 //
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <piece>]
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --pick <V>
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --reshape --note <text> [--note <text>...]
+//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir>              writes screens/screen.<V>.json
+//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --pick <V>   copies it to screens/screen.json
+//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --reshape --note <text> [--note <text>...]
 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
-import {loadBundle, type Bundle, type Card} from './bundle';
+import {loadBundle, type Action, type Bundle} from './bundle';
 import {composeEvaluator, loadQuestions} from './jev';
 
 type Json = Record<string, unknown>;
@@ -58,187 +60,85 @@ function arrangeSet() {
   return s;
 }
 
-/** The row argument of an action: the input property carrying x-row-of, with its table. */
-function rowArg(tool: Tool | undefined): {arg: string; table: string} | null {
-  for (const [k, p] of Object.entries(tool?.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') return {arg: k, table: p['x-row-of']};
-  return null;
-}
-
-/** A row that a cell of this row names: the cell (a column some action takes as a row of
- *  `table`), that table, and the named row's cells. */
-type Join = {cell: string; table: string; cells: Json};
-
-/** A row control's name with the row's string cells put back as expressions: the
- *  one cell it equals, or every cell it holds, longest first. Text left over that a
- *  joined row's cell holds is read from that row by `lookup` (#1524), the whole label
- *  then put together by `format`. A cell `skip` names (an id, or a column naming a row)
- *  is never cut out of the text: it is a key, left to the joins. */
-function fromRow(name: string, row: Json, joins: Join[] = [], skip: (column: string) => boolean = () => false): unknown {
-  const strings = (o: Json) => Object.entries(o).filter(([k, v]) => typeof v === 'string' && v !== '' && !skip(k)) as [string, string][];
-  const cells = strings(row);
-  const exact = cells.find(([, v]) => v === name);
-  if (exact) return {$item: exact[0]};
-  // Text and inserted expressions alternate; only text is searched, so no cell lands inside a ${...}.
-  type Part = {text: string; cell?: string; join?: {by: string; table: string; column: string}};
-  let parts: Part[] = [{text: name}];
-  const cut = (v: string, part: Omit<Part, 'text'>) =>
-    (parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', ...part}, {text: t}] : [{text: t}])))));
-  for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length)) cut(v, {cell: k});
-  const joined = joins.flatMap((j) => strings(j.cells).map(([column, v]) => ({v, by: j.cell, table: j.table, column})));
-  for (const j of joined.sort((a, b) => b.v.length - a.v.length)) cut(j.v, {cell: `${j.by}.${j.column}`, join: j});
-  if (!parts.some((p) => p.cell !== undefined)) return name;
-  const template = parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('');
-  if (!parts.some((p) => p.join)) return {$template: template};
-  const lookup = (j: NonNullable<Part['join']>) => ({$computed: 'lookup', args: {rows: {$state: LIST(j.table)}, id: {$item: j.by}, column: j.column}});
-  const used = parts.filter((p) => p.cell !== undefined);
-  if (used.length === 1 && used[0].join && template === '${' + used[0].cell + '}') return lookup(used[0].join);
-  const args: Json = {template};
-  for (const p of used) args[p.cell!] = p.join ? lookup(p.join) : {$item: p.cell};
+/** A control's words, read off its card: plain text, or for a control in a row, with
+ *  `${cell}` naming a cell of that row and `${col.cell}` a cell of the row that column
+ *  `col` names, read by `lookup` (#1524) and put together by `format`. */
+function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unknown {
+  const tokens = inRow ? [...label.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]) : [];
+  if (!tokens.length) return label;
+  const whole = tokens.length === 1 && label === '${' + tokens[0] + '}';
+  if (tokens.every((t) => !t.includes('.'))) return whole ? {$item: tokens[0]} : {$template: label};
+  const lookup = (t: string) => {
+    const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
+    const table = rowOf.get(by);
+    if (!table) throw new CouldNotRun(`the words "${label}" name ${by}, which names no table's row`);
+    return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
+  };
+  if (whole) return lookup(tokens[0]);
+  const args: Json = {template: label};
+  for (const t of tokens) args[t] ??= t.includes('.') ? lookup(t) : {$item: t};
   return {$computed: 'format', args};
 }
 
-/** Every candidate for one card, walking each story on a fresh store. A text box typed
- *  for a row action sits in that row; after the walk, each control a story sees but never
- *  uses, and each card action still without one, gets a control of its own. */
-function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
+type Props = Record<string, {type?: string; 'x-row-of'?: string; 'x-label'?: string}>;
+const propsOf = (a: Action): Props => ((a.inputSchema as {properties?: Props})?.properties ?? {});
+
+/** Every candidate for the whole page, from the cards and the store alone: each card's
+ *  actions, a row action (an input carrying x-row-of) a control inside the one list of its
+ *  table, whichever piece owns it, any other action a control outside the lists, and each
+ *  string input that is not a row a text box writing /draft/<input>. */
+function candidatesFor(b: Bundle, kit: Kit): Pieces {
   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
-  const mine = new Set(card.actions.map((a) => a.name));
-  const describe = (name: string) => tools.get(name)?.description ?? card.actions.find((a) => a.name === name)?.description ?? '';
-  const drafts = new Map<string, {k: string; name: string; example?: string}[]>();
-  const rowDrafts = new Map<string, string[]>();
-  const buttons: {name: string; action: string}[] = [];
-  const lists = new Map<string, {table: string; controls: RowControl[]}>();
-  const named = new Set<string>();
-  const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json; joins: Join[]}[] = [];
+  const actions = b.cards.flatMap((c) => c.actions);
+  const describe = (a: Action) => tools.get(a.name)?.description ?? a.description ?? '';
   // a column some action takes as a row of a table, by name: a tag's todoId names a todo
   const rowOf = new Map<string, string>();
-  for (const t of kit.TOOLS) for (const [k, p] of Object.entries(t.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
-  const isKey = (column: string) => column === 'id' || rowOf.has(column);
-  const joinsOf = (store: any, table: string, cells: Json): Join[] =>
-    Object.entries(cells).flatMap(([k, v]) => {
-      const other = rowOf.get(k);
-      const named = other && other !== table && typeof v === 'string' ? store.getRow(other, v) : undefined;
-      return named && Object.keys(named).length ? [{cell: k, table: other!, cells: named as Json}] : [];
-    });
+  for (const a of actions) for (const [k, p] of Object.entries(propsOf(a))) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
+  const rowArgOf = (a: Action) => {
+    const e = Object.entries(propsOf(a)).find(([, p]) => typeof p['x-row-of'] === 'string');
+    return e ? {arg: e[0], table: e[1]['x-row-of']!} : null;
+  };
+  const textsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => p.type === 'string' && typeof p['x-row-of'] !== 'string').map(([k, p]) => ({k, label: p['x-label'] ?? k}));
   // makeStore gives the same schema every time
   const schema: Record<string, Record<string, {type?: string}>> = JSON.parse(kit.makeStore().getTablesSchemaJson?.() ?? '{}');
-  // the tables each action changed when the stories ran it
-  const writes = new Map<string, string[]>();
-  const listOf = (table: string) => {
-    const l = lists.get(table) ?? {table, controls: []};
-    lists.set(table, l);
-    return l;
-  };
-  const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string, joins: Join[] = []): RowControl => {
-    const control: RowControl = {type, name, action, arg, label: fromRow(name, cells, joins, isKey), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
-    if (type === 'ActionCheckbox') {
-      const flag = Object.keys(schema[table] ?? {}).find((c) => schema[table][c]?.type === 'boolean');
-      if (flag) control.checked = {$item: flag};
-    }
-    return control;
-  };
-  for (const story of b.page.stories) {
-    const store = kit.makeStore();
-    for (const step of story.steps) {
-      const tool = tools.get(step.tool);
-      const args = (step.args ?? {}) as Json;
-      for (const u of step.ui ?? []) named.add('type' in u ? u.type.name : u.click.name);
-      if (mine.has(step.tool)) {
-        const row = rowArg(tool);
-        const cells = (row ? store.getRow(row.table, String(args[row.arg])) ?? {} : {}) as Json;
-        const joins = row ? joinsOf(store, row.table, cells) : [];
-        for (const u of step.ui ?? []) {
-          if ('type' in u && u.type.role === 'textbox') {
-            const k = Object.keys(args).find((x) => args[x] === u.type.text);
-            if (!k) continue;
-            const text = typeof u.type.text === 'string' && u.type.text !== '' ? u.type.text : undefined;
-            if (row) {
-              const l = listOf(row.table);
-              const had = l.controls.find((c) => c.type === 'DraftInput' && c.action === step.tool && c.draft === k);
-              if (had) {
-                if (had.example === undefined && text !== undefined) had.example = text;
-                continue;
-              }
-              const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells, joins, isKey), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
-              const button = l.controls.findIndex((c) => c.type === 'ActionButton' && c.action === step.tool);
-              l.controls.splice(button < 0 ? l.controls.length : button, 0, control);
-              rowDrafts.set(step.tool, [...(rowDrafts.get(step.tool) ?? []), k]);
-              continue;
-            }
-            const list = drafts.get(step.tool) ?? [];
-            const had = list.find((d) => d.k === k);
-            if (!had) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
-            else if (had.example === undefined && text !== undefined) had.example = text;
-            drafts.set(step.tool, list);
-          } else if ('click' in u && (u.click.role === 'button' || u.click.role === 'checkbox')) {
-            const name = u.click.name;
-            if (!row) {
-              if (u.click.role === 'button' && !buttons.some((x) => x.name === name && x.action === step.tool)) buttons.push({name, action: step.tool});
-              continue;
-            }
-            const l = listOf(row.table);
-            const type = u.click.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
-            if (l.controls.some((c) => c.type === type && c.action === step.tool)) continue;
-            l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role, joins));
-          }
-        }
-      }
-      const before = store.getTables() as Record<string, unknown>;
-      tool?.run(store, args, step.as ?? null);
-      const after = store.getTables() as Record<string, unknown>;
-      for (const t of new Set([...Object.keys(before), ...Object.keys(after)]))
-        if (JSON.stringify(before[t]) !== JSON.stringify(after[t]) && !(writes.get(step.tool) ?? []).includes(t)) writes.set(step.tool, [...(writes.get(step.tool) ?? []), t]);
-      for (const see of step.see ?? []) {
-        if ((see.role !== 'button' && see.role !== 'checkbox') || !((see.count ?? 0) > 0) || seen.some((x) => x.name === see.name)) continue;
-        let best: {table: string; cells: Json; length: number} | undefined;
-        for (const [table, rows] of Object.entries(store.getTables() as Record<string, Record<string, Json>>))
-          for (const cells of Object.values(rows))
-            for (const [k, v] of Object.entries(cells))
-              if (!isKey(k) && typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
-        if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells, joins: joinsOf(store, best.table, best.cells)});
-      }
-    }
-  }
-  const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.type !== 'DraftInput' && c.action === action));
-  for (const t of seen) {
-    if (named.has(t.name)) continue;
-    const action = card.actions.find((a) => {
-      const row = rowArg(tools.get(a.name));
-      return row?.table === t.table && Object.keys(tools.get(a.name)?.inputSchema?.properties ?? {}).length === 1 && !controlled(a.name);
-    });
-    if (!action) continue;
-    const row = rowArg(tools.get(action.name))!;
-    listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role, t.joins));
-  }
-  for (const a of card.actions) {
-    if (controlled(a.name)) continue;
-    const row = rowArg(tools.get(a.name));
-    if (row) listOf(row.table).controls.push(rowControl('ActionButton', a.description, a.name, row.arg, row.table, {}, 'button'));
-    else buttons.push({name: a.description, action: a.name});
-  }
-  // A field two actions type into gets a draft of its own per action; any other keeps /draft/<field>.
+  // An input two actions type into gets a draft of its own per action; any other keeps /draft/<input>.
   const typers = new Map<string, Set<string>>();
-  for (const [action, ks] of [...[...drafts].map(([a, ds]) => [a, ds.map((d) => d.k)] as const), ...rowDrafts]) for (const k of ks) typers.set(k, (typers.get(k) ?? new Set()).add(action));
+  for (const a of actions) for (const {k} of textsOf(a)) typers.set(k, (typers.get(k) ?? new Set()).add(a.name));
   const draftKey = (action: string, k: string) => ((typers.get(k)?.size ?? 0) > 1 ? `${action}.${k}` : k);
-  for (const l of lists.values())
-    for (const c of l.controls) {
-      if (c.type === 'DraftInput') {
-        c.draft = draftKey(c.action, c.draft!);
+  const lists = new Map<string, {table: string; controls: RowControl[]}>();
+  const writes = new Map<string, string[]>();
+  const fields = new Map<string, string[]>();
+  const required: Candidate[] = [];
+  let buttons = 0;
+  for (const card of b.cards)
+    for (const a of card.actions) {
+      const row = rowArgOf(a);
+      const texts = textsOf(a);
+      const words = a.label ?? a.description;
+      const args: Json = Object.fromEntries(texts.map(({k}) => [k, {$state: `/draft/${draftKey(a.name, k)}`}]));
+      if (row) {
+        const l = lists.get(row.table) ?? {table: row.table, controls: []};
+        lists.set(row.table, l);
+        for (const {k, label} of texts)
+          l.controls.push({type: 'DraftInput', name: label, action: a.name, arg: row.arg, draft: draftKey(a.name, k), label: wordsOf(label, rowOf, true), description: `a text box "${label}", where you type the ${k} for ${a.name}`});
+        const type = a.control === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
+        const control: RowControl = {type, name: words, action: a.name, arg: row.arg, label: wordsOf(words, rowOf, true), args: {[row.arg]: {$item: 'id'}, ...args}, description: `${type === 'ActionCheckbox' ? 'a checkbox' : 'a button'} "${words}" (${describe(a)})`};
+        if (type === 'ActionCheckbox') {
+          const flag = Object.keys(schema[row.table] ?? {}).find((c) => schema[row.table][c]?.type === 'boolean');
+          if (flag) control.checked = {$item: flag};
+        }
+        l.controls.push(control);
         continue;
       }
-      c.args = {[c.arg]: {$item: 'id'}};
-      if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${draftKey(c.action, k)}`};
+      for (const {k, label} of texts)
+        required.push({id: `input_${a.name}_${k}`, root: false, description: `The text box "${label}", where you type the ${k} for ${a.name}: ${describe(a)}`, element: {type: 'DraftInput', props: {label, value: {$bindState: `/draft/${draftKey(a.name, k)}`}}}});
+      if (texts.length) fields.set(a.name, texts.map(({k}) => draftKey(a.name, k)));
+      // a whole-list action changes the tables of its card
+      writes.set(a.name, Object.keys(card.state?.tables ?? {}));
+      const props: Json = {label: words, action: a.name};
+      if (texts.length) props.args = args;
+      required.push({id: `button_${buttons++}`, root: false, description: `The button "${words}": ${describe(a)}`, element: {type: 'ActionButton', props}});
     }
-  const required: Candidate[] = [];
-  for (const [action, ds] of drafts)
-    for (const d of ds)
-      required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, ...(d.example === undefined ? {} : {placeholder: d.example}), value: {$bindState: `/draft/${draftKey(action, d.k)}`}}}});
-  for (const [i, x] of buttons.entries()) {
-    const ds = drafts.get(x.action) ?? [];
-    const props: Json = {label: x.name, action: x.action};
-    if (ds.length) props.args = Object.fromEntries(ds.map((d) => [d.k, {$state: `/draft/${draftKey(x.action, d.k)}`}]));
-    required.push({id: `button_${i}`, root: false, description: `The button "${x.name}": ${describe(x.action)}`, element: {type: 'ActionButton', props}});
-  }
   for (const l of lists.values())
     required.push({id: `list_${l.table}`, root: false, description: `The list of ${l.table}, one line per entry, each with ${l.controls.map((c) => c.description).join(', ')}`, element: {type: 'Separator', props: {}, visible: {$state: LIST(l.table)}}});
   const candidates: Candidate[] = [
@@ -246,10 +146,9 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
     {id: 'stack', maxUses: 3, description: 'A column: its children one above the other', element: {type: 'Stack', props: {gap: 3}}},
     {id: 'row', maxUses: 3, root: false, description: 'A row: its children side by side', element: {type: 'Row', props: {gap: 2, align: 'center'}}},
     {id: 'title', root: false, description: `The page title "${b.page.title}" as a heading`, element: {type: 'Heading', props: {text: b.page.title, level: 1}}},
-    {id: 'purpose', root: false, description: `What it is for, in muted text: "${card.purpose}"`, element: {type: 'Text', props: {text: card.purpose, muted: true}}},
+    ...b.cards.map((c): Candidate => ({id: `purpose_${c.piece}`, root: false, description: `What the ${c.piece} piece is for, in muted text: "${c.purpose}"`, element: {type: 'Text', props: {text: c.purpose, muted: true}}})),
     ...required,
   ];
-  const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => draftKey(action, d.k))]));
   return {candidates, required, lists, fields, writes};
 }
 
@@ -323,7 +222,7 @@ function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Piec
 }
 
 /** The order a person uses the screen, by code (#1510). An action's text boxes, in the
- *  order the stories type into them, sit directly before its button, gathered where the
+ *  order its card lists the inputs, sit directly before its button, gathered where the
  *  first box sits. A whole-list button (no args) sits just below its list (the list of
  *  the one table its action changed; with one list on the screen, that one), unless it,
  *  or the wrapper holding only it, is already right beside the list. Anything already in
@@ -394,15 +293,10 @@ async function lastSpec(events: AsyncGenerator<{type: string; spec: Spec | null;
   return done;
 }
 
-function cardsOf(b: Bundle, piece?: string): Card[] {
-  const cards = b.cards.filter((c) => !piece || c.piece === piece);
-  if (!cards.length) throw new CouldNotRun(`the bundle has no piece ${piece}`);
-  return cards;
-}
-
 const contextOf = (b: Bundle) => ({app: b.page.title, stories: b.page.stories.map((s) => s.sentence)});
 
-export async function arrange(opts: {bundle: string; app: string; piece?: string; evaluate: Evaluator}) {
+/** The whole page in each version of authoring_arrange: every version kept, or dropped with why. */
+export async function arrange(opts: {bundle: string; app: string; evaluate: Evaluator}): Promise<{versions: Record<string, Spec>; dropped: Record<string, string>; calls: number}> {
   const b = loadBundle(opts.bundle);
   const kit = await loadKit(opts.app);
   const set = arrangeSet();
@@ -411,37 +305,34 @@ export async function arrange(opts: {bundle: string; app: string; piece?: string
     calls++;
     return opts.evaluate(r);
   };
-  const versions: Record<string, Record<string, Spec>> = {};
-  const dropped: Record<string, Record<string, string>> = {};
-  for (const card of cardsOf(b, opts.piece)) {
-    const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
-    const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
-    const results = await Promise.all(
-      Object.entries(set.versions).map(async ([v, sentence]) => {
-        const prompt = [...b.page.summary, card.purpose, sentence].join(' ');
-        let {spec} = await lastSpec(kit.compose({...common, prompt}));
-        let left = missing(spec, required);
-        if (spec && left.length) {
-          spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
-          left = missing(spec, required);
-        }
-        return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
-      }),
-    );
-    for (const [v, r] of results) {
-      if ('spec' in r) (versions[card.piece] ??= {})[v] = r.spec;
-      else (dropped[card.piece] ??= {})[v] = r.why;
-    }
+  const versions: Record<string, Spec> = {};
+  const dropped: Record<string, string> = {};
+  const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
+  const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
+  const results = await Promise.all(
+    Object.entries(set.versions).map(async ([v, sentence]) => {
+      const prompt = [...b.page.summary, ...b.cards.map((c) => c.purpose), sentence].join(' ');
+      let {spec} = await lastSpec(kit.compose({...common, prompt}));
+      let left = missing(spec, required);
+      if (spec && left.length) {
+        spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
+        left = missing(spec, required);
+      }
+      return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
+    }),
+  );
+  for (const [v, r] of results) {
+    if ('spec' in r) versions[v] = r.spec;
+    else dropped[v] = r.why;
   }
   return {versions, dropped, calls};
 }
 
-export async function reshape(opts: {bundle: string; app: string; piece: string; spec: Spec; notes: string[]; evaluate: Evaluator}) {
+export async function reshape(opts: {bundle: string; app: string; spec: Spec; notes: string[]; evaluate: Evaluator}) {
   const b = loadBundle(opts.bundle);
   const kit = await loadKit(opts.app);
   const set = arrangeSet();
-  const [card] = cardsOf(b, opts.piece);
-  const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
+  const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
   const initialSpec = collapse(opts.spec);
   const out = await lastSpec(
     kit.compose({
@@ -461,20 +352,20 @@ export async function reshape(opts: {bundle: string; app: string; piece: string;
   return {spec: expand(out.spec, lists, b.page.title, fields, writes), steps: out.steps.map((s) => s.description)};
 }
 
-const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--piece <piece>] [--pick <V> | --reshape --note <text>...]';
+const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>...]';
 const write = (path: string, spec: Spec) => writeFileSync(path, JSON.stringify(spec, null, 2) + '\n');
 
-/** A piece's kept versions as <screens>/<piece>.<V>.json, and any other version of it, left
+/** The page's kept versions as <screens>/screen.<V>.json, and any other version, left
  *  from an earlier arrange, gone, so /compare shows only these. The approved
- *  <piece>.json stays. */
-export function writeVersions(screens: string, piece: string, kept: Record<string, Spec>) {
+ *  screen.json stays. */
+export function writeVersions(screens: string, kept: Record<string, Spec>) {
   if (Object.keys(kept).length) mkdirSync(screens, {recursive: true});
   if (existsSync(screens))
     for (const f of readdirSync(screens)) {
-      const v = f.startsWith(`${piece}.`) && f.endsWith('.json') ? f.slice(piece.length + 1, -'.json'.length) : '';
+      const v = f.startsWith('screen.') && f.endsWith('.json') ? f.slice('screen.'.length, -'.json'.length) : '';
       if (v && !v.includes('.') && !Object.hasOwn(kept, v)) rmSync(join(screens, f));
     }
-  for (const [v, spec] of Object.entries(kept)) write(join(screens, `${piece}.${v}.json`), spec);
+  for (const [v, spec] of Object.entries(kept)) write(join(screens, `screen.${v}.json`), spec);
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -486,47 +377,42 @@ async function main(argv: string[]): Promise<number> {
     const a = argv[i];
     if (a === '--reshape') reshaping = true;
     else if (a === '--note' && i + 1 < argv.length) notes.push(argv[++i]);
-    else if (['--app', '--piece', '--pick'].includes(a) && i + 1 < argv.length) flags[a.slice(2)] = argv[++i];
+    else if (['--app', '--pick'].includes(a) && i + 1 < argv.length) flags[a.slice(2)] = argv[++i];
     else if (a.startsWith('--')) return usage();
     else pos.push(a);
   }
-  if (pos.length !== 1 || !flags.app || (flags.pick && reshaping) || ((flags.pick || reshaping) && !flags.piece) || (reshaping && !notes.length) || (notes.length && !reshaping))
-    return usage();
+  if (pos.length !== 1 || !flags.app || (flags.pick && reshaping) || (reshaping && !notes.length) || (notes.length && !reshaping)) return usage();
   const bundle = resolve(pos[0]);
   const app = resolve(flags.app);
   const screens = join(bundle, 'screens');
+  const file = join(screens, 'screen.json');
   try {
     for (const f of [join(app, 'client', 'src', 'screens', 'catalog.ts'), join(app, 'client', 'src', 'store.js')])
       if (!existsSync(f)) throw new CouldNotRun(`no ${f}`);
     if (flags.pick) {
-      const from = join(screens, `${flags.piece}.${flags.pick}.json`);
-      if (!existsSync(from)) throw new CouldNotRun(`no version ${flags.pick} of ${flags.piece} at ${from}`);
-      copyFileSync(from, join(screens, `${flags.piece}.json`));
-      console.log(`ARRANGE picked ${flags.piece} ${flags.pick}`);
+      if (!/^[A-Za-z0-9_-]+$/.test(flags.pick)) return usage();
+      const from = join(screens, `screen.${flags.pick}.json`);
+      if (!existsSync(from)) throw new CouldNotRun(`no version ${flags.pick} at ${from}`);
+      copyFileSync(from, file);
+      console.log(`ARRANGE picked ${flags.pick}`);
       return 0;
     }
     if (reshaping) {
-      const file = join(screens, `${flags.piece}.json`);
       if (!existsSync(file)) throw new CouldNotRun(`no approved screen at ${file}`);
       const spec = JSON.parse(readFileSync(file, 'utf8'));
-      const out = await reshape({bundle, app, piece: flags.piece, spec, notes, evaluate: composeEvaluator()}).catch(fail);
+      const out = await reshape({bundle, app, spec, notes, evaluate: composeEvaluator()}).catch(fail);
       write(file, out.spec);
-      for (const s of out.steps) console.log(`ARRANGE ${flags.piece}: ${s}`);
-      console.log(`ARRANGE reshaped ${flags.piece}: ${out.steps.length} steps`);
+      for (const s of out.steps) console.log(`ARRANGE: ${s}`);
+      console.log(`ARRANGE reshaped: ${out.steps.length} steps`);
       return 0;
     }
     const started = performance.now();
-    const r = await arrange({bundle, app, piece: flags.piece, evaluate: composeEvaluator()}).catch(fail);
-    const empty: string[] = [];
-    for (const card of cardsOf(loadBundle(bundle), flags.piece)) {
-      const kept = r.versions[card.piece] ?? {};
-      writeVersions(screens, card.piece, kept);
-      for (const [v, spec] of Object.entries(kept)) console.log(`ARRANGE ${card.piece} ${v}: ${Object.keys(spec.elements).length} elements`);
-      for (const [v, why] of Object.entries(r.dropped[card.piece] ?? {})) console.log(`ARRANGE ${card.piece} ${v}: dropped, ${why}`);
-      if (!Object.keys(kept).length) empty.push(card.piece);
-    }
-    if (empty.length) {
-      console.log(`ARRANGE exit 1: ${empty.join(', ')} kept no version`);
+    const r = await arrange({bundle, app, evaluate: composeEvaluator()}).catch(fail);
+    writeVersions(screens, r.versions);
+    for (const [v, spec] of Object.entries(r.versions)) console.log(`ARRANGE ${v}: ${Object.keys(spec.elements).length} elements`);
+    for (const [v, why] of Object.entries(r.dropped)) console.log(`ARRANGE ${v}: dropped, ${why}`);
+    if (!Object.keys(r.versions).length) {
+      console.log('ARRANGE exit 1: the page kept no version');
       return 1;
     }
     console.log(`ARRANGE ok: ${r.calls} Jev calls, ${Math.round(performance.now() - started)} ms`);

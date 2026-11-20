@@ -165,9 +165,9 @@ A TinyApp's screens are built from **1st-Pouf**, not hand-written page code
 (operator, 2026-10-01; this replaces the 2026-09-16 Tailwind + shadcn styling
 experiment).
 
-- **The spec.** Each piece's screen is `client/src/pieces/<piece>.json`, a
-  json-render spec — `{root, elements}`, plus `"public": true` for a piece a
-  signed-out visitor sees on `/` — over the catalog in
+- **The spec.** The page is one screen, `client/src/screen.json`, a
+  json-render spec — `{root, elements, public?}`, where `public` lists the
+  element ids whose subtrees a signed-out visitor sees on `/` — over the catalog in
   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
   React 19; a builder writes specs, and a part only when a story needs one.
@@ -182,9 +182,9 @@ experiment).
   into the template by hand, so the next app starts with it. Before this, the parts were
   closed to a run, and potluck-2 run-1 (2026-11-20) ended a draft on a status label no
   part could draw.
-- **Where a spec starts.** A piece's spec starts as the screen the operator
-  approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
-  in), else the scaffold's empty column; the builder edits it from there.
+- **Where the spec starts.** The screen starts as the whole page the operator
+  picked while planning (`<bundle>/screens/screen.json`, which compile copies
+  in), else the scaffold's empty column; every piece's builder edits it from there.
 - **The reads.** A row shows its own cells; a row naming another table's row (a tag's
   `todoId`) reads that row's text through the `$computed` functions `lookup` and `format` in
   `client/src/screens/functions.ts`, which every renderer is given (#1524).
