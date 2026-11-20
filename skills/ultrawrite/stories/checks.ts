@@ -1,6 +1,7 @@
 // The code checks a bundle meets before compile. A refusal stops compile; a
 // fact is printed for the author to act on and stops nothing.
 import {KINDS, conceptsOf, type Bundle, type Card} from './bundle';
+import {TEMPLATE_DRAWS, readDraws, undrawn, type Draws} from './parts';
 import {checkProduct} from './product';
 
 const GESTURES = new Set(['click', 'type', 'key']);
@@ -23,7 +24,8 @@ export function below(cards: Card[], piece: string): Set<string> {
   return seen;
 }
 
-export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
+/** `draws`: what the screen parts draw, the template's by default (#1491). */
+export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DRAWS)): {refusals: string[]; facts: string[]} {
   const {page, cards} = b;
   const refusals: string[] = [];
   const facts: string[] = [];
@@ -168,6 +170,12 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
     }
   } else if (b.product && !page.subproject) {
     refusals.push('page: product.json is present, so page.json must name its subproject');
+  }
+  // A story that expects to see something no screen part draws (#1491): the run adds the part, so
+  // the compiler writes it into the task that needs it; the author hears of it here, before launch.
+  for (const u of draws ? undrawn(b, draws) : []) {
+    const who = u.stories.length > 1 ? `stories ${u.stories.join(', ')} expect` : `story ${u.stories[0]} expects`;
+    facts.push(`PARTS fact: ${who} a ${u.role} (such as "${u.name}"), and no screen part draws one yet; the tasks that need it are told to add one`);
   }
   return {refusals, facts};
 }

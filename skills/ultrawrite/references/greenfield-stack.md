@@ -170,7 +170,18 @@ experiment).
   signed-out visitor sees on `/` — over the catalog in
   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
-  React 19; a builder writes specs, not components.
+  React 19; a builder writes specs, and a part only when a story needs one.
+- **The parts list grows in the open (operator, 2026-11-20, #1491).** Each part has a
+  line in `client/src/screens/draws.json` naming the accessibility role it draws and
+  the props that name it (`ActionButton`: a button, by `name` then `label`). A story
+  that expects to see a role no part draws is a `PARTS fact:` while planning, and
+  compile tells that piece's task to add the part; any builder whose screen needs one
+  adds it: its props in `catalog.ts`, a wrapper over a 1st-Pouf component in
+  `registry.tsx`, its `draws.json` line, and any label function in `functions.ts`. The
+  PR lists the run's new parts under `### New screen parts`; one worth keeping is copied
+  into the template by hand, so the next app starts with it. Before this, the parts were
+  closed to a run, and potluck-2 run-1 (2026-11-20) ended a draft on a status label no
+  part could draw.
 - **Where a spec starts.** A piece's spec starts as the screen the operator
   approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
   in), else the scaffold's empty column; the builder edits it from there.
@@ -193,7 +204,8 @@ experiment).
   --bundle <dir>) [--copy <app>] [--piece <piece>]` checks every spec without a
   browser (exit 0 pass, 1 finding, 2 could not run); the engine runs it as one
   more fact of each piece's task, so a missing or miswired button is caught
-  there.
+  there. It also checks the parts: every part has its `draws.json` line, and
+  `client/src/pouf/` is byte-for-byte its pin.
 
 ## The engine boundary
 

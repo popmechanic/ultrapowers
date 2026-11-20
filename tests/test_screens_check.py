@@ -99,3 +99,49 @@ def test_a_checkout_path_with_a_space_still_finds_the_parser(app, tmp_path):
                         os.path.join(ROOT, "evals/fixtures/stories/todo/.ultrapowers/plan.md"), "--copy", app],
                        capture_output=True, text=True, timeout=120)
     assert (r.returncode, r.stdout.splitlines()) == (0, ["SCREENS ok: todo"])
+
+
+def _with_file(app, rel, change, run):
+    """Change one app file in place for `run`, then put it back."""
+    p = os.path.join(app, rel)
+    with open(p, "rb") as f:
+        kept = f.read()
+    try:
+        change(p, kept)
+        return run()
+    finally:
+        with open(p, "wb") as f:
+            f.write(kept)
+
+
+def _draws_edit(fn):
+    def change(p, kept):
+        d = json.loads(kept)
+        fn(d["parts"])
+        with open(p, "w") as f:
+            json.dump(d, f)
+    return change
+
+
+def test_a_part_with_no_draws_line_is_a_finding(app):  # #1491
+    got = _with_file(app, "client/src/screens/draws.json", _draws_edit(lambda parts: parts.pop("Badge")),
+                     lambda: _screens(app, _todo()))
+    assert got == (1, ["SCREENS parts: part Badge has no line in client/src/screens/draws.json saying what it draws",
+                       "SCREENS exit 1: 1 finding(s)"])
+
+
+def test_a_draws_line_naming_a_prop_the_part_lacks_is_a_finding(app):
+    got = _with_file(app, "client/src/screens/draws.json",
+                     _draws_edit(lambda parts: parts.update(Heading={"role": "heading", "name": ["title"]})),
+                     lambda: _screens(app, _todo()))
+    assert got == (1, ["SCREENS parts: part Heading: draws.json says title names it, but it has no prop title",
+                       "SCREENS exit 1: 1 finding(s)"])
+
+
+def test_a_patched_pouf_file_is_a_finding(app):
+    def patch(p, kept):
+        with open(p, "wb") as f:
+            f.write(kept + b"\n// patched\n")
+    got = _with_file(app, "client/src/pouf/Button.tsx", patch, lambda: _screens(app, _todo()))
+    assert got == (1, ["SCREENS parts: client/src/pouf/Button.tsx changed; 1st-Pouf is never patched, "
+                       "so wrap it in client/src/screens/registry.tsx instead", "SCREENS exit 1: 1 finding(s)"])
