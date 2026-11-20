@@ -2,8 +2,10 @@
 // Jev arranges the whole page from what the app can do, before any story names a
 // control. The candidates come from the cards and the store by code, never from a
 // story's `ui` or `see`: each card action's control (a bound ActionButton or
-// ActionCheckbox, its words the action's `label`), each string input's DraftInput (its
-// words the input's `x-label`), one list per table its row actions work on, a few
+// ActionCheckbox, its words the action's `label`; an action taking rows of two tables an
+// ActionSelect in the first table's list, picking a row of the second, narrowed by that
+// input's `x-where`), each string input's DraftInput (its words the input's `x-label`),
+// one list per table its row actions work on, a few
 // containers, the page title and each card's purpose. Jev only chooses and places them,
 // through json-render's composer, once per version of questions.json's authoring_arrange.
 // The kit is the installed TinyApp's: its catalog and store, and the composer copied
@@ -22,7 +24,7 @@ type Element = {type: string; props: Json; children?: string[]; on?: Json; visib
 export type Spec = {root: string; elements: Record<string, Element>; state?: Json};
 export type Evaluator = (request: {state: Json; questions: Record<string, {criteria: Record<string, string>}>; signal: AbortSignal}) => Promise<{answers: Record<string, {choice: string; confidence?: number}>}>;
 type Candidate = {id: string; description: string; element: Pick<Element, 'type' | 'props' | 'visible'>; root?: boolean; maxUses?: number};
-type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; description: string};
+type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
 type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | null; steps: {description: string}[]}>; catalog: unknown; TOOLS: Tool[]; makeStore: () => any};
 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>};
@@ -80,12 +82,13 @@ function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unk
   return {$computed: 'format', args};
 }
 
-type Props = Record<string, {type?: string; 'x-row-of'?: string; 'x-label'?: string}>;
+type Props = Record<string, {type?: string; 'x-row-of'?: string; 'x-label'?: string; 'x-where'?: Json}>;
 const propsOf = (a: Action): Props => ((a.inputSchema as {properties?: Props})?.properties ?? {});
 
 /** Every candidate for the whole page, from the cards and the store alone: each card's
  *  actions, a row action (an input carrying x-row-of) a control inside the one list of its
- *  table, whichever piece owns it, any other action a control outside the lists, and each
+ *  table, whichever piece owns it (an action taking rows of two tables a picker of the
+ *  second's rows, offering those its x-where allows), any other action a control outside the lists, and each
  *  string input that is not a row a text box writing /draft/<input>. */
 function candidatesFor(b: Bundle, kit: Kit): Pieces {
   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
@@ -94,10 +97,7 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
   // a column some action takes as a row of a table, by name: a tag's todoId names a todo
   const rowOf = new Map<string, string>();
   for (const a of actions) for (const [k, p] of Object.entries(propsOf(a))) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
-  const rowArgOf = (a: Action) => {
-    const e = Object.entries(propsOf(a)).find(([, p]) => typeof p['x-row-of'] === 'string');
-    return e ? {arg: e[0], table: e[1]['x-row-of']!} : null;
-  };
+  const rowArgsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => typeof p['x-row-of'] === 'string').map(([arg, p]) => ({arg, table: p['x-row-of']!, where: p['x-where']}));
   const textsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => p.type === 'string' && typeof p['x-row-of'] !== 'string').map(([k, p]) => ({k, label: p['x-label'] ?? k}));
   // makeStore gives the same schema every time
   const schema: Record<string, Record<string, {type?: string}>> = JSON.parse(kit.makeStore().getTablesSchemaJson?.() ?? '{}');
@@ -112,7 +112,7 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
   let buttons = 0;
   for (const card of b.cards)
     for (const a of card.actions) {
-      const row = rowArgOf(a);
+      const [row, other] = rowArgsOf(a);
       const texts = textsOf(a);
       const words = a.label ?? a.description;
       const args: Json = Object.fromEntries(texts.map(({k}) => [k, {$state: `/draft/${draftKey(a.name, k)}`}]));
@@ -121,6 +121,15 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
         lists.set(row.table, l);
         for (const {k, label} of texts)
           l.controls.push({type: 'DraftInput', name: label, action: a.name, arg: row.arg, draft: draftKey(a.name, k), label: wordsOf(label, rowOf, true), description: `a text box "${label}", where you type the ${k} for ${a.name}`});
+        if (other) {
+          const rows = {$state: LIST(other.table)};
+          const optionLabel = Object.keys(schema[other.table] ?? {}).find((c) => schema[other.table][c]?.type === 'string');
+          if (!optionLabel) throw new CouldNotRun(`${a.name} picks a row of ${other.table}, which has no text column to show it by`);
+          const control: RowControl = {type: 'ActionSelect', name: words, action: a.name, arg: row.arg, label: wordsOf(words, rowOf, true), args: {[row.arg]: {$item: 'id'}, ...args}, pick: other.arg, options: isObj(other.where) ? {$computed: 'rowsWhere', args: {rows, where: other.where}} : rows, optionLabel, description: `a picker "${words}" choosing one of the ${other.table} by its ${optionLabel} (${describe(a)})`};
+          if (schema[row.table]?.[other.arg]) control.value = {$item: other.arg};
+          l.controls.push(control);
+          continue;
+        }
         const type = a.control === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
         const control: RowControl = {type, name: words, action: a.name, arg: row.arg, label: wordsOf(words, rowOf, true), args: {[row.arg]: {$item: 'id'}, ...args}, description: `${type === 'ActionCheckbox' ? 'a checkbox' : 'a button'} "${words}" (${describe(a)})`};
         if (type === 'ActionCheckbox') {
@@ -183,6 +192,7 @@ function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Piec
           return;
         }
         const props: Json = {label: c.label, ...(c.checked === undefined ? {} : {checked: c.checked}), action: c.action, args: c.args};
+        if (c.type === 'ActionSelect') Object.assign(props, {pick: c.pick, options: c.options, optionLabel: c.optionLabel, ...(c.value === undefined ? {} : {value: c.value})});
         if (c.type === 'ActionButton') Object.assign(props, {variant: 'quiet', size: 'sm'});
         const clear = Object.values(c.args ?? {}).flatMap((v) => (isObj(v) && typeof v.$state === 'string' ? [{action: 'setState', params: {statePath: v.$state, value: ''}}] : []));
         spec.elements[kids[i]] = {type: c.type, props, children: [], ...(c.type === 'ActionButton' && clear.length ? {on: {press: clear.length === 1 ? clear[0] : clear}} : {})};

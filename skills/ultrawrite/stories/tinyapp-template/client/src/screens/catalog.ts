@@ -110,6 +110,21 @@ export const components = {
     description:
       'A checkbox showing `checked`; toggling it runs the app action `action` with `args`, and only when it succeeds does it emit "change".',
   },
+  ActionSelect: {
+    props: z.object({
+      label: z.string(),
+      action: z.string(),
+      args: z.record(z.string(), z.unknown()).nullish(),
+      pick: z.string(),
+      options: z.array(z.record(z.string(), z.unknown())),
+      optionLabel: z.string(),
+      value: z.string().nullish(),
+      placeholder: z.string().nullish(),
+    }),
+    slots: [],
+    description:
+      'A picker over the rows `options`, each shown by its `optionLabel` cell, showing the row whose id is `value`; choosing one runs the app action `action` with `args` plus `{[pick]: <the row\'s id>}`, and only when it succeeds does it emit "change".',
+  },
   DraftInput: {
     props: z.object({
       label: z.string(),

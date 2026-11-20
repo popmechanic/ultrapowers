@@ -6,7 +6,7 @@ export type Row = Record<string, unknown>;
 export type Content = [Record<string, Record<string, Row>>, Record<string, unknown>];
 export type Check = Record<string, unknown>;
 export type Locator = {role: string; name: string};
-export type UiStep = {click: Locator} | {type: Locator & {text: string}} | {key: Locator & {key: string}};
+export type UiStep = {click: Locator} | {type: Locator & {text: string}} | {key: Locator & {key: string}} | {select: Locator & {option: string}};
 // `as` is who is signed in (an email, or null for nobody) from this call on;
 // absent, the page's own sign-in stands.
 export type ToolCall = {tool: string; args: Record<string, unknown>; as?: string | null};

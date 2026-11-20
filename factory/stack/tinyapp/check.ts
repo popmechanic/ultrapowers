@@ -77,6 +77,7 @@ const read = async (page: Page) => JSON.parse((await page.evaluate(READ)) as str
 const toAction = (d: UiStep) => {
   if ('click' in d) return {click: {role: d.click.role, name: d.click.name}};
   if ('type' in d) return {type: [{role: d.type.role, name: d.type.name}, d.type.text] as [{role: string; name: string}, string]};
+  if ('select' in d) return {select: [{role: d.select.role, name: d.select.name}, d.select.option] as [{role: string; name: string}, string]};
   return {key: [{role: d.key.role, name: d.key.name}, d.key.key] as [{role: string; name: string}, string]};
 };
 
@@ -177,8 +178,12 @@ async function run(probe: Probe): Promise<Result> {
     if ('tool' in d) { await callTool(page, aliases, schemas, d as ToolCall, 'do'); continue; }
     try {
       await page.act(toAction(d as UiStep) as never);
-    } catch {
-      throw new Finding('do', `there is no ${locatorWords(d as UiStep)} on the screen to use`);
+    } catch (e) {
+      const s = d as UiStep;
+      if ('select' in s && String((e as Error)?.message).startsWith('act: no option')) {
+        throw new Finding('do', `there is no option ${JSON.stringify(s.select.option)} in the ${locatorWords(s)} on the screen to use`);
+      }
+      throw new Finding('do', `there is no ${locatorWords(s)} on the screen to use`);
     }
   }
 
