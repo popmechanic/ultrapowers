@@ -1,0 +1,48 @@
+0 < 2 import { AspectRatio } from '../aspectratio'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const aspectRatioDemos: Demo[] = [
+4 < 2   { id: 'wide', render: () => (
+5 < 2       <div style={{ maxWidth: 320 }}>
+6 < 2         <AspectRatio ratio={16 / 9}>
+7 < 2           <div
+8 < 2             style={{
+9 < 2               width: '100%',
+10 < 2               height: '100%',
+11 < 2               display: 'flex',
+12 < 2               alignItems: 'center',
+13 < 2               justifyContent: 'center',
+14 < 2               background: 'var(--purple)',
+15 < 2               color: 'var(--on-accent)',
+16 < 2               fontWeight: 900,
+17 < 2               fontSize: 14,
+18 < 2             }}
+19 < 2           >
+20 < 2             16:9 container
+21 < 2           </div>
+22 < 2         </AspectRatio>
+23 < 2       </div>
+24 < 2     ) },
+25 < 2   { id: 'square', render: () => (
+26 < 2       <div style={{ maxWidth: 200 }}>
+27 < 2         <AspectRatio ratio={1}>
+28 < 2           <div
+29 < 2             style={{
+30 < 2               width: '100%',
+31 < 2               height: '100%',
+32 < 2               display: 'flex',
+33 < 2               alignItems: 'center',
+34 < 2               justifyContent: 'center',
+35 < 2               background: 'var(--mint)',
+36 < 2               color: 'var(--on-accent)',
+37 < 2               fontWeight: 900,
+38 < 2               fontSize: 14,
+39 < 2             }}
+40 < 2           >
+41 < 2             1:1 container
+42 < 2           </div>
+43 < 2         </AspectRatio>
+44 < 2       </div>
+45 < 2     ) },
+46 < 2 ]
+47 < 2 

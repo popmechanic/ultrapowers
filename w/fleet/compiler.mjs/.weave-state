@@ -1,0 +1,205 @@
+0 < 1 /**
+1 < 1  * fleet/compiler.mjs — fetching and running the plan checker and parser at the
+2 < 1  * engine sha, for the launch. Moved out of `launch.mjs` (#1277).
+3 < 1  */
+4 < 1 import fsp from 'node:fs/promises'
+5 < 1 import os from 'node:os'
+6 < 1 import path from 'node:path'
+7 < 1 
+8 < 1 import { ENGINE_REPO, Refusal, git, output } from './lobby.mjs'
+9 < 1 
+10 < 1 /**
+11 < 1  * The check's and the parser's paths inside the engine tree, at every sha —
+12 < 1  * never resolved against this checkout. The copies a launch runs are the ones
+13 < 1  * it fetches at `engine=`; see `fetchCompilerAt`. `plan_parse.py` is the file
+14 < 1  * the sandbox runs, and `plan_check.py` imports it from its own directory, so
+15 < 1  * the two are fetched together and land side by side. For a stories-v1 plan
+16 < 1  * both of them import `stories_parse.py`, `stories_check.py` and
+17 < 1  * `probe_block.py` (`STORIES_RELS`, below) from that same directory, so those
+18 < 1  * three are fetched beside the first two only when the caller says `stories:
+19 < 1  * true` — a claims-v1 launch never asks for them.
+20 < 1  */
+21 < 1 const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
+22 < 1 const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
+23 < 1 
+24 < 1 /**
+25 < 1  * `plan_check.py` and `plan_parse.py` import these three for a stories-v1
+26 < 1  * plan (the stories grammar's own parse and check, and the `Run:` probe
+27 < 1  * reader), so all five are fetched beside each other or a stories-v1 launch
+28 < 1  * would compile against a directory missing an import.
+29 < 1  */
+30 < 1 const STORIES_RELS = ['stories_parse.py', 'stories_check.py', 'probe_block.py']
+31 < 1   .map((f) => `skills/ultrapowers/scripts/${f}`)
+32 < 1 
+33 < 1 /**
+34 < 1  * What the launch's check and parse run: `plan_check.py` and `plan_parse.py`
+35 < 1  * AT THE ENGINE SHA, in a directory of their own.
+36 < 1  *
+37 < 1  * The trap this closes (run-26, 2026-09-17): the launcher used to run the
+38 < 1  * compiler of the plugin build it was invoked from, while the sandbox's
+39 < 1  * preflight runs the engine checkout cloned at `engine=`. A plan that compiled
+40 < 1  * `PLAN OK` on the laptop was refused an hour later by a compile rule that had
+41 < 1  * landed on main after the installed build — the two compilers were different
+42 < 1  * files. Fetching the engine's own copy makes the laptop's verdict the
+43 < 1  * sandbox's verdict by construction.
+44 < 1  *
+45 < 1  * Two reads, in order, both through the exec seam:
+46 < 1  *
+47 < 1  *   1. `git -C <pluginRoot> show <engine>:<path>` — free, offline, and right
+48 < 1  *      whenever the checkout has the sha;
+49 < 1  *   2. `gh api -H 'Accept: application/vnd.github.raw' repos/<ENGINE_REPO>/
+50 < 1  *      contents/<path>?ref=<engine>` — the raw media type makes stdout the
+51 < 1  *      file body.
+52 < 1  *
+53 < 1  * A read that exits non-zero OR prints an empty stdout has not answered a
+54 < 1  * file, so the second is tried; when neither answers, this is a `Refusal`
+55 < 1  * naming the sha — never a fall back to the copy beside this file, because
+56 < 1  * that copy is the bug.
+57 < 1  *
+58 < 1  * Two files are fetched for every plan, and three more (`STORIES_RELS`) when
+59 < 1  * the caller passes `stories: true` — the plan's own grammar line, read by
+60 < 1  * the caller before this is called — since `plan_check.py`/`plan_parse.py`
+61 < 1  * import them only for that grammar; all five import only the standard
+62 < 1  * library and each other. Copies under `os.tmpdir()`, at their real depth,
+63 < 1  * read the plan, its gate record and the `--base` tree exactly as the cache
+64 < 1  * copies do.
+65 < 1  *
+66 < 1  * Answers `{ dir, scriptPath, parserPath, source }`: `dir` is what the caller
+67 < 1  * removes, `scriptPath` is `plan_check.py`, `parserPath` is `plan_parse.py`,
+68 < 1  * `source` is `git-show` or `gh-api` (the check's).
+69 < 1  */
+70 < 1 export async function fetchCompilerAt ({ exec, engine, pluginRoot, stories = false }) {
+71 < 1   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
+72 < 1   const fetchOne = async (rel) => {
+73 < 1     const tried = []
+74 < 1     for (const attempt of [
+75 < 1       { source: 'git-show', read: () => git(exec, pluginRoot, ['show', `${engine}:${rel}`]) },
+76 < 1       {
+77 < 1         source: 'gh-api',
+78 < 1         read: () => exec('gh', [
+79 < 1           'api', '-H', 'Accept: application/vnd.github.raw',
+80 < 1           `repos/${ENGINE_REPO}/contents/${rel}?ref=${engine}`
+81 < 1         ])
+82 < 1       }
+83 < 1     ]) {
+84 < 1       const res = await attempt.read()
+85 < 1       const body = String(res.stdout ?? '')
+86 < 1       if (res.code === 0 && body !== '') {
+87 < 1         const filePath = path.join(dir, rel)
+88 < 1         await fsp.mkdir(path.dirname(filePath), { recursive: true })
+89 < 1         await fsp.writeFile(filePath, body)
+90 < 1         return { filePath, source: attempt.source }
+91 < 1       }
+92 < 1       tried.push(`  ${attempt.source}: exit ${res.code}${output(res) === '' ? ' (no output)' : `\n${output(res)}`}`)
+93 < 1     }
+94 < 1     throw new Refusal(
+95 < 1       `launch: could not fetch ${rel} at engine ${engine} — the launch reads the plan with the ` +
+96 < 1       'parser the sandbox will use or it does not launch:\n' + tried.join('\n')
+97 < 1     )
+98 < 1   }
+99 < 1   try {
+100 < 1     const parser = await fetchOne(PARSER_REL)
+101 < 1     const checker = await fetchOne(CHECKER_REL)
+102 < 1     if (stories) for (const rel of STORIES_RELS) await fetchOne(rel)
+104 > 1     return { dir, scriptPath: checker.filePath, parserPath: parser.filePath }
+103 < 2     return { dir, scriptPath: checker.filePath, parserPath: parser.filePath, source: checker.source }
+104 < 1   } catch (error) {
+105 < 1     await fsp.rm(dir, { recursive: true, force: true })
+106 < 1     throw error
+107 < 1   }
+108 < 1 }
+109 < 1 
+110 < 1 /**
+111 < 1  * Neither compile has a compiler of its own to fall back on: a caller that
+112 < 1  * names none is refused before any subprocess, rather than quietly compiling
+113 < 1  * with whatever copy happens to sit beside this file.
+114 < 1  */
+115 < 1 const requireCompilerPath = (compilerPath, which) => {
+116 < 1   if (typeof compilerPath === 'string' && compilerPath !== '') return
+117 < 1   throw new Refusal(
+118 < 1     `launch: ${which} was asked for without a compilerPath — the copy fetched at ` +
+119 < 1     'engine= is the only one a launch runs (fetchCompilerAt)'
+120 < 1   )
+121 < 1 }
+122 < 1 
+123 < 1 /**
+124 < 1  * The plan compiles against the tree at `--base`, or it is a refusal — before
+125 < 1  * any lobby verb, any push, any `ls-remote`. The read is
+126 < 1  * `plan_check.py --base <base> <plan>` — the gate record and what the tree
+127 < 1  * at BASE says about the plan. A non-zero exit is a refusal carrying the compiler's
+128 < 1  * text verbatim — including a `STALE fact:` line for a Stale-if predicate
+129 < 1  * that holds at BASE, which is what the operator reads on the laptop; the
+130 < 1  * `STALE fact:`, `GREEN-AT-BASE fact:`
+131 < 1  * and `AUTHORING fact:` lines of a clean check ride the result so the launch line prints them,
+132 < 1  * in the order the compiler printed them (a `STALE fact:` there is the
+133 < 1  * advisory kind: a predicate the compiler could not read at BASE, never a
+134 < 1  * refusal; a `GREEN-AT-BASE fact:` line is a Proof `Run:` line the compiler
+135 < 1  * found already green at BASE, plus the one line totalling what those runs
+136 < 1  * cost — this release every one of them is a fact and the compile still
+137 < 1  * exits 0, so dropping them on the laptop is the only way the operator
+138 < 1  * could fail to read them; the `AUTHORING fact:` line is what the plan's
+139 < 1  * authoring cost, or `AUTHORING fact: none recorded` when the gate record
+140 < 1  * carries none).
+141 < 1  *
+142 < 1  * The compiler runs through the exec seam like every other subprocess, so a sim
+143 < 1  * that answers `python3` decides what the compiler said. `compilerPath` is the
+144 < 1  * file `fetchCompilerAt` wrote and is required: there is no default, because a
+145 < 1  * default is how a launch ends up compiling with a compiler the sandbox does
+146 < 1  * not have.
+147 < 1  */
+148 < 1 export async function verifyPlanCompiles ({ exec, repoDir, base, planPath, planText, compilerPath }) {
+149 < 1   requireCompilerPath(compilerPath, 'plan_check.py')
+150 < 1   const res = await exec('python3', [compilerPath, '--base', base, '--repo', repoDir, planPath], { cwd: repoDir })
+151 < 1   if (res.code !== 0) {
+152 < 1     throw new Refusal(
+153 < 1       `launch: plan_check.py --base ${base} refused ${planPath} (exit ${res.code}):\n${output(res)}`
+154 < 1     )
+155 < 1   }
+156 < 1   return String(res.stdout ?? '').split('\n').filter(
+157 < 1     (line) =>
+158 < 1       line.startsWith('STALE fact:') ||
+159 < 1       line.startsWith('GREEN-AT-BASE fact:') ||
+160 < 1       line.startsWith('AUTHORING fact:')
+161 < 1   )
+162 < 1 }
+163 < 1 
+164 < 1 /**
+165 < 1  * The launch's parse: `plan_parse.py <plan>` — the sandbox's own parser, so
+167 > 1  * what the laptop sizes the box from is what the engine will read. Read by
+168 < 1  * everything that needs to know what the plan IS: its `width` (the most tasks
+169 < 1  * ready at once, which the VM is sized to), its tasks' probes and its checks.
+170 < 1  * `stamp` names the run the parse was made for and nothing in the parse
+171 < 1  * itself: the output is the same under every number.
+166 < 2  * what the laptop sizes the box from is what the engine will read. Run once
+167 < 2  * per run number the launch attempts and read by everything that needs to know
+168 < 2  * what the plan IS: how wide its widest wave is (which is what the VM is sized
+169 < 2  * to and what the engine's dispatch bound becomes), and the tasks and edges the
+170 < 2  * hub is filed with. `stamp` names the run the parse was made for and nothing
+171 < 2  * in the parse itself: the output is the same under every number.
+172 < 1  *
+174 > 1  * Answers `{ stamp, payload }`. `compilerPath` is
+173 < 2  * Answers `{ stamp, payload, waves, edges }`. `compilerPath` is
+174 < 1  * `fetchCompilerAt`'s `parserPath` and is required, for the reason
+175 < 1  * `verifyPlanCompiles` gives.
+176 < 1  */
+177 < 1 export async function compilePlanForRun ({ exec, repoDir, planPath, stamp, compilerPath }) {
+178 < 1   requireCompilerPath(compilerPath, `plan_parse.py for ${stamp}`)
+179 < 1   const res = await exec('python3', [compilerPath, planPath], { cwd: repoDir })
+180 < 1   if (res.code !== 0) {
+181 < 1     throw new Refusal(`launch: plan_parse.py for ${stamp} failed (exit ${res.code}):\n${output(res)}`)
+182 < 1   }
+183 < 1   let payload
+184 < 1   try {
+185 < 1     payload = JSON.parse(String(res.stdout ?? ''))
+186 < 1   } catch (error) {
+187 < 1     throw new Refusal(`launch: plan_parse.py for ${stamp} printed no JSON: ${error?.message ?? error}`)
+188 < 1   }
+190 > 1   return { stamp, payload }
+189 < 2   return {
+190 < 2     stamp,
+191 < 2     payload,
+192 < 2     waves: Array.isArray(payload?.launch_waves) ? payload.launch_waves : [],
+193 < 2     edges: Array.isArray(payload?.dag_edges) ? payload.dag_edges : []
+194 < 2   }
+195 < 1 }
+196 < 1 

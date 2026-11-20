@@ -1,0 +1,164 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card, RowCard } from '../surface'
+2 < 2 import { Stack, Row } from '../layout'
+3 < 2 import { Text, Eyebrow } from '../text'
+4 < 2 import { Metric } from '../readout'
+5 < 2 import { Blob, Badge } from '../media'
+6 < 2 import { Segmented } from '../Segmented'
+7 < 2 import { Icon } from '../Icon'
+8 < 2 
+9 < 2 const CITIES = [
+10 < 2   {
+11 < 2     id: 'lisbon',
+12 < 2     name: 'Lisbon',
+13 < 2     humidity: '41%',
+14 < 2     wind: '12 km/h',
+15 < 2     uv: 'High',
+16 < 2     forecast: [
+17 < 2       { day: 'Mon', hi: 24, lo: 16, icon: 'sun', tone: 'yellow' as const, condition: 'Sunny' },
+18 < 2       { day: 'Tue', hi: 21, lo: 15, icon: 'cloud', tone: 'blue' as const, condition: 'Cloudy' },
+19 < 2       { day: 'Wed', hi: 19, lo: 14, icon: 'rain', tone: 'blue' as const, condition: 'Showers' },
+20 < 2       { day: 'Thu', hi: 23, lo: 15, icon: 'sun', tone: 'yellow' as const, condition: 'Sunny' },
+21 < 2       { day: 'Fri', hi: 26, lo: 17, icon: 'sun', tone: 'orange' as const, condition: 'Hot & sunny' },
+22 < 2     ],
+23 < 2   },
+24 < 2   {
+25 < 2     id: 'oslo',
+26 < 2     name: 'Oslo',
+27 < 2     humidity: '68%',
+28 < 2     wind: '18 km/h',
+29 < 2     uv: 'Low',
+30 < 2     forecast: [
+31 < 2       { day: 'Mon', hi: 9, lo: 3, icon: 'cloud', tone: 'blue' as const, condition: 'Overcast' },
+32 < 2       { day: 'Tue', hi: 7, lo: 2, icon: 'rain', tone: 'blue' as const, condition: 'Rain' },
+33 < 2       { day: 'Wed', hi: 11, lo: 4, icon: 'sun', tone: 'yellow' as const, condition: 'Clear' },
+34 < 2       { day: 'Thu', hi: 8, lo: 1, icon: 'cloud', tone: 'blue' as const, condition: 'Windy' },
+35 < 2       { day: 'Fri', hi: 10, lo: 3, icon: 'rain', tone: 'blue' as const, condition: 'Showers' },
+36 < 2     ],
+37 < 2   },
+38 < 2   {
+39 < 2     id: 'dubai',
+40 < 2     name: 'Dubai',
+41 < 2     humidity: '55%',
+42 < 2     wind: '9 km/h',
+43 < 2     uv: 'Extreme',
+44 < 2     forecast: [
+45 < 2       { day: 'Mon', hi: 41, lo: 29, icon: 'sun', tone: 'orange' as const, condition: 'Scorching' },
+46 < 2       { day: 'Tue', hi: 40, lo: 28, icon: 'sun', tone: 'orange' as const, condition: 'Sunny' },
+47 < 2       { day: 'Wed', hi: 39, lo: 27, icon: 'sun', tone: 'yellow' as const, condition: 'Hazy sun' },
+48 < 2       { day: 'Thu', hi: 42, lo: 30, icon: 'sun', tone: 'orange' as const, condition: 'Scorching' },
+49 < 2       { day: 'Fri', hi: 38, lo: 27, icon: 'cloud', tone: 'blue' as const, condition: 'Dusty' },
+50 < 2     ],
+51 < 2   },
+52 < 2 ]
+53 < 2 
+54 < 2 const HOUR_LABELS = ['6am', '9am', 'Noon', '3pm', '6pm', '9pm']
+55 < 2 // Fraction of the day's hi/lo spread at each label — a plausible-looking curve
+56 < 2 // without hand-authoring per-hour data for every city and day.
+57 < 2 const HOUR_CURVE = [0.1, 0.5, 0.9, 1, 0.65, 0.25]
+58 < 2 
+59 < 2 function hoursFor(day: { hi: number; lo: number; icon: string }) {
+60 < 2   return HOUR_LABELS.map((t, i) => ({
+61 < 2     t,
+62 < 2     temp: Math.round(day.lo + (day.hi - day.lo) * HOUR_CURVE[i]!),
+63 < 2     // Night bookends read cloudier than the daytime icon, even on a sunny day.
+64 < 2     icon: i === 0 || i === HOUR_LABELS.length - 1 ? (day.icon === 'sun' ? 'cloud' : day.icon) : day.icon,
+65 < 2   }))
+66 < 2 }
+67 < 2 
+68 < 2 const toF = (c: number) => Math.round((c * 9) / 5 + 32)
+69 < 2 
+70 < 2 /** An example weather widget: a city and unit picker, current conditions, an
+71 < 2  * hourly strip, and a five-day forecast. Picking a city swaps every figure on
+72 < 2  * the card; picking a forecast day re-centres the conditions and hourly strip
+73 < 2  * on that day instead of today. */
+74 < 2 export function WeatherBlock() {
+75 < 2   const [unit, setUnit] = useState('c')
+76 < 2   const [cityId, setCityId] = useState(CITIES[0]!.id)
+77 < 2   const [dayIndex, setDayIndex] = useState(0)
+78 < 2 
+79 < 2   const city = CITIES.find((c) => c.id === cityId)!
+80 < 2   const day = city.forecast[dayIndex]!
+81 < 2   const hours = hoursFor(day)
+82 < 2   const t = (c: number) => (unit === 'f' ? `${toF(c)}°` : `${c}°`)
+83 < 2 
+84 < 2   return (
+85 < 2     <div style={{ maxWidth: 480, margin: '0 auto', padding: 24 }}>
+86 < 2       <Stack gap={4}>
+87 < 2         <Card>
+88 < 2           <Stack gap={5}>
+89 < 2             <Row justify="between" align="top">
+90 < 2               <Stack gap={1}>
+91 < 2                 <Row gap={2} wrap={false}>
+92 < 2                   <Icon name="pin" size="sm" />
+93 < 2                   <Eyebrow>{city.name}</Eyebrow>
+94 < 2                 </Row>
+95 < 2                 <Row gap={3} wrap={false}>
+96 < 2                   <Blob icon={day.icon as never} tone={day.tone} />
+97 < 2                   <span style={{ fontSize: 60, fontWeight: 900, letterSpacing: -3, color: 'var(--ink)', lineHeight: 1 }}>{t(day.hi)}</span>
+98 < 2                 </Row>
+99 < 2                 <Text muted>{dayIndex === 0 ? 'Now' : day.day} — {day.condition}, low {t(day.lo)}</Text>
+100 < 2               </Stack>
+101 < 2               <Stack gap={2}>
+102 < 2                 <Segmented label="City" value={cityId} onChange={setCityId} options={CITIES.map((c) => ({ value: c.id, label: c.name }))} />
+103 < 2                 <Segmented
+104 < 2                   label="Units"
+105 < 2                   value={unit}
+106 < 2                   onChange={setUnit}
+107 < 2                   options={[{ value: 'c', label: '°C' }, { value: 'f', label: '°F' }]}
+108 < 2                 />
+109 < 2               </Stack>
+110 < 2             </Row>
+111 < 2 
+112 < 2             <Row gap={3}>
+113 < 2               <Metric label="Humidity" value={city.humidity} />
+114 < 2               <Metric label="Wind" value={city.wind} />
+115 < 2               <Metric label="UV index" value={city.uv} num={false} />
+116 < 2             </Row>
+117 < 2           </Stack>
+118 < 2         </Card>
+119 < 2 
+120 < 2         <Card variant="tight">
+121 < 2           <Stack gap={3}>
+122 < 2             <Eyebrow>Hourly — {dayIndex === 0 ? 'today' : day.day}</Eyebrow>
+123 < 2             <Row gap={2}>
+124 < 2               {hours.map((h) => (
+125 < 2                 <Stack key={h.t} gap={2}>
+126 < 2                   <Text size="sm" muted>{h.t}</Text>
+127 < 2                   <Row justify="center"><Icon name={h.icon as never} /></Row>
+128 < 2                   <Row justify="center"><Text num>{t(h.temp)}</Text></Row>
+129 < 2                 </Stack>
+130 < 2               ))}
+131 < 2             </Row>
+132 < 2           </Stack>
+133 < 2         </Card>
+134 < 2 
+135 < 2         <Card variant="tight">
+136 < 2           <Stack gap={3}>
+137 < 2             <Row justify="between">
+138 < 2               <Eyebrow>5-day forecast</Eyebrow>
+139 < 2               {dayIndex > 0 && <Badge tone="blue">Viewing {day.day}</Badge>}
+140 < 2             </Row>
+141 < 2             <Stack gap={2}>
+142 < 2               {city.forecast.map((f, i) => (
+143 < 2                 <RowCard key={f.day} selected={i === dayIndex} onClick={() => setDayIndex(i)}>
+144 < 2                   <Row justify="between" wrap={false}>
+145 < 2                     <Row gap={3} wrap={false}>
+146 < 2                       <Blob icon={f.icon as never} tone={f.tone} size="sm" />
+147 < 2                       <Text>{f.day}</Text>
+148 < 2                     </Row>
+149 < 2                     <Row gap={3} wrap={false}>
+150 < 2                       <Text num>{t(f.hi)}</Text>
+151 < 2                       <Text num muted>{t(f.lo)}</Text>
+152 < 2                     </Row>
+153 < 2                   </Row>
+154 < 2                 </RowCard>
+155 < 2               ))}
+156 < 2             </Stack>
+157 < 2           </Stack>
+158 < 2         </Card>
+159 < 2       </Stack>
+160 < 2     </div>
+161 < 2   )
+162 < 2 }
+163 < 2 

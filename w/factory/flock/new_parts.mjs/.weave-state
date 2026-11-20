@@ -1,0 +1,24 @@
+0 < 1 // The screen parts a run added (#1491): the lines of a TinyApp's client/src/screens/draws.json
+1 < 1 // in the landed snapshot that its base did not have, each with the role it draws and the props
+2 < 1 // that name it, for the PR's `### New screen parts`. Pure; text that is not a parts list adds nothing.
+3 < 1 export const DRAWS = 'client/src/screens/draws.json'
+4 < 1 
+5 < 1 function partsOf (text) {
+6 < 1   if (typeof text !== 'string') return {}
+7 < 1   try {
+8 < 1     const p = JSON.parse(text).parts
+9 < 1     return p && typeof p === 'object' && !Array.isArray(p) ? p : {}
+10 < 1   } catch { return {} }
+11 < 1 }
+12 < 1 
+13 < 1 export function newParts (baseText, landedText) {
+14 < 1   const before = partsOf(baseText)
+15 < 1   return Object.entries(partsOf(landedText))
+16 < 1     .filter(([name]) => !(name in before))
+17 < 1     .map(([name, line]) => ({
+18 < 1       part: name,
+19 < 1       role: line && typeof line.role === 'string' ? line.role : null,
+20 < 1       name: line && Array.isArray(line.name) ? line.name.map(String) : []
+21 < 1     }))
+22 < 1 }
+23 < 1 

@@ -1,0 +1,264 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Navbar } from '../navbar'
+2 < 2 import { Footer } from '../footer'
+3 < 2 import { CTA } from '../cta'
+4 < 2 import { Card } from '../surface'
+5 < 2 import { Stack, Row, Grid } from '../layout'
+6 < 2 import { Heading, Text, Eyebrow, Highlight } from '../text'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Blob, Badge } from '../media'
+9 < 2 import { Segmented } from '../Segmented'
+10 < 2 import { Icon } from '../Icon'
+11 < 2 
+12 < 2 const brand = (<><Blob icon="target" tone="purple" size="sm" />Nimbus</>)
+13 < 2 
+14 < 2 const FEATURES = [
+15 < 2   { icon: 'live', tone: 'yellow', title: 'Fast by default', body: 'Ships in milliseconds, scales to millions. No config required.' },
+16 < 2   { icon: 'lock', tone: 'mint', title: 'Secure', body: 'End-to-end encryption and SSO on every plan.' },
+17 < 2   { icon: 'sparkle', tone: 'pink', title: 'Delightful', body: 'The details your team will actually enjoy using.' },
+18 < 2 ] as const
+19 < 2 
+20 < 2 const PLANS = [
+21 < 2   {
+22 < 2     name: 'Starter',
+23 < 2     monthly: 0,
+24 < 2     description: 'For prototypes and tiny teams.',
+25 < 2     tone: 'blue',
+26 < 2     featured: false,
+27 < 2     features: ['3 projects', 'Community support', 'Preview deployments'],
+28 < 2   },
+29 < 2   {
+30 < 2     name: 'Scale',
+31 < 2     monthly: 24,
+32 < 2     description: 'For teams shipping every week.',
+33 < 2     tone: 'purple',
+34 < 2     featured: true,
+35 < 2     features: ['Unlimited projects', 'Team permissions', 'Priority support'],
+36 < 2   },
+37 < 2   {
+38 < 2     name: 'Company',
+39 < 2     monthly: 68,
+40 < 2     description: 'For growing organizations.',
+41 < 2     tone: 'mint',
+42 < 2     featured: false,
+43 < 2     features: ['SAML SSO', 'Audit logs', 'Dedicated success lead'],
+44 < 2   },
+45 < 2 ] as const
+46 < 2 
+47 < 2 type Billing = 'monthly' | 'annual'
+48 < 2 
+49 < 2 /** A complete marketing route: responsive navbar and footer, hero, product
+50 < 2  * proof, feature and pricing sections, working annual billing, and CTAs that
+51 < 2  * navigate to real sections instead of dead `#` links. */
+52 < 2 export function LandingBlock() {
+53 < 2   const [billing, setBilling] = useState<Billing>('monthly')
+54 < 2 
+55 < 2   function scrollTo(id: string) {
+56 < 2     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+57 < 2     document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' })
+58 < 2   }
+59 < 2 
+60 < 2   return (
+61 < 2     <div className="max-w-[1120px] mx-auto p-(--s5) max-[620px]:p-(--s3)">
+62 < 2       <Stack gap={6}>
+63 < 2         <Navbar
+64 < 2           brand={brand}
+65 < 2           links={[
+66 < 2             { label: 'Features', href: '#features', active: true },
+67 < 2             { label: 'Pricing', href: '#pricing' },
+68 < 2             { label: 'Customers', href: '#customers' },
+69 < 2           ]}
+70 < 2           actions={
+71 < 2             <Button size="sm" onClick={() => scrollTo('pricing')}>Start free</Button>
+72 < 2           }
+73 < 2         />
+74 < 2 
+75 < 2         <Grid cols="sidebar" gap={5}>
+76 < 2           <Stack gap={4}>
+77 < 2             <Badge tone="yellow">New — global edge network</Badge>
+78 < 2             <Heading level={1}>Ship <Highlight>faster</Highlight>, sleep better.</Heading>
+79 < 2             <Text muted>
+80 < 2               The deployment platform for teams that care about speed without
+81 < 2               wanting another infrastructure hobby.
+82 < 2             </Text>
+83 < 2             <Row gap={2}>
+84 < 2               <Button size="lg" onClick={() => scrollTo('pricing')}>Start free</Button>
+85 < 2               <Button size="lg" variant="quiet" onClick={() => scrollTo('customers')}>
+86 < 2                 See customer results
+87 < 2               </Button>
+88 < 2             </Row>
+89 < 2             <Text size="sm" muted>No credit card · Deploy your first project in two minutes</Text>
+90 < 2           </Stack>
+91 < 2 
+92 < 2           <Card>
+93 < 2             <Stack gap={4}>
+94 < 2               <Row justify="between">
+95 < 2                 <Stack gap={1}>
+96 < 2                   <Eyebrow>Production</Eyebrow>
+97 < 2                   <Heading level={3}>nimbus-app</Heading>
+98 < 2                 </Stack>
+99 < 2                 <Badge tone="mint">Live</Badge>
+100 < 2               </Row>
+101 < 2               <Grid cols={2}>
+102 < 2                 <Stack gap={1}>
+103 < 2                   <Text size="sm" muted>Deploy</Text>
+104 < 2                   <Text num>8.2s</Text>
+105 < 2                 </Stack>
+106 < 2                 <Stack gap={1}>
+107 < 2                   <Text size="sm" muted>Regions</Text>
+108 < 2                   <Text num>34</Text>
+109 < 2                 </Stack>
+110 < 2                 <Stack gap={1}>
+111 < 2                   <Text size="sm" muted>Uptime</Text>
+112 < 2                   <Text num>99.99%</Text>
+113 < 2                 </Stack>
+114 < 2                 <Stack gap={1}>
+115 < 2                   <Text size="sm" muted>Requests</Text>
+116 < 2                   <Text num>1.8M</Text>
+117 < 2                 </Stack>
+118 < 2               </Grid>
+119 < 2               <Row gap={2} wrap={false}>
+120 < 2                 <Blob icon="ok" tone="mint" size="sm" />
+121 < 2                 <Text size="sm">Deployed from main 26 seconds ago</Text>
+122 < 2               </Row>
+123 < 2             </Stack>
+124 < 2           </Card>
+125 < 2         </Grid>
+126 < 2 
+127 < 2         <section id="features">
+128 < 2           <Stack gap={4}>
+129 < 2             <Stack gap={1}>
+130 < 2               <Eyebrow>One calm platform</Eyebrow>
+131 < 2               <Heading level={2}>Everything between push and production</Heading>
+132 < 2               <Text muted>Preview, review, deploy, observe, and roll back from one place.</Text>
+133 < 2             </Stack>
+134 < 2             <Grid cols={3}>
+135 < 2               {FEATURES.map((f, index) => (
+136 < 2                 <Card key={f.title} motion={index % 2 === 0 ? 'tilt-left' : 'tilt-right'}>
+137 < 2                   <Stack gap={3}>
+138 < 2                     <Blob icon={f.icon} tone={f.tone} />
+139 < 2                     <Heading level={3}>{f.title}</Heading>
+140 < 2                     <Text size="sm" muted>{f.body}</Text>
+141 < 2                   </Stack>
+142 < 2                 </Card>
+143 < 2               ))}
+144 < 2             </Grid>
+145 < 2           </Stack>
+146 < 2         </section>
+147 < 2 
+148 < 2         <section id="customers">
+149 < 2           <Card>
+150 < 2             <Grid cols="sidebar">
+151 < 2               <Stack gap={3}>
+152 < 2                 <Eyebrow>Customer story</Eyebrow>
+153 < 2                 <Heading level={2}>From Friday freezes to daily shipping.</Heading>
+154 < 2                 <Text muted>
+155 < 2                   “Nimbus cut our deploy pipeline from 22 minutes to under one.
+156 < 2                   The team stopped scheduling releases and started shipping.”
+157 < 2                 </Text>
+158 < 2                 <Text size="sm">Maya Bloom · VP Engineering at Orbit</Text>
+159 < 2               </Stack>
+160 < 2               <Stack gap={3}>
+161 < 2                 <Row gap={2} wrap={false}>
+162 < 2                   <Blob icon="up" tone="mint" size="sm" />
+163 < 2                   <Stack gap={1}>
+164 < 2                     <Text num>18×</Text>
+165 < 2                     <Text size="sm" muted>more deployments</Text>
+166 < 2                   </Stack>
+167 < 2                 </Row>
+168 < 2                 <Row gap={2} wrap={false}>
+169 < 2                   <Blob icon="down" tone="blue" size="sm" />
+170 < 2                   <Stack gap={1}>
+171 < 2                     <Text num>41%</Text>
+172 < 2                     <Text size="sm" muted>lower infra spend</Text>
+173 < 2                   </Stack>
+174 < 2                 </Row>
+175 < 2               </Stack>
+176 < 2             </Grid>
+177 < 2           </Card>
+178 < 2         </section>
+179 < 2 
+180 < 2         <section id="pricing">
+181 < 2           <Stack gap={4}>
+182 < 2             <Row justify="between" align="top">
+183 < 2               <Stack gap={1}>
+184 < 2                 <Eyebrow>Simple pricing</Eyebrow>
+185 < 2                 <Heading level={2}>Start small. Keep your options.</Heading>
+186 < 2                 <Text muted>Every plan includes global deploys, previews, and analytics.</Text>
+187 < 2               </Stack>
+188 < 2               <Segmented
+189 < 2                 label="Billing period"
+190 < 2                 value={billing}
+191 < 2                 onChange={setBilling}
+192 < 2                 options={[
+193 < 2                   { value: 'monthly', label: 'Monthly' },
+194 < 2                   { value: 'annual', label: 'Annual · save 20%' },
+195 < 2                 ]}
+196 < 2               />
+197 < 2             </Row>
+198 < 2 
+199 < 2             <Grid cols={3}>
+200 < 2               {PLANS.map((plan) => {
+201 < 2                 const price = billing === 'annual'
+202 < 2                   ? Math.round(plan.monthly * 0.8)
+203 < 2                   : plan.monthly
+204 < 2                 return (
+205 < 2                   <Card key={plan.name}>
+206 < 2                     <Stack gap={4}>
+207 < 2                       <Row justify="between">
+208 < 2                         <Heading level={3}>{plan.name}</Heading>
+209 < 2                         {plan.featured ? <Badge tone="yellow">Most popular</Badge> : null}
+210 < 2                       </Row>
+211 < 2                       <Stack gap={1}>
+212 < 2                         <Heading level={2}>{price === 0 ? 'Free' : `$${price}`}</Heading>
+213 < 2                         <Text size="sm" muted>
+214 < 2                           {price === 0 ? 'forever' : `per seat / month, billed ${billing}`}
+215 < 2                         </Text>
+216 < 2                       </Stack>
+217 < 2                       <Text size="sm" muted>{plan.description}</Text>
+218 < 2                       <Stack gap={2}>
+219 < 2                         {plan.features.map((feature) => (
+220 < 2                           <Row key={feature} gap={2} wrap={false}>
+221 < 2                             <Icon name="ok" size="sm" />
+222 < 2                             <Text size="sm">{feature}</Text>
+223 < 2                           </Row>
+224 < 2                         ))}
+225 < 2                       </Stack>
+226 < 2                       <Button block tone={plan.tone}>
+227 < 2                         {plan.monthly === 0 ? 'Create workspace' : `Choose ${plan.name}`}
+228 < 2                       </Button>
+229 < 2                     </Stack>
+230 < 2                   </Card>
+231 < 2                 )
+232 < 2               })}
+233 < 2             </Grid>
+234 < 2           </Stack>
+235 < 2         </section>
+236 < 2 
+237 < 2         <CTA
+238 < 2           tone="purple"
+239 < 2           title="Ready when you are."
+240 < 2           description="Join 4,000+ teams that deploy on Nimbus every day."
+241 < 2           action={
+242 < 2             <>
+243 < 2               <Button size="lg" onClick={() => scrollTo('pricing')}>Get started</Button>
+244 < 2               <Button size="lg" variant="quiet" onClick={() => scrollTo('customers')}>Read the story</Button>
+245 < 2             </>
+246 < 2           }
+247 < 2         />
+248 < 2 
+249 < 2         <Footer
+250 < 2           brand={brand}
+251 < 2           tagline="The platform your team ships on."
+252 < 2           columns={[
+253 < 2             { title: 'Product', links: [{ label: 'Features', href: '#features' }, { label: 'Pricing', href: '#pricing' }, { label: 'Customers', href: '#customers' }] },
+254 < 2             { title: 'Company', links: [{ label: 'About', href: '#customers' }, { label: 'Blog', href: '#customers' }, { label: 'Careers', href: '#customers' }] },
+255 < 2             { title: 'Legal', links: [{ label: 'Privacy', href: '#pricing' }, { label: 'Terms', href: '#pricing' }] },
+256 < 2           ]}
+257 < 2           note="© 2026 Nimbus, Inc. Replace the sample links and plan actions with your routes and billing adapter."
+258 < 2         />
+259 < 2       </Stack>
+260 < 2     </div>
+261 < 2   )
+262 < 2 }
+263 < 2 

@@ -73,7 +73,8 @@
 70 < 1 import { defaultReadUsage, defaultRefreshCredential, launch, renderLaunch, USAGE_REFUSE_PCT } from '../launch.mjs'
 71 < 1 import { Refusal, defaultExec } from '../lobby.mjs'
 72 < 1 import {
-73 < 1   HELP_FROM_VERBS, launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
+74 > 1   launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
+73 < 2   HELP_FROM_VERBS, launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 74 < 1 } from './_lobby_helpers.mjs'
 75 < 1 
 76 < 1 // ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
@@ -118,6 +119,13 @@
 115 < 1   const credOther = defaultRefreshCredential('acct', spOther)
 116 < 1   assert.equal(credOther.ok, false, '(b) [M2] ok is false on an unrelated failure')
 117 < 1   assert.equal(credOther.refused, undefined, '(b) [M2] refused is undefined when no refusal line is present')
+119 > 1 
+120 < 1   // no keychain record for the account (a misnamed --account) refuses, naming it — never a skip
+121 < 1   const spNone = spy({ status: 1, stderr: 'no refresh token in the keychain — run `node fleet/claude-token.mjs login` first\n' })
+122 < 1   const credNone = defaultRefreshCredential('acct', spNone)
+123 < 1   assert.equal(credNone.ok, false, '(b) a missing keychain record is not ok')
+124 < 1   assert.ok(typeof credNone.refused === 'string' && credNone.refused.includes('account acct'),
+125 < 1     `(b) a missing keychain record refuses naming the account — got ${JSON.stringify(credNone.refused)}`)
 118 < 1 }
 119 < 1 
 120 < 1 // ── c/d. [M3, M4] launch() driven with a stand-in refreshCredential ─────────
@@ -133,7 +141,8 @@
 130 < 1 
 131 < 1 // `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
 132 < 1 const readRules = ({ repo }) =>
-133 < 1   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH, help: HELP_FROM_VERBS })
+134 > 1   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH })
+133 < 2   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH, help: HELP_FROM_VERBS })
 134 < 1 
 135 < 1 function workspace () {
 136 < 1   const ws = launchWorkspace({ prefix: 'fleet-launch-credential-', originUrl: ORIGIN_URL, evidence: EVIDENCE })

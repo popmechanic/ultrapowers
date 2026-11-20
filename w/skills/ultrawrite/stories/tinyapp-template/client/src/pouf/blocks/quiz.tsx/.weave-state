@@ -1,0 +1,147 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Spacer } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { RadioGroup } from '../radiogroup'
+5 < 2 import { Button } from '../Button'
+6 < 2 import { Progress } from '../progress'
+7 < 2 import { Badge, Blob } from '../media'
+8 < 2 import { Icon } from '../Icon'
+9 < 2 
+10 < 2 const QUESTIONS = [
+11 < 2   {
+12 < 2     q: 'In claymorphism, what signals that a control is interactive?',
+13 < 2     options: [
+14 < 2       { value: 'a', label: 'A bright colour' },
+15 < 2       { value: 'b', label: 'Depth — it looks raised, and presses in' },
+16 < 2       { value: 'c', label: 'An underline' },
+17 < 2     ],
+18 < 2     answer: 'b',
+19 < 2   },
+20 < 2   {
+21 < 2     q: 'Why does 1st-Pouf use ink text on pastel buttons, never white?',
+22 < 2     options: [
+23 < 2       { value: 'a', label: 'White fails WCAG AA on the pastels' },
+24 < 2       { value: 'b', label: 'It looked nicer' },
+25 < 2       { value: 'c', label: 'The reference required it' },
+26 < 2     ],
+27 < 2     answer: 'a',
+28 < 2   },
+29 < 2   {
+30 < 2     q: "What does a Segmented option's pressed-in look mean?",
+31 < 2     options: [
+32 < 2       { value: 'a', label: "It's disabled" },
+33 < 2       { value: 'b', label: "It's the selected option" },
+34 < 2       { value: 'c', label: "It's loading" },
+35 < 2     ],
+36 < 2     answer: 'b',
+37 < 2   },
+38 < 2   {
+39 < 2     q: 'Why do Stack and Row both set min-width: 0?',
+40 < 2     options: [
+41 < 2       { value: 'a', label: 'So every child is forced to a minimum size' },
+42 < 2       { value: 'b', label: "So a child can shrink and truncate instead of overflowing" },
+43 < 2       { value: 'c', label: 'It has no visible effect' },
+44 < 2     ],
+45 < 2     answer: 'b',
+46 < 2   },
+47 < 2   {
+48 < 2     q: "What replaced emoji across 1st-Pouf's icon vocabulary?",
+49 < 2     options: [
+50 < 2       { value: 'a', label: 'A stroked SVG icon set' },
+51 < 2       { value: 'b', label: 'Coloured PNGs' },
+52 < 2       { value: 'c', label: 'Plain Unicode symbols' },
+53 < 2     ],
+54 < 2     answer: 'a',
+55 < 2   },
+56 < 2 ]
+57 < 2 
+58 < 2 /** An example quiz card: progress, five questions, instant right/wrong
+59 < 2  * feedback per answer, and a scored result screen with a per-question recap
+60 < 2  * and a restart. */
+61 < 2 export function QuizBlock() {
+62 < 2   const [step, setStep] = useState(0)
+63 < 2   const [choice, setChoice] = useState('')
+64 < 2   const [revealed, setRevealed] = useState(false)
+65 < 2   const [score, setScore] = useState(0)
+66 < 2   const [history, setHistory] = useState<boolean[]>([])
+67 < 2 
+68 < 2   const current = QUESTIONS[Math.min(step, QUESTIONS.length - 1)]!
+69 < 2   const correct = choice === current.answer
+70 < 2   const pct = ((step + (revealed ? 1 : 0)) / QUESTIONS.length) * 100
+71 < 2   const done = step >= QUESTIONS.length - 1 && revealed
+72 < 2 
+73 < 2   function next() {
+74 < 2     if (!revealed) {
+75 < 2       setRevealed(true)
+76 < 2       setHistory((h) => [...h, correct])
+77 < 2       if (correct) setScore((s) => s + 1)
+78 < 2       return
+79 < 2     }
+80 < 2     setStep((s) => s + 1)
+81 < 2     setChoice('')
+82 < 2     setRevealed(false)
+83 < 2   }
+84 < 2 
+85 < 2   function restart() {
+86 < 2     setStep(0)
+87 < 2     setScore(0)
+88 < 2     setChoice('')
+89 < 2     setRevealed(false)
+90 < 2     setHistory([])
+91 < 2   }
+92 < 2 
+93 < 2   const pctScore = Math.round((score / QUESTIONS.length) * 100)
+94 < 2   const verdict = pctScore === 100 ? 'Perfect score!' : pctScore >= 60 ? 'Nice work' : 'Keep practising'
+95 < 2 
+96 < 2   return (
+97 < 2     <div style={{ maxWidth: 480, margin: '0 auto', padding: 24 }}>
+98 < 2       <Card>
+99 < 2         <Stack gap={5}>
+100 < 2           <Stack gap={2}>
+101 < 2             <Row justify="between">
+102 < 2               <Eyebrow>Question {Math.min(step + 1, QUESTIONS.length)} of {QUESTIONS.length}</Eyebrow>
+103 < 2               <Badge tone="mint">{score} correct</Badge>
+104 < 2             </Row>
+105 < 2             <Progress value={pct} tone="purple" label="Quiz progress" />
+106 < 2           </Stack>
+107 < 2 
+108 < 2           {done ? (
+109 < 2             <Stack gap={4}>
+110 < 2               <Blob icon={pctScore >= 60 ? 'trophy' : 'flame'} tone={pctScore >= 60 ? 'yellow' : 'orange'} />
+111 < 2               <Stack gap={1}>
+112 < 2                 <Heading level={2}>{verdict}</Heading>
+113 < 2                 <Text muted>You scored {score} of {QUESTIONS.length} ({pctScore}%).</Text>
+114 < 2               </Stack>
+115 < 2               <Stack gap={2}>
+116 < 2                 {QUESTIONS.map((question, i) => (
+117 < 2                   <Row key={i} gap={2} wrap={false}>
+118 < 2                     <Icon name={history[i] ? 'ok' : 'fail'} size="sm" />
+119 < 2                     <Text size="sm" muted truncate>{question.q}</Text>
+120 < 2                   </Row>
+121 < 2                 ))}
+122 < 2               </Stack>
+123 < 2               <Button tone="mint" onClick={restart}>Play again</Button>
+124 < 2             </Stack>
+125 < 2           ) : (
+126 < 2             <>
+127 < 2               <Heading level={3}>{current.q}</Heading>
+128 < 2               <RadioGroup label="Answer" value={choice} onChange={setChoice} options={current.options} disabled={revealed} />
+129 < 2               {revealed && (
+130 < 2                 <Row gap={2} wrap={false}>
+131 < 2                   <Icon name={correct ? 'ok' : 'fail'} size="sm" />
+132 < 2                   <Text muted>{correct ? 'Correct!' : `The answer was "${current.options.find((o) => o.value === current.answer)?.label}".`}</Text>
+133 < 2                 </Row>
+134 < 2               )}
+135 < 2               <Row wrap={false}>
+136 < 2                 <Spacer />
+137 < 2                 <Button disabled={!choice} onClick={next}>{revealed ? 'Next' : 'Check'}</Button>
+138 < 2               </Row>
+139 < 2             </>
+140 < 2           )}
+141 < 2         </Stack>
+142 < 2       </Card>
+143 < 2     </div>
+144 < 2   )
+145 < 2 }
+146 < 2 

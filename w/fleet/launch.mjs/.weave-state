@@ -22,7 +22,7 @@
 21 < 1 import {
 22 < 1   COMMENT_MAX_BYTES,
 23 < 1   ENGINE_URL,
-24 < 1   EXE_HOST,
+24 < 2   EXE_HOST,
 25 < 1   FLEET_DEFAULTS,
 26 < 1   FLEET_TAG,
 27 < 1   LobbyError,
@@ -165,15 +165,19 @@
 154 < 1 }
 155 < 1 
 156 < 1 /**
-157 < 1  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
-158 < 1  * W, the task count of the compiled plan's widest wave, `cap` is the
+158 > 1  * The box one plan needs, clamped by the fleet's ceiling. Pure: `width` is
+159 < 1  * W, the parse's `width` (the most tasks ready at once), `cap` is the
+157 < 2  * The box one plan needs, clamped by the fleet's ceiling. Pure: `widestWave` is
+158 < 2  * W, the task count of the compiled plan's widest wave, `cap` is the
 159 < 1  * `cpu`/`memory` pair the laptop's `fleet.json` names (or `FLEET_DEFAULTS`).
 160 < 1  *
 161 < 1  *   cpu    = min(cap.cpu,    2 + ceil(W / 3))
 162 < 1  *   memory = min(cap.memory, 2 + W) GB
 163 < 1  *
-164 < 1  * The two constants of the width formula are the run's own floor: an engine, a
-165 < 1  * fold and a publish live on the box whatever the plan is, and every
+165 > 1  * The two constants of the width formula are the run's own floor: the engine
+166 < 1  * and the publish live on the box whatever the plan is, and every
+164 < 2  * The two constants of the width formula are the run's own floor: an engine, a
+165 < 2  * fold and a publish live on the box whatever the plan is, and every
 166 < 1  * implementer beyond the first costs about a gigabyte and a third of a core
 167 < 1  * (RUNBOOK §Capacity). So a one-task plan gets `--cpu 3 --memory 3GB` and a
 168 < 1  * ten-task plan `--cpu 6 --memory 8GB` under the caps 6 and 8GB — the ceiling
@@ -187,8 +191,10 @@
 176 < 1  * `memory` comes back spelled `<int>GB`, the spelling the lobby's `--memory`
 177 < 1  * takes verbatim; `cpu` is a decimal string for the same reason.
 178 < 1  */
-179 < 1 function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
-180 < 1   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
+180 > 1 function vmSizeFor (width, cap = FLEET_DEFAULTS, browsers = false) {
+181 < 1   const w = Math.max(0, Math.floor(Number(width) || 0))
+179 < 2 function vmSizeFor (widestWave, cap = FLEET_DEFAULTS, browsers = false) {
+180 < 2   const w = Math.max(0, Math.floor(Number(widestWave) || 0))
 181 < 1   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
 182 < 1   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
 183 < 1   // a stories-v1 builder runs its checks in Chromium (0.7-1 GB with a page, #1087)
@@ -206,15 +212,18 @@
 195 < 1  * a named number wins outright whatever the plan is, and what it wins is the
 196 < 1  * cap value, which is where the launch line's own number already sits.
 197 < 1  *
-198 < 1  * W is floored at one: a payload with no waves launches nothing, and a box
-199 < 1  * below the one-task size would be a smaller answer than the smallest real
-200 < 1  * plan's.
+199 > 1  * W is the parse's `width` floored at one: a box below the one-task size
+200 < 1  * would be a smaller answer than the smallest real plan's.
+198 < 2  * W is floored at one: a payload with no waves launches nothing, and a box
+199 < 2  * below the one-task size would be a smaller answer than the smallest real
+200 < 2  * plan's.
 201 < 1  */
 202 < 1 function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
-203 < 1   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
-204 < 1   const w = Math.max(1, waves.reduce(
-205 < 1     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
-206 < 1   ))
+204 > 1   const w = Math.max(1, Math.floor(Number(compiled?.payload?.width) || 0))
+203 < 2   const waves = Array.isArray(compiled?.waves) ? compiled.waves : []
+204 < 2   const w = Math.max(1, waves.reduce(
+205 < 2     (widest, wave) => Math.max(widest, Array.isArray(wave) ? wave.length : 0), 0
+206 < 2   ))
 207 < 1   const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, compiled?.payload?.grammar === 'stories-v1')
 208 < 1   return {
 209 < 1     width: w,
@@ -225,7 +234,8 @@
 214 < 1 
 215 < 1 /**
 216 < 1  * The launcher's own header on the setup script the `new` verb carries on
-217 < 1  * stdin: W, the widest wave of the plan this box was cut for, and the size it
+218 > 1  * stdin: W, the width of the plan this box was cut for, and the size it
+217 < 2  * stdin: W, the widest wave of the plan this box was cut for, and the size it
 218 < 1  * was cut to. Pure — the script comes back with one comment line inserted
 219 < 1  * under its shebang, nothing else moved.
 220 < 1  *
@@ -239,7 +249,8 @@
 228 < 1  * does not read it.
 229 < 1  */
 230 < 1 function stampWidth (script, { width, cpu, memory }) {
-231 < 1   const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+232 > 1   const note = `# fleet: width=${width} — the most tasks the parsed plan can have ready at once, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
+231 < 2   const note = `# fleet: width=${width} — the parsed plan's widest wave, which this box was cut to: --cpu ${cpu} --memory ${memory}.`
 232 < 1   const text = String(script ?? '')
 233 < 1   const firstLine = text.indexOf('\n')
 234 < 1   return firstLine < 0
@@ -300,7 +311,11 @@
 289 < 1 // four hours of expiry — a run that outlives its bearer dies in the gate. The
 290 < 1 // tool holds instead of rotating when a listed fleet VM is still live, since a
 291 < 1 // refresh grant would revoke the access token every live run is using.
-292 < 1 // A laptop set up with `claude setup-token` (no keychain record) skips this.
+293 > 1 // No keychain record for the account is a refusal, never a skip: it is what a
+294 < 1 // misnamed `--account` reads, and a bearer nobody refreshes (a `claude
+295 < 1 // setup-token` one among them) parks every run at the boot's bearer probe
+296 < 1 // (CONTRACT, #1131 probe 3).
+292 < 2 // A laptop set up with `claude setup-token` (no keychain record) skips this.
 293 < 1 //
 294 < 1 // The account is the launch's, so the entry this rotates and installs is the
 295 < 1 // one the run signs in with — one entry, chosen per run and never mid-run.
@@ -315,7 +330,13 @@
 304 < 1     if (held !== undefined) return { ok: true, held, out }
 305 < 1     return { ok: true, out }
 306 < 1   }
-307 < 1   if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
+308 > 1   if (/no refresh token in the keychain/.test(out)) {
+309 < 1     const refused = `token: no refresh token in the keychain for account ${account}; ` +
+310 < 1       `pass the account the keychain holds (\`node fleet/claude-token.mjs accounts\`) or sign it in with ` +
+311 < 1       `\`node fleet/claude-token.mjs login --account ${account}\``
+312 < 1     return { ok: false, refused, out }
+313 < 1   }
+307 < 2   if (/no refresh token in the keychain/.test(out)) return { ok: true, skipped: true, out }
 308 < 1   const refused = out.split('\n').find((line) => line.startsWith('token: expires '))
 309 < 1   if (refused !== undefined) return { ok: false, refused, out }
 310 < 1   return { ok: false, out }
@@ -361,9 +382,11 @@
 350 < 1  * publishing plan and is never refused here, whatever `integrations` carries.
 351 < 1  */
 352 < 1 function publishRefusal ({ compiled, integrations }) {
-353 < 1   // The compile answers `{ stamp, payload, waves, edges }`, so the parse's `publish` is under
-354 < 1   // `payload`; reading `compiled.publish` alone found nothing and this never refused (#1331).
-355 < 1   const publish = compiled?.payload?.publish ?? compiled?.publish
+354 > 1   // The compile answers `{ stamp, payload }`: the parse's `publish` is under `payload` (#1331).
+355 < 1   const publish = compiled?.payload?.publish
+353 < 2   // The compile answers `{ stamp, payload, waves, edges }`, so the parse's `publish` is under
+354 < 2   // `payload`; reading `compiled.publish` alone found nothing and this never refused (#1331).
+355 < 2   const publish = compiled?.payload?.publish ?? compiled?.publish
 356 < 1   if (publish === null || publish === undefined || typeof publish !== 'object') return null
 357 < 1   const rows = Array.isArray(integrations) ? integrations : []
 358 < 1   if (rows.some((row) => row?.name === 'cloudflare')) return null
@@ -378,7 +401,8 @@
 367 < 1  * does not parse is not a declaration of `assets` and is passed over.
 368 < 1  */
 369 < 1 async function assetsConfigAtBase ({ exec, repoDir, base, compiled }) {
-370 < 1   const publish = compiled?.payload?.publish ?? compiled?.publish
+371 > 1   const publish = compiled?.payload?.publish
+370 < 2   const publish = compiled?.payload?.publish ?? compiled?.publish
 371 < 1   if (publish === null || publish === undefined || typeof publish !== 'object') return null
 372 < 1   const listed = await git(exec, repoDir, ['ls-tree', '-r', '--name-only', base])
 373 < 1   if (listed.code !== 0) return null
@@ -571,7 +595,10 @@
 560 < 1   // JWT is refused 401 (#1312) — a publishing plan against a target whose
 561 < 1   // `wrangler.jsonc` at --base declares `assets` can only die in
 562 < 1   // `publish:deploy`, after every task merged. Refused here, before the pool,
-563 < 1   // the credential and the push. Retires with #1312's pack step.
+564 > 1   // the credential and the push. The TinyApp template packs its page into the
+565 < 1   // Worker (#1312's pack step) and declares no assets; this stays for any other
+566 < 1   // target while the edge still replaces the header.
+563 < 2   // the credential and the push. Retires with #1312's pack step.
 564 < 1   const assetsConfig = await assetsConfigAtBase({ exec, repoDir, base, compiled })
 565 < 1   if (assetsConfig !== null) {
 566 < 1     throw new Refusal(
@@ -596,7 +623,8 @@
 585 < 1   // One run must fit the plan's pool. Allocation is over-committable and
 586 < 1   // exe.dev refuses nothing by sum, so this is never a sum over live VMs:
 587 < 1   // contention bounds concurrency, and two plans at once is by design. The
-588 < 1   // parse does not move with N, so the widest wave, and the box it asks for,
+589 > 1   // parse does not move with N, so the width, and the box it asks for,
+588 < 2   // parse does not move with N, so the widest wave, and the box it asks for,
 589 < 1   // are the same under every N.
 590 < 1   const capacity = await readPlanCapacity(exec)
 591 < 1   if (capacity.maxCpus < Number(size.cpu)) {
@@ -938,17 +966,21 @@
 908 < 1     planText,
 909 < 1     verdictsText,
 910 < 1     commands,
-911 < 1     reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
+912 > 1     reread: () => highestRunInEvidence(exec, repoDir, evidence, target)
+911 < 2     reread: () => highestRunInEvidence(exec, repoDir, evidence, target),
 912 < 2     kataStep,
 913 < 2     kataBump,
-914 < 1     compiled: firstCompiled
+914 < 2     compiled: firstCompiled
 915 < 1   })
 916 < 1   const run = plan.run
 917 < 1   const liveBranch = plan.branch
 918 < 1   const planSha = plan.sha
-919 < 1   // The size and the width the verb carries, read off the parse the push
-920 < 1   // filed — the same parse under every N.
-921 < 1   const { width, cpu, memory } = sizeFromCompile(plan.compiled, sizing)
+920 > 1   // The size and the width the verb carries, read off the launch's one parse —
+921 < 1   // the same parse under every N.
+922 < 1   const { width, cpu, memory } = sizeFromCompile(firstCompiled, sizing)
+919 < 2   // The size and the width the verb carries, read off the parse the push
+920 < 2   // filed — the same parse under every N.
+921 < 2   const { width, cpu, memory } = sizeFromCompile(plan.compiled, sizing)
 922 < 1 
 923 < 1   // ── The one mutating lobby verb. ──────────────────────────────────────────
 924 < 1   const comment = buildComment({ ...fields, run: String(run), plan: planSha, engine })
@@ -1036,7 +1068,8 @@
 1006 < 1     github: githubName,
 1007 < 1     cpu,
 1008 < 1     memory,
-1009 < 1     // W, the widest wave of the parsed plan: what `cpu` and `memory` were
+1010 > 1     // W, the width of the parsed plan: what `cpu` and `memory` were
+1009 < 2     // W, the widest wave of the parsed plan: what `cpu` and `memory` were
 1010 < 1     // sized to. It is not an assignment key — `COMMENT_KEYS` in
 1011 < 1     // `fleet/lobby.mjs` spells seven and `parse_assignment` on the VM fails on an
 1012 < 1     // eighth — so it rides the setup script's header instead (`stampWidth`),
@@ -1172,17 +1205,18 @@
 1140 < 1  * with the push's own output. Git's words are never parsed: the target's refs
 1141 < 1  * decide, not the wording of a rejection line.
 1142 < 1  *
-1143 < 1  * The parse does not move with the number: `compiled` is the launch's one
-1145 > 1  * parse, and it rides back out on `compiled` for the verb to size the box from.
+1143 < 2  * The parse does not move with the number: `compiled` is the launch's one
+1145 > 2  * parse, and it rides back out on `compiled` for the verb to size the box from.
 1144 < 2  * parse, filed on the hub under whichever N the push wins, and it rides back
 1145 < 2  * out on `compiled` for the verb to size the box from.
-1146 < 1  *
+1146 < 2  *
 1147 < 1  * At most `PUSH_ATTEMPTS` pushes in all. The refusal is the push's own — the
 1148 < 1  * text a single refused push has always carried — with ` after <n> tries` when
 1149 < 1  * more than one was made.
 1150 < 1  */
 1151 < 1 async function pushPlan ({
-1153 > 1   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread, compiled = null
+1154 > 1   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread
+1153 > 2   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread, compiled = null
 1152 < 2   exec, repoDir, target, evidence, base, run, planText, verdictsText = null, commands, reread,
 1153 < 2   kataStep = null, kataBump = null, compiled = null
 1154 < 1 }) {
@@ -1202,7 +1236,8 @@
 1167 < 1     commands.push(`git ${pushArgv.join(' ')}`)
 1168 < 1     const push = await exec('git', pushArgv)
 1169 < 1     if (push.code === 0) {
-1171 > 1       return { run: n, sha, branch, compiled }
+1172 > 1       return { run: n, sha, branch }
+1171 > 2       return { run: n, sha, branch, compiled }
 1170 < 2       return { run: n, sha, branch, compiled, kata: filed === null ? null : filed.record }
 1171 < 1     }
 1172 < 1 

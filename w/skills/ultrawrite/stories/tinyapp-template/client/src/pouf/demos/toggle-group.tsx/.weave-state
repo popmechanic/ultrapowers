@@ -1,0 +1,35 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { ToggleGroup } from '../toggle'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 const richOptions = [
+5 < 2   { value: 'bold', label: 'Bold', icon: 'add' as const },
+6 < 2   { value: 'italic', label: 'Italic', icon: 'draft' as const },
+7 < 2   { value: 'mono', label: 'Mono', icon: 'settings' as const },
+8 < 2 ]
+9 < 2 
+10 < 2 function InteractiveToggleGroup({
+11 < 2   initial,
+12 < 2   compact = false,
+13 < 2   icons = false,
+14 < 2   subject = false,
+15 < 2 }: {
+16 < 2   initial: string[]
+17 < 2   compact?: boolean
+18 < 2   icons?: boolean
+19 < 2   subject?: boolean
+20 < 2 }) {
+21 < 2   const [value, setValue] = useState(initial)
+22 < 2   const options = richOptions
+23 < 2     .slice(0, compact ? 2 : 3)
+24 < 2     .map((option) => icons ? option : { value: option.value, label: option.label })
+25 < 2   const control = <ToggleGroup label="Format" value={value} onChange={setValue} options={options} />
+26 < 2   return subject ? <span data-subject>{control}</span> : control
+27 < 2 }
+28 < 2 
+29 < 2 export const toggleGroupDemos: Demo[] = [
+30 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveToggleGroup initial={['bold']} icons subject /> },
+31 < 2   { id: 'multi-selected', render: () => <InteractiveToggleGroup initial={['bold', 'italic']} /> },
+32 < 2   { id: 'none-selected', render: () => <InteractiveToggleGroup initial={[]} compact /> },
+33 < 2 ]
+34 < 2 

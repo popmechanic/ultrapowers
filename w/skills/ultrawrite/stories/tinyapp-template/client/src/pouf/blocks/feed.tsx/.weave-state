@@ -1,0 +1,183 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Spacer } from '../layout'
+3 < 2 import { Heading, Text } from '../text'
+4 < 2 import { Avatar } from '../avatar'
+5 < 2 import { Badge, Dot } from '../media'
+6 < 2 import { Button } from '../Button'
+7 < 2 import { Icon } from '../Icon'
+8 < 2 import { Field, Input, Textarea } from '../Input'
+9 < 2 
+10 < 2 interface Comment {
+11 < 2   id: string
+12 < 2   who: string
+13 < 2   text: string
+14 < 2 }
+15 < 2 
+16 < 2 interface Post {
+17 < 2   id: string
+18 < 2   who: string
+19 < 2   handle: string
+20 < 2   time: string
+21 < 2   tone: 'purple' | 'mint' | 'blue' | 'pink'
+22 < 2   text: string
+23 < 2   likes: number
+24 < 2   comments: Comment[]
+25 < 2 }
+26 < 2 
+27 < 2 const SEED: Post[] = [
+28 < 2   {
+29 < 2     id: '1', who: 'Ada L.', handle: '@ada', time: '2m', tone: 'purple',
+30 < 2     text: 'The new cushion buttons press in when you click. It should not be this satisfying.', likes: 42,
+31 < 2     comments: [
+32 < 2       { id: 'c1', who: 'Grace H.', text: 'Right? I built one for a login button and now nobody will let me remove it.' },
+33 < 2       { id: 'c2', who: 'Katherine J.', text: 'It is the sound design of buttons.' },
+34 < 2     ],
+35 < 2   },
+36 < 2   {
+37 < 2     id: '2', who: 'Grace H.', handle: '@grace', time: '18m', tone: 'blue',
+38 < 2     text: 'Migrated 2,700 lines of CSS to Tailwind today with zero visual drift. The snapshot gate earned its keep.', likes: 88,
+39 < 2     comments: [{ id: 'c1', who: 'Ada L.', text: 'Zero drift is the whole pitch. Nice work.' }],
+40 < 2   },
+41 < 2   {
+42 < 2     id: '3', who: 'Katherine J.', handle: '@kat', time: '1h', tone: 'pink',
+43 < 2     text: 'Optical centering: a perfectly centered glyph looks low on a cushion. Nudge it up by half the floor lip.', likes: 31,
+44 < 2     comments: [{ id: 'c1', who: 'Ada L.', text: 'The floor lip strikes again.' }],
+45 < 2   },
+46 < 2 ]
+47 < 2 
+48 < 2 /** An example social feed: a composer that prepends to the stream, and post
+49 < 2  * cards you can like and comment on — each comment button opens a real
+50 < 2  * thread with its own input. */
+51 < 2 export function FeedBlock() {
+52 < 2   const [posts, setPosts] = useState(SEED)
+53 < 2   const [draft, setDraft] = useState('')
+54 < 2   const [liked, setLiked] = useState<Record<string, boolean>>({})
+55 < 2   const [openThread, setOpenThread] = useState<Record<string, boolean>>({})
+56 < 2   /* Share was the last `onClick={() => {}}` in the gallery. A button that looks
+57 < 2    * live and does nothing is the exact complaint this pass exists to fix, so it
+58 < 2    * now latches into a real state rather than being deleted. */
+59 < 2   const [shared, setShared] = useState<Record<string, boolean>>({})
+60 < 2   const [replyDraft, setReplyDraft] = useState<Record<string, string>>({})
+61 < 2 
+62 < 2   function post() {
+63 < 2     const text = draft.trim()
+64 < 2     if (!text) return
+65 < 2     setPosts((p) => [{ id: String(p.length + 1), who: 'You', handle: '@you', time: 'now', tone: 'mint', text, likes: 0, comments: [] }, ...p])
+66 < 2     setDraft('')
+67 < 2   }
+68 < 2 
+69 < 2   function reply(postId: string) {
+70 < 2     const text = (replyDraft[postId] ?? '').trim()
+71 < 2     if (!text) return
+72 < 2     setPosts((ps) =>
+73 < 2       ps.map((p) =>
+74 < 2         p.id === postId
+75 < 2           ? { ...p, comments: [...p.comments, { id: String(p.comments.length + 1), who: 'You', text }] }
+76 < 2           : p,
+77 < 2       ),
+78 < 2     )
+79 < 2     setReplyDraft((d) => ({ ...d, [postId]: '' }))
+80 < 2   }
+81 < 2 
+82 < 2   return (
+83 < 2     <div style={{ maxWidth: 560, margin: '0 auto', padding: 24 }}>
+84 < 2       <Stack gap={4}>
+85 < 2         <Card>
+86 < 2           <Stack gap={3}>
+87 < 2             <Field label="What's on your mind?">
+88 < 2               {(id, describedBy) => <Textarea id={id} describedBy={describedBy} value={draft} onChange={setDraft} placeholder="Say something puffy…" rows={2} />}
+89 < 2             </Field>
+90 < 2             <Row justify="end"><Button onClick={post}>Post</Button></Row>
+91 < 2           </Stack>
+92 < 2         </Card>
+93 < 2 
+94 < 2         {posts.map((p) => {
+95 < 2           const isLiked = !!liked[p.id]
+96 < 2           const isOpen = !!openThread[p.id]
+97 < 2           return (
+98 < 2             <Card key={p.id}>
+99 < 2               <Stack gap={3}>
+100 < 2                 <Row gap={2} wrap={false}>
+101 < 2                   <Avatar fallback={p.who.slice(0, 2)} tone={p.tone} />
+102 < 2                   <Stack gap={1}>
+103 < 2                     <Heading level={3}>{p.who}</Heading>
+104 < 2                     <Row gap={2} wrap={false}>
+105 < 2                       <Text size="sm" muted>{p.handle}</Text>
+106 < 2                       <Dot tone={p.tone} />
+107 < 2                       <Text size="sm" muted>{p.time}</Text>
+108 < 2                     </Row>
+109 < 2                   </Stack>
+110 < 2                 </Row>
+111 < 2                 <Text>{p.text}</Text>
+112 < 2                 <Row gap={2}>
+113 < 2                   {/* `label` on each of these is not optional politeness: the
+114 < 2                     * visible child is an icon plus a bare number, so without it
+115 < 2                     * a screen reader announces "button, 42" and the action is
+116 < 2                     * anybody's guess. */}
+117 < 2                   <Button
+118 < 2                     size="sm"
+119 < 2                     variant="quiet"
+120 < 2                     tone={isLiked ? 'pink' : 'purple'}
+121 < 2                     label={isLiked ? `Unlike ${p.who}'s post` : `Like ${p.who}'s post`}
+122 < 2                     onClick={() => setLiked((l) => ({ ...l, [p.id]: !l[p.id] }))}
+123 < 2                   >
+124 < 2                     <Icon name={isLiked ? 'heart-filled' : 'heart'} size="sm" /> {p.likes + (isLiked ? 1 : 0)}
+125 < 2                   </Button>
+126 < 2                   <Button
+127 < 2                     size="sm"
+128 < 2                     variant="quiet"
+129 < 2                     tone={isOpen ? 'blue' : 'purple'}
+130 < 2                     label={`${isOpen ? 'Hide' : 'Show'} ${p.comments.length} comments`}
+131 < 2                     onClick={() => setOpenThread((o) => ({ ...o, [p.id]: !o[p.id] }))}
+132 < 2                   >
+133 < 2                     <Icon name="comment" size="sm" /> {p.comments.length}
+134 < 2                   </Button>
+135 < 2                   <Button
+136 < 2                     size="sm"
+137 < 2                     variant="quiet"
+138 < 2                     tone={shared[p.id] ? 'mint' : 'purple'}
+139 < 2                     disabled={!!shared[p.id]}
+140 < 2                     label={shared[p.id] ? 'Already shared' : `Share ${p.who}'s post`}
+141 < 2                     onClick={() => setShared((s) => ({ ...s, [p.id]: true }))}
+142 < 2                   >
+143 < 2                     <Icon name={shared[p.id] ? 'ok' : 'send'} size="sm" /> {shared[p.id] ? 'Shared' : 'Share'}
+144 < 2                   </Button>
+145 < 2                 </Row>
+146 < 2 
+147 < 2                 {isOpen && (
+148 < 2                   // Indented under the avatar column, the way a reply nests under its parent.
+149 < 2                   <div style={{ paddingLeft: 48 }}>
+150 < 2                     <Stack gap={3}>
+151 < 2                       {p.comments.map((c) => (
+152 < 2                         <Row key={c.id} gap={2} wrap={false} align="top">
+153 < 2                           <Avatar fallback={c.who.slice(0, 2)} size="sm" tone={p.tone} />
+154 < 2                           <Stack gap={1}>
+155 < 2                             <Text size="sm">{c.who}</Text>
+156 < 2                             <Text size="sm" muted>{c.text}</Text>
+157 < 2                           </Stack>
+158 < 2                         </Row>
+159 < 2                       ))}
+160 < 2                       <Row gap={2} wrap={false}>
+161 < 2                         <div style={{ flex: 1, minWidth: 0 }}>
+162 < 2                           <Input
+163 < 2                             value={replyDraft[p.id] ?? ''}
+164 < 2                             onChange={(v) => setReplyDraft((d) => ({ ...d, [p.id]: v }))}
+165 < 2                             placeholder="Write a comment…"
+166 < 2                             label={`Comment on ${p.who}'s post`}
+167 < 2                           />
+168 < 2                         </div>
+169 < 2                         <Button size="sm" onClick={() => reply(p.id)} label="Reply">Reply</Button>
+170 < 2                       </Row>
+171 < 2                     </Stack>
+172 < 2                   </div>
+173 < 2                 )}
+174 < 2               </Stack>
+175 < 2             </Card>
+176 < 2           )
+177 < 2         })}
+178 < 2       </Stack>
+179 < 2     </div>
+180 < 2   )
+181 < 2 }
+182 < 2 

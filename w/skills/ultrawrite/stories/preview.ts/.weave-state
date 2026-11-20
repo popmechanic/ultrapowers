@@ -1,0 +1,243 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // The preview server: draws a bundle's screens with a scaffolded TinyApp's own
+2 < 1 // kit (registry, state, store, 1st-Pouf through Tailwind; nothing from a CDN)
+3 < 1 // and pushes every change under <bundle>/screens/ to the open pages over a
+4 < 1 // websocket so they redraw in place. /compare shows every version side by
+5 < 1 // side; picks and notes come back on POST /feedback as JSON lines. GET
+6 < 1 // /play?story=<id> has the open page play that story on the screen and answers
+8 > 1 // the report it posts back to POST /played. Only this page talks to it (#1530):
+9 < 1 // every request must name the server's own host, and the data routes refuse a
+10 < 1 // browser request from any other site and a POST that is not JSON.
+7 < 2 // the report it posts back to POST /played.
+8 < 1 //
+9 < 1 //   bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]
+10 < 1 import {appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch} from 'node:fs';
+11 < 1 import {dirname, join, resolve, sep} from 'node:path';
+12 < 1 
+13 < 1 const PAGE = join(import.meta.dir, 'preview');
+14 < 1 const NEEDS = ['client/src/screens/catalog.ts', 'client/src/store.js', 'node_modules/bun-plugin-tailwind'];
+15 < 1 const VERSION = /^(.+)\.([A-Z])\.json$/;
+16 < 1 const PLAY_WAIT = 20_000;
+17 < 1 
+18 < 1 type Rec = Record<string, unknown>;
+19 < 1 
+20 < 1 function usage(): number {
+21 < 1   console.log('usage: preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]');
+22 < 1   return 2;
+24 > 1 }
+25 < 1 
+26 < 1 // The routes that read or change the operator's work; the page and its files
+27 < 1 // stay open to a link from anywhere (the request carries no data).
+28 < 1 const DATA = new Set(['/ws', '/bundle', '/specs', '/play', '/played', '/feedback']);
+29 < 1 
+30 < 1 /** Why this request is refused, or null: another host (a DNS-rebound name), or,
+31 < 1  *  on a data route, a browser request from another site, or a POST not JSON.
+32 < 1  *  A request with no Origin and no Sec-Fetch-Site (curl, Claude) passes. */
+33 < 1 export function foreign(req: Request, port: number): string | null {
+34 < 1   const own = [`127.0.0.1:${port}`, `localhost:${port}`];
+35 < 1   if (!own.includes(req.headers.get('host') ?? '')) return 'not this server\'s host';
+36 < 1   if (!DATA.has(new URL(req.url).pathname)) return null;
+37 < 1   const origin = req.headers.get('origin');
+38 < 1   if (origin !== null && !own.some((h) => origin === `http://${h}`)) return 'another site';
+39 < 1   const site = req.headers.get('sec-fetch-site');
+40 < 1   if (site !== null && site !== 'same-origin' && site !== 'none') return 'another site';
+41 < 1   if (req.method === 'POST' && !/^application\/json\s*(;|$)/i.test(req.headers.get('content-type') ?? '')) {
+42 < 1     return 'not JSON';
+43 < 1   }
+44 < 1   return null;
+23 < 1 }
+24 < 1 
+25 < 1 /** The record to write, keys in their fixed order, or null when it is not one. */
+26 < 1 export function feedbackRecord(body: unknown): Rec | null {
+27 < 1   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+28 < 1   const b = body as Rec;
+29 < 1   const keys = Object.keys(b);
+30 < 1   if (b.kind === 'pick') {
+32 > 1     // {kind, piece, chose}; a page from before #1532 sent no piece, still taken.
+33 < 1     if (typeof b.chose !== 'string' || keys.some((k) => !['kind', 'piece', 'chose'].includes(k))) return null;
+34 < 1     if ('piece' in b && typeof b.piece !== 'string') return null;
+35 < 1     return 'piece' in b ? {kind: 'pick', piece: b.piece, chose: b.chose} : {kind: 'pick', chose: b.chose};
+31 < 2     if (typeof b.chose !== 'string' || keys.some((k) => k !== 'kind' && k !== 'chose')) return null;
+32 < 2     return {kind: 'pick', chose: b.chose};
+33 < 1   }
+34 < 1   if (b.kind === 'element' || b.kind === 'region' || b.kind === 'view') {
+35 < 1     if (typeof b.note !== 'string' || keys.some((k) => !['kind', 'note', 'target'].includes(k))) return null;
+36 < 1     if ('target' in b && typeof b.target !== 'string') return null;
+37 < 1     return 'target' in b ? {kind: b.kind, target: b.target, note: b.note} : {kind: b.kind, note: b.note};
+38 < 1   }
+39 < 1   return null;
+40 < 1 }
+41 < 1 
+42 < 1 function readSpecs(screens: string, pieces: string[]): Rec {
+43 < 1   const out: Record<string, {versions: Rec; approved?: unknown}> = {};
+44 < 1   for (const p of pieces) out[p] = {versions: {}};
+45 < 1   const names = existsSync(screens) ? readdirSync(screens).sort() : [];
+46 < 1   const read = (n: string) => {
+47 < 1     try { return JSON.parse(readFileSync(join(screens, n), 'utf8')); } catch { return undefined; }
+48 < 1   };
+49 < 1   for (const n of names) {
+50 < 1     const m = VERSION.exec(n);
+51 < 1     if (m && out[m[1]]) {
+52 < 1       const spec = read(n);
+53 < 1       if (spec !== undefined) out[m[1]].versions[m[2]] = spec;
+54 < 1     } else if (n.endsWith('.json') && out[n.slice(0, -5)]) {
+55 < 1       const spec = read(n);
+56 < 1       if (spec !== undefined) out[n.slice(0, -5)].approved = spec;
+57 < 1     }
+58 < 1   }
+59 < 1   return out;
+60 < 1 }
+61 < 1 
+62 < 1 async function main(argv: string[]): Promise<number> {
+63 < 1   let bundleArg: string | undefined;
+64 < 1   let appArg: string | undefined;
+65 < 1   let port = 0;
+66 < 1   let feedbackArg: string | undefined;
+67 < 1   for (let i = 0; i < argv.length; i++) {
+68 < 1     const a = argv[i];
+69 < 1     if (a === '--app') appArg = argv[++i];
+70 < 1     else if (a === '--port') port = Number(argv[++i]);
+71 < 1     else if (a === '--feedback') feedbackArg = argv[++i];
+72 < 1     else if (!a.startsWith('--') && bundleArg === undefined) bundleArg = a;
+73 < 1     else return usage();
+74 < 1   }
+75 < 1   if (!bundleArg || !appArg || !Number.isInteger(port) || port < 0) return usage();
+76 < 1   const bundle = resolve(bundleArg);
+77 < 1   const app = resolve(appArg);
+78 < 1   const feedback = resolve(feedbackArg ?? join(process.cwd(), '.ultrapowers', 'feedback.jsonl'));
+79 < 1 
+80 < 1   for (const need of NEEDS) {
+81 < 1     if (!existsSync(join(app, need))) {
+82 < 1       console.log(`PREVIEW could not run: ${appArg} has no ${need}`);
+83 < 1       return 2;
+84 < 1     }
+85 < 1   }
+86 < 1   let page: {title?: string; stories?: unknown[]};
+87 < 1   let pieces: string[];
+88 < 1   try {
+89 < 1     page = JSON.parse(readFileSync(join(bundle, 'page.json'), 'utf8'));
+90 < 1     pieces = (JSON.parse(readFileSync(join(bundle, 'cards.json'), 'utf8')) as {piece: string}[]).map((c) => c.piece);
+91 < 1   } catch (e) {
+92 < 1     console.log(`PREVIEW could not run: ${bundleArg} is not a bundle (${(e as Error).message})`);
+93 < 1     return 2;
+94 < 1   }
+95 < 1 
+96 < 1   const pageDir = join(app, '.preview', 'page');
+97 < 1   const dist = join(app, '.preview', 'dist');
+98 < 1   // Only this server's own dirs: arrange.ts stages its composer at .preview/json-render.
+99 < 1   rmSync(pageDir, {recursive: true, force: true});
+100 < 1   rmSync(dist, {recursive: true, force: true});
+101 < 1   mkdirSync(pageDir, {recursive: true});
+102 < 1   cpSync(PAGE, pageDir, {recursive: true});
+103 < 1   const tailwind = (await import(join(app, 'node_modules', 'bun-plugin-tailwind'))).default;
+104 < 1   const built = await Bun.build({entrypoints: [join(pageDir, 'index.html')], outdir: dist, plugins: [tailwind]})
+105 < 1     .catch((e: unknown) => ({success: false, logs: [e]}));
+106 < 1   if (!built.success) {
+107 < 1     for (const log of built.logs) console.log(log);
+108 < 1     console.log('PREVIEW could not run: the page did not build');
+109 < 1     return 2;
+110 < 1   }
+111 < 1 
+112 < 1   const screens = join(bundle, 'screens');
+113 < 1   mkdirSync(screens, {recursive: true});
+114 < 1   const indexHtml = join(dist, 'index.html');
+115 < 1   // Story plays awaiting a page's report, by story id.
+116 < 1   const plays = new Map<string, ((r: Rec) => void)[]>();
+117 < 1   // Open single-screen pages (said hello as 'single'): only they play stories.
+118 < 1   const singles = new Set<unknown>();
+119 < 1 
+120 < 1   const server = Bun.serve({
+121 < 1     hostname: '127.0.0.1',
+122 < 1     port,
+123 < 1     // Seconds; longer than PLAY_WAIT so a slow play ends in its JSON answer.
+124 < 1     idleTimeout: Math.ceil(PLAY_WAIT / 1000) + 10,
+125 < 1     async fetch(req, srv) {
+127 > 1       const refused = foreign(req, server.port);
+128 < 1       if (refused) return new Response(`refused: ${refused}`, {status: 403});
+126 < 1       const url = new URL(req.url);
+127 < 1       const path = url.pathname;
+128 < 1       if (path === '/ws') {
+129 < 1         return srv.upgrade(req) ? undefined : new Response('websocket expected', {status: 400});
+130 < 1       }
+131 < 1       if (path === '/bundle' && req.method === 'GET') {
+132 < 1         return Response.json({title: page.title ?? '', stories: page.stories ?? []});
+133 < 1       }
+134 < 1       if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens, pieces));
+135 < 1       if (path === '/play' && req.method === 'GET') {
+136 < 1         const story = url.searchParams.get('story') ?? '';
+137 < 1         if (!singles.size) {
+138 < 1           const miss = `open http://127.0.0.1:${server.port}/ first: /play plays on that page, not on /compare`;
+139 < 1           return Response.json({story, ok: false, misses: [miss]});
+140 < 1         }
+141 < 1         const report = new Promise<Rec>((done) => {
+142 < 1           const waiting = plays.get(story) ?? [];
+143 < 1           plays.set(story, waiting);
+144 < 1           const answer = (r: Rec) => { clearTimeout(timeout); done(r); };
+145 < 1           const timeout = setTimeout(() => {
+146 < 1             const left = plays.get(story)?.filter((w) => w !== answer) ?? [];
+147 < 1             if (left.length) plays.set(story, left); else plays.delete(story);
+148 < 1             done({story, ok: false, misses: ['no page answered']});
+149 < 1           }, PLAY_WAIT);
+150 < 1           waiting.push(answer);
+151 < 1         });
+152 < 1         server.publish('specs', JSON.stringify({type: 'play', story}));
+153 < 1         return Response.json(await report);
+154 < 1       }
+155 < 1       if (path === '/played') {
+156 < 1         if (req.method !== 'POST') return new Response('POST only', {status: 405});
+157 < 1         let body: Rec;
+158 < 1         try { body = JSON.parse(await req.text()); } catch { return new Response('not JSON', {status: 400}); }
+159 < 1         if (!body || typeof body.story !== 'string' || typeof body.ok !== 'boolean' || !Array.isArray(body.misses)) {
+160 < 1           return new Response('not a play report', {status: 400});
+161 < 1         }
+162 < 1         const waiting = plays.get(body.story) ?? [];
+163 < 1         plays.delete(body.story);
+164 < 1         for (const answer of waiting) answer({story: body.story, ok: body.ok, misses: body.misses.map(String)});
+165 < 1         return new Response(null, {status: 204});
+166 < 1       }
+167 < 1       if (path === '/feedback') {
+168 < 1         if (req.method !== 'POST') return new Response('POST only', {status: 405});
+169 < 1         let body: unknown;
+170 < 1         try { body = JSON.parse(await req.text()); } catch { return new Response('not JSON', {status: 400}); }
+171 < 1         const rec = feedbackRecord(body);
+172 < 1         if (!rec) return new Response('not a feedback record', {status: 400});
+173 < 1         mkdirSync(dirname(feedback), {recursive: true});
+174 < 1         appendFileSync(feedback, JSON.stringify(rec) + '\n');
+175 < 1         return new Response(null, {status: 204});
+176 < 1       }
+177 < 1       if (path === '/' || path === '/compare' || path === '/compare/') {
+178 < 1         return new Response(Bun.file(indexHtml), {headers: {'content-type': 'text/html; charset=utf-8'}});
+179 < 1       }
+181 > 1       let decoded: string;
+182 < 1       try { decoded = decodeURIComponent(path); } catch { return new Response('bad path', {status: 400}); }
+183 < 1       const file = resolve(dist, '.' + decoded);
+180 < 2       const file = resolve(dist, '.' + decodeURIComponent(path));
+181 < 1       if (file.startsWith(dist + sep) && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
+182 < 1       return new Response('not found', {status: 404});
+183 < 1     },
+184 < 1     websocket: {
+185 < 1       open(ws) { ws.subscribe('specs'); },
+186 < 1       message(ws, raw) {
+187 < 1         let msg: Rec;
+188 < 1         try { msg = JSON.parse(String(raw)); } catch { return; }
+189 < 1         if (msg?.type === 'hello') { if (msg.page === 'single') singles.add(ws); else singles.delete(ws); }
+190 < 1       },
+191 < 1       close(ws) { ws.unsubscribe('specs'); singles.delete(ws); },
+192 < 1     },
+193 < 1   });
+194 < 1 
+195 < 1   let timer: ReturnType<typeof setTimeout> | null = null;
+196 < 1   watch(screens, () => {
+197 < 1     if (timer) clearTimeout(timer);
+198 < 1     timer = setTimeout(() => {
+199 < 1       timer = null;
+200 < 1       server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens, pieces)}));
+201 < 1     }, 50);
+202 < 1   });
+203 < 1 
+204 < 1   console.log(`PREVIEW http://127.0.0.1:${server.port}/`);
+205 < 1   return await new Promise<number>(() => {});
+206 < 1 }
+207 < 1 
+208 < 1 if (import.meta.main) process.exit(await main(process.argv.slice(2)));
+209 < 1 

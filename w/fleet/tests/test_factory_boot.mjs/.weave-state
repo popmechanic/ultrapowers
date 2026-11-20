@@ -31,14 +31,16 @@
 27 < 1  *       exactly `main` and the integration branch (M1); the PR body's
 28 < 1  *       evidence line byte-exact (M3); no `--past-dir` in the engine's argv,
 29 < 1  *       there being no earlier tag (M4); and `<home>/merge-put.json`
-30 < 1  *       byte-equal to the exam's own rendering of the merge payload; and
-31 < 1  *       `<home>/reap-post.json` parsing to `{ run: 502, target: 'o/r' }`
-32 < 1  *       with exactly one `reap: asked the hub` line in the boot log (#1470).
+31 > 1  *       byte-equal to the exam's own rendering of the merge payload.
+30 < 2  *       byte-equal to the exam's own rendering of the merge payload; and
+31 < 2  *       `<home>/reap-post.json` parsing to `{ run: 502, target: 'o/r' }`
+32 < 2  *       with exactly one `reap: asked the hub` line in the boot log (#1470).
 33 < 1  *
 34 < 1  *   (c) [M2] the engine stub exits 3 — the boot fails with exactly `"engine
 35 < 1  *       exit 3"`, and the run is tagged all the same: `status.json` at
-36 < 1  *       `o-r/run-<N>` says `failed` and the live branch is gone; no
-37 < 1  *       `<home>/reap-post.json` is written (#1470).
+37 > 1  *       `o-r/run-<N>` says `failed` and the live branch is gone.
+36 < 2  *       `o-r/run-<N>` says `failed` and the live branch is gone; no
+37 < 2  *       `<home>/reap-post.json` is written (#1470).
 38 < 1  *
 39 < 1  *   (d) `node <engineDir>/factory/flock/engine.mjs` with no arguments,
 40 < 1  *       through the rig's own `buildEngineDir` symlink, exits 2
@@ -95,14 +97,18 @@
 90 < 1  * of context a later reader lacks: that credential-probe failure and engine
 91 < 1  * failure both still route through `fail()` writing `status.json` onto the
 92 < 1  * live branch and cutting the run's tag before exiting non-zero (so (a) and
-94 > 1  * (c) can read it back at the tag); that the boot writes to no issue board,
-95 < 1  * so no `board:close`, `board:mark` or `run:audit` row follows the publish's
-96 < 1  * own rows; that `factory/policy.json`'s
+96 > 1  * (c) can read it back at the tag); that the publish's self-merge, which
+97 < 1  * always runs unless the run is held, is what makes (b)'s merge actually
+98 < 1  * happen; and that the `publish:pr` event row's own
+95 > 2  * (c) can read it back at the tag); that `factory/policy.json`'s
+94 > 2  * (c) can read it back at the tag); that the boot writes to no issue board,
+95 < 2  * so no `board:close`, `board:mark` or `run:audit` row follows the publish's
+96 < 2  * own rows; that `factory/policy.json`'s
 93 < 2  * (c) can read it back at the tag); that a plan commit with no `kata.json`
 94 < 2  * blob leaves the board unbound, so `close_run()` takes its early-return
 95 < 2  * path and appends exactly one `board:close` row; that `factory/policy.json`'s
-96 < 1  * `publish.self_merge.enabled: true` (already in this repo) is what makes
-97 < 1  * (b)'s merge actually happen; and that the `publish:pr` event row's own
+96 < 2  * `publish.self_merge.enabled: true` (already in this repo) is what makes
+97 < 2  * (b)'s merge actually happen; and that the `publish:pr` event row's own
 98 < 1  * `ts` field is out of this task's own diff — this exam still asserts M1's
 99 < 1  * "every row carries a non-empty string `ts`" exactly as written, since a
 100 < 1  * clause is asserted as it reads, not as it is comfortable to satisfy today.
@@ -242,6 +248,41 @@
 228 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
 229 < 1   assert.equal(status.state, 'failed', `(a3) status.json records state "failed" on claude ${version}`)
 230 < 1   assert.equal(status.error, error, `(a3) status.json's error — got ${JSON.stringify(status.error)}`)
+232 > 1 }
+233 < 1 
+234 < 1 // ── (a4) the update times out (exit 124): logged, and the installed release above the floor runs ─
+235 < 1 
+236 < 1 {
+237 < 1   const runN = '524'
+238 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a4-'))
+239 < 1   const home = path.join(root, 'home')
+240 < 1   const bin = path.join(root, 'bin')
+241 < 1   fs.mkdirSync(home, { recursive: true })
+242 < 1   fs.mkdirSync(bin, { recursive: true })
+243 < 1   writeGitConfig(home)
+244 < 1 
+245 < 1   const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+246 < 1   wireEvidence(home, evidenceDir)
+247 < 1   git(root, ['clone', originDir, path.join(home, 'target')])
+248 < 1   buildEngineDir(home, ENGINE_SHA)
+249 < 1   writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: '2.1.300' })
+250 < 1   // `timeout` gives up on the update the way coreutils does when its clock runs out.
+251 < 1   writeStub(bin, 'timeout', '#!/bin/sh\ncase " $* " in *" exeuntu update "*) exit 124 ;; esac\nshift\nexec "$@"\n')
+252 < 1 
+253 < 1   const env = {
+254 < 1     ...baseEnv(PROXY_URL),
+255 < 1     FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+256 < 1     MERGE_SHA
+257 < 1   }
+258 < 1 
+259 < 1   const res = await runBootAsync({ bin, home, env })
+260 < 1 
+261 < 1   const bootLog = fs.readFileSync(path.join(home, 'fleet-boot.log'), 'utf8')
+262 < 1   assert.equal(res.code, 0, `(a4) the boot exits 0 after a timed-out update — got ${res.code}, log tail: ${bootLog.slice(-2000)}`)
+263 < 1   assert.ok(bootLog.includes('claude: the update failed; checking the installed release'), `(a4) fleet-boot.log says the update failed — got:\n${bootLog}`)
+264 < 1   assert.ok(bootLog.split('\n').some((l) => l.endsWith(' claude: 2.1.300')), `(a4) fleet-boot.log names the installed release — got:\n${bootLog}`)
+265 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+266 < 1   assert.equal(status.state, 'done', `(a4) the run proceeds to done — got ${JSON.stringify(status.state)} (${JSON.stringify(status.error)})`)
 231 < 1 }
 232 < 1 
 233 < 1 // ── (b) [M1, M5] a clean run: land, open, merge, close, probe alive ──────
@@ -442,14 +483,14 @@
 411 < 1     `(b) [M5] the merge PUT payload is byte-equal to the exam's own rendering — got ${mergePut}`
 412 < 1   )
 413 < 1 
-414 < 1   // #1470: the merged run whose tag verified asks the hub, once, to remove its VM.
-415 < 1   assert.deepEqual(
-416 < 1     JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 502, target: 'o/r' },
-417 < 1     '(b) the reap request carries the run and its target'
-418 < 1   )
-419 < 1   const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
-420 < 1   assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
-421 < 1 
+414 < 2   // #1470: the merged run whose tag verified asks the hub, once, to remove its VM.
+415 < 2   assert.deepEqual(
+416 < 2     JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 502, target: 'o/r' },
+417 < 2     '(b) the reap request carries the run and its target'
+418 < 2   )
+419 < 2   const reapLines = bootLog.split('\n').filter((l) => l.includes('reap: asked the hub'))
+420 < 2   assert.equal(reapLines.length, 1, `(b) the boot log has exactly one reap line — got ${JSON.stringify(reapLines)}`)
+421 < 2 
 422 < 1   // [M3 of #1445] `boot.sh died` after a run that already ended leaves its tag where it was.
 423 < 1   const tagBefore = refsOf(evidenceDir)[`refs/tags/o-r/run-${runN}`]
 424 < 1   const died = await runBootAsync({ bin, home, env }, 'died', { SERVICE_RESULT: 'signal', EXIT_CODE: 'killed', EXIT_STATUS: 'KILL' })
@@ -497,17 +538,17 @@
 466 < 1   const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
 467 < 1   assert.equal(status.state, 'failed', '(c) [M2] status.json at the tag records state "failed"')
 468 < 1   assert.equal(status.error, 'engine exit 3', '(c) status.json error is exactly "engine exit 3"')
-470 > 1   // The failure is the status page's alone: the boot marks no issue board.
-471 < 1   // (a failed run whose engine wrote no row has no events.jsonl at all)
-472 < 1   const eventsAtTag = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })()
-473 < 1   const boardRows = eventsAtTag.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.kind).startsWith('board:'))
-474 < 1   assert.deepEqual(boardRows, [], `(c) events.jsonl at the tag holds no board row — got ${JSON.stringify(boardRows)}`)
+470 > 2   // The failure is the status page's alone: the boot marks no issue board.
+471 < 2   // (a failed run whose engine wrote no row has no events.jsonl at all)
+472 < 2   const eventsAtTag = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })()
+473 < 2   const boardRows = eventsAtTag.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => String(r.kind).startsWith('board:'))
+474 < 2   assert.deepEqual(boardRows, [], `(c) events.jsonl at the tag holds no board row — got ${JSON.stringify(boardRows)}`)
 469 < 2   // #1392: the hub's mark is in the committed record, not appended after the last commit
 470 < 2   const marks = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.kind === 'board:mark')
 471 < 2   assert.deepEqual(marks.map((r) => r.state), ['failed'], `(c) events.jsonl at the tag holds one board:mark row, state failed — got ${JSON.stringify(marks)}`)
 472 < 1   assert.deepEqual(Object.keys(refsOf(originDir)), ['refs/heads/main'], '(c) nothing is written to the target')
-473 < 1   // #1470: a failed run never asks the hub to remove its VM.
-474 < 1   assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
+473 < 2   // #1470: a failed run never asks the hub to remove its VM.
+474 < 2   assert.ok(!fs.existsSync(path.join(home, 'reap-post.json')), '(c) the failed run sends the reaper nothing')
 475 < 1 }
 476 < 1 
 477 < 1 // ── (d) [M2] flock/engine.mjs through a symlinked factory/ ───────────────
@@ -680,16 +721,16 @@
 644 < 1   assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
 645 < 1   assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
 646 < 1   assert.equal(status.pr, null, '(h) no pull request is opened')
-648 > 1   // (the stub engine wrote no row, and the boot adds none: the record may hold no events.jsonl)
-649 < 1   const rows = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })().split('\n').filter(Boolean).map((l) => JSON.parse(l))
-650 < 1   assert.deepEqual(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))), [], `(h) the record holds no board, kata or audit row — got ${JSON.stringify(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))))}`)
+648 > 2   // (the stub engine wrote no row, and the boot adds none: the record may hold no events.jsonl)
+649 < 2   const rows = (() => { try { return atTag(evidenceDir, runN, 'events.jsonl') } catch { return '' } })().split('\n').filter(Boolean).map((l) => JSON.parse(l))
+650 < 2   assert.deepEqual(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))), [], `(h) the record holds no board, kata or audit row — got ${JSON.stringify(rows.filter((r) => /^(board:|kata:|run:audit)/.test(String(r.kind))))}`)
 647 < 2   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
 648 < 2   assert.deepEqual(rows.filter((r) => r.kind === 'board:mark'), [], `(h) nothing is marked parked — got ${JSON.stringify(rows.filter((r) => r.kind === 'board:mark'))}`)
 649 < 2   assert.ok(rows.some((r) => r.kind === 'board:close' && r.what === 'run'), `(h) the run's close is in the tagged record — got ${JSON.stringify(rows.filter((r) => String(r.kind).startsWith('board')))}`)
 650 < 1   assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
 651 < 2   assert.deepEqual(rows.filter((r) => r.kind === 'run:audit').map(({ ts, ...r }) => r), [{ kind: 'run:audit', state: 'done', missing: [] }],
 652 < 2     `(h) [#1522] the record ends with one run:audit row — got ${JSON.stringify(rows.filter((r) => r.kind === 'run:audit'))}`)
-653 < 1   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
+653 < 2   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(home, 'reap-post.json'), 'utf8')), { run: 508, target: 'o/r' }, '(h) [#1522] the done run asks the hub to reap it')
 654 < 1 }
 655 < 1 
 656 < 1 // ── (i) #1445 a boot killed while its engine runs: `boot.sh died` writes the failed record ──
@@ -790,11 +831,14 @@
 751 < 1   )
 752 < 1 
 753 < 1   const rows = atTag(evidenceDir, runN, 'events.jsonl').split('\n').filter(Boolean).map((l) => JSON.parse(l))
-754 < 1   const refoldAt = rows.findIndex((r) => r.kind === 'refold' && r.ok === true)
+755 > 1   const catchupAt = rows.findIndex((r) => r.kind === 'catchup' && r.ok === true)
+754 < 2   const refoldAt = rows.findIndex((r) => r.kind === 'refold' && r.ok === true)
 755 < 1   const mergeAt = rows.findIndex((r) => r.kind === 'merge' && r.code === 200)
-756 < 1   assert.ok(refoldAt >= 0, `(j) events.jsonl carries a refold row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+757 > 1   assert.ok(catchupAt >= 0, `(j) events.jsonl carries a catchup row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+756 < 2   assert.ok(refoldAt >= 0, `(j) events.jsonl carries a refold row with ok true — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
 757 < 1   assert.ok(mergeAt >= 0, `(j) events.jsonl carries a merge row with code 200 — got ${JSON.stringify(rows.filter((r) => r.kind === 'merge'))}`)
-758 < 1   assert.ok(refoldAt < mergeAt, `(j) the refold row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+759 > 1   assert.ok(catchupAt < mergeAt, `(j) the catchup row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
+758 < 2   assert.ok(refoldAt < mergeAt, `(j) the refold row comes before the merge row — got kinds ${JSON.stringify(rows.map((r) => r.kind))}`)
 759 < 1 
 760 < 1   assert.equal(JSON.parse(atTag(evidenceDir, runN, 'status.json')).state, 'done', '(j) status.json at the tag records state "done"')
 761 < 1   console.log('ok (j) the self-merge catches up to a moved main')

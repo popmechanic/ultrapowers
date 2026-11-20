@@ -1,0 +1,148 @@
+0 < 1 """The TinyApp screens check (factory/stack/tinyapp/screens.ts): what a screen's root draws,
+1 < 1 and every element's props against the catalog. Needs bun and an offline-installable app."""
+3 > 1 import json
+2 < 1 import os
+3 < 1 import shutil
+4 < 1 import subprocess
+5 < 1 
+6 < 1 import pytest
+7 < 1 
+8 < 1 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+9 < 1 SCREENS = os.path.join(ROOT, "factory/stack/tinyapp/screens.ts")
+10 < 1 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
+11 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+12 < 1 
+13 < 1 MISSING = ["SCREENS todo: no element runs addTodo", "SCREENS todo: no element runs completeTodo",
+14 < 1            "SCREENS todo: no element runs deleteTodo"]
+15 < 1 CASES = [
+16 < 1     ("todo.json", 0, ["SCREENS ok: todo"]),
+17 < 1     ("todo_buttons_outside.json", 1, MISSING + ["SCREENS exit 1: 3 finding(s)"]),
+18 < 1     ("todo_root_missing.json", 1, ['SCREENS todo: root "nope" is no element',
+19 < 1                                     'SCREENS todo: form: child "ghost" is no element'] + MISSING
+20 < 1      + ["SCREENS exit 1: 5 finding(s)"]),
+21 < 1     ("todo_props_missing.json", 1, ["SCREENS todo: add: ActionButton needs prop label",
+22 < 1                                      "SCREENS todo: heading: Heading needs prop text",
+23 < 1                                      "SCREENS exit 1: 2 finding(s)"]),
+24 < 1     ("todo_root_hidden.json", 1, MISSING + ["SCREENS exit 1: 3 finding(s)"]),
+25 < 1 ]
+26 < 1 
+27 < 1 
+28 < 1 @pytest.fixture(scope="module")
+29 < 1 def app(tmp_path_factory):
+30 < 1     if not shutil.which("bun"):
+31 < 1         pytest.skip("bun is not installed")
+32 < 1     dst = str(tmp_path_factory.mktemp("screens") / "app")
+33 < 1     subprocess.run(["bun", os.path.join(ROOT, "skills/ultrawrite/stories/scaffold.ts"), TODO, dst],
+34 < 1                    check=True, capture_output=True, text=True)
+35 < 1     r = subprocess.run(["bun", "install", "--offline"], cwd=dst, capture_output=True, text=True, timeout=300)
+36 < 1     if r.returncode:
+37 < 1         pytest.skip("bun install --offline failed: " + r.stderr.strip()[-200:])
+38 < 1     return dst
+39 < 1 
+40 < 1 
+41 < 1 @pytest.mark.parametrize("fixture,want_exit,want_lines", CASES)
+42 < 1 def test_screens_check(app, fixture, want_exit, want_lines):
+43 < 1     shutil.copyfile(os.path.join(FIX, fixture), os.path.join(app, "client/src/pieces/todo.json"))
+44 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", app],
+45 < 1                        capture_output=True, text=True, timeout=120)
+46 < 1     assert (r.returncode, r.stdout.splitlines()) == (want_exit, want_lines)
+47 < 1 
+48 < 1 
+49 < 1 def _screens(app, spec):
+50 < 1     with open(os.path.join(app, "client/src/pieces/todo.json"), "w") as f:
+51 < 1         json.dump(spec, f)
+52 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", app], capture_output=True, text=True, timeout=120)
+53 < 1     return r.returncode, r.stdout.splitlines()
+54 < 1 
+55 < 1 
+56 < 1 def _todo():
+57 < 1     with open(os.path.join(FIX, "todo.json")) as f:
+58 < 1         return json.load(f)
+59 < 1 
+60 < 1 
+61 < 1 def test_a_bind_item_writes_outside_draft(app):
+62 < 1     spec = _todo()
+63 < 1     spec["elements"]["new"]["props"]["value"] = {"$bindItem": "text"}
+64 < 1     code, lines = _screens(app, spec)
+65 < 1     assert code == 1 and "SCREENS todo: new: $bindItem text is outside /draft/" in lines, lines
+66 < 1 
+67 < 1 
+68 < 1 def test_validate_form_without_a_state_path_writes_outside_draft(app):
+69 < 1     spec = _todo()
+70 < 1     spec["elements"]["add"]["on"]["press"] = [spec["elements"]["add"]["on"]["press"], {"action": "validateForm"}]
+71 < 1     code, lines = _screens(app, spec)
+72 < 1     assert (code, lines) == (1, ["SCREENS todo: add: on validateForm writes /formValidation, which is outside /draft/",
+73 < 1                                  "SCREENS exit 1: 1 finding(s)"])
+74 < 1 
+75 < 1 
+76 < 1 def test_a_props_issue_with_no_path_names_the_element(app, tmp_path):
+77 < 1     a = str(tmp_path / "app")
+78 < 1     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
+79 < 1     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
+80 < 1     with open(os.path.join(a, "client/src/screens/catalog.ts"), "a") as f:
+81 < 1         f.write("\ncomponents.Separator.props = components.Separator.props.refine(() => false, {message: 'never'})\n")
+82 < 1     spec = _todo()
+83 < 1     spec["elements"]["sep"] = {"type": "Separator", "props": {}, "children": []}
+84 < 1     spec["elements"][spec["root"]]["children"].append("sep")
+85 < 1     code, lines = _screens(a, spec)
+86 < 1     assert code == 1 and "SCREENS todo: sep: Separator props: never" in lines, lines
+87 < 1     assert not [l for l in lines if "undefined" in l], lines
+88 < 1 
+89 < 1 
+90 < 1 def test_a_checkout_path_with_a_space_still_finds_the_parser(app, tmp_path):
+91 < 1     home = tmp_path / "a checkout"
+92 < 1     (home / "factory/stack/tinyapp").mkdir(parents=True)
+93 < 1     shutil.copyfile(SCREENS, home / "factory/stack/tinyapp/screens.ts")
+94 < 1     os.symlink(os.path.join(ROOT, "skills"), home / "skills")
+95 < 1     shutil.copyfile(os.path.join(FIX, "todo.json"), os.path.join(app, "client/src/pieces/todo.json"))
+96 < 1     r = subprocess.run(["bun", str(home / "factory/stack/tinyapp/screens.ts"), "--plan",
+97 < 1                         os.path.join(ROOT, "evals/fixtures/stories/todo/.ultrapowers/plan.md"), "--copy", app],
+98 < 1                        capture_output=True, text=True, timeout=120)
+99 < 1     assert (r.returncode, r.stdout.splitlines()) == (0, ["SCREENS ok: todo"])
+100 < 1 
+101 < 1 
+102 < 1 def _with_file(app, rel, change, run):
+103 < 1     """Change one app file in place for `run`, then put it back."""
+104 < 1     p = os.path.join(app, rel)
+105 < 1     with open(p, "rb") as f:
+106 < 1         kept = f.read()
+107 < 1     try:
+108 < 1         change(p, kept)
+109 < 1         return run()
+110 < 1     finally:
+111 < 1         with open(p, "wb") as f:
+112 < 1             f.write(kept)
+113 < 1 
+114 < 1 
+115 < 1 def _draws_edit(fn):
+116 < 1     def change(p, kept):
+117 < 1         d = json.loads(kept)
+118 < 1         fn(d["parts"])
+119 < 1         with open(p, "w") as f:
+120 < 1             json.dump(d, f)
+121 < 1     return change
+122 < 1 
+123 < 1 
+124 < 1 def test_a_part_with_no_draws_line_is_a_finding(app):  # #1491
+125 < 1     got = _with_file(app, "client/src/screens/draws.json", _draws_edit(lambda parts: parts.pop("Badge")),
+126 < 1                      lambda: _screens(app, _todo()))
+127 < 1     assert got == (1, ["SCREENS parts: part Badge has no line in client/src/screens/draws.json saying what it draws",
+128 < 1                        "SCREENS exit 1: 1 finding(s)"])
+129 < 1 
+130 < 1 
+131 < 1 def test_a_draws_line_naming_a_prop_the_part_lacks_is_a_finding(app):
+132 < 1     got = _with_file(app, "client/src/screens/draws.json",
+133 < 1                      _draws_edit(lambda parts: parts.update(Heading={"role": "heading", "name": ["title"]})),
+134 < 1                      lambda: _screens(app, _todo()))
+135 < 1     assert got == (1, ["SCREENS parts: part Heading: draws.json says title names it, but it has no prop title",
+136 < 1                        "SCREENS exit 1: 1 finding(s)"])
+137 < 1 
+138 < 1 
+139 < 1 def test_a_patched_pouf_file_is_a_finding(app):
+140 < 1     def patch(p, kept):
+141 < 1         with open(p, "wb") as f:
+142 < 1             f.write(kept + b"\n// patched\n")
+143 < 1     got = _with_file(app, "client/src/pouf/Button.tsx", patch, lambda: _screens(app, _todo()))
+144 < 1     assert got == (1, ["SCREENS parts: client/src/pouf/Button.tsx changed; 1st-Pouf is never patched, "
+145 < 1                        "so wrap it in client/src/screens/registry.tsx instead", "SCREENS exit 1: 1 finding(s)"])
+146 < 1 

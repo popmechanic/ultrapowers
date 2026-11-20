@@ -1,0 +1,99 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The scope sim (#1333, #1346): a Flock run never settles green on a change nobody planned or wrote.
+2 < 1 // It builds a throwaway target in a temp dir whose base holds keep.txt, gone.txt and other.txt, and
+3 < 1 // a one-task plan that deletes gone.txt and rewrites keep.txt. The scripted builder does exactly
+4 < 1 // that, so the task's probe and the run-wide check pass; the script's `@unwritten` seam also puts
+5 < 1 // text into other.txt with no builder edit, standing in for run-247's weave fault. Checks:
+6 < 1 //   - the engine exits non-zero and summary.json's outcome is a draft;
+7 < 1 //   - events.jsonl holds a scope:outside row, and every one names exactly other.txt;
+9 > 1 //   - no amendment row names gone.txt (a Delete: path is the task's own).
+8 < 2 //   - no driver:amendment row names gone.txt (a Delete: path is the task's own).
+9 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+10 < 1 import { spawnSync } from 'node:child_process'
+11 < 1 import fs from 'node:fs'
+12 < 1 import os from 'node:os'
+13 < 1 import path from 'node:path'
+14 < 1 import { fileURLToPath } from 'node:url'
+15 < 1 import { simEnv } from './_helpers.mjs'
+16 < 1 
+17 < 1 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+18 < 1 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-scope-'))
+19 < 1 const T = path.join(tmp, 'target')
+20 < 1 const RUN = path.join(tmp, 'run')
+21 < 1 fs.mkdirSync(T)
+23 > 1 const ENV = simEnv({ home: tmp })
+22 < 2 const ENV = simEnv({ home: tmp, env: { TYPESAFE_BASE_URL: '' } })
+23 < 1 const git = (...a) => {
+24 < 1   const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', '-c', 'init.defaultBranch=main', ...a], { cwd: T, encoding: 'utf8', env: ENV })
+25 < 1   if (r.status !== 0) { console.log(`git ${a.join(' ')} failed: ${r.stderr}`); process.exit(1) }
+26 < 1   return r.stdout.trim()
+27 < 1 }
+28 < 1 const fail = (why) => { console.log(`SCOPE FAILED: ${why}`); process.exit(1) }
+29 < 1 
+30 < 1 fs.writeFileSync(path.join(T, 'keep.txt'), 'kept\n')
+31 < 1 fs.writeFileSync(path.join(T, 'gone.txt'), 'gone\n')
+32 < 1 fs.writeFileSync(path.join(T, 'other.txt'), 'other\n')
+33 < 1 git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base')
+34 < 1 const base = git('rev-parse', 'HEAD')
+35 < 1 
+36 < 1 const plan = path.join(tmp, 'plan.md')
+37 < 1 fs.writeFileSync(plan, `# Scope sim plan
+38 < 1 
+39 < 1 **Grammar:** claims-v1
+40 < 1 **Claim:** gone.txt is gone and keep.txt says KEPT. (elicited)
+41 < 1 **Summary:** One. Two. Three.
+42 < 1 **Goal:** sim
+43 < 1 **Tech Stack:** bash
+44 < 1 
+45 < 1 ## Global Constraints
+46 < 1 
+47 < 1 - Check: test -f keep.txt
+48 < 1 
+49 < 1 ### Task 1: Delete one file, change another
+50 < 1 
+51 < 1 **Type:** implementation
+52 < 1 
+53 < 1 **Files:**
+54 < 1 - Delete: \`gone.txt\`
+55 < 1 - Modify: \`keep.txt\`
+56 < 1 
+57 < 1 **Claim:** gone.txt is gone and keep.txt says KEPT. (derived)
+58 < 1 Machine: M1. gone.txt does not exist and keep.txt carries KEPT.
+59 < 1 
+60 < 1 **Authorized-by:** sim
+61 < 1 
+62 < 1 **Interfaces:**
+63 < 1 - Produces: none
+64 < 1 
+65 < 1 **Context:** none
+66 < 1 
+67 < 1 **Proof:**
+68 < 1 - Run: test ! -e gone.txt && grep -q KEPT keep.txt [M1]
+69 < 1 - Legs: (a) gone.txt is absent and keep.txt carries KEPT [M1].
+70 < 1 
+71 < 1 **Stale-if:**
+72 < 1 - path-absent: \`keep.txt\`
+73 < 1 `)
+74 < 1 const script = path.join(tmp, 'script.json')
+75 < 1 fs.writeFileSync(script, JSON.stringify({ 1: { 'gone.txt': null, 'keep.txt': 'KEPT\n' }, '@unwritten': { 'other.txt': 'CORRUPT\n' } }))
+76 < 1 
+77 < 1 const r = spawnSync('node', [path.join(REPO, 'factory', 'flock', 'engine.mjs'), '--plan', plan, '--target', T, '--base', base,
+79 > 1   '--run-dir', RUN, '--builder', `scripted:${script}`, '--clock', '120'],
+78 < 2   '--run-dir', RUN, '--builder', `scripted:${script}`, '--clock', '120', '--stall-minutes', '2'],
+79 < 1 { encoding: 'utf8', timeout: 180000, env: ENV })
+80 < 1 const tail = ((r.stdout || '') + (r.stderr || '')).slice(-600)
+81 < 1 if (r.status === 0) fail(`the engine exited 0: a run carrying other.txt settled green; its output ends: ${tail}`)
+82 < 1 let summary
+83 < 1 try { summary = JSON.parse(fs.readFileSync(path.join(RUN, 'summary.json'), 'utf8')) } catch (e) { fail(`no summary.json (${e.message}); the engine exited ${r.status}; its output ends: ${tail}`) }
+84 < 1 if (summary.outcome?.pr !== 'draft') fail(`the outcome is ${JSON.stringify(summary.outcome)}, not a draft`)
+85 < 1 const rows = fs.readFileSync(path.join(RUN, 'events.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l))
+86 < 1 const outside = rows.filter((x) => x.kind === 'scope:outside')
+87 < 1 if (!outside.length) fail('no scope:outside row was written')
+88 < 1 for (const x of outside) if (JSON.stringify(x.paths) !== JSON.stringify(['other.txt'])) fail(`a scope:outside row names ${JSON.stringify(x.paths)}, not exactly other.txt`)
+90 > 1 const amended = rows.filter((x) => x.kind === 'amendment' && x.path === 'gone.txt')
+91 < 1 if (amended.length) fail('gone.txt, a Delete: path of the task, was written as an amendment row')
+89 < 2 const amended = rows.filter((x) => x.kind === 'driver:amendment' && x.path === 'gone.txt')
+90 < 2 if (amended.length) fail('gone.txt, a Delete: path of the task, was written as a driver:amendment row')
+91 < 1 fs.rmSync(tmp, { recursive: true, force: true })
+92 < 1 console.log('ALL TESTS PASSED')
+93 < 1 

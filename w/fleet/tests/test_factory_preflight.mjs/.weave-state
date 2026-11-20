@@ -16,8 +16,8 @@
 13 < 1  *       `bearer_dead 401 <message>` (a 401 with a `"type":"error"` JSON body
 14 < 1  *       carrying a `message`), and `edge_refused 401 <first line>` (a 401
 15 < 1  *       with a plain body starting `integration not found`).
-17 > 1  *   (b) retired with `factory/audit.mjs` (2026-11-13: its one row listed the kata closes a run
-18 < 1  *       missed, and no run has a board to close).
+17 > 2  *   (b) retired with `factory/audit.mjs` (2026-11-13: its one row listed the kata closes a run
+18 < 2  *       missed, and no run has a board to close).
 16 < 2  *   (b) [M2] `node <D>/factory/audit.mjs <events> done`, through a
 17 < 2  *       symlinked `<D>/factory`, prints exactly one line parsing to an
 18 < 2  *       object whose `kind` is `run:audit`, `state` is `done` and `ts` is a

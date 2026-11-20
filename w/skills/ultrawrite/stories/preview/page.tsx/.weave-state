@@ -1,0 +1,189 @@
+0 < 1 // The preview page: the app's own kit draws each piece's spec over a store
+1 < 1 // filled from the bundle's stories. At / each piece's approved spec (else
+2 < 1 // ?v=<V>, else A); at /compare every version side by side, each with a
+3 < 1 // "Choose <V>" button; the chosen version (clicked here, else the one whose
+4 < 1 // spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
+6 > 1 // arrive over /ws and redraw in place; a piece whose versions change loses the
+7 < 1 // pick clicked here. Plays run one at a time on the one shared store.
+5 < 2 // arrive over /ws and redraw in place.
+6 < 1 import {createMergeableStore} from 'tinybase';
+7 < 1 import {createRoot} from 'react-dom/client';
+9 > 1 import {useEffect, useRef, useState} from 'react';
+8 < 2 import {useEffect, useState} from 'react';
+9 < 1 import {JSONUIProvider, Renderer} from '@json-render/react';
+10 < 1 import type {Spec} from '@json-render/core';
+11 < 1 import {registry} from '../../client/src/screens/registry';
+13 > 1 import {functions} from '../../client/src/screens/functions';
+12 < 1 import {tinybaseState} from '../../client/src/screens/state';
+13 < 1 import {TOOLS, makeStore} from '../../client/src/store.js';
+14 < 1 import {mountComment} from './comment';
+16 > 1 import {inTurn, play} from './play';
+15 < 2 import {play} from './play';
+16 < 1 
+17 < 1 type Tool = {name: string; inputSchema?: {properties?: Record<string, Record<string, unknown>>}; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
+18 < 1 type Piece = {versions: Record<string, Spec>; approved?: Spec};
+19 < 1 type Pieces = Record<string, Piece>;
+20 < 1 type Story = {id: string; steps: {tool: string; args?: Record<string, unknown>; layer?: string}[]};
+21 < 1 
+22 < 1 declare global {
+23 < 1   interface Window {
+24 < 1     __PREVIEW__?: {store: unknown; tools: Record<string, (args: Record<string, unknown>) => boolean>; playing: boolean};
+25 < 1   }
+26 < 1 }
+27 < 1 
+28 < 1 const list = TOOLS as unknown as Tool[];
+29 < 1 const schema = JSON.parse(makeStore().getTablesSchemaJson());
+30 < 1 const bind = (s: unknown) => Object.fromEntries(list.map((t) => [t.name, (args: Record<string, unknown>) => t.run(s, args, null)]));
+31 < 1 const store = createMergeableStore().setTablesSchema(schema);
+32 < 1 const tools = bind(store);
+33 < 1 window.__PREVIEW__ = {store, tools, playing: false};
+34 < 1 
+35 < 1 const takesRow = (t: Tool | undefined) =>
+36 < 1   Object.values(t?.inputSchema?.properties ?? {}).some((p) => p && typeof p === 'object' && 'x-row-of' in p);
+37 < 1 
+38 < 1 const [bundle, initial] = await Promise.all([
+39 < 1   fetch('/bundle').then((r) => r.json() as Promise<{title: string; stories: Story[]}>),
+40 < 1   fetch('/specs').then((r) => r.json() as Promise<Pieces>),
+41 < 1 ]);
+42 < 1 document.title = `${bundle.title} — preview`;
+43 < 1 
+44 < 1 // Sample data: every step whose tool takes no row, once each, in story order.
+45 < 1 function fill(s: unknown) {
+46 < 1   const seen = new Set<string>();
+47 < 1   for (const story of bundle.stories ?? []) {
+48 < 1     for (const step of story.steps ?? []) {
+49 < 1       const tool = list.find((t) => t.name === step.tool);
+50 < 1       if (!tool || takesRow(tool)) continue;
+51 < 1       const key = JSON.stringify([step.tool, step.args ?? {}]);
+52 < 1       if (seen.has(key)) continue;
+53 < 1       seen.add(key);
+54 < 1       try { tool.run(s, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
+55 < 1     }
+56 < 1   }
+57 < 1 }
+58 < 1 fill(store);
+59 < 1 
+60 < 1 // On /compare each version gets its own store, filled the same way, so
+61 < 1 // acting in one version leaves the others' rows alone.
+62 < 1 const viewer = () => ({staff: true, who: null});
+63 < 1 const sandboxes = new Map<string, {state: ReturnType<typeof tinybaseState>; tools: ReturnType<typeof bind>}>();
+64 < 1 function sandbox(key: string) {
+65 < 1   let box = sandboxes.get(key);
+66 < 1   if (!box) {
+67 < 1     const s = createMergeableStore().setTablesSchema(schema);
+68 < 1     fill(s);
+69 < 1     box = {state: tinybaseState(s, viewer), tools: bind(s)};
+70 < 1     sandboxes.set(key, box);
+71 < 1   }
+72 < 1   return box;
+73 < 1 }
+74 < 1 
+75 < 1 const compare = location.pathname.replace(/\/+$/, '') === '/compare';
+76 < 1 const asked = new URLSearchParams(location.search).get('v');
+77 < 1 const letters = (p: Piece) => Object.keys(p.versions ?? {}).sort();
+78 < 1 
+79 < 1 async function playOne(id: string) {
+80 < 1   const story = (bundle.stories ?? []).find((s) => s.id === id);
+81 < 1   const report = story
+83 > 1     ? await inTurn(() => play(story, store, tools)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+82 < 2     ? await play(story, store, tools).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+83 < 1     : {ok: false, misses: [`no story ${id}`]};
+84 < 1   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});
+85 < 1 }
+86 < 1 
+88 > 1 function choose(piece: string, v: string) {
+89 < 1   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece, chose: v})});
+87 < 2 function choose(v: string) {
+88 < 2   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', chose: v})});
+89 < 1 }
+90 < 1 
+91 < 1 // The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
+92 < 1 // copy of the chosen version, so equal JSON names it.
+93 < 1 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+94 < 1 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
+95 < 1 
+97 > 1 // The picks still standing once `next` replaces `prev`: a piece whose versions
+98 < 1 // changed was re-arranged, so its earlier click no longer names what is drawn.
+99 < 1 const kept = (picks: Record<string, string>, prev: Pieces, next: Pieces) =>
+100 < 1   Object.fromEntries(Object.entries(picks).filter(([name]) => same(prev[name]?.versions ?? {}, next[name]?.versions ?? {})));
+101 < 1 
+96 < 1 function Page() {
+97 < 1   const [pieces, setPieces] = useState<Pieces>(initial);
+98 < 1   const [picked, setPicked] = useState<Record<string, string>>({});
+100 > 1   const shown = useRef<Pieces>(initial);
+99 < 1   useEffect(() => {
+100 < 1     let ws: WebSocket | null = null;
+101 < 1     let stopped = false;
+102 < 1     const open = () => {
+103 < 1       ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
+104 < 1       ws.onopen = () => ws?.send(JSON.stringify({type: 'hello', page: compare ? 'compare' : 'single'}));
+105 < 1       ws.onmessage = (e) => {
+106 < 1         const msg = JSON.parse(String(e.data));
+108 > 1         if (msg?.type === 'specs' && msg.pieces) {
+109 < 1           const prev = shown.current;
+110 < 1           const next = msg.pieces as Pieces;
+111 < 1           shown.current = next;
+112 < 1           setPieces(next);
+113 < 1           setPicked((m) => kept(m, prev, next));
+114 < 1         }
+107 < 2         if (msg?.type === 'specs' && msg.pieces) setPieces(msg.pieces);
+108 < 1         else if (msg?.type === 'play' && typeof msg.story === 'string' && !compare) void playOne(msg.story);
+109 < 1       };
+110 < 1       ws.onclose = () => { if (!stopped) setTimeout(open, 1000); };
+111 < 1     };
+112 < 1     open();
+113 < 1     return () => { stopped = true; ws?.close(); };
+114 < 1   }, []);
+115 < 1 
+116 < 1   if (compare) {
+117 < 1     return (
+118 < 1       <>
+119 < 1         {Object.entries(pieces).map(([name, p]) => (
+120 < 1           <div key={name} className="preview-compare" data-compare={name}>
+121 < 1             {letters(p).map((v) => {
+122 < 1               const chosen = (picked[name] ?? recorded(p)) === v;
+123 < 1               const box = sandbox(`${name}\u0000${v}`);
+124 < 1               return (
+125 < 1                 <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
+126 < 1                   <div className="preview-version-head">
+127 < 1                     <span>{v}</span>
+128 < 1                     <button
+129 < 1                       type="button"
+130 < 1                       className="preview-choose"
+131 < 1                       aria-pressed={chosen}
+133 > 1                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(name, v); }}
+132 < 2                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
+133 < 1                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
+134 < 1                   </div>
+136 > 1                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
+135 < 2                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools}>
+136 < 1                     <Renderer spec={p.versions[v]} registry={registry} />
+137 < 1                   </JSONUIProvider>
+138 < 1                 </section>
+139 < 1               );
+140 < 1             })}
+141 < 1           </div>
+142 < 1         ))}
+143 < 1       </>
+144 < 1     );
+145 < 1   }
+146 < 1   return (
+147 < 1     <div className="preview-single">
+148 < 1       {Object.entries(pieces).map(([name, p]) => {
+149 < 1         const spec = p.approved ?? (asked ? p.versions?.[asked] : undefined) ?? p.versions?.A;
+150 < 1         return spec ? (
+151 < 1           <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
+152 < 1         ) : null;
+153 < 1       })}
+154 < 1     </div>
+155 < 1   );
+156 < 1 }
+157 < 1 
+158 < 1 createRoot(document.getElementById('app')!).render(
+160 > 1   <JSONUIProvider registry={registry} store={tinybaseState(store, viewer)} handlers={tools} functions={functions}>
+159 < 2   <JSONUIProvider registry={registry} store={tinybaseState(store, viewer)} handlers={tools}>
+160 < 1     <Page />
+161 < 1   </JSONUIProvider>,
+162 < 1 );
+163 < 1 mountComment();
+164 < 1 

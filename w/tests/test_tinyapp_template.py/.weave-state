@@ -1,0 +1,87 @@
+0 < 1 """The TinyApp template (skills/ultrawrite/stories/tinyapp-template/, #1532).
+1 < 1 
+2 < 1 Its dependencies are pinned: every version in package.json is exact, and the
+3 < 1 committed bun.lock (copied by scaffold.ts) lists the same specs and resolves
+4 < 1 each direct dependency to its pin, so a stale lockfile fails here, not in a
+5 < 1 scaffolded app. Its screen state rebuilds when the session's `who` arrives
+6 < 1 after the first snapshot, not only on the next store transaction."""
+7 < 1 import json
+8 < 1 import os
+9 < 1 import re
+10 < 1 import shutil
+11 < 1 import subprocess
+12 < 1 
+13 < 1 import pytest
+14 < 1 
+15 < 1 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+16 < 1 STORIES = os.path.join(ROOT, "skills/ultrawrite/stories")
+17 < 1 TEMPLATE = os.path.join(STORIES, "tinyapp-template")
+18 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+19 < 1 EXACT = re.compile(r"^\d+\.\d+\.\d+$")
+20 < 1 
+21 < 1 
+22 < 1 def _manifest():
+23 < 1     with open(os.path.join(TEMPLATE, "package.json")) as f:
+24 < 1         return json.load(f)
+25 < 1 
+26 < 1 
+27 < 1 def _lock():
+28 < 1     with open(os.path.join(TEMPLATE, "bun.lock")) as f:
+29 < 1         return json.loads(re.sub(r",(\s*[}\]])", r"\1", f.read()))
+30 < 1 
+31 < 1 
+32 < 1 def test_every_template_dependency_is_exact():
+33 < 1     m = _manifest()
+34 < 1     loose = {n: v for k in ("dependencies", "devDependencies")
+35 < 1              for n, v in m.get(k, {}).items() if not EXACT.match(v)}
+36 < 1     assert not loose, "pin these to an exact version: %r" % loose
+37 < 1 
+38 < 1 
+39 < 1 def test_the_lockfile_matches_the_manifest():
+40 < 1     m, lock = _manifest(), _lock()
+41 < 1     ws = lock["workspaces"][""]
+42 < 1     for k in ("dependencies", "devDependencies"):
+43 < 1         assert ws.get(k, {}) == m.get(k, {}), "bun.lock's %s are stale: re-run bun install" % k
+44 < 1         for n, v in m.get(k, {}).items():
+45 < 1             assert lock["packages"][n][0] == "%s@%s" % (n, v), (n, lock["packages"][n][0])
+46 < 1 
+47 < 1 
+48 < 1 def test_who_set_after_the_first_snapshot_reaches_session(tmp_path):
+49 < 1     if not shutil.which("bun"):
+50 < 1         pytest.skip("bun is not installed")
+51 < 1     app = str(tmp_path / "app")
+52 < 1     subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), TODO, app],
+53 < 1                    check=True, capture_output=True, text=True)
+54 < 1     r = subprocess.run(["bun", "install", "--offline", "--frozen-lockfile"], cwd=app,
+55 < 1                        capture_output=True, text=True, timeout=300)
+56 < 1     if r.returncode:
+57 < 1         pytest.skip("bun install --offline failed: " + r.stderr.strip()[-200:])
+58 < 1     probe = os.path.join(app, "probe.ts")
+59 < 1     with open(probe, "w") as f:
+60 < 1         f.write(
+61 < 1             "import {createMergeableStore} from 'tinybase';\n"
+62 < 1             "import {tinybaseState} from './client/src/screens/state';\n"
+63 < 1             "let who: string | null = null;\n"
+64 < 1             "const state = tinybaseState(createMergeableStore(), () => ({staff: true, who}));\n"
+65 < 1             "let heard = 0; state.subscribe(() => { heard++; });\n"
+66 < 1             "who = 'a@b.c'; state.refresh();\n"
+67 < 1             "console.log(JSON.stringify({who: state.get('/session/who'), heard}));\n")
+68 < 1     r = subprocess.run(["bun", probe], cwd=app, capture_output=True, text=True, timeout=60)
+69 < 1     assert r.returncode == 0, r.stderr
+70 < 1     assert json.loads(r.stdout.strip().splitlines()[-1]) == {"who": "a@b.c", "heard": 1}
+71 < 1 
+72 < 1 
+73 < 1 def test_the_page_draws_pieces_in_build_order(tmp_path):
+74 < 1     """todo-tags' cards are todo then tag: the page draws them so, not by file name (#1491)."""
+75 < 1     if not shutil.which("bun"):
+76 < 1         pytest.skip("bun is not installed")
+77 < 1     app = str(tmp_path / "app")
+78 < 1     subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), os.path.join(ROOT, "skills/ultrawrite/catalog/todo-tags"), app],
+79 < 1                    check=True, capture_output=True, text=True)
+80 < 1     with open(os.path.join(app, "client/src/screens/order.json")) as f:
+81 < 1         assert json.load(f) == {"pieces": ["todo", "tag"]}
+82 < 1     r = subprocess.run(["bun", "-e", "import {pieceSpecs} from './client/src/screens/pieces.ts';"
+83 < 1                         "console.log(JSON.stringify(Object.keys(pieceSpecs())))"], cwd=app, capture_output=True, text=True, timeout=60)
+84 < 1     assert r.returncode == 0, r.stderr
+85 < 1     assert json.loads(r.stdout) == ["todo", "tag"]
+86 < 1 

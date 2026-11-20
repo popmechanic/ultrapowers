@@ -1,0 +1,26 @@
+0 < 2 import { Avatar } from '../avatar'
+1 < 2 import { Row } from '../layout'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 export const avatarDemos: Demo[] = [
+5 < 2   { id: 'fallback', render: () => (
+6 < 2       <Row gap={5}>
+7 < 2         <Avatar fallback="MB" tone="purple" />
+8 < 2         <Avatar fallback="JD" tone="pink" size="sm" />
+9 < 2       </Row>
+10 < 2     ) },
+11 < 2   { id: 'icon', render: () => (
+12 < 2       <Row gap={5}>
+13 < 2         <Avatar icon="settings" tone="mint" />
+14 < 2         <Avatar icon="channels" tone="blue" size="lg" />
+15 < 2       </Row>
+16 < 2     ) },
+17 < 2   { id: 'sizes', render: () => (
+18 < 2       <Row gap={5}>
+19 < 2         <Avatar fallback="SM" size="sm" />
+20 < 2         <Avatar fallback="MD" size="md" />
+21 < 2         <Avatar fallback="LG" size="lg" />
+22 < 2       </Row>
+23 < 2     ) },
+24 < 2 ]
+25 < 2 

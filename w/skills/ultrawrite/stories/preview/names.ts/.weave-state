@@ -1,0 +1,110 @@
+0 < 1 // The accessible role and name of a DOM element, the way the stories and the
+1 < 1 // browser checker name it: role from `role`, else the element's implicit one;
+2 < 1 // name from aria-label, then aria-labelledby, then a label[for] or wrapping
+4 > 1 // label, then the text, but only for a role named from its content (a list,
+5 < 1 // list item, row, table, form or landmark is not), then the title. Comment
+6 < 1 // mode and story play find elements with it.
+3 < 2 // label, then the text. Comment mode and story play find elements with it.
+4 < 1 
+5 < 1 const INPUT_ROLES: Record<string, string> = {
+6 < 1   checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton',
+7 < 1   button: 'button', submit: 'button', reset: 'button', image: 'button', search: 'searchbox',
+8 < 1 };
+10 > 1 
+11 < 1 // The roles Chrome names from their content, which is what the checker counts
+12 < 1 // (factory/stack/tinyapp/browser.ts asks Chrome's accessibility tree). Read off
+13 < 1 // Chrome on 2026-11-20 (#1532): listitem, row and every landmark came back unnamed.
+14 < 1 const FROM_CONTENT = new Set([
+15 < 1   'button', 'cell', 'checkbox', 'columnheader', 'gridcell', 'heading', 'link', 'menuitem',
+16 < 1   'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'rowheader', 'switch', 'tab', 'term',
+17 < 1   'tooltip', 'treeitem',
+18 < 1 ]);
+9 < 1 
+10 < 1 const clean = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim();
+11 < 1 
+12 < 1 export function roleOf(el: Element): string {
+13 < 1   const explicit = clean(el.getAttribute('role')).split(' ')[0];
+14 < 1   if (explicit) return explicit;
+15 < 1   const tag = el.tagName.toLowerCase();
+16 < 1   switch (tag) {
+17 < 1     case 'button': return 'button';
+18 < 1     case 'a': return el.hasAttribute('href') ? 'link' : '';
+19 < 1     case 'input': {
+20 < 1       const type = ((el as HTMLInputElement).type || 'text').toLowerCase();
+21 < 1       if (type === 'hidden') return '';
+22 < 1       return INPUT_ROLES[type] ?? 'textbox';
+23 < 1     }
+24 < 1     case 'textarea': return 'textbox';
+25 < 1     case 'select': return (el as HTMLSelectElement).multiple || (el as HTMLSelectElement).size > 1 ? 'listbox' : 'combobox';
+26 < 1     case 'option': return 'option';
+27 < 1     case 'h1': case 'h2': case 'h3': case 'h4': case 'h5': case 'h6': return 'heading';
+28 < 1     case 'img': return el.getAttribute('alt') === '' ? 'presentation' : 'img';
+29 < 1     case 'ul': case 'ol': return 'list';
+30 < 1     case 'li': return 'listitem';
+31 < 1     case 'nav': return 'navigation';
+32 < 1     case 'main': return 'main';
+33 < 1     case 'header': return 'banner';
+34 < 1     case 'footer': return 'contentinfo';
+35 < 1     case 'aside': return 'complementary';
+36 < 1     case 'form': return 'form';
+37 < 1     case 'table': return 'table';
+38 < 1     case 'tr': return 'row';
+39 < 1     case 'td': return 'cell';
+40 < 1     case 'th': return 'columnheader';
+41 < 1     case 'dialog': return 'dialog';
+42 < 1     case 'hr': return 'separator';
+43 < 1     case 'progress': return 'progressbar';
+44 < 1     case 'section': return el.hasAttribute('aria-label') || el.hasAttribute('aria-labelledby') ? 'region' : '';
+45 < 1     default: return '';
+46 < 1   }
+47 < 1 }
+48 < 1 
+49 < 1 function textOf(el: Element): string {
+50 < 2   if (el instanceof HTMLImageElement) return clean(el.alt);
+51 < 1   return clean(el.textContent);
+52 < 1 }
+53 < 1 
+54 < 1 export function nameOf(el: Element): string {
+55 < 1   const label = clean(el.getAttribute('aria-label'));
+56 < 1   if (label) return label;
+57 < 1   const by = clean(el.getAttribute('aria-labelledby'));
+58 < 1   if (by) {
+59 < 1     const text = clean(by.split(' ').map((id) => el.ownerDocument.getElementById(id)?.textContent ?? '').join(' '));
+60 < 1     if (text) return text;
+61 < 1   }
+62 < 1   const id = el.getAttribute('id');
+63 < 1   if (id) {
+64 < 1     const forLabel = el.ownerDocument.querySelector(`label[for="${CSS.escape(id)}"]`);
+65 < 1     if (forLabel && clean(forLabel.textContent)) return clean(forLabel.textContent);
+66 < 1   }
+67 < 1   const wrap = el.closest('label');
+68 < 1   if (wrap && wrap !== el && clean(wrap.textContent)) return clean(wrap.textContent);
+69 < 1   const tag = el.tagName.toLowerCase();
+70 < 1   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+71 < 1     const type = (el as HTMLInputElement).type;
+72 < 1     if (type === 'button' || type === 'submit' || type === 'reset') return clean((el as HTMLInputElement).value);
+73 < 1     return clean(el.getAttribute('title')) || clean(el.getAttribute('placeholder'));
+74 < 1   }
+76 > 1   if (el instanceof HTMLImageElement) return clean(el.alt) || clean(el.getAttribute('title'));
+77 < 1   return (FROM_CONTENT.has(roleOf(el)) ? textOf(el) : '') || clean(el.getAttribute('title'));
+75 < 2   return textOf(el) || clean(el.getAttribute('title'));
+76 < 1 }
+77 < 1 
+78 < 1 /** The nearest element, this one or an ancestor, that has both a role and a name. */
+79 < 1 export function named(el: Element | null): Element | null {
+80 < 1   for (let e = el; e; e = e.parentElement) {
+81 < 1     if (roleOf(e) && nameOf(e)) return e;
+82 < 1   }
+83 < 1   return null;
+84 < 1 }
+85 < 1 
+86 < 1 export const targetOf = (role: string, name: string): string => `${role} "${name}"`;
+87 < 1 
+88 < 1 /** The first element in the document with this role and name, or null. */
+89 < 1 export function find(role: string, name: string, root: ParentNode = document): Element | null {
+90 < 1   for (const el of root.querySelectorAll('*')) {
+91 < 1     if (roleOf(el) === role && nameOf(el) === name) return el;
+92 < 1   }
+93 < 1   return null;
+94 < 1 }
+95 < 1 

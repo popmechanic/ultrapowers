@@ -1,0 +1,19 @@
+0 < 1 {
+1 < 1   "about": "What each screen part draws, as the browser and the story checks name it: its accessibility role, and the props that name it, first non-empty wins. A part that draws no role a story can see is null. Every part in catalog.ts has a line here, and a part added during a run adds its own (#1491).",
+2 < 1   "parts": {
+3 < 1     "Stack": {"role": null},
+4 < 1     "Row": {"role": null},
+5 < 1     "Grid": {"role": null},
+6 < 1     "Card": {"role": null},
+7 < 1     "Heading": {"role": "heading", "name": ["text"]},
+8 < 1     "Eyebrow": {"role": null},
+9 < 1     "Text": {"role": null},
+10 < 1     "Badge": {"role": null},
+11 < 1     "Empty": {"role": null},
+12 < 1     "Separator": {"role": null},
+13 < 1     "ActionButton": {"role": "button", "name": ["name", "label"]},
+14 < 1     "ActionCheckbox": {"role": "checkbox", "name": ["label"]},
+15 < 1     "DraftInput": {"role": "textbox", "name": ["label"]}
+16 < 1   }
+17 < 1 }
+18 < 1 

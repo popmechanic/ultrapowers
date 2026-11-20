@@ -1,0 +1,30 @@
+0 < 1 __pycache__/
+1 < 1 *.pyc
+2 < 1 .pytest_cache/
+3 < 1 .DS_Store
+4 < 1 .superpowers/
+5 < 1 
+7 > 1 # local worktrees and session handoffs; a plugin cache built from a directory
+8 < 1 # source once copied .claude/worktrees/ into every cached version (CLAUDE.md)
+6 < 2 # ultrapowers run artifacts (installed copies + engine worktrees)
+7 < 2 # .claude/workflows/ holds Step-4a saved-workflow copies of skills/ultrapowers/
+8 < 2 # harnesses/*.js — install artifacts, regenerated every run, never source of truth.
+9 < 1 .claude/worktrees/
+10 < 2 .claude/workflows/
+11 < 1 .claude/ultrapowers/
+12 < 1 
+14 > 1 # the retired A/B cells' local leftovers (#165), multi-MB and never committed
+13 < 2 # the catch ledger — the laptop's record of every run's catch-count row (#870);
+14 < 2 # ~600KB and growing, so untracked.
+15 < 2 docs/superpowers/observations/ledger.jsonl
+16 < 2 docs/superpowers/observations/ledger.md
+17 < 2 
+18 < 2 # A/B eval-cell evidence (#165): run dirs + transcripts copied out of the
+19 < 2 # OS temp dir per cell; multi-MB, operator-read locally, never committed.
+20 < 1 evals/results/cells/
+21 < 1 
+22 < 1 # frontier corpus + eval readings (#544 §Roadmap step 4): frozen replay evidence
+23 < 1 # and run readings, kept on the operator's laptop; see evals/frontier/README.md.
+24 < 1 evals/frontier/corpus/
+25 < 1 evals/frontier/results/
+26 < 1 

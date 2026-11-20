@@ -1,0 +1,472 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """Read a release's runs into one table: what authoring cost beside the run.
+2 < 1 
+3 < 1 Every run leaves a gate record, and since this plan that record carries an
+5 > 1 `authoring` object — the minutes, the routing branch the risk
+4 < 2 `authoring` object — the minutes, the probes, the routing branch the risk
+5 < 1 override chose, the lane, and the questions with their recommended and picked
+6 < 1 options and how many explain rounds each asked for. One run's record answers
+7 < 1 one run; a release is a handful of them, and
+8 < 1 the question an operator asks at a release ("what did authoring cost, how often
+9 < 1 did the override send a plan to the fleet, how often was Recommended picked")
+10 < 1 is a question about the pile. This census is that pile read into one table.
+11 < 1 
+12 < 1     authoring_census.py --from <dir>
+13 < 1     authoring_census.py --from <dir> --register
+14 < 1     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
+15 < 1         [--evidence-repo <owner>/<repo>] [--config <path>]
+16 < 1 
+17 < 1 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
+19 > 1 `run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
+18 < 2 `run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
+19 < 2 with no record is not a row.
+20 < 1 `--register` prints one line per option of every question instead of the table
+21 < 1 (#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
+22 < 1 `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
+23 < 1 `<owner>-<repo>/run-<N>`, and then prints the table over it. The evidence
+24 < 1 repository is `--evidence-repo`, else the `evidence` key of `--config`
+25 < 1 (default `~/.ultrapowers/fleet.json`); with neither the fetch exits 2 before
+26 < 1 any read (#1395). `--gh` swaps that binary — the test seam,
+27 < 1 and the hook for a caller with its own wrapper; nothing here reaches the
+28 < 1 network by any other route, and only under `--fetch`.
+29 < 1 """
+30 < 1 from __future__ import annotations
+31 < 1 
+32 < 1 import argparse
+33 < 1 import base64
+34 < 1 import json
+35 < 1 import re
+36 < 1 import shlex
+37 < 1 import subprocess
+38 < 1 import sys
+39 < 1 from datetime import datetime
+40 < 1 from pathlib import Path
+41 < 1 
+42 < 1 # scripts -> ultrawrite -> skills: the question counts are `plan_check.py`'s,
+43 < 1 # so a run's census row and its `AUTHORING fact:` line cannot disagree.
+44 < 1 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+45 < 1 from plan_check import explain_rounds, picks, recommended_picked  # noqa: E402
+46 < 1 
+47 < 1 # The stem of a run directory: `run-131` is run 131. The census orders by that
+48 < 1 # number, not by the name — `run-9` sorts ahead of `run-131`.
+49 < 1 RUN_DIR_RE = re.compile(r"^run-(\d+)$")
+50 < 1 
+51 < 1 RECORD_NAME = "gate-verdicts.json"
+52 < 1 STATUS_NAME = "status.json"
+53 < 2 REPORT_NAME = "report.json"
+54 < 1 
+55 < 1 #: The table's columns, in order. The first line of `--from` output is exactly
+56 < 1 #: these names, tab-separated.
+57 < 1 COLUMNS = (
+58 < 1     "run",
+59 < 1     "authoring_min",
+60 < 2     "probes",
+61 < 1     "dispatched",
+62 < 1     "rejected",
+63 < 1     "routing",
+64 < 1     "lane",
+65 < 1     "questions",
+66 < 1     "recommended_picked",
+67 < 1     "run_min",
+68 < 2     "amendments",
+69 < 1     "explain_rounds",
+70 < 1 )
+71 < 1 
+72 < 1 #: What a column prints when the run's files do not carry it.
+73 < 1 MISSING = "-"
+74 < 1 
+75 < 1 
+76 < 1 def _load_json(path):
+77 < 1     """The JSON at `path`, or None when it is absent or unreadable.
+78 < 1 
+79 < 1     A malformed record is read as a record that is not there: the census is a
+80 < 1     reading tool over a release's leavings, and one run's bad file is not this
+81 < 1     script's to raise over."""
+82 < 1     try:
+83 < 1         text = path.read_text(encoding="utf-8")
+84 < 1     except OSError:
+85 < 1         return None
+86 < 1     try:
+87 < 1         return json.loads(text)
+88 < 1     except ValueError:
+89 < 1         return None
+90 < 1 
+91 < 1 
+92 < 1 def _obj(value):
+93 < 1     """`value` when it is a JSON object, else an empty one."""
+94 < 1     return value if isinstance(value, dict) else {}
+95 < 1 
+96 < 1 
+97 < 1 def _run_minutes(status):
+98 < 1     """Whole minutes, rounded down, from `startedAt` to `updatedAt`.
+99 < 1 
+100 < 1     The contract's shape (`fleet/CONTRACT.md`): both are ISO-8601 with a `Z`
+101 < 1     suffix, which `datetime.fromisoformat` reads once the `Z` is spelled
+102 < 1     `+00:00`. None when either stamp is absent or unparseable."""
+103 < 1     started, updated = status.get("startedAt"), status.get("updatedAt")
+104 < 1     if not isinstance(started, str) or not isinstance(updated, str):
+105 < 1         return None
+106 < 1     try:
+107 < 1         a = datetime.fromisoformat(started.replace("Z", "+00:00"))
+108 < 1         b = datetime.fromisoformat(updated.replace("Z", "+00:00"))
+109 < 1     except ValueError:
+110 < 1         return None
+111 < 1     return int((b - a).total_seconds() // 60)
+112 < 1 
+113 < 1 
+114 < 2 def _amendments(report):
+115 < 2     """How many amendments the run's workers made, from its `report.json`.
+116 < 2 
+117 < 2     The report's top-level `amendments` is a list of `{task, amends, what,
+118 < 2     why}` rows, `[]` when none — so the count is that list's length. None when
+119 < 2     the file is absent, unreadable, not an object, or carries no list under
+120 < 2     that key: every run before the plan that introduced the key reads `-`,
+121 < 2     never `0`, because a run that never wrote the key is not a run that made
+122 < 2     no amendment."""
+123 < 2     if not isinstance(report, dict):
+124 < 2         return None
+125 < 2     amendments = report.get("amendments")
+126 < 2     if not isinstance(amendments, list):
+127 < 2         return None
+128 < 2     return len(amendments)
+129 < 2 
+130 < 2 
+131 < 1 def _questions(authoring):
+132 < 1     """The record's questions as a list of objects."""
+133 < 1     questions = authoring.get("questions")
+134 < 1     if not isinstance(questions, list):
+135 < 1         return []
+136 < 1     return [_obj(q) for q in questions]
+137 < 1 
+138 < 1 
+139 < 1 def census_rows(root):
+140 < 1     """One row per `run-<N>` directory under `root` that holds a record.
+141 < 1 
+142 < 1     Each row carries the column values, with None where the run's files do not
+143 < 1     carry one, plus the raw question list the register prints from. A record
+144 < 1     older than this plan has no `authoring` key: its row is None in every
+145 < 1     authoring column, and only `dispatched`/`rejected` — which the tally has
+146 < 1     always carried — read."""
+147 < 1     root = Path(root)
+148 < 1     found = []
+149 < 1     try:
+150 < 1         entries = sorted(root.iterdir())
+151 < 1     except OSError:
+152 < 1         return []
+153 < 1     for entry in entries:
+154 < 1         match = RUN_DIR_RE.match(entry.name)
+155 < 1         if not match or not entry.is_dir():
+156 < 1             continue
+157 < 1         record = _load_json(entry / RECORD_NAME)
+158 < 1         if not isinstance(record, dict):
+159 < 1             continue
+160 < 1         found.append((int(match.group(1)), entry, record))
+161 < 1 
+162 < 1     rows = []
+163 < 1     for number, directory, record in sorted(found, key=lambda item: item[0]):
+164 < 1         tally = _obj(record.get("tally"))
+165 < 1         authoring = record.get("authoring")
+166 < 1         has_authoring = isinstance(authoring, dict)
+167 < 1         authoring = _obj(authoring)
+168 < 1         routing = _obj(authoring.get("routing"))
+169 < 1         questions = _questions(authoring) if has_authoring else []
+170 < 1 
+171 < 1         status = _load_json(directory / STATUS_NAME)
+172 < 1         run_min = _run_minutes(status) if isinstance(status, dict) else None
+173 < 2         report = _load_json(directory / REPORT_NAME)
+174 < 2         amendments = _amendments(report)
+175 < 1 
+176 < 1         rows.append({
+177 < 1             "run": number,
+178 < 1             "authoring_min": authoring.get("minutes") if has_authoring else None,
+179 < 2             "probes": authoring.get("probes") if has_authoring else None,
+180 < 1             "dispatched": tally.get("dispatched"),
+181 < 1             "rejected": tally.get("rejected"),
+182 < 1             "routing": routing.get("branch") if has_authoring else None,
+183 < 1             "lane": routing.get("lane") if has_authoring else None,
+184 < 1             "questions": len(questions) if has_authoring else None,
+185 < 1             "recommended_picked": (
+186 < 1                 recommended_picked(questions) if has_authoring else None),
+187 < 1             "run_min": run_min,
+188 < 2             "amendments": amendments,
+189 < 1             "explain_rounds": (
+190 < 1                 explain_rounds(questions) if has_authoring else None),
+191 < 1             "questions_detail": questions,
+192 < 1         })
+193 < 1     return rows
+194 < 1 
+195 < 1 
+196 < 1 def _cell(value):
+197 < 1     """A column's text: `-` for what the run's files do not carry.
+198 < 1 
+199 < 1     A tuple prints slash-separated — `<picked>/<offered>` for a ratio."""
+200 < 1     if value is None:
+201 < 1         return MISSING
+202 < 1     if isinstance(value, tuple):
+203 < 1         return "/".join("%d" % part for part in value)
+204 < 1     return str(value)
+205 < 1 
+206 < 1 
+207 < 1 def _sum(rows, key):
+208 < 1     """The sum of `key` over the rows that carry it."""
+209 < 1     return sum(row[key] for row in rows
+210 < 1                if isinstance(row.get(key), int) and not isinstance(row[key], bool))
+211 < 1 
+212 < 1 
+213 < 1 def _window(rows):
+214 < 1     """The runs the census was read over: `<lowest>..<highest>`, `-` when no
+215 < 1     row was found. `census_rows` sorts by run number, so the ends are the
+216 < 1     first and last row."""
+217 < 1     if not rows:
+218 < 1         return MISSING
+219 < 1     return "%d..%d" % (rows[0]["run"], rows[-1]["run"])
+220 < 1 
+221 < 1 
+222 < 1 def _totals_line(rows):
+223 < 1     """The table's last line: the release read as one number per question,
+224 < 1     over the window of runs it read (`runs=`, after `plans=`).
+225 < 1 
+226 < 1     `risk_override` is over the rows that carry a routing record at all — a
+227 < 1     pre-plan record has no branch and is no part of the denominator — and the
+229 > 1     two `recommended_picked` sums are over every row. `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
+228 < 2     two `recommended_picked` sums are over every row. `amendments` sums the
+229 < 2     rows that carry a count; a release where no run wrote one reads 0.
+230 < 2     `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
+231 < 1     routed = [row for row in rows if row["routing"] is not None]
+232 < 1     risk = [row for row in routed if row["routing"] == "risk"]
+233 < 1     picked = offered = 0
+234 < 1     for row in rows:
+235 < 1         if row["recommended_picked"] is not None:
+236 < 1             p, q = row["recommended_picked"]
+237 < 1             picked += p
+238 < 1             offered += q
+239 < 1     return ("totals: plans=%d runs=%s risk_override=%d/%d "
+240 < 1             "recommended_picked=%d/%d authoring_min=%d run_min=%d "
+242 > 1             "explain_rounds=%d"
+241 < 2             "amendments=%d explain_rounds=%d"
+242 < 1             % (len(rows), _window(rows), len(risk), len(routed),
+243 < 1                picked, offered,
+244 < 1                _sum(rows, "authoring_min"), _sum(rows, "run_min"),
+245 < 2                _sum(rows, "amendments"),
+246 < 1                _sum(rows, "explain_rounds")))
+247 < 1 
+248 < 1 
+249 < 1 def render_table(rows):
+250 < 1     """The census as tab-separated text: header, one line per run, totals."""
+251 < 1     lines = ["\t".join(COLUMNS)]
+252 < 1     for row in rows:
+253 < 1         lines.append("\t".join(_cell(row[name]) for name in COLUMNS))
+254 < 1     lines.append(_totals_line(rows))
+255 < 1     return "\n".join(lines)
+256 < 1 
+257 < 1 
+258 < 1 def render_register(rows):
+259 < 1     """One line per option of every question, in row then question then option
+260 < 1     order (#735): `run-<N>  q<i>  <question>  <option>  <rec|->  <picked|->`.
+261 < 1 
+262 < 1     The register is the fixed record of what was offered, not a summary of what
+263 < 1     was chosen — every option gets its line whether or not anyone looked at it,
+264 < 1     and a question with no recommended option prints `-` in that column on all
+265 < 1     of them."""
+266 < 1     lines = []
+267 < 1     for row in rows:
+268 < 1         for index, question in enumerate(row["questions_detail"], start=1):
+269 < 1             options = question.get("options")
+270 < 1             if not isinstance(options, list):
+271 < 1                 continue
+272 < 1             recommended = question.get("recommended")
+273 < 1             picked = picks(question)
+274 < 1             for option in options:
+275 < 1                 lines.append("\t".join([
+276 < 1                     "run-%d" % row["run"],
+277 < 1                     "q%d" % index,
+278 < 1                     str(question.get("question", "")),
+279 < 1                     str(option),
+280 < 1                     "rec" if recommended is not None and option == recommended
+281 < 1                     else MISSING,
+282 < 1                     "picked" if option is not None and option in picked
+283 < 1                     else MISSING,
+284 < 1                 ]))
+285 < 1     return "\n".join(lines)
+286 < 1 
+287 < 1 
+288 < 1 # --- --fetch: the run folder in the evidence repository --------------------
+289 < 1 
+290 < 1 def _slug(target):
+291 < 1     """`<owner>/<repo>` as the one path segment a run folder and tag use."""
+292 < 1     return target.replace("/", "-")
+293 < 1 
+294 < 1 
+295 < 1 def run_tag(target, number):
+296 < 1     """The tag a run's folder is read at: `<owner>-<repo>/run-<N>`."""
+297 < 1     return "%s/run-%d" % (_slug(target), int(number))
+298 < 1 
+299 < 1 
+300 < 1 def evidence_contents_path(evidence, target, number, name):
+301 < 1     """The `gh api` path for one file of run `number` of `target`: the file
+302 < 1     `runs/<owner>-<repo>/<N>/<name>` of the evidence repository, at the run's
+303 < 1     tag `<owner>-<repo>/run-<N>`."""
+304 < 1     return "repos/%s/contents/runs/%s/%d/%s?ref=%s" % (
+305 < 1         evidence, _slug(target), int(number), name, run_tag(target, number))
+306 < 1 
+307 < 1 
+308 < 1 def _fetch_file(gh, path):
+309 < 1     """The bytes of one contents path, or None when `gh` exits non-zero.
+310 < 1 
+311 < 1     `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
+312 < 1     newlines, so the decode is over the whole string. The call names exactly
+313 < 1     two arguments — `api` and the contents path — so a caller's wrapper sees
+314 < 1     the same shape the real binary does."""
+315 < 1     proc = subprocess.run(
+316 < 1         gh + ["api", path],
+317 < 1         capture_output=True, text=True)
+318 < 1     if proc.returncode != 0:
+319 < 1         return None
+320 < 1     try:
+321 < 1         answer = json.loads(proc.stdout)
+322 < 1     except ValueError:
+323 < 1         return None
+324 < 1     content = _obj(answer).get("content")
+325 < 1     if not isinstance(content, str):
+326 < 1         return None
+327 < 1     try:
+328 < 1         return base64.b64decode(content)
+329 < 1     except (ValueError, TypeError):
+330 < 1         return None
+331 < 1 
+332 < 1 
+333 < 1 def fetch_runs(target, first, last, into, gh="gh", *, evidence):
+335 > 1     """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
+336 < 1     for each N from `first` to `last` inclusive; return the runs written.
+334 < 2     """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
+335 < 2     `run-<N>/report.json` for each N from `first` to `last` inclusive; return
+336 < 2     the runs written.
+337 < 1 
+339 > 1     Both live in the run's folder `runs/<owner>-<repo>/<N>/` of the
+338 < 2     All three live in the run's folder `runs/<owner>-<repo>/<N>/` of the
+339 < 1     operator's evidence repository `evidence`, at the tag
+340 < 1     `<owner>-<repo>/run-<N>`; the record is read first. A run
+341 < 1     whose tag has no record is skipped whole — one line on stderr, nothing
+342 < 1     written for it, no directory left behind — because a run with no record is
+343 < 1     no row. A status that does not answer leaves that file unwritten and the
+345 > 1     row's `run_min` a `-`: the authoring numbers are still worth reading
+346 < 1     without it."""
+344 < 2     row's `run_min` a `-`, and a report that does not answer leaves that file
+345 < 2     unwritten and the row's `amendments` a `-`: the authoring numbers are still
+346 < 2     worth reading without either."""
+347 < 1     into = Path(into)
+348 < 1     # The destination exists whether or not any run answers: a release where
+349 < 1     # every tag is missing is an empty census, not a usage error.
+350 < 1     into.mkdir(parents=True, exist_ok=True)
+351 < 1     command = shlex.split(gh) if isinstance(gh, str) else list(gh)
+352 < 1     written = []
+353 < 1     for number in range(int(first), int(last) + 1):
+354 < 1         record = _fetch_file(command, evidence_contents_path(
+355 < 1             evidence, target, number, RECORD_NAME))
+356 < 1         if record is None:
+357 < 1             print("census: run %d has no gate record at %s in %s — skipped"
+358 < 1                   % (number, run_tag(target, number), evidence),
+359 < 1                   file=sys.stderr)
+360 < 1             continue
+361 < 1         directory = into / ("run-%d" % number)
+362 < 1         directory.mkdir(parents=True, exist_ok=True)
+363 < 1         (directory / RECORD_NAME).write_bytes(record)
+364 < 1         status = _fetch_file(command, evidence_contents_path(
+365 < 1             evidence, target, number, STATUS_NAME))
+366 < 1         if status is not None:
+367 < 1             (directory / STATUS_NAME).write_bytes(status)
+368 < 2         report = _fetch_file(command, evidence_contents_path(
+369 < 2             evidence, target, number, REPORT_NAME))
+370 < 2         if report is not None:
+371 < 2             (directory / REPORT_NAME).write_bytes(report)
+372 < 1         written.append(number)
+373 < 1     return written
+374 < 1 
+375 < 1 
+376 < 1 RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
+377 < 1 
+378 < 1 # The operator's setting: its `evidence` key names the evidence repository.
+379 < 1 DEFAULT_CONFIG = "~/.ultrapowers/fleet.json"
+380 < 1 
+381 < 1 
+382 < 1 def _configured_evidence(config):
+383 < 1     """The `evidence` value of the config at `config`, or None when the file
+384 < 1     is absent, unreadable, or lacks a non-empty string there. Nothing guesses
+385 < 1     a repository in its place."""
+386 < 1     try:
+387 < 1         setting = json.loads(Path(config).expanduser().read_text())
+388 < 1     except (OSError, ValueError):
+389 < 1         return None
+390 < 1     value = _obj(setting).get("evidence")
+391 < 1     return value if isinstance(value, str) and value.strip() else None
+392 < 1 
+393 < 1 
+394 < 1 def main(argv=None):
+395 < 1     ap = argparse.ArgumentParser(
+396 < 1         description="Read a release's runs into one table: what authoring "
+397 < 1                     "cost beside what the run cost.")
+398 < 1     ap.add_argument("--from", dest="root", metavar="DIR",
+399 < 1                     help="directory holding `run-<N>/gate-verdicts.json` files")
+400 < 1     ap.add_argument("--register", action="store_true",
+401 < 1                     help="print one line per option of every question "
+402 < 1                          "instead of the table")
+403 < 1     ap.add_argument("--fetch", metavar="OWNER/REPO",
+404 < 1                     help="fill --into from this repository's run tags, "
+405 < 1                          "then print the table over it")
+406 < 1     ap.add_argument("--runs", metavar="A..B",
+407 < 1                     help="the inclusive run range to fetch")
+408 < 1     ap.add_argument("--into", metavar="DIR",
+409 < 1                     help="where --fetch writes the runs it reads")
+410 < 1     ap.add_argument("--evidence-repo", metavar="OWNER/REPO",
+411 < 1                     help="the evidence repository --fetch reads run folders "
+412 < 1                          "from; default the `evidence` key of --config")
+413 < 1     ap.add_argument("--config", metavar="PATH", default=DEFAULT_CONFIG,
+414 < 1                     help="the operator's setting file; default "
+415 < 1                          "`~/.ultrapowers/fleet.json`")
+416 < 1     ap.add_argument("--gh", default="gh",
+417 < 1                     help="the gh binary (or command) to run; default `gh`")
+418 < 1     args = ap.parse_args(argv)
+419 < 1 
+420 < 1     if args.fetch:
+421 < 1         if not args.runs or not args.into:
+422 < 1             print("census: --fetch needs --runs <A>..<B> and --into <dir>",
+423 < 1                   file=sys.stderr)
+424 < 1             return 1
+425 < 1         match = RUNS_RE.match(args.runs)
+426 < 1         if not match:
+427 < 1             print("census: --runs takes `<A>..<B>`, not `%s`" % args.runs,
+428 < 1                   file=sys.stderr)
+429 < 1             return 1
+430 < 1         first, last = int(match.group(1)), int(match.group(2))
+431 < 1         if first > last:
+432 < 1             print("census: --runs `%s` counts backwards" % args.runs,
+433 < 1                   file=sys.stderr)
+434 < 1             return 1
+435 < 1         evidence = args.evidence_repo or _configured_evidence(args.config)
+436 < 1         if not evidence:
+437 < 1             print("census: no evidence repository — give --evidence-repo "
+438 < 1                   "<owner>/<repo> or set the `evidence` key in %s"
+439 < 1                   % args.config, file=sys.stderr)
+440 < 1             return 2
+441 < 1         fetch_runs(args.fetch, first, last, Path(args.into), args.gh,
+442 < 1                    evidence=evidence)
+443 < 1         root = Path(args.into)
+444 < 1     elif args.root:
+445 < 1         root = Path(args.root)
+446 < 1     else:
+447 < 1         print("census: give --from <dir> or --fetch <owner>/<repo>",
+448 < 1               file=sys.stderr)
+449 < 1         return 1
+450 < 1 
+451 < 1     if not root.is_dir():
+452 < 1         print("census: no such directory `%s`" % root, file=sys.stderr)
+453 < 1         return 1
+454 < 1 
+455 < 1     rows = census_rows(root)
+456 < 1     print(render_register(rows) if args.register else render_table(rows))
+457 < 1     return 0
+458 < 1 
+459 < 1 
+460 < 1 if __name__ == "__main__":
+461 < 1     sys.exit(main())
+462 < 1 

@@ -1,0 +1,36 @@
+0 < 2 import { useEffect, useRef } from 'react'
+1 < 2 import { DropdownMenu } from '../menu'
+2 < 2 import { Button } from '../Button'
+3 < 2 import { simulateOpen } from './interact'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 const items = [
+7 < 2   { label: 'Edit', icon: 'draft' as const, onClick: () => {} },
+8 < 2   { label: 'Duplicate', icon: 'add' as const, onClick: () => {} },
+9 < 2   'separator' as const,
+10 < 2   { label: 'Delete', icon: 'remove' as const, tone: 'down' as const, onClick: () => {} },
+11 < 2 ]
+12 < 2 
+13 < 2 function DropdownMenuOpen() {
+14 < 2   const ref = useRef<HTMLDivElement>(null)
+15 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+16 < 2   return (
+17 < 2     <div ref={ref}>
+18 < 2       <DropdownMenu label="Actions" items={items}>
+19 < 2         <Button size="sm">Actions</Button>
+20 < 2       </DropdownMenu>
+21 < 2     </div>
+22 < 2   )
+23 < 2 }
+24 < 2 
+25 < 2 export const dropdownMenuDemos: Demo[] = [
+26 < 2   { id: 'trigger', states: ['hover', 'focus'], render: () => (
+27 < 2       <span data-subject>
+28 < 2         <DropdownMenu label="Actions" items={items}>
+29 < 2           <Button size="sm">Actions</Button>
+30 < 2         </DropdownMenu>
+31 < 2       </span>
+32 < 2     ) },
+33 < 2   { id: 'open', render: () => <DropdownMenuOpen /> },
+34 < 2 ]
+35 < 2 

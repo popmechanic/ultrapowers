@@ -1,0 +1,32 @@
+0 < 1 """routing.py's risk reading is asked over every task, Type line or not.
+1 < 1 
+2 < 1 A task with no `**Type:**` line parses as `type: None` and is an
+3 < 1 implementation task; the risk reading once kept only `type ==
+4 < 1 "implementation"`, so a plan that leaves the line out was read as empty.
+5 < 1 """
+6 < 1 import re
+7 < 1 import sys
+8 < 1 from pathlib import Path
+9 < 1 
+10 < 1 ROOT = Path(__file__).resolve().parents[1]
+11 < 1 sys.path.insert(0, str(ROOT / "skills/ultrawrite/scripts"))
+12 < 1 
+13 < 1 import routing  # noqa: E402
+14 < 1 from routing import plan_parse  # noqa: E402
+15 < 1 
+16 < 1 FIXTURE = ROOT / "evals/fixtures/claims/plan.md"
+17 < 1 
+18 < 1 
+19 < 1 def test_risk_reading_sees_tasks_without_a_type_line(monkeypatch, tmp_path):
+20 < 1     text = re.sub(r"^\*\*Type:\*\*.*\n", "", FIXTURE.read_text(), flags=re.M)
+21 < 1     result, tasks = plan_parse.parse_plan_full(text)
+22 < 1     assert all(t.get("type") is None for t in tasks)
+23 < 1 
+24 < 1     asked = []
+25 < 1     monkeypatch.setattr(routing, "ask_jev",
+26 < 1                         lambda q, k, payload: asked.append(payload) or None)
+27 < 1     routing.routing_fact_lines(result, tasks, tmp_path / "plan.md")
+28 < 1 
+29 < 1     assert len(asked) == 1
+30 < 1     assert len(asked[0]["plan"]["tasks"]) == len(result["tasks"]) == 3
+31 < 1 

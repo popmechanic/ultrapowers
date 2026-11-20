@@ -1,0 +1,94 @@
+0 < 2 {
+1 < 2   "version": "questions-v1",
+3 > 2   "about": "Every Jev question set the Flock puts to `POST /v1/systemone` during a run. `flock_step`, read by factory/flock/step_reading.mjs once per green story step; `flock_peer_rewrite`, read by factory/flock/engine.mjs when an edit replaces a peer's lines; and `flock_peer_settled`, its second look before a draft for a line of main's read as lost. Their modes live in factory/policy.json's `flock.jev_step` and `flock.jev_peer_rewrite` (`second_look`). The authoring sets live beside their readers, in skills/ultrawrite/stories/questions.json (#1449). Each set names its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
+2 < 2   "about": "Every Jev question set the Flock puts to `POST /v1/systemone` during a run. `flock_step`, read by factory/flock/step_reading.mjs once per green story step; and `flock_peer_rewrite`, read by factory/flock/engine.mjs when an edit replaces a peer's lines; their modes live in factory/policy.json's `flock.jev_step` and `flock.jev_peer_rewrite`. The authoring sets live beside their readers, in skills/ultrawrite/stories/questions.json (#1449). Each set names its reader and its rollback (map #1131 rule 3). A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
+3 < 2   "sets": {
+4 < 2     "flock_step": {
+5 < 2       "when": "At a ready settle, once per story, at its last green step (#1369)",
+6 < 2       "reader": "factory/flock/step_reading.mjs",
+7 < 2       "rollback": "factory/policy.json flock.jev_step.mode = off",
+8 < 2       "state": [
+9 < 2         "story",
+10 < 2         "step",
+11 < 2         "did",
+12 < 2         "before",
+13 < 2         "after",
+14 < 2         "changes",
+15 < 2         "screen_text"
+16 < 2       ],
+17 < 2       "provenance": "state-probe runner spec 2026-09-27 §7; TypeSafe citation-check recipe (supports / contradicts / says nothing)",
+18 < 2       "calibrated": false,
+19 < 2       "questions": {
+20 < 2         "delivered": {
+21 < 2           "type": "choice",
+22 < 2           "instructions": {
+23 < 2             "question": "After the user did `did`, do `after` and `screen_text` show that `story` came true?",
+24 < 2             "context": "`story` is the sentence the operator signed. `before` and `after` are the app's store as [tables, values] before the story's first step and after its last; row ids are numbered by creation order. When the store is too big to send whole, `changes` stands in for `before` and `after`: one {table, row, before, after} per row that differs, a missing row null. `screen_text` is the page's visible text after the last step. `did` is everything the user clicked or typed, every step of the story in order."
+25 < 2           },
+26 < 2           "criteria": {
+27 < 2             "supports": "The store or the screen after the step shows the outcome the sentence describes",
+28 < 2             "contradicts": "The store or the screen shows something the sentence rules out",
+29 < 2             "says_nothing": "The evidence neither shows nor rules out the sentence's outcome"
+30 < 2           }
+31 < 2         }
+32 < 2       }
+33 < 2     },
+34 < 2     "flock_peer_rewrite": {
+35 < 2       "when": "When an agent's edit replaces or deletes lines a peer wrote, once per such edit (#1401)",
+36 < 2       "reader": "factory/flock/engine.mjs",
+37 < 2       "rollback": "factory/policy.json flock.jev_peer_rewrite.mode = record (never drafts), or off (never asks)",
+38 < 2       "state": [
+39 < 2         "path",
+40 < 2         "before",
+41 < 2         "peer",
+42 < 2         "after",
+43 < 2         "tasks"
+44 < 2       ],
+45 < 2       "provenance": "weave census 2026-09-29 (#1401): run-277's only edit over a peer's line ran two of the peer's words together; operator pick 2026-09-29",
+46 < 2       "calibrated": false,
+47 < 2       "questions": {
+48 < 2         "kept": {
+49 < 2           "type": "choice",
+50 < 2           "instructions": {
+51 < 2             "question": "Does `after` still carry the change the peer made when it turned `before` into `peer`?",
+52 < 2             "context": "`path` is the file. `before` is what the peer's lines replaced (empty when the peer only added them), and `peer` is what the peer wrote. `after` is what a second agent then wrote over the peer's lines (empty when it deleted them). `tasks` are the two sides, the second agent's first, each with its `title` and its `claim`, what that side meant. The loose-ends side has no claim: it was asked to fix the problem in its `asked_to_fix`, when one was reported for this file, and anything else it changed in `after` was not asked for."
+53 < 2           },
+54 < 2           "criteria": {
+55 < 2             "keeps": "What the peer changed is still there in `after`, beside the second agent's own change",
+56 < 2             "loses": "Part of the peer's change is undone, or `after` runs together words or lines that `before` and `peer` kept apart",
+57 < 2             "supersedes": "The second agent's claim means to replace the peer's change, and `after` does exactly that"
+58 < 2           }
+59 < 2         }
+60 < 2       }
+61 < 2     },
+62 < 2     "flock_peer_settled": {
+63 < 2       "when": "Before a settled green run is drafted for a line of main's that a peer rewrite read as lost, once per file and author of the lost lines",
+64 < 2       "reader": "factory/flock/engine.mjs",
+65 < 2       "rollback": "factory/policy.json flock.jev_peer_rewrite.second_look.mode = off (the first read alone drafts)",
+66 < 2       "state": [
+67 < 2         "path",
+68 < 2         "theirs",
+69 < 2         "lost",
+70 < 2         "settled",
+71 < 2         "sides"
+72 < 2       ],
+73 < 2       "provenance": "flock-baseline run-23 (2026-11-13): a builder asked to make one file of two folded main's opening line into its own in one edit and deleted main's in the next; the peer-rewrite read saw the second edit alone and answered loses at 0.43, and the run, whose file kept everything, ended a draft. Read from the laptop, jev-latest, 2026-11-13, n=27 answers over 9 cases: run-23's file carried 3 of 3, run-17's forced loss drops 3 of 3, five more losses and rewordings as wanted; a wording that asked about the side's meaning as a whole read run-17 as carried 3 of 3 and was dropped",
+74 < 2       "calibrated": false,
+75 < 2       "questions": {
+76 < 2         "carried": {
+77 < 2           "type": "choice",
+78 < 2           "instructions": {
+79 < 2             "question": "Is what each line in `lost` said or did still said or done somewhere in `settled`?",
+80 < 2             "context": "`path` is the file. `theirs` is every line the other side wrote in it, in order. An agent of this run, at work on `ours`, removed the lines in `lost`, which are some of them. `settled` is the whole file as this run leaves it. `sides` says what each side meant, each with a `title` and, where it has one, a `claim`. Judge the lines in `lost` one by one, and only them. A line that this run's own work made needless is still gone."
+81 < 2           },
+82 < 2           "criteria": {
+83 < 2             "carried": "Every line in `lost` is still there in substance: what it said is said in `settled`, in the same words or in others, and what it did is still done",
+84 < 2             "drops": "At least one line in `lost` said or did something that `settled` no longer says or does",
+85 < 2             "garbles": "`settled` runs together or mixes words or lines of `lost` so that they no longer read as written"
+86 < 2           }
+87 < 2         }
+88 < 2       }
+89 < 2     }
+90 < 2   }
+91 < 2 }
+92 < 2 

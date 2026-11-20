@@ -1,0 +1,29 @@
+0 < 2 import { Stat, Metric } from '../readout'
+1 < 2 import { Row, Grid } from '../layout'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 export const statDemos: Demo[] = [
+5 < 2   { id: 'default', render: () => (
+6 < 2       <Grid cols={4}>
+7 < 2         <Stat label="Users" value="1,284" icon="users" tone="idle" />
+8 < 2         <Stat label="Active" value="312" icon="target" tone="up" />
+9 < 2         <Stat label="Revenue" value="+$4,290" icon="up" tone="up" />
+10 < 2         <Stat label="Churn" value="−0.4%" icon="performance" tone="down" />
+11 < 2       </Grid>
+12 < 2     ) },
+13 < 2 ]
+14 < 2 
+15 < 2 export const metricDemos: Demo[] = [
+16 < 2   // The point of Metric: null renders an em-dash, never "0" — shown next to a
+17 < 2   // real zero so the difference between "known zero" and "unknown" is visible.
+18 < 2   { id: 'default', render: () => (
+19 < 2       <Row gap={6} wrap={false}>
+20 < 2         <Metric label="Projects" value={0} />
+21 < 2         <Metric label="Completion" value={null} />
+22 < 2         <Metric label="Score" value={null} />
+23 < 2         <Metric label="Balance" value="$0.00" />
+24 < 2         <Metric label="Plan" value="Free" num={false} />
+25 < 2       </Row>
+26 < 2     ) },
+27 < 2 ]
+28 < 2 

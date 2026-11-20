@@ -1,0 +1,74 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Field, Input, Textarea } from '../Input'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 // Field's `children` is a render prop `(id, describedBy) => ReactNode` (it
+5 < 2 // wires a real <label for>, hint/error text, and aria-describedby) rather
+6 < 2 // than plain JSX children — Input/Textarea need those two values passed
+7 < 2 // through explicitly.
+8 < 2 
+9 < 2 function InteractiveInput({
+10 < 2   label,
+11 < 2   initial,
+12 < 2   placeholder,
+13 < 2   invalid = false,
+14 < 2   subject = false,
+15 < 2 }: {
+16 < 2   label: string
+17 < 2   initial: string
+18 < 2   placeholder?: string
+19 < 2   invalid?: boolean
+20 < 2   subject?: boolean
+21 < 2 }) {
+22 < 2   const [value, setValue] = useState(initial)
+23 < 2   const field = (
+24 < 2     <Field label={label} error={invalid ? 'Must be a number' : undefined}>
+25 < 2       {(id, describedBy) => (
+26 < 2         <Input
+27 < 2           id={id}
+28 < 2           name={label.toLowerCase()}
+29 < 2           describedBy={describedBy}
+30 < 2           value={value}
+31 < 2           placeholder={placeholder}
+32 < 2           invalid={invalid}
+33 < 2           onChange={setValue}
+34 < 2           autoComplete="off"
+35 < 2         />
+36 < 2       )}
+37 < 2     </Field>
+38 < 2   )
+39 < 2   return subject ? <span data-subject style={{ display: 'block', width: '100%' }}>{field}</span> : field
+40 < 2 }
+41 < 2 
+42 < 2 function InteractiveTextarea() {
+43 < 2   const [value, setValue] = useState('Puffy.\nChunky.')
+44 < 2   return (
+45 < 2     <span data-subject style={{ display: 'block', width: '100%' }}>
+46 < 2       <Field label="Notes">
+47 < 2         {(id, describedBy) => (
+48 < 2           <Textarea
+49 < 2             id={id}
+50 < 2             name="notes"
+51 < 2             describedBy={describedBy}
+52 < 2             value={value}
+53 < 2             onChange={setValue}
+54 < 2             autoComplete="off"
+55 < 2           />
+56 < 2         )}
+57 < 2       </Field>
+58 < 2     </span>
+59 < 2   )
+60 < 2 }
+61 < 2 
+62 < 2 export const inputDemos: Demo[] = [
+63 < 2   { id: 'basic', states: ['focus', 'hover'], render: () => <InteractiveInput label="Name" initial="1st-Pouf" subject /> },
+64 < 2   { id: 'placeholder', render: () => <InteractiveInput label="Email" initial="" placeholder="you@example.com…" /> },
+65 < 2   { id: 'invalid', render: () => <InteractiveInput label="Age" initial="abc" invalid /> },
+66 < 2   { id: 'disabled', render: () => (
+67 < 2       <Field label="Locked">
+68 < 2         {(id, describedBy) => <Input id={id} describedBy={describedBy} value="read only" disabled onChange={() => {}} />}
+69 < 2       </Field>
+70 < 2     ) },
+71 < 2   { id: 'textarea', states: ['focus'], render: () => <InteractiveTextarea /> },
+72 < 2 ]
+73 < 2 

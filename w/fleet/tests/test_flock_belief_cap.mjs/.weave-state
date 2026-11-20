@@ -16,7 +16,7 @@
 15 < 1   const plan = writePlan(t, { claim: 'a.txt says what the task writes.', check: 'test -f a.txt', tasks: [one] })
 16 < 1   const r = await flockRun(t, {
 17 < 1     plan,
-18 < 1     args: ['--loose-ends', 'record'],
+18 < 2     args: ['--loose-ends', 'record'],
 19 < 1     script: {
 20 < 1       1: { 'a.txt': 'x ONE z\n' },
 21 < 1       '@beliefs': [

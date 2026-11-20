@@ -1,0 +1,252 @@
+0 < 2 diff --git a/clitool/cli.py b/clitool/cli.py
+1 < 2 index 85b261a..ce3c2e9 100644
+2 < 2 --- a/clitool/cli.py
+3 < 2 +++ b/clitool/cli.py
+4 < 2 @@ -4,14 +4,36 @@ import argparse
+5 < 2  ROWS = [("ada", 3), ("bob", 5), ("eve", 1)]
+6 < 2  
+7 < 2  
+8 < 2 +def render(row, fmt):
+9 < 2 +    name, count = row
+10 < 2 +    if fmt == "csv":
+11 < 2 +        return "%s,%d" % (name, count)
+12 < 2 +    return "%s %d" % (name, count)
+13 < 2 +
+14 < 2 +
+15 < 2 +def clamp(rows, limit):
+16 < 2 +    if limit is None:
+17 < 2 +        return list(rows)
+18 < 2 +    if limit < 0:
+19 < 2 +        raise ValueError("limit must be >= 0")
+20 < 2 +    return list(rows)[:limit]
+21 < 2 +
+22 < 2 +
+23 < 2  def build_parser():
+24 < 2      parser = argparse.ArgumentParser(prog="report")
+25 < 2 +    parser.add_argument("--verbose", action="store_true", default=False)
+26 < 2 +    parser.add_argument(
+27 < 2 +        "--format", choices=["plain", "csv"], default="plain"
+28 < 2 +    )
+29 < 2 +    parser.add_argument("--limit", type=int, default=None)
+30 < 2      return parser
+31 < 2  
+32 < 2  
+33 < 2  def main(argv=None):
+34 < 2      args = build_parser().parse_args(argv)
+35 < 2 -    rows = list(ROWS)
+36 < 2 -    for name, count in rows:
+37 < 2 -        print("%s %d" % (name, count))
+38 < 2 +    rows = clamp(ROWS, args.limit)
+39 < 2 +    if args.verbose:
+40 < 2 +        print("rows: %d" % len(rows))
+41 < 2 +    for row in rows:
+42 < 2 +        print(render(row, args.format))
+43 < 2      return 0
+44 < 2 diff --git a/clitool/textutil.py b/clitool/textutil.py
+45 < 2 new file mode 100644
+46 < 2 index 0000000..ed8ebeb
+47 < 2 --- /dev/null
+48 < 2 +++ b/clitool/textutil.py
+49 < 2 @@ -0,0 +1,23 @@
+50 < 2 +"""Text utility functions."""
+51 < 2 +
+52 < 2 +
+53 < 2 +def pad(text, width):
+54 < 2 +    """Pad text with trailing spaces to reach the specified width.
+55 < 2 +
+56 < 2 +    Args:
+57 < 2 +        text: The input string to pad.
+58 < 2 +        width: The target width. Must be >= 0.
+59 < 2 +
+60 < 2 +    Returns:
+61 < 2 +        The text padded with trailing spaces, or unchanged if text length >= width.
+62 < 2 +
+63 < 2 +    Raises:
+64 < 2 +        ValueError: If width < 0.
+65 < 2 +    """
+66 < 2 +    if width < 0:
+67 < 2 +        raise ValueError("width must be >= 0")
+68 < 2 +
+69 < 2 +    if len(text) >= width:
+70 < 2 +        return text
+71 < 2 +
+72 < 2 +    return text + " " * (width - len(text))
+73 < 2 diff --git a/tests/test_format.py b/tests/test_format.py
+74 < 2 new file mode 100644
+75 < 2 index 0000000..de02684
+76 < 2 --- /dev/null
+77 < 2 +++ b/tests/test_format.py
+78 < 2 @@ -0,0 +1,39 @@
+79 < 2 +"""Tests for the --format option on the CLI."""
+80 < 2 +from clitool.cli import build_parser, main, render
+81 < 2 +
+82 < 2 +
+83 < 2 +def test_render_plain():
+84 < 2 +    assert render(("ada", 3), "plain") == "ada 3"
+85 < 2 +
+86 < 2 +
+87 < 2 +def test_render_csv():
+88 < 2 +    assert render(("ada", 3), "csv") == "ada,3"
+89 < 2 +
+90 < 2 +
+91 < 2 +def test_parser_accepts_format_default_plain():
+92 < 2 +    args = build_parser().parse_args([])
+93 < 2 +    assert args.format == "plain"
+94 < 2 +
+95 < 2 +
+96 < 2 +def test_parser_accepts_format_csv():
+97 < 2 +    args = build_parser().parse_args(["--format", "csv"])
+98 < 2 +    assert args.format == "csv"
+99 < 2 +
+100 < 2 +
+101 < 2 +def test_parser_rejects_invalid_format():
+102 < 2 +    import pytest
+103 < 2 +
+104 < 2 +    with pytest.raises(SystemExit):
+105 < 2 +        build_parser().parse_args(["--format", "xml"])
+106 < 2 +
+107 < 2 +
+108 < 2 +def test_main_default_output_unchanged(capsys):
+109 < 2 +    assert main([]) == 0
+110 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+111 < 2 +    assert out == ["ada 3", "bob 5", "eve 1"]
+112 < 2 +
+113 < 2 +
+114 < 2 +def test_main_with_format_csv_prints_every_row_as_csv(capsys):
+115 < 2 +    assert main(["--format", "csv"]) == 0
+116 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+117 < 2 +    assert out == ["ada,3", "bob,5", "eve,1"]
+118 < 2 diff --git a/tests/test_limit.py b/tests/test_limit.py
+119 < 2 new file mode 100644
+120 < 2 index 0000000..23582d4
+121 < 2 --- /dev/null
+122 < 2 +++ b/tests/test_limit.py
+123 < 2 @@ -0,0 +1,57 @@
+124 < 2 +"""Tests for the --limit option on the CLI."""
+125 < 2 +import pytest
+126 < 2 +
+127 < 2 +from clitool.cli import build_parser, clamp, main
+128 < 2 +
+129 < 2 +
+130 < 2 +def test_clamp_none_returns_all_rows_as_list():
+131 < 2 +    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
+132 < 2 +    result = clamp(rows, None)
+133 < 2 +    assert result == rows
+134 < 2 +    assert isinstance(result, list)
+135 < 2 +
+136 < 2 +
+137 < 2 +def test_clamp_returns_first_limit_rows():
+138 < 2 +    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
+139 < 2 +    assert clamp(rows, 1) == [("ada", 3)]
+140 < 2 +    assert clamp(rows, 2) == [("ada", 3), ("bob", 5)]
+141 < 2 +
+142 < 2 +
+143 < 2 +def test_clamp_limit_zero_returns_empty_list():
+144 < 2 +    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
+145 < 2 +    assert clamp(rows, 0) == []
+146 < 2 +
+147 < 2 +
+148 < 2 +def test_clamp_limit_greater_than_length_returns_all_rows():
+149 < 2 +    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
+150 < 2 +    assert clamp(rows, 10) == rows
+151 < 2 +
+152 < 2 +
+153 < 2 +def test_clamp_negative_limit_raises_value_error():
+154 < 2 +    rows = [("ada", 3), ("bob", 5), ("eve", 1)]
+155 < 2 +    with pytest.raises(ValueError) as excinfo:
+156 < 2 +        clamp(rows, -1)
+157 < 2 +    assert str(excinfo.value) == "limit must be >= 0"
+158 < 2 +
+159 < 2 +
+160 < 2 +def test_parser_accepts_limit_option_default_none():
+161 < 2 +    args = build_parser().parse_args([])
+162 < 2 +    assert args.limit is None
+163 < 2 +
+164 < 2 +
+165 < 2 +def test_parser_accepts_limit_option_as_int():
+166 < 2 +    args = build_parser().parse_args(["--limit", "1"])
+167 < 2 +    assert args.limit == 1
+168 < 2 +    assert isinstance(args.limit, int)
+169 < 2 +
+170 < 2 +
+171 < 2 +def test_main_with_limit_prints_only_first_row(capsys):
+172 < 2 +    assert main(["--limit", "1"]) == 0
+173 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+174 < 2 +    assert out == ["ada 3"]
+175 < 2 +
+176 < 2 +
+177 < 2 +def test_main_without_limit_prints_all_rows(capsys):
+178 < 2 +    assert main([]) == 0
+179 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+180 < 2 +    assert out == ["ada 3", "bob 5", "eve 1"]
+181 < 2 diff --git a/tests/test_textutil.py b/tests/test_textutil.py
+182 < 2 new file mode 100644
+183 < 2 index 0000000..6c5a827
+184 < 2 --- /dev/null
+185 < 2 +++ b/tests/test_textutil.py
+186 < 2 @@ -0,0 +1,34 @@
+187 < 2 +"""Tests for text utility functions."""
+188 < 2 +import pytest
+189 < 2 +from clitool.textutil import pad
+190 < 2 +
+191 < 2 +
+192 < 2 +def test_pad_adds_trailing_spaces():
+193 < 2 +    """pad adds trailing spaces to reach the target width."""
+194 < 2 +    assert pad("ab", 5) == "ab   "
+195 < 2 +
+196 < 2 +
+197 < 2 +def test_pad_exact_width():
+198 < 2 +    """pad returns text unchanged when it exactly matches width."""
+199 < 2 +    assert pad("abcde", 5) == "abcde"
+200 < 2 +
+201 < 2 +
+202 < 2 +def test_pad_beyond_width():
+203 < 2 +    """pad returns text unchanged when it exceeds width."""
+204 < 2 +    assert pad("abcdef", 3) == "abcdef"
+205 < 2 +
+206 < 2 +
+207 < 2 +def test_pad_zero_width():
+208 < 2 +    """pad with width=0 returns text unchanged."""
+209 < 2 +    assert pad("abc", 0) == "abc"
+210 < 2 +
+211 < 2 +
+212 < 2 +def test_pad_empty_string():
+213 < 2 +    """pad pads empty string to width."""
+214 < 2 +    assert pad("", 3) == "   "
+215 < 2 +
+216 < 2 +
+217 < 2 +def test_pad_negative_width_raises():
+218 < 2 +    """pad raises ValueError for negative width."""
+219 < 2 +    with pytest.raises(ValueError, match="width must be >= 0"):
+220 < 2 +        pad("ab", -1)
+221 < 2 diff --git a/tests/test_verbose.py b/tests/test_verbose.py
+222 < 2 new file mode 100644
+223 < 2 index 0000000..05e9c94
+224 < 2 --- /dev/null
+225 < 2 +++ b/tests/test_verbose.py
+226 < 2 @@ -0,0 +1,24 @@
+227 < 2 +"""Tests for the --verbose flag on the CLI."""
+228 < 2 +from clitool.cli import build_parser, main
+229 < 2 +
+230 < 2 +
+231 < 2 +def test_parser_accepts_verbose_flag_default_false():
+232 < 2 +    args = build_parser().parse_args([])
+233 < 2 +    assert args.verbose is False
+234 < 2 +
+235 < 2 +
+236 < 2 +def test_parser_accepts_verbose_flag_true():
+237 < 2 +    args = build_parser().parse_args(["--verbose"])
+238 < 2 +    assert args.verbose is True
+239 < 2 +
+240 < 2 +
+241 < 2 +def test_main_without_verbose_output_unchanged(capsys):
+242 < 2 +    assert main([]) == 0
+243 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+244 < 2 +    assert out == ["ada 3", "bob 5", "eve 1"]
+245 < 2 +
+246 < 2 +
+247 < 2 +def test_main_with_verbose_prints_header_then_rows(capsys):
+248 < 2 +    assert main(["--verbose"]) == 0
+249 < 2 +    out = capsys.readouterr().out.strip().splitlines()
+250 < 2 +    assert out == ["rows: 3", "ada 3", "bob 5", "eve 1"]
+251 < 2 

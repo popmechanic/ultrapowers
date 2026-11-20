@@ -1,0 +1,42 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // checks-digest.json (#1491, factory/flock/check_digest.mjs): after a run the engine writes one row per
+2 < 1 // file of its checks/ folder, in file-name order. A claims-v1 run whose probe plants two results with
+4 > 1 // the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, one that is not JSON, and one whose name has no `@` (its copy is null).
+3 < 2 // the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, and one that is not JSON.
+4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+5 < 1 import fs from 'node:fs'
+6 < 1 import path from 'node:path'
+7 < 1 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
+8 < 1 
+9 < 1 const fails = []
+10 < 1 const assert = (ok, why) => { if (!ok) fails.push(why) }
+11 < 1 
+12 < 1 const t = flockTarget({ 'a.txt': 'x\n' })
+14 > 1 const plant = `grep -q DONE a.txt && printf '%s' '{"clause":"S1.1","exit":0,"stage":"ui","diff":[]}' > "$FLOCK_CHECK_OUT/S1.1@$(basename "$PWD").json" && printf '{' > "$FLOCK_CHECK_OUT/bad@x.json" && printf '{}' > "$FLOCK_CHECK_OUT/plain.json"`
+13 < 2 const plant = `grep -q DONE a.txt && printf '%s' '{"clause":"S1.1","exit":0,"stage":"ui","diff":[]}' > "$FLOCK_CHECK_OUT/S1.1@$(basename "$PWD").json" && printf '{' > "$FLOCK_CHECK_OUT/bad@x.json"`
+14 < 1 const plan = writePlan(t, {
+15 < 1   claim: 'a.txt reads DONE.', check: 'test -f a.txt',
+16 < 1   tasks: [task({ id: 1, title: 'Write DONE', files: ['Modify: `a.txt`'], claim: 'a.txt carries DONE.', stale: 'path-absent: `a.txt`', run: plant })],
+17 < 1 })
+18 < 1 const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'DONE\n' } } })
+19 < 1 const file = path.join(t.RUN, 'checks-digest.json')
+20 < 1 if (!fs.existsSync(file)) {
+21 < 1   fails.push(`no checks-digest.json (exit ${r.code}; ${r.out.slice(-600)})`)
+22 < 1 } else {
+23 < 1   const rows = JSON.parse(fs.readFileSync(file, 'utf8'))
+24 < 1   const names = fs.readdirSync(path.join(t.RUN, 'checks')).filter((f) => f.endsWith('.json'))
+25 < 1   assert(Array.isArray(rows) && rows.length === names.length, `${rows.length} rows for ${names.length} files: ${JSON.stringify(rows)}`)
+26 < 1   const order = rows.map((x) => x.file)
+27 < 1   assert(JSON.stringify(order) === JSON.stringify([...order].sort()), `rows are not in file-name order: ${order.join(', ')}`)
+28 < 1   const edge = rows.find((x) => x.file === 'S1.1@edge.json')
+29 < 1   assert(edge && edge.clause === 'S1.1' && edge.exit === 0 && edge.stage === 'ui' && edge.diff === true && edge.copy === 'edge' && !Number.isNaN(Date.parse(edge.mtime)),
+30 < 1     `S1.1@edge.json row: ${JSON.stringify(edge)}`)
+31 < 1   const bad = rows.find((x) => x.file === 'bad@x.json')
+32 < 1   assert(bad && bad.unreadable === true && bad.copy === 'x', `bad@x.json row: ${JSON.stringify(bad)}`)
+34 > 1   const plain = rows.find((x) => x.file === 'plain.json')
+35 < 1   assert(plain && plain.copy === null, `plain.json (no \`@\`) row: ${JSON.stringify(plain)}`)
+33 < 1 }
+34 < 1 t.done()
+35 < 1 if (fails.length) { for (const f of fails) console.log(`FAIL ${f}`); process.exit(1) }
+36 < 1 console.log('ALL TESTS PASSED')
+37 < 1 

@@ -1,0 +1,33 @@
+0 < 2 import { useEffect, useRef } from 'react'
+1 < 2 import { Menubar } from '../menubar'
+2 < 2 import { simulateOpen } from './interact'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 const menus = [
+6 < 2   { label: 'File', items: [
+7 < 2     { label: 'New file', icon: 'add' as const, onClick: () => {} },
+8 < 2     { label: 'Open…', icon: 'expand' as const, onClick: () => {} },
+9 < 2     'separator' as const,
+10 < 2     { label: 'Delete', icon: 'remove' as const, tone: 'down' as const, onClick: () => {} },
+11 < 2   ] },
+12 < 2   { label: 'Edit', items: [
+13 < 2     { label: 'Undo', onClick: () => {} },
+14 < 2     { label: 'Redo', onClick: () => {} },
+15 < 2   ] },
+16 < 2   { label: 'View', items: [
+17 < 2     { label: 'Zoom in', onClick: () => {} },
+18 < 2     { label: 'Zoom out', onClick: () => {} },
+19 < 2   ] },
+20 < 2 ]
+21 < 2 
+22 < 2 function MenubarOpen() {
+23 < 2   const ref = useRef<HTMLDivElement>(null)
+24 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+25 < 2   return <div ref={ref}><Menubar menus={menus} /></div>
+26 < 2 }
+27 < 2 
+28 < 2 export const menubarDemos: Demo[] = [
+29 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <span data-subject><Menubar menus={menus} /></span> },
+30 < 2   { id: 'open', render: () => <MenubarOpen /> },
+31 < 2 ]
+32 < 2 

@@ -1,0 +1,108 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Grid } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Avatar } from '../avatar'
+5 < 2 import { Badge } from '../media'
+6 < 2 import { Pagination } from '../pagination'
+7 < 2 import { Segmented } from '../Segmented'
+8 < 2 import { Empty } from '../feedback'
+9 < 2 
+10 < 2 interface Post {
+11 < 2   id: string
+12 < 2   category: string
+13 < 2   title: string
+14 < 2   excerpt: string
+15 < 2   author: string
+16 < 2   date: string
+17 < 2   tone: 'purple' | 'mint' | 'blue' | 'pink'
+18 < 2 }
+19 < 2 
+20 < 2 const FEATURED: Post = {
+21 < 2   id: '0', category: 'Design', tone: 'purple',
+22 < 2   title: 'Why depth beats flat', excerpt: 'Flat design threw away the one signal users feel before they read: elevation. Here is the case for putting it back — carefully.',
+23 < 2   author: 'Ada L.', date: 'Jul 18',
+24 < 2 }
+25 < 2 
+26 < 2 const POSTS: Post[] = [
+27 < 2   { id: '1', category: 'Engineering', tone: 'blue', title: 'Migrating 2,700 lines of CSS to Tailwind, safely', excerpt: 'A snapshot gate that diffs computed styles let us refactor with zero visual drift.', author: 'Grace H.', date: 'Jul 15' },
+28 < 2   { id: '2', category: 'Product', tone: 'mint', title: 'Variants, not classNames', excerpt: 'How a strict component API keeps a whole app on-system without anyone policing it.', author: 'Alan T.', date: 'Jul 11' },
+29 < 2   { id: '3', category: 'Craft', tone: 'pink', title: 'Optical centering, and why math lies', excerpt: 'A perfectly centered glyph looks low on a cushion. The fix is half the floor lip.', author: 'Katherine J.', date: 'Jul 8' },
+30 < 2   { id: '4', category: 'Design', tone: 'purple', title: 'Pastel that passes WCAG', excerpt: 'Ink on pastel, never white — the one deviation from the reference, and the measurements behind it.', author: 'Ada L.', date: 'Jul 2' },
+31 < 2 ]
+32 < 2 
+33 < 2 // 'All' plus every category the grid actually has — never hand-maintained
+34 < 2 // against POSTS, so a new post's category shows up in the filter for free.
+35 < 2 const CATEGORIES = ['All', ...Array.from(new Set(POSTS.map((p) => p.category)))]
+36 < 2 
+37 < 2 function Byline({ author, date }: { author: string; date: string }) {
+38 < 2   return (
+39 < 2     <Row gap={2} wrap={false}>
+40 < 2       <Avatar fallback={author.slice(0, 2)} size="sm" tone="blue" />
+41 < 2       <Text size="sm" muted>{author} · {date}</Text>
+42 < 2     </Row>
+43 < 2   )
+44 < 2 }
+45 < 2 
+46 < 2 /** An example blog index: a featured post, a category filter that narrows the
+47 < 2  * grid, and pagination. */
+48 < 2 export function BlogBlock() {
+49 < 2   const [page, setPage] = useState(1)
+50 < 2   const [category, setCategory] = useState('All')
+51 < 2   const shown = category === 'All' ? POSTS : POSTS.filter((p) => p.category === category)
+52 < 2 
+53 < 2   return (
+54 < 2     <div style={{ maxWidth: 1000, margin: '0 auto', padding: 24 }}>
+55 < 2       <Stack gap={6}>
+56 < 2         <Stack gap={2}>
+57 < 2           <Eyebrow>The 1st-Pouf blog</Eyebrow>
+58 < 2           <Heading level={1}>Notes on soft software</Heading>
+59 < 2         </Stack>
+60 < 2 
+61 < 2         <Card>
+62 < 2           <Grid cols="sidebar">
+63 < 2             <Stack gap={3}>
+64 < 2               <Badge tone={FEATURED.tone}>{FEATURED.category}</Badge>
+65 < 2               <Heading level={2}>{FEATURED.title}</Heading>
+66 < 2               <Text muted>{FEATURED.excerpt}</Text>
+67 < 2               <Byline author={FEATURED.author} date={FEATURED.date} />
+68 < 2             </Stack>
+69 < 2             <div style={{ borderRadius: 20, background: 'var(--purple)', minHeight: 160, boxShadow: 'var(--pouf-blob)' }} />
+70 < 2           </Grid>
+71 < 2         </Card>
+72 < 2 
+73 < 2         <Segmented
+74 < 2           label="Filter by category"
+75 < 2           value={category}
+76 < 2           onChange={(c) => {
+77 < 2             setCategory(c)
+78 < 2             setPage(1) // a stale page number under a shorter filtered list reads as broken pagination
+79 < 2           }}
+80 < 2           options={CATEGORIES.map((c) => ({ value: c, label: c }))}
+81 < 2         />
+82 < 2 
+83 < 2         {shown.length === 0 ? (
+84 < 2           <Empty icon="search" title="No posts in this category">Try a different filter.</Empty>
+85 < 2         ) : (
+86 < 2           <Grid cols={2}>
+87 < 2             {shown.map((p) => (
+88 < 2               <Card variant="tight" key={p.id}>
+89 < 2                 <Stack gap={3}>
+90 < 2                   <Row><Badge tone={p.tone}>{p.category}</Badge></Row>
+91 < 2                   <Heading level={3}>{p.title}</Heading>
+92 < 2                   <Text size="sm" muted>{p.excerpt}</Text>
+93 < 2                   <Byline author={p.author} date={p.date} />
+94 < 2                 </Stack>
+95 < 2               </Card>
+96 < 2             ))}
+97 < 2           </Grid>
+98 < 2         )}
+99 < 2 
+100 < 2         <Row justify="center">
+101 < 2           <Pagination page={page} total={5} onChange={setPage} />
+102 < 2         </Row>
+103 < 2       </Stack>
+104 < 2     </div>
+105 < 2   )
+106 < 2 }
+107 < 2 

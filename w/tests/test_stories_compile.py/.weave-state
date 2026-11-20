@@ -1,0 +1,122 @@
+0 < 1 """Which piece a linked story's check goes to (skills/ultrawrite/stories/compile.ts, #1525).
+1 < 1 Drives bun on the tracked todo-tags bundle with a fake store module."""
+2 < 1 import json
+3 < 1 import os
+4 < 1 import shutil
+5 < 1 import subprocess
+6 < 1 
+7 < 1 import pytest
+8 < 1 
+9 < 1 pytestmark = pytest.mark.skipif(shutil.which("bun") is None, reason="bun is not installed")
+10 < 1 
+11 < 1 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+12 < 1 
+13 < 1 SCRIPT = """
+14 < 1 import {loadBundle} from './skills/ultrawrite/stories/bundle';
+15 < 1 import {probesOf} from './skills/ultrawrite/stories/compile';
+16 < 1 import {runChecks} from './skills/ultrawrite/stories/checks';
+17 < 1 const b = loadBundle('skills/ultrawrite/catalog/todo-tags');
+18 < 1 b.page.stories = b.page.stories.filter((s) => ['S1', 'S4'].includes(s.id));
+19 < 1 const card = (p) => b.cards.find((c) => c.piece === p);
+20 < 1 EDIT;
+21 < 1 let n = 0;
+22 < 1 const run = () => { n += 1; return true; };
+23 < 1 const mod = {
+24 < 1   TOOLS: ['addTodo', 'addTag', 'deleteTodo'].map((name) => ({name, run})),
+25 < 1   makeStore: () => ({getContent: () => [{t: {r: {n}}}, {}]}),
+26 < 1 };
+27 < 1 OUTPUT;
+28 < 1 """
+29 < 1 
+30 < 1 
+31 < 1 def _bun(edit, output):
+32 < 1     script = SCRIPT.replace("EDIT", edit or "void 0").replace("OUTPUT", output)
+33 < 1     r = subprocess.run(["bun", "-e", script], cwd=ROOT, capture_output=True, text=True, timeout=20)
+34 < 1     assert r.returncode == 0, r.stderr
+35 < 1     return json.loads(r.stdout)
+36 < 1 
+37 < 1 
+38 < 1 def pieces(edit=""):
+39 < 1     return _bun(edit, "console.log(JSON.stringify(Object.fromEntries(probesOf(b, mod).map(d => [d.probe.clause, d.piece]))))")
+40 < 1 
+41 < 1 
+43 > 1 def checks(edit, kind="refusals"):
+44 < 1     return _bun(edit, "console.log(JSON.stringify(runChecks(b).%s))" % kind)
+42 < 2 def checks(edit):
+43 < 2     return _bun(edit, "console.log(JSON.stringify(runChecks(b).refusals))")
+44 < 1 
+45 < 1 
+46 < 1 def test_a_link_of_parallel_pieces_goes_to_the_tools_owner():
+47 < 1     assert pieces() == {"S1.1": "todo", "S4.3": "todo"}
+48 < 1 
+49 < 1 
+50 < 1 def test_a_link_goes_to_the_piece_that_depends_on_the_other():
+51 < 1     assert pieces("card('tag').depends_on = ['todo']")["S4.3"] == "tag"
+52 < 1 
+53 < 1 
+54 < 1 def test_a_link_goes_to_the_piece_that_depends_on_both_others():  # potluck's shape
+55 < 1     assert pieces("b.cards.push({piece: 'board', depends_on: ['todo', 'tag'], actions: []}); "
+56 < 1                   "b.page.links[0].pieces = ['todo', 'tag', 'board']")["S4.3"] == "board"
+57 < 1 
+58 < 1 
+59 < 1 def test_a_link_goes_to_a_piece_that_depends_on_the_others_transitively():
+60 < 1     assert pieces("card('tag').depends_on = ['todo']; "
+61 < 1                   "b.cards.push({piece: 'board', depends_on: ['tag'], actions: []}); "
+62 < 1                   "b.page.links[0].pieces = ['todo', 'board']")["S4.3"] == "board"
+63 < 1 
+64 < 1 
+65 < 1 def test_the_tools_owner_counts_as_a_link_piece():
+66 < 1     assert pieces("b.page.links[0].pieces = ['tag']")["S4.3"] == "todo"
+67 < 1 
+68 < 1 
+69 < 1 def test_a_link_naming_no_piece_is_refused():
+70 < 1     # the two kept stories leave other pieces unproven, so look only at the link's refusals
+71 < 1     found = [r for r in checks("b.page.links[0].pieces = ['todo', 'tags']") if r.startswith("link ")]
+72 < 1     assert found == ["link L1: names piece tags, which is no piece"]
+73 < 1 
+74 < 1 
+75 < 1 def test_a_dependency_cycle_does_not_hang_probesOf():
+76 < 1     pieces("card('tag').depends_on = ['todo']; card('todo').depends_on = ['tag']")
+77 < 1 
+78 < 1 
+79 < 1 def test_a_link_no_piece_of_which_depends_on_the_others_is_a_fact():
+80 < 1     found = [f for f in checks("", "facts") if "link L1" in f]
+81 < 1     assert found == ["CODE fact: step S4.3: link L1 joins todo, tag, but none of them depends on all the others, "
+82 < 1                      "so its check goes to todo, the tool's owner, and may run before the others are built; "
+83 < 1                      "make one depend on the rest"]
+84 < 1     assert not [f for f in checks("card('tag').depends_on = ['todo']", "facts") if "link L1" in f]
+85 < 1 
+86 < 1 
+87 < 1 def test_a_string_concepts_is_refused_once():
+88 < 1     found = [r for r in checks("card('todo').concepts = 'todo'") if r.startswith("piece todo") and "concept" in r]
+89 < 1     assert found == ['piece todo: concepts must be a list of concept ids, not "todo"']
+90 < 1 
+91 < 1 
+92 < 1 # What the screen parts draw (#1491): a story expecting a role no part draws is a fact for the
+93 < 1 # author, and the compiled task that needs it is told to add the part and may touch the parts files.
+94 < 1 DRAWS = """
+95 < 1 import {readDraws, TEMPLATE_DRAWS} from './skills/ultrawrite/stories/parts';
+96 < 1 import {compilePlan} from './skills/ultrawrite/stories/compile';
+97 < 1 const draws = readDraws(TEMPLATE_DRAWS);
+98 < 1 delete draws.ActionCheckbox;
+99 < 1 """
+100 < 1 
+101 < 1 
+102 < 1 def test_a_role_no_part_draws_is_a_fact():
+103 < 1     got = _bun(DRAWS, "console.log(JSON.stringify(runChecks(b, draws).facts.filter((f) => f.startsWith('PARTS'))))")
+104 < 1     assert got == ['PARTS fact: story S1 expects a checkbox (such as "buy milk"), and no screen part draws one yet; '
+105 < 1                    'the tasks that need it are told to add one']
+106 < 1     assert not [f for f in checks("", "facts") if f.startswith("PARTS")]
+107 < 1 
+108 < 1 
+109 < 1 def test_the_task_needing_a_part_is_told_to_add_it():
+110 < 1     got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, draws);"
+111 < 1                       "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")
+112 < 1     todo, tag = got
+113 < 1     assert todo.startswith("1: The todo piece")
+114 < 1     assert "No part draws a checkbox yet, and this task's stories expect one: add it." in todo
+115 < 1     assert "- Modify: `client/src/screens/draws.json`" in todo
+116 < 1     assert "No part draws" not in tag and "- Modify:" not in tag
+117 < 1     for t in (todo, tag):
+118 < 1         assert "When a story needs something no part draws, add a part" in t
+119 < 1 

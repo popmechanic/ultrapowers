@@ -1,0 +1,474 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import clsx from 'clsx'
+2 < 2 import { Controller, useForm, useWatch } from 'react-hook-form'
+3 < 2 import { Card, RowCard } from '../surface'
+4 < 2 import { Shell, Sidebar, Stack, Row, Spacer } from '../layout'
+5 < 2 import { Heading, Text, Eyebrow } from '../text'
+6 < 2 import { Avatar } from '../avatar'
+7 < 2 import { Badge, Blob, Dot } from '../media'
+8 < 2 import { Button } from '../Button'
+9 < 2 import { Icon } from '../Icon'
+10 < 2 import { Field, Input, Textarea } from '../Input'
+11 < 2 import { Select } from '../controls'
+12 < 2 import { Empty } from '../feedback'
+13 < 2 import { NavLink } from '../NavLink'
+14 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+15 < 2 
+16 < 2 type TicketStatus = 'open' | 'waiting' | 'solved'
+17 < 2 type StatusFilter = 'all' | TicketStatus
+18 < 2 
+19 < 2 interface Ticket {
+20 < 2   id: string
+21 < 2   customer: string
+22 < 2   initials: string
+23 < 2   subject: string
+24 < 2   preview: string
+25 < 2   body: string
+26 < 2   time: string
+27 < 2   status: TicketStatus
+28 < 2   priority: 'normal' | 'urgent'
+29 < 2   tone: 'purple' | 'pink' | 'blue' | 'mint'
+30 < 2 }
+31 < 2 
+32 < 2 interface Filters {
+33 < 2   query: string
+34 < 2   status: StatusFilter
+35 < 2 }
+36 < 2 
+37 < 2 interface ReplyForm {
+38 < 2   reply: string
+39 < 2 }
+40 < 2 
+41 < 2 const NAV: NavItem[] = [
+42 < 2   { href: '/support', label: 'Queue', icon: 'mail', tone: 'purple' },
+43 < 2   { href: '/support/customers', label: 'Customers', icon: 'users', tone: 'blue' },
+44 < 2   { href: '/support/insights', label: 'Insights', icon: 'chart', tone: 'mint' },
+45 < 2   { href: '/support/saved', label: 'Saved replies', icon: 'comment', tone: 'pink' },
+46 < 2   { href: '/support/settings', label: 'Settings', icon: 'settings', tone: 'orange' },
+47 < 2 ]
+48 < 2 
+49 < 2 const HERE = '/support'
+50 < 2 
+51 < 2 const TICKETS: Ticket[] = [
+52 < 2   {
+53 < 2     id: '1048',
+54 < 2     customer: 'Maya Bloom',
+55 < 2     initials: 'MB',
+56 < 2     subject: 'Can I change the shipping address?',
+57 < 2     preview: 'The order is still marked as processing.',
+58 < 2     body: 'I placed order #L-2048 this morning and noticed my old office is still the delivery address. The order is still marked as processing—can it be updated?',
+59 < 2     time: '4m',
+60 < 2     status: 'open',
+61 < 2     priority: 'urgent',
+62 < 2     tone: 'pink',
+63 < 2   },
+64 < 2   {
+65 < 2     id: '1047',
+66 < 2     customer: 'Alan Turing',
+67 < 2     initials: 'AT',
+68 < 2     subject: 'Focus timer stopped chiming',
+69 < 2     preview: 'The light works, but there is no sound.',
+70 < 2     body: 'My focus timer still counts down and the light flashes, but the completion chime stopped yesterday. I have already tried a fresh battery.',
+71 < 2     time: '18m',
+72 < 2     status: 'open',
+73 < 2     priority: 'normal',
+74 < 2     tone: 'purple',
+75 < 2   },
+76 < 2   {
+77 < 2     id: '1046',
+78 < 2     customer: 'Grace Hopper',
+79 < 2     initials: 'GH',
+80 < 2     subject: 'Return label for the weekend bag',
+81 < 2     preview: 'I need a smaller size instead.',
+82 < 2     body: 'The bag is lovely, but larger than I expected. Could you send a return label? I would like to exchange it for the smaller day bag.',
+83 < 2     time: '1h',
+84 < 2     status: 'waiting',
+85 < 2     priority: 'normal',
+86 < 2     tone: 'blue',
+87 < 2   },
+88 < 2   {
+89 < 2     id: '1045',
+90 < 2     customer: 'Katherine Johnson',
+91 < 2     initials: 'KJ',
+92 < 2     subject: 'Thank you for the replacement',
+93 < 2     preview: 'The new carafe arrived safely.',
+94 < 2     body: 'The replacement carafe arrived safely today. Thank you for making the whole process so easy.',
+95 < 2     time: '3h',
+96 < 2     status: 'solved',
+97 < 2     priority: 'normal',
+98 < 2     tone: 'mint',
+99 < 2   },
+100 < 2 ]
+101 < 2 
+102 < 2 const STATUS_TONE = {
+103 < 2   open: 'pink',
+104 < 2   waiting: 'yellow',
+105 < 2   solved: 'mint',
+106 < 2 } as const
+107 < 2 
+108 < 2 const PANES =
+109 < 2   'grid [grid-template-columns:minmax(0,360px)_minmax(0,1fr)] min-h-[620px] max-[900px]:[grid-template-columns:minmax(0,1fr)]'
+110 < 2 
+111 < 2 /** A complete support workspace: responsive app chrome, searchable and
+112 < 2  * filterable queue, master/detail navigation, mutable ticket status, reply
+113 < 2  * validation, sent replies, empty states, and mobile back navigation. The two
+114 < 2  * forms use React Hook Form while the shared controls remain adapter-friendly. */
+115 < 2 export function SupportBlock() {
+116 < 2   const [active, setActive] = useState('1048')
+117 < 2   const [statuses, setStatuses] = useState<Record<string, TicketStatus>>(
+118 < 2     Object.fromEntries(TICKETS.map((ticket) => [ticket.id, ticket.status])),
+119 < 2   )
+120 < 2   const [replies, setReplies] = useState<Record<string, string[]>>({})
+121 < 2   const [pane, setPane] = useState<'list' | 'detail'>('list')
+122 < 2   const [saved, setSaved] = useState(false)
+123 < 2 
+124 < 2   const { control: filterControl } = useForm<Filters>({
+125 < 2     defaultValues: { query: '', status: 'all' },
+126 < 2   })
+127 < 2   const query = useWatch({ control: filterControl, name: 'query' })
+128 < 2   const status = useWatch({ control: filterControl, name: 'status' })
+129 < 2 
+130 < 2   const {
+131 < 2     control: replyControl,
+132 < 2     handleSubmit,
+133 < 2     reset: resetReply,
+134 < 2     formState: { errors },
+135 < 2   } = useForm<ReplyForm>({ defaultValues: { reply: '' } })
+136 < 2 
+137 < 2   const results = useMemo(() => {
+138 < 2     const needle = query.trim().toLowerCase()
+139 < 2     return TICKETS.filter((ticket) => {
+140 < 2       const currentStatus = statuses[ticket.id]
+141 < 2       const matchesStatus = status === 'all' || currentStatus === status
+142 < 2       const matchesQuery =
+143 < 2         !needle ||
+144 < 2         `${ticket.customer} ${ticket.subject} ${ticket.preview}`
+145 < 2           .toLowerCase()
+146 < 2           .includes(needle)
+147 < 2       return matchesStatus && matchesQuery
+148 < 2     })
+149 < 2   }, [query, status, statuses])
+150 < 2 
+151 < 2   const current = TICKETS.find((ticket) => ticket.id === active) ?? TICKETS[0]!
+152 < 2   const currentStatus = statuses[current.id] ?? current.status
+153 < 2   const openCount = Object.values(statuses).filter((value) => value === 'open').length
+154 < 2 
+155 < 2   function openTicket(id: string) {
+156 < 2     setActive(id)
+157 < 2     setSaved(false)
+158 < 2     resetReply()
+159 < 2     setPane('detail')
+160 < 2   }
+161 < 2 
+162 < 2   function updateStatus(next: TicketStatus) {
+163 < 2     setStatuses((currentStatuses) => ({ ...currentStatuses, [current.id]: next }))
+164 < 2     setSaved(true)
+165 < 2   }
+166 < 2 
+167 < 2   const sendReply = handleSubmit(({ reply }) => {
+168 < 2     const message = reply.trim()
+169 < 2     if (!message) return
+170 < 2     setReplies((currentReplies) => ({
+171 < 2       ...currentReplies,
+172 < 2       [current.id]: [...(currentReplies[current.id] ?? []), message],
+173 < 2     }))
+174 < 2     setStatuses((currentStatuses) => ({ ...currentStatuses, [current.id]: 'waiting' }))
+175 < 2     resetReply()
+176 < 2     setSaved(true)
+177 < 2   })
+178 < 2 
+179 < 2   return (
+180 < 2     <>
+181 < 2       <Shell>
+182 < 2         <Sidebar mobile="hide">
+183 < 2           <Row gap={2} wrap={false}>
+184 < 2             <Blob icon="comment" tone="purple" size="sm" />
+185 < 2             <Heading level={3}>Lumo support</Heading>
+186 < 2           </Row>
+187 < 2           <Text size="sm" muted>Customer care workspace</Text>
+188 < 2           {NAV.map((item) => (
+189 < 2             <NavLink
+190 < 2               key={item.href}
+191 < 2               href={item.href}
+192 < 2               currentPath={HERE}
+193 < 2               icon={item.icon}
+194 < 2               tone={item.tone}
+195 < 2             >
+196 < 2               {item.label}
+197 < 2             </NavLink>
+198 < 2           ))}
+199 < 2           <Card variant="tight">
+200 < 2             <Stack gap={2}>
+201 < 2               <Row gap={2} wrap={false}>
+202 < 2                 <Dot tone="mint" />
+203 < 2                 <Text size="sm">SLA healthy</Text>
+204 < 2               </Row>
+205 < 2               <Text size="sm" muted>Median first reply: 8 minutes</Text>
+206 < 2             </Stack>
+207 < 2           </Card>
+208 < 2         </Sidebar>
+209 < 2 
+210 < 2         <Stack gap={5}>
+211 < 2           <Row justify="between" align="top">
+212 < 2             <Stack gap={1}>
+213 < 2               <Eyebrow>Customer care</Eyebrow>
+214 < 2               <Heading level={1}>Support queue</Heading>
+215 < 2               <Text muted>Prioritize, reply, and resolve without losing context.</Text>
+216 < 2             </Stack>
+217 < 2             <Badge tone={openCount > 0 ? 'pink' : 'mint'}>{openCount} open</Badge>
+218 < 2           </Row>
+219 < 2 
+220 < 2           <Card variant="flush">
+221 < 2             <div className={PANES}>
+222 < 2               <div
+223 < 2                 className={clsx(
+224 < 2                   'flex flex-col [border-right:1px_solid_rgba(201,168,255,0.3)]',
+225 < 2                   'max-[900px]:[border-right:none]',
+226 < 2                   pane === 'detail' && 'max-[900px]:hidden',
+227 < 2                 )}
+228 < 2               >
+229 < 2                 <form
+230 < 2                   role="search"
+231 < 2                   className="flex flex-col gap-(--s3) p-(--s4) [border-bottom:1px_solid_rgba(201,168,255,0.3)]"
+232 < 2                   onSubmit={(event) => event.preventDefault()}
+233 < 2                 >
+234 < 2                   <Field label="Search tickets">
+235 < 2                     {(id, describedBy) => (
+236 < 2                       <Controller
+237 < 2                         name="query"
+238 < 2                         control={filterControl}
+239 < 2                         render={({ field }) => (
+240 < 2                           <Input
+241 < 2                             ref={field.ref}
+242 < 2                             id={id}
+243 < 2                             name={field.name}
+244 < 2                             describedBy={describedBy}
+245 < 2                             value={field.value}
+246 < 2                             onChange={field.onChange}
+247 < 2                             onBlur={field.onBlur}
+248 < 2                             placeholder="Customer, subject, or message…"
+249 < 2                             autoComplete="off"
+250 < 2                           />
+251 < 2                         )}
+252 < 2                       />
+253 < 2                     )}
+254 < 2                   </Field>
+255 < 2                   <Field label="Ticket status">
+256 < 2                     {(id, describedBy) => (
+257 < 2                       <Controller
+258 < 2                         name="status"
+259 < 2                         control={filterControl}
+260 < 2                         render={({ field }) => (
+261 < 2                           <Select
+262 < 2                             id={id}
+263 < 2                             describedBy={describedBy}
+264 < 2                             value={field.value}
+265 < 2                             onChange={field.onChange}
+266 < 2                             options={[
+267 < 2                               { value: 'all', label: 'All tickets' },
+268 < 2                               { value: 'open', label: 'Open' },
+269 < 2                               { value: 'waiting', label: 'Waiting on customer' },
+270 < 2                               { value: 'solved', label: 'Solved' },
+271 < 2                             ]}
+272 < 2                           />
+273 < 2                         )}
+274 < 2                       />
+275 < 2                     )}
+276 < 2                   </Field>
+277 < 2                 </form>
+278 < 2 
+279 < 2                 <div className="flex flex-col gap-(--s2) p-(--s3)" aria-live="polite">
+280 < 2                   {results.length === 0 ? (
+281 < 2                     <div className="p-(--s4)">
+282 < 2                       <Empty icon="search" title="No tickets found">
+283 < 2                         Clear a filter or try a broader search.
+284 < 2                       </Empty>
+285 < 2                     </div>
+286 < 2                   ) : (
+287 < 2                     results.map((ticket) => {
+288 < 2                       const ticketStatus = statuses[ticket.id] ?? ticket.status
+289 < 2                       return (
+290 < 2                         <RowCard
+291 < 2                           key={ticket.id}
+292 < 2                           onClick={() => openTicket(ticket.id)}
+293 < 2                           selected={ticket.id === active}
+294 < 2                         >
+295 < 2                           <Stack gap={2}>
+296 < 2                             <Row gap={2} wrap={false}>
+297 < 2                               <Avatar fallback={ticket.initials} tone={ticket.tone} size="sm" />
+298 < 2                               <Text truncate>{ticket.customer}</Text>
+299 < 2                               <Spacer />
+300 < 2                               <Text size="sm" muted>{ticket.time}</Text>
+301 < 2                             </Row>
+302 < 2                             <Text size="sm" truncate>{ticket.subject}</Text>
+303 < 2                             <Row gap={2}>
+304 < 2                               <Badge tone={STATUS_TONE[ticketStatus]}>{ticketStatus}</Badge>
+305 < 2                               {ticket.priority === 'urgent' ? <Badge tone="orange">Urgent</Badge> : null}
+306 < 2                             </Row>
+307 < 2                           </Stack>
+308 < 2                         </RowCard>
+309 < 2                       )
+310 < 2                     })
+311 < 2                   )}
+312 < 2                 </div>
+313 < 2               </div>
+314 < 2 
+315 < 2               <div
+316 < 2                 className={clsx(
+317 < 2                   'flex flex-col min-w-0',
+318 < 2                   pane === 'list' && 'max-[900px]:hidden',
+319 < 2                 )}
+320 < 2               >
+321 < 2                 <div className="p-(--s5) [border-bottom:1px_solid_rgba(201,168,255,0.3)]">
+322 < 2                   <Stack gap={3}>
+323 < 2                     <Row gap={3} wrap={false}>
+324 < 2                       <span className="hidden max-[900px]:inline-flex">
+325 < 2                         <Button
+326 < 2                           size="sm"
+327 < 2                           variant="quiet"
+328 < 2                           onClick={() => setPane('list')}
+329 < 2                           label="Back to queue"
+330 < 2                         >
+331 < 2                           <Icon name="prev" size="sm" />
+332 < 2                         </Button>
+333 < 2                       </span>
+334 < 2                       <Avatar fallback={current.initials} tone={current.tone} />
+335 < 2                       <Stack gap={1}>
+336 < 2                         <Heading level={3}>{current.subject}</Heading>
+337 < 2                         <Text size="sm" muted>
+338 < 2                           #{current.id} · {current.customer}
+339 < 2                         </Text>
+340 < 2                       </Stack>
+341 < 2                     </Row>
+342 < 2                     <Row gap={2}>
+343 < 2                       <Badge tone={STATUS_TONE[currentStatus]}>{currentStatus}</Badge>
+344 < 2                       {current.priority === 'urgent' ? <Badge tone="orange">Urgent</Badge> : null}
+345 < 2                       {saved ? <Badge tone="mint">Updated</Badge> : null}
+346 < 2                     </Row>
+347 < 2                   </Stack>
+348 < 2                 </div>
+349 < 2 
+350 < 2                 <div className="flex flex-col gap-(--s4) p-(--s5) flex-1">
+351 < 2                   <Card variant="tight">
+352 < 2                     <Stack gap={3}>
+353 < 2                       <Row justify="between">
+354 < 2                         <Row gap={2} wrap={false}>
+355 < 2                           <Avatar fallback={current.initials} tone={current.tone} size="sm" />
+356 < 2                           <Text>{current.customer}</Text>
+357 < 2                         </Row>
+358 < 2                         <Text size="sm" muted>{current.time} ago</Text>
+359 < 2                       </Row>
+360 < 2                       <Text>{current.body}</Text>
+361 < 2                     </Stack>
+362 < 2                   </Card>
+363 < 2 
+364 < 2                   {(replies[current.id] ?? []).map((reply, index) => (
+365 < 2                     <Card key={`${current.id}-${index}`} variant="tight">
+366 < 2                       <Stack gap={2}>
+367 < 2                         <Row gap={2} wrap={false}>
+368 < 2                           <Avatar fallback="YOU" tone="purple" size="sm" />
+369 < 2                           <Text>You</Text>
+370 < 2                           <Spacer />
+371 < 2                           <Badge tone="blue">Sent</Badge>
+372 < 2                         </Row>
+373 < 2                         <Text>{reply}</Text>
+374 < 2                       </Stack>
+375 < 2                     </Card>
+376 < 2                   ))}
+377 < 2 
+378 < 2                   <form onSubmit={sendReply}>
+379 < 2                     <Stack gap={3}>
+380 < 2                       <Field
+381 < 2                         label="Reply"
+382 < 2                         hint="The customer will receive this by email."
+383 < 2                         error={errors.reply?.message}
+384 < 2                       >
+385 < 2                         {(id, describedBy) => (
+386 < 2                           <Controller
+387 < 2                             name="reply"
+388 < 2                             control={replyControl}
+389 < 2                             rules={{
+390 < 2                               validate: (value) =>
+391 < 2                                 value.trim().length >= 4 || 'Write at least four characters.',
+392 < 2                             }}
+393 < 2                             render={({ field }) => (
+394 < 2                               <Textarea
+395 < 2                                 ref={field.ref}
+396 < 2                                 id={id}
+397 < 2                                 name={field.name}
+398 < 2                                 describedBy={describedBy}
+399 < 2                                 value={field.value}
+400 < 2                                 onChange={(value) => {
+401 < 2                                   field.onChange(value)
+402 < 2                                   setSaved(false)
+403 < 2                                 }}
+404 < 2                                 onBlur={field.onBlur}
+405 < 2                                 placeholder={`Reply to ${current.customer}…`}
+406 < 2                                 invalid={Boolean(errors.reply)}
+407 < 2                               />
+408 < 2                             )}
+409 < 2                           />
+410 < 2                         )}
+411 < 2                       </Field>
+412 < 2                       <Row gap={2} justify="end">
+413 < 2                         <Button
+414 < 2                           variant="quiet"
+415 < 2                           type="button"
+416 < 2                           onClick={() => {
+417 < 2                             resetReply()
+418 < 2                             setSaved(false)
+419 < 2                           }}
+420 < 2                         >
+421 < 2                           Clear draft
+422 < 2                         </Button>
+423 < 2                         <Button type="submit" tone="mint">
+424 < 2                           <Icon name="send" size="sm" />
+425 < 2                           Send reply
+426 < 2                         </Button>
+427 < 2                       </Row>
+428 < 2                     </Stack>
+429 < 2                   </form>
+430 < 2                 </div>
+431 < 2 
+432 < 2                 <div className="p-(--s4) [border-top:1px_solid_rgba(201,168,255,0.3)]">
+433 < 2                   <Row justify="between">
+434 < 2                     <Stack gap={1}>
+435 < 2                       <Text size="sm" muted>Ticket status</Text>
+436 < 2                       <Text>{currentStatus === 'solved' ? 'Conversation closed' : 'Needs attention'}</Text>
+437 < 2                     </Stack>
+438 < 2                     <Row gap={2}>
+439 < 2                       <Button
+440 < 2                         size="sm"
+441 < 2                         variant="quiet"
+442 < 2                         disabled={currentStatus === 'waiting'}
+443 < 2                         onClick={() => updateStatus('waiting')}
+444 < 2                       >
+445 < 2                         Set waiting
+446 < 2                       </Button>
+447 < 2                       <Button
+448 < 2                         size="sm"
+449 < 2                         tone="mint"
+450 < 2                         disabled={currentStatus === 'solved'}
+451 < 2                         onClick={() => updateStatus('solved')}
+452 < 2                       >
+453 < 2                         <Icon name="ok" size="sm" />
+454 < 2                         Mark solved
+455 < 2                       </Button>
+456 < 2                     </Row>
+457 < 2                   </Row>
+458 < 2                 </div>
+459 < 2               </div>
+460 < 2             </div>
+461 < 2           </Card>
+462 < 2           <Spacer />
+463 < 2         </Stack>
+464 < 2       </Shell>
+465 < 2       <BottomNav
+466 < 2         primary={NAV.slice(0, 4)}
+467 < 2         groups={[{ title: 'Support', items: NAV }]}
+468 < 2         currentPath={HERE}
+469 < 2       />
+470 < 2     </>
+471 < 2   )
+472 < 2 }
+473 < 2 

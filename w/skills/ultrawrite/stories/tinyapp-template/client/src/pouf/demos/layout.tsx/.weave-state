@@ -1,0 +1,111 @@
+0 < 2 import { Stack, Row, Spacer, Grid, Shell, Sidebar } from '../layout'
+1 < 2 import { Text } from '../text'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Badge } from '../media'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 export const stackDemos: Demo[] = [
+7 < 2   { id: 'default', render: () => (
+8 < 2       <Stack>
+9 < 2         <Text>First line</Text>
+10 < 2         <Text>Second line</Text>
+11 < 2         <Text>Third line</Text>
+12 < 2       </Stack>
+13 < 2     ) },
+14 < 2   { id: 'tight-gap', render: () => (
+15 < 2       <Stack gap={1}>
+16 < 2         <Text size="sm">Tight</Text>
+17 < 2         <Text size="sm">stack</Text>
+18 < 2       </Stack>
+19 < 2     ) },
+20 < 2   { id: 'loose-gap', render: () => (
+21 < 2       <Stack gap={6}>
+22 < 2         <Text>Loose</Text>
+23 < 2         <Text>stack</Text>
+24 < 2       </Stack>
+25 < 2     ) },
+26 < 2   // Spacer folded in here — meaningless as its own demo.
+27 < 2   { id: 'spacer', render: () => (
+28 < 2       <Card variant="tight">
+29 < 2         <Row wrap={false}>
+30 < 2           <Text>Pinned left</Text>
+31 < 2           <Spacer />
+32 < 2           <Badge tone="info">Pinned right</Badge>
+33 < 2         </Row>
+34 < 2       </Card>
+35 < 2     ) },
+36 < 2 ]
+37 < 2 
+38 < 2 export const rowDemos: Demo[] = [
+39 < 2   { id: 'default', render: () => (
+40 < 2       <Row>
+41 < 2         <Text>One</Text>
+42 < 2         <Text>Two</Text>
+43 < 2         <Text>Three</Text>
+44 < 2       </Row>
+45 < 2     ) },
+46 < 2   { id: 'between', render: () => (
+47 < 2       <Row justify="between" wrap={false}>
+48 < 2         <Text>Left</Text>
+49 < 2         <Text>Right</Text>
+50 < 2       </Row>
+51 < 2     ) },
+52 < 2   { id: 'center', render: () => (
+53 < 2       <Row justify="center">
+54 < 2         <Badge>Centered</Badge>
+55 < 2       </Row>
+56 < 2     ) },
+57 < 2   { id: 'top-align', render: () => (
+58 < 2       <Row align="top">
+59 < 2         <Text size="sm" muted>Label</Text>
+60 < 2         <Stack gap={1}>
+61 < 2           <Text>Line one</Text>
+62 < 2           <Text>Line two</Text>
+63 < 2         </Stack>
+64 < 2       </Row>
+65 < 2     ) },
+66 < 2 ]
+67 < 2 
+68 < 2 export const gridDemos: Demo[] = [
+69 < 2   { id: 'cols-2', render: () => (
+70 < 2       <Grid cols={2}>
+71 < 2         <Card variant="tight"><Text>A</Text></Card>
+72 < 2         <Card variant="tight"><Text>B</Text></Card>
+73 < 2       </Grid>
+74 < 2     ) },
+75 < 2   { id: 'cols-3', render: () => (
+76 < 2       <Grid cols={3}>
+77 < 2         <Card variant="tight"><Text>A</Text></Card>
+78 < 2         <Card variant="tight"><Text>B</Text></Card>
+79 < 2         <Card variant="tight"><Text>C</Text></Card>
+80 < 2       </Grid>
+81 < 2     ) },
+82 < 2   { id: 'cols-4', render: () => (
+83 < 2       <Grid cols={4}>
+84 < 2         <Card variant="tight"><Text>A</Text></Card>
+85 < 2         <Card variant="tight"><Text>B</Text></Card>
+86 < 2         <Card variant="tight"><Text>C</Text></Card>
+87 < 2         <Card variant="tight"><Text>D</Text></Card>
+88 < 2       </Grid>
+89 < 2     ) },
+90 < 2 ]
+91 < 2 
+92 < 2 export const shellDemos: Demo[] = [
+93 < 2   { id: 'default', render: () => (
+94 < 2       <Shell>
+95 < 2         <Text>Shell content area.</Text>
+96 < 2       </Shell>
+97 < 2     ) },
+98 < 2 ]
+99 < 2 
+100 < 2 export const sidebarDemos: Demo[] = [
+101 < 2   { id: 'default', render: () => (
+102 < 2       <Sidebar>
+103 < 2         <Stack gap={2}>
+104 < 2           <Text>Overview</Text>
+105 < 2           <Text muted>Settings</Text>
+106 < 2         </Stack>
+107 < 2       </Sidebar>
+108 < 2     ) },
+109 < 2 ]
+110 < 2 

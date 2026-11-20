@@ -1,0 +1,25 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // factory/flock/new_parts.mjs (#1491): the screen parts a run added are the draws.json lines the
+2 < 1 // landed text has and the base's does not, each with its role and naming props; a base with no
+3 < 1 // draws.json makes every landed line new, and text that is not a parts list adds nothing.
+4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+5 < 1 import { newParts } from '../../factory/flock/new_parts.mjs'
+6 < 1 
+7 < 1 const fails = []
+8 < 1 const assert = (ok, why) => { if (!ok) fails.push(why) }
+9 < 1 const draws = (parts) => JSON.stringify({ about: 'x', parts })
+10 < 1 
+11 < 1 const base = draws({ Heading: { role: 'heading', name: ['text'] } })
+12 < 1 const landed = draws({ Heading: { role: 'heading', name: ['text'] }, Status: { role: 'status', name: ['label'] }, Meter: { role: null } })
+13 < 1 const got = newParts(base, landed)
+14 < 1 assert(JSON.stringify(got) === JSON.stringify([
+15 < 1   { part: 'Status', role: 'status', name: ['label'] },
+16 < 1   { part: 'Meter', role: null, name: [] },
+17 < 1 ]), `added parts: ${JSON.stringify(got)}`)
+18 < 1 assert(newParts(base, base).length === 0, 'an unchanged list adds nothing')
+19 < 1 assert(newParts(null, base).length === 1, 'a base with no draws.json: every landed line is new')
+20 < 1 assert(newParts(base, 'not json').length === 0 && newParts(base, null).length === 0, 'unreadable landed text adds nothing')
+21 < 1 
+22 < 1 if (fails.length) { for (const f of fails) console.log(`FAIL ${f}`); process.exit(1) }
+23 < 1 console.log('ALL TESTS PASSED')
+24 < 1 

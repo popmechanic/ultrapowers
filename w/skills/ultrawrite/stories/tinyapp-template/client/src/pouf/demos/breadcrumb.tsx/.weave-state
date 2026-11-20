@@ -1,0 +1,14 @@
+0 < 2 import { Breadcrumb } from '../breadcrumb'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const breadcrumbDemos: Demo[] = [
+4 < 2   { id: 'default', render: () => (
+5 < 2       <Breadcrumb items={[
+6 < 2         { label: 'Dashboard', href: '#' },
+7 < 2         { label: 'Reports', href: '#' },
+8 < 2         { label: '#fruit-stand' },
+9 < 2       ]} />
+10 < 2     ) },
+11 < 2   { id: 'single', render: () => <Breadcrumb items={[{ label: 'Dashboard' }]} /> },
+12 < 2 ]
+13 < 2 

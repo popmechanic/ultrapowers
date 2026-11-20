@@ -1,0 +1,36 @@
+0 < 2 import { useEffect, useRef } from 'react'
+1 < 2 import { AlertBell } from '../AlertBell'
+2 < 2 import type { AlertBellItem } from '../AlertBell'
+3 < 2 import { simulateOpen } from './interact'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 // Fixed ISO strings, not Date.now() — deterministic content. Note AlertBell
+7 < 2 // itself formats `at` with `.toLocaleTimeString()`, which is locale/timezone
+8 < 2 // dependent at render time; that's a determinism gap in the component, not
+9 < 2 // something this demo can paper over.
+10 < 2 const alerts: AlertBellItem[] = [
+11 < 2   { id: 1, severity: 'critical', at: '2024-01-01T12:00:00.000Z', text: 'Build failed — the deploy was rolled back.' },
+12 < 2   { id: 2, severity: 'info', at: '2024-01-01T11:58:00.000Z', text: 'Maya commented on your post.' },
+13 < 2 ]
+14 < 2 
+15 < 2 function AlertBellOpen({ items, connected = true }: { items: AlertBellItem[]; connected?: boolean }) {
+16 < 2   const ref = useRef<HTMLDivElement>(null)
+17 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+18 < 2   return (
+19 < 2     <div ref={ref}>
+20 < 2       <AlertBell alerts={items} unread={items.length} connected={connected} onOpen={() => {}} />
+21 < 2     </div>
+22 < 2   )
+23 < 2 }
+24 < 2 
+25 < 2 export const alertBellDemos: Demo[] = [
+26 < 2   { id: 'trigger', states: ['hover', 'focus'], render: () => (
+27 < 2       <span data-subject>
+28 < 2         <AlertBell alerts={alerts} unread={2} connected onOpen={() => {}} />
+29 < 2       </span>
+30 < 2     ) },
+31 < 2   { id: 'open-with-alerts', render: () => <AlertBellOpen items={alerts} /> },
+32 < 2   { id: 'open-empty', render: () => <AlertBellOpen items={[]} /> },
+33 < 2   { id: 'disconnected', render: () => <AlertBellOpen items={[]} connected={false} /> },
+34 < 2 ]
+35 < 2 

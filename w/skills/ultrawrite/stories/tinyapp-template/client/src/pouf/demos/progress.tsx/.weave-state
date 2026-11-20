@@ -1,0 +1,26 @@
+0 < 2 import { Progress } from '../progress'
+1 < 2 import { Row, Stack } from '../layout'
+2 < 2 import { Text } from '../text'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 export const progressDemos: Demo[] = [
+6 < 2   { id: 'default', render: () => (
+7 < 2       <Stack gap={2}>
+8 < 2         <Row gap={3} wrap={false}>
+9 < 2           <div style={{ flex: '1 1 auto', minWidth: 120 }}>
+10 < 2             <Progress value={40} tone="mint" label="Uploading" />
+11 < 2           </div>
+12 < 2           <Text size="sm" mono num>40%</Text>
+13 < 2         </Row>
+14 < 2         <Row gap={3} wrap={false}>
+15 < 2           <div style={{ flex: '1 1 auto', minWidth: 120 }}>
+16 < 2             <Progress value={85} tone="blue" label="Processing" />
+17 < 2           </div>
+18 < 2           <Text size="sm" mono num>85%</Text>
+19 < 2         </Row>
+20 < 2       </Stack>
+21 < 2     ) },
+22 < 2   { id: 'zero', render: () => <Progress value={0} tone="purple" label="Not started" /> },
+23 < 2   { id: 'complete', render: () => <Progress value={100} tone="up" label="Done" /> },
+24 < 2 ]
+25 < 2 

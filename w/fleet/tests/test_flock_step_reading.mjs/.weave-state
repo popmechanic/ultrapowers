@@ -1,0 +1,107 @@
+0 < 2 #!/usr/bin/env node
+1 < 2 // The Jev step reading on a stories-v1 run (#1509): every checked step is offered to Jev whether the
+2 < 2 // settled run lands a commit or settles equal to its base with nothing to build. Jev is a local
+3 < 2 // stand-in (a node:http server on 127.0.0.1); `bun` is a fake on PATH that passes every call and, as
+4 < 2 // the checker, writes a green result for its clause into FLOCK_CHECK_OUT.
+5 < 2 //   empty   the builder writes note.json unchanged: `landing:empty`, no `landing`, one jev:step for S1.1
+6 < 2 //   landed  the builder changes note.json: a `landing` row, and still one jev:step for S1.1
+7 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names each case that differed and exits 1.
+8 < 2 import fs from 'node:fs'
+9 < 2 import http from 'node:http'
+10 < 2 import path from 'node:path'
+11 < 2 import { simEnv } from './_helpers.mjs'
+12 < 2 import { flockTarget, flockRun } from './_flock_helpers.mjs'
+13 < 2 
+14 < 2 const fails = []
+15 < 2 const assert = (ok, why) => { if (!ok) throw new Error(why) }
+16 < 2 
+17 < 2 const server = http.createServer((req, res) => {
+18 < 2   let body = ''
+19 < 2   req.on('data', (c) => { body += c })
+20 < 2   req.on('end', () => {
+21 < 2     let keys = []
+22 < 2     try { keys = Object.keys(JSON.parse(body).questions || {}) } catch {}
+23 < 2     res.writeHead(200, { 'content-type': 'application/json' })
+24 < 2     res.end(JSON.stringify({ answers: Object.fromEntries(keys.map((k) => [k, { choice: 'yes', confidence: 0.9 }])) }))
+25 < 2   })
+26 < 2 })
+27 < 2 await new Promise((r) => server.listen(0, '127.0.0.1', r))
+28 < 2 const JEV = `http://127.0.0.1:${server.address().port}`
+29 < 2 
+30 < 2 const F = '```'
+31 < 2 const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
+32 < 2 const PLAN = `# Sim plan
+33 < 2 
+34 < 2 **Grammar:** stories-v1
+35 < 2 **Stack:** tinyapp
+36 < 2 **Plan-id:** p1
+37 < 2 **Kind:** behaviour
+38 < 2 **Summary:** One. Two. Three.
+39 < 2 **Store:** \`store.js\` sha256:${'0'.repeat(64)}
+40 < 2 
+41 < 2 ## Stories
+42 < 2 
+43 < 2 - S1: You add a note; it shows.
+44 < 2 
+45 < 2 ### Task 1: The note piece
+46 < 2 
+47 < 2 **Piece:** note
+48 < 2 **Depends-on-pieces:** none
+49 < 2 
+50 < 2 **Files:**
+51 < 2 - Create: \`note.json\`
+52 < 2 
+53 < 2 **Purpose:** Keep notes.
+54 < 2 
+55 < 2 **Stories:**
+56 < 2 - S1: You add a note; it shows.
+57 < 2 
+58 < 2 **Proof:**
+59 < 2 ${F}probe
+60 < 2 ${PROBE}
+61 < 2 ${F}
+62 < 2 `
+63 < 2 const BUN = `#!/bin/sh
+64 < 2 clause=''
+65 < 2 prev=''
+66 < 2 for a in "$@"; do
+67 < 2   if [ "$prev" = "--clause" ]; then clause="$a"; fi
+68 < 2   prev="$a"
+69 < 2 done
+70 < 2 if [ -n "$clause" ] && [ -n "$FLOCK_CHECK_OUT" ]; then
+71 < 2   printf '%s' '{"clause":"'"$clause"'","exit":0,"stage":"ui","diff":[],"did":[],"before":null,"after":null,"screen_text":"ok"}' > "$FLOCK_CHECK_OUT/$clause@x.json"
+72 < 2 fi
+73 < 2 exit 0
+74 < 2 `
+75 < 2 
+76 < 2 for (const [CASE, text] of [['empty', '{}\n'], ['landed', '{"n":1}\n']]) {
+77 < 2   const t = flockTarget({ 'note.json': '{}\n' }, { env: { TYPESAFE_BASE_URL: JEV } })
+78 < 2   try {
+79 < 2     const bin = path.join(t.tmp, 'bin')
+80 < 2     fs.mkdirSync(bin)
+81 < 2     fs.writeFileSync(path.join(bin, 'bun'), BUN, { mode: 0o755 })
+82 < 2     t.over.PATH = simEnv({ bin, home: t.tmp }).PATH
+83 < 2     const plan = path.join(t.tmp, 'plan.md')
+84 < 2     fs.writeFileSync(plan, PLAN)
+85 < 2     const r = await flockRun(t, { plan, script: { 1: { 'note.json': text } } })
+86 < 2     const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
+87 < 2     assert(r.code === 0, `exit ${r.code} ${tail}`)
+88 < 2     if (CASE === 'empty') {
+89 < 2       assert(r.of('landing:empty').length === 1 && r.of('landing').length === 0, `landing rows: ${JSON.stringify([...r.of('landing:empty'), ...r.of('landing')])} ${tail}`)
+90 < 2       assert(r.of('landing:empty')[0].grammar === 'stories-v1', `landing:empty row: ${JSON.stringify(r.of('landing:empty'))} ${tail}`)
+91 < 2     }
+92 < 2     else assert(r.of('landing').length >= 1, `no landing row ${tail}`)
+93 < 2     const js = r.of('jev:step')
+94 < 2     assert(js.length === 1 && js[0].clause === 'S1.1', `jev:step rows: ${JSON.stringify(js)} ${tail}`)
+95 < 2     console.log(`ok   ${CASE}`)
+96 < 2   } catch (e) {
+97 < 2     fails.push(CASE)
+98 < 2     console.log(`FAIL ${CASE}: ${e.message}`)
+99 < 2   } finally {
+100 < 2     t.done()
+101 < 2   }
+102 < 2 }
+103 < 2 server.close()
+104 < 2 if (fails.length) { console.log(`${fails.length} FAILED: ${fails.join(', ')}`); process.exit(1) }
+105 < 2 console.log('ALL TESTS PASSED')
+106 < 2 

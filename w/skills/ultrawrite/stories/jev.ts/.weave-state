@@ -1,0 +1,85 @@
+0 < 1 // The laptop's Jev: the fleet's client (one POST, a status check and a state budget) with the
+2 > 1 // operator's own key riding as a bearer header. Shared by every authoring tool that asks Jev
+3 < 1 // (jev_checks, gate_jev, ask, arrange, notebook).
+1 < 2 // operator's own key riding as a bearer header. Shared by jev_checks.ts and gate_jev.ts.
+2 < 1 import {readFileSync} from 'node:fs';
+3 < 1 import {homedir} from 'node:os';
+4 < 1 import {join} from 'node:path';
+5 < 1 
+6 < 1 // @ts-ignore: a plain .mjs, which bun imports directly
+7 < 1 import {makeJevClient} from '../../../factory/jev-client.mjs';
+8 < 1 
+9 < 1 export type Ask = (state: unknown, questions: unknown) => Promise<Record<string, unknown> | null>;
+10 < 1 
+11 < 1 const BASE_URL = process.env.TYPESAFE_BASE_URL || 'https://api.typesafe.ai';
+12 < 1 
+13 < 1 // The operator's own directory: ULTRAPOWERS_HOME, else ~/.ultrapowers.
+14 < 1 export function home(): string {
+15 < 1   return process.env.ULTRAPOWERS_HOME ?? join(homedir(), '.ultrapowers');
+16 < 1 }
+17 < 1 
+18 < 1 // The authoring question sets, from questions.json beside this file (#1449), read once.
+19 < 1 let sets: Record<string, {questions?: Record<string, unknown>}> | undefined;
+20 < 1 export function loadQuestions(): Record<string, {questions?: Record<string, unknown>}> {
+21 < 1   sets ??= JSON.parse(readFileSync(join(import.meta.dir, 'questions.json'), 'utf8')).sets ?? {};
+22 < 1   return sets!;
+23 < 1 }
+24 < 1 
+25 < 1 export function key(): string {
+26 < 1   const line = readFileSync(join(home(), 'typesafe.env'), 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='));
+27 < 1   if (!line) throw new Error('no TYPESAFE_API_KEY');
+28 < 1   return line.slice('TYPESAFE_API_KEY='.length).trim();
+29 < 1 }
+30 < 1 
+31 < 1 export const defaultAsk: Ask = async (state, questions) => {
+32 < 1   let headers: Record<string, string>;
+33 < 1   try {
+34 < 1     headers = {Authorization: 'Bearer ' + key()};
+35 < 1   } catch (e) {
+36 < 1     console.error(`jev: ${(e as Error).message}`);
+37 < 1     return null;
+38 < 1   }
+39 < 1   const client = makeJevClient({baseUrl: BASE_URL, timeoutMs: 30_000, headers, log: (l: string) => console.error(l)});
+40 < 1   return client.ask({state, questions});
+41 < 1 };
+42 < 1 
+43 < 1 // A question written against `sentences[i]` or `pieces[j]`, pointed at the entries it asks about.
+44 < 1 export const at = <T>(q: T, idx: Record<string, number>): T =>
+45 < 1   JSON.parse(JSON.stringify(q).replace(/\[([ij])\]/g, (m, v) => (v in idx ? `[${idx[v]}]` : m)));
+46 < 1 
+47 < 1 // A question's answer, whether Jev replied a bare number or {noul}.
+48 < 1 export function noul(answers: Record<string, unknown> | null, k: string): number | null {
+49 < 1   const a = answers?.[k];
+50 < 1   const v = typeof a === 'number' ? a : (a as {noul?: unknown} | undefined)?.noul;
+51 < 1   return typeof v === 'number' ? v : null;
+52 < 1 }
+53 < 1 
+54 < 1 // A Choice question's answer as {choice, confidence?}, or null when it carries no string choice.
+55 < 1 export function choice(answers: Record<string, unknown> | null, k: string): {choice: string; confidence?: number} | null {
+56 < 1   const a = answers?.[k] as {choice?: unknown; confidence?: unknown} | undefined;
+57 < 1   if (!a || typeof a !== 'object' || typeof a.choice !== 'string') return null;
+58 < 1   return typeof a.confidence === 'number' ? {choice: a.choice, confidence: a.confidence} : {choice: a.choice};
+59 < 1 }
+60 < 1 
+61 < 1 type ComposeRequest = {
+62 < 1   state: Record<string, unknown>;
+63 < 1   questions: Record<string, {type: 'choice'; instructions: string; criteria: Record<string, string>}>;
+64 < 1   signal: AbortSignal;
+65 < 1 };
+66 < 1 
+67 < 1 // json-render's composer evaluator: one ask, every question mapped to {choice, confidence?}. A null
+68 < 1 // reply or a question left without a choice throws, so the composer stops; nothing is retried.
+69 < 1 export function composeEvaluator(ask: Ask = defaultAsk) {
+70 < 1   return async (request: ComposeRequest): Promise<{answers: Record<string, {choice: string; confidence?: number}>}> => {
+71 < 1     const reply = await ask(request.state, request.questions);
+72 < 1     if (!reply) throw new Error('jev: no answer');
+73 < 1     const answers: Record<string, {choice: string; confidence?: number}> = {};
+74 < 1     for (const k of Object.keys(request.questions)) {
+75 < 1       const c = choice(reply, k);
+76 < 1       if (!c) throw new Error(`jev: no choice for ${k}`);
+77 < 1       answers[k] = c;
+78 < 1     }
+79 < 1     return {answers};
+80 < 1   };
+81 < 1 }
+82 < 1 

@@ -1,0 +1,46 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """Validate a Claude Code SKILL.md: frontmatter + reference integrity."""
+2 < 1 import re, sys, pathlib
+3 < 1 
+4 < 1 def validate(skill_dir: pathlib.Path):
+5 < 1     errors = []
+6 < 1     skill_md = skill_dir / "SKILL.md"
+7 < 1     if not skill_md.exists():
+8 < 1         return [f"{skill_md} not found"]
+9 < 1     text = skill_md.read_text()
+10 < 1     m = re.match(r"^---\n(.*?)\n---\n(.*)$", text, re.DOTALL)
+11 < 1     if not m:
+12 < 1         return ["SKILL.md missing YAML frontmatter (--- ... ---)"]
+13 < 1     fm, body = m.group(1), m.group(2)
+14 < 1     fields = dict(re.findall(r"^([A-Za-z0-9_-]+):\s*(.*)$", fm, re.MULTILINE))
+15 < 1     name = fields.get("name", "")
+16 < 1     if not name:
+17 < 1         errors.append("frontmatter: missing 'name'")
+18 < 1     elif not re.fullmatch(r"[A-Za-z0-9-]{1,64}", name):
+19 < 1         errors.append("frontmatter: 'name' must be 1-64 chars of letters, digits, hyphens")
+20 < 1     desc = fields.get("description", "")
+21 < 1     if len(desc) < 20:
+22 < 1         errors.append("frontmatter: missing or trivial 'description'")
+23 < 1     if len(desc) > 1024:
+24 < 1         errors.append("frontmatter: 'description' exceeds 1024 chars")
+25 < 1     # A reference prefixed `skills/<name>/` names a sibling skill's file
+27 > 1     # (e.g. ultrapowers' SKILL.md naming `skills/ultrawrite/scripts/routing.py`)
+28 < 1     # and resolves against that skill dir; a bare `scripts/x` resolves
+26 < 2     # (e.g. ultrapowers' SKILL.md invoking ultradocket's record_wf_run.py,
+27 < 2     # #159) and resolves against that skill dir; a bare `scripts/x` resolves
+28 < 1     # against this skill. Either way the file must exist.
+29 < 1     for sibling, sub, ref in re.findall(
+30 < 1             r"(?:\bskills/([A-Za-z0-9_-]+)/)?\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):
+31 < 1         base = skill_dir.resolve().parent / sibling if sibling else skill_dir
+32 < 1         if not (base / sub / ref).exists():
+33 < 1             errors.append(f"missing referenced file: {sub}/{ref}"
+34 < 1                           + (f" (in skill {sibling})" if sibling else ""))
+35 < 1     return errors
+36 < 1 
+37 < 1 if __name__ == "__main__":
+38 < 1     target = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else pathlib.Path.cwd()
+39 < 1     errs = validate(target)
+40 < 1     if errs:
+41 < 1         print("\n".join(errs)); sys.exit(1)
+42 < 1     print("skill ok"); sys.exit(0)
+43 < 1 

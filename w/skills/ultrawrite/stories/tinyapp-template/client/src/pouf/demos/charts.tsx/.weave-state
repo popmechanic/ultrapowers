@@ -1,0 +1,108 @@
+0 < 2 import { AreaChart, BarChart, LineChart, PieChart } from '../charts'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const areaChartDemos: Demo[] = [
+4 < 2   { id: 'default', render: () => (
+5 < 2       <AreaChart
+6 < 2         data={[
+7 < 2           { day: 'Mon', a: 40, b: 240 },
+8 < 2           { day: 'Tue', a: 55, b: 295 },
+9 < 2           { day: 'Wed', a: 70, b: 365 },
+10 < 2           { day: 'Thu', a: 32, b: 397 },
+11 < 2           { day: 'Fri', a: 85, b: 482 },
+12 < 2           { day: 'Sat', a: 60, b: 542 },
+13 < 2           { day: 'Sun', a: 90, b: 632 },
+14 < 2         ]}
+15 < 2         dataKey="day"
+16 < 2         series={[
+17 < 2           { key: 'a', label: 'Daily total', tone: 'mint' },
+18 < 2           { key: 'b', label: 'Running total', tone: 'purple' },
+19 < 2         ]}
+20 < 2       />
+21 < 2     ) },
+22 < 2   { id: 'stacked', render: () => (
+23 < 2       <AreaChart
+24 < 2         data={[
+25 < 2           { day: 'Mon', a: 10, b: 20 },
+26 < 2           { day: 'Tue', a: 15, b: 18 },
+27 < 2           { day: 'Wed', a: 12, b: 24 },
+28 < 2         ]}
+29 < 2         dataKey="day"
+30 < 2         stacked
+31 < 2         series={[
+32 < 2           { key: 'a', label: 'A', tone: 'blue' },
+33 < 2           { key: 'b', label: 'B', tone: 'yellow' },
+34 < 2         ]}
+35 < 2       />
+36 < 2     ) },
+37 < 2 ]
+38 < 2 
+39 < 2 export const barChartDemos: Demo[] = [
+40 < 2   { id: 'default', render: () => (
+41 < 2       <BarChart
+42 < 2         data={[
+43 < 2           { fruit: 'Apple', wins: 14, losses: 3 },
+44 < 2           { fruit: 'Banana', wins: 9, losses: 7 },
+45 < 2           { fruit: 'Cherry', wins: 6, losses: 4 },
+46 < 2           { fruit: 'Date', wins: 3, losses: 5 },
+47 < 2         ]}
+48 < 2         dataKey="fruit"
+49 < 2         series={[
+50 < 2           { key: 'wins', label: 'Wins', tone: 'up' },
+51 < 2           { key: 'losses', label: 'Losses', tone: 'down' },
+52 < 2         ]}
+53 < 2       />
+54 < 2     ) },
+55 < 2   // Single series, per-datum tone via toneKey.
+56 < 2   { id: 'tone-key', render: () => (
+57 < 2       <BarChart
+58 < 2         data={[
+59 < 2           { source: 'alpha', total: 91, tone: 'up' },
+60 < 2           { source: 'beta', total: -24, tone: 'down' },
+61 < 2           { source: 'gamma', total: 3, tone: 'up' },
+62 < 2         ]}
+63 < 2         dataKey="source"
+64 < 2         toneKey="tone"
+65 < 2         height={220}
+66 < 2         series={[{ key: 'total', label: 'Total' }]}
+67 < 2       />
+68 < 2     ) },
+69 < 2 ]
+70 < 2 
+71 < 2 export const lineChartDemos: Demo[] = [
+72 < 2   { id: 'default', render: () => (
+73 < 2       <LineChart
+74 < 2         data={[
+75 < 2           { week: 'W1', a: 100, b: 110, c: 90 },
+76 < 2           { week: 'W2', a: 120, b: 105, c: 95 },
+77 < 2           { week: 'W3', a: 115, b: 125, c: 105 },
+78 < 2           { week: 'W4', a: 140, b: 130, c: 120 },
+79 < 2           { week: 'W5', a: 150, b: 145, c: 135 },
+80 < 2         ]}
+81 < 2         dataKey="week"
+82 < 2         series={[
+83 < 2           { key: 'a', label: 'Apple', tone: 'purple' },
+84 < 2           { key: 'b', label: 'Banana', tone: 'blue' },
+85 < 2           { key: 'c', label: 'Cherry', tone: 'mint' },
+86 < 2         ]}
+87 < 2       />
+88 < 2     ) },
+89 < 2 ]
+90 < 2 
+91 < 2 export const pieChartDemos: Demo[] = [
+92 < 2   { id: 'donut', render: () => (
+93 < 2       <PieChart donut data={[
+94 < 2         { key: 'a', label: 'Apple', value: 45, tone: 'purple' },
+95 < 2         { key: 'b', label: 'Banana', value: 30, tone: 'blue' },
+96 < 2         { key: 'c', label: 'Cherry', value: 15, tone: 'mint' },
+97 < 2         { key: 'd', label: 'Date', value: 10, tone: 'yellow' },
+98 < 2       ]} />
+99 < 2     ) },
+100 < 2   { id: 'pie-labelled', render: () => (
+101 < 2       <PieChart donut={false} labelled data={[
+102 < 2         { key: 'win', label: 'Won', value: 72, tone: 'up' },
+103 < 2         { key: 'loss', label: 'Lost', value: 28, tone: 'down' },
+104 < 2       ]} />
+105 < 2     ) },
+106 < 2 ]
+107 < 2 

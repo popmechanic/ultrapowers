@@ -1,0 +1,527 @@
+0 < 1 ---
+1 < 1 name: ultrawrite
+3 > 1 description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers runs as a pool of tasks on the fleet.
+2 < 2 description: Use when writing ANY implementation plan — this plugin's owned authoring skill. Elicits the operator's claim, shapes the decomposition into signed contracts, runs the proof gate, and emits a claims-v1 plan that /ultrapowers runs as a pool of tasks on the fleet. Replaces the marker-layering skill and the external writing-plans dependency for plan bodies.
+3 < 1 hooks:
+4 < 1   Stop:
+5 < 1     - hooks:
+6 < 1         - type: command
+7 < 1           command: bash "${CLAUDE_PLUGIN_ROOT}/hooks/keep_working.sh"
+8 < 1           timeout: 10
+9 < 1 ---
+10 < 1 
+11 < 1 > **Audience: the authoring agent.** The operator brainstorms, answers elicitation and
+12 < 1 > signs; they never write this artifact. Every imperative below addresses the agent doing
+13 < 1 > the authoring.
+14 < 1 
+15 < 1 # Ultrawrite — author signed, claim-first plans
+16 < 1 
+17 < 1 A task says **what will be true** and **how that is examined**. It never says how to do
+18 < 1 the work: there is no Steps slot, so procedure has nowhere to live. The implementer
+19 < 1 derives it from a contract and its probes, against real code the plan never saw.
+20 < 1 A TinyApp target is planned differently: see Story planning below.
+21 < 1 
+22 < 1 **Announce at start:** "I'm using ultrawrite to author this plan."
+23 < 1 
+24 < 1 ## The document
+25 < 1 
+26 < 1 Above the first task: `**Grammar:** claims-v1` (absent, `plan_parse.py` refuses the plan —
+27 < 1 there is no legacy grammar to fall back to), one `**Claim:**` line — the operator's
+28 < 1 own do:/see: sentence about what they will see after the run, closed `(elicited)` when they
+29 < 1 said it to you and `(quoted from #NNN)` when an issue already carries that sentence
+30 < 1 verbatim; those two tags and no third — then `**Goal:**`, `**Tech Stack:**`, the spec path,
+31 < 1 and `## Global Constraints`.
+32 < 1 
+33 < 1 Directly under that `**Claim:**` line — the next line, no blank between — the plan carries
+34 < 1 one `**Summary:**` paragraph: three sentences in the operator's register saying what this
+35 < 1 is, why it exists and how it benefits the user. The author writes those sentences and the
+36 < 1 operator confirms them in the same touch as the Claim, never a second one, and the pull
+37 < 1 request the run opens quotes them verbatim, so what a reader meets is what the operator
+38 < 1 signed. It is one paragraph running to the next blank line, no markdown inside; like
+40 > 1 `**Closes:**` it is free prose to `plan_check.py` — nothing parses it.
+39 < 2 `**Closes:**` it is free prose to the compiler — nothing parses it.
+40 < 1 
+41 < 1 Beside `**Tech Stack:**`, an optional `**Dependencies:**` line declares every package the run installs:
+42 < 1 one line, space-separated specs, each `name` or `name@range`, with the single word `dev:`
+43 < 1 marking where the development-only group begins — `**Dependencies:** tailwindcss@^4
+44 < 1 @tailwindcss/vite dev: eslint @shadcn/lint` declares two packages for the app and two for
+45 < 1 development. The range alphabet is conventionally what a shell may be handed as one quoted
+46 < 1 word: `^4`, `~1.2`, `4.x` and `==1.0` are specs; nothing today reads this line to refuse a
+47 < 1 wider range, a second `dev:`, or a line naming no package — the alphabet is the author's own
+48 < 1 to keep. A package is declared here and never discovered later: no task of the plan adds
+49 < 1 one by editing `package.json`, `pyproject.toml` or a lockfile. A manifest on a task's
+51 > 1 Files list is edited for a script or a config field, not for a dependency — the engine
+50 < 2 Files list is edited for a script or a config field, not for a dependency — the driver
+51 < 1 reds a manifest edit outside a task's Files, so a package that is not on this line is a
+52 < 1 package the run never gets.
+53 < 1 
+54 < 1 A TinyApp plan that publishes carries `**Publish:** <deploy command>` (run in the
+55 < 1 target's checkout after the self-merge, with `CLOUDFLARE_API_BASE_URL` pointed at the
+56 < 1 `cloudflare` edge integration and `CLOUDFLARE_API_TOKEN` a placeholder; the checkout has
+57 < 1 no `node_modules`, so the command installs what it needs), `**Verify:** <probe command>`
+58 < 1 (run with `ULTRA_PUBLISH_URL` set to the first `https://…workers.dev` URL the deploy
+59 < 1 printed; it must read that variable), and optionally `**Rollback:** <command>` (run once
+60 < 1 when the verify exits non-zero); the account id is the `CLOUDFLARE_ACCOUNT_ID=` prefix in
+61 < 1 the target's `deploy` script, never a plan line and never `wrangler.jsonc`, which celld refuses it in. The parser prints the three as `publish: {deploy, verify,
+62 < 1 rollback}`.
+63 < 1 
+64 < 1 An optional `**Closes:**` line names the tickets the plan closes. It sits directly under
+65 < 1 `**Goal:**` — the next line — and is one line: `**Closes:** #660 #668`, the numbers
+66 < 1 space-separated, each an issue of the target repository (a bare `#N` means the target to
+67 < 1 GitHub, so a foreign target's plan names that repository's issues, never this plugin's).
+68 < 1 The sandbox reads exactly that line from `.ultrapowers/plan.md` and appends one
+69 < 1 `Closes #N` per number to the pull request body, so the run's merge closes them; a plan
+71 > 1 without the line closes nothing. The line is free prose to `plan_check.py` — nothing parses
+70 < 2 without the line closes nothing. The line is free prose to the compiler — nothing parses
+71 < 1 it, so a number scraped from `**Goal:**` is never used: the Goal line cites decisions as
+72 < 1 well as tickets, which is why scraping it was rejected.
+73 < 1 
+74 < 1 ## Story planning — TinyApp targets (`stories-v1`)
+75 < 1 
+76 < 1 A TinyApp plan is compiled from a story bundle, not written. **Before any TinyApp plan,
+77 < 1 read `references/stories.md` in full and follow it step by step**, after the enrichment in
+78 < 1 `references/enrich.md`. Its commands use `<plugin-root>`, which is `${CLAUDE_PLUGIN_ROOT}`.
+79 < 1 
+80 < 1 ## Task shape — pinned to what the parser actually reads
+81 < 1 
+83 > 1 `### Task N: <title>`, then the Files block, then exactly six body slots. Every task is an
+84 < 1 implementation task: a write-nothing verification is a `Run:` probe or a `Check:`, never a
+85 < 1 task of its own; a deploy goes through the plan's `**Publish:**` header (above), and
+86 < 1 nothing in a run waits on a human. (A `**Type:**` line, which older plans carry, is read as
+87 < 1 nothing.)
+82 < 2 `### Task N: <title>`, then the header block, then the Files block, then exactly six body
+83 < 2 slots.
+84 < 1 
+86 > 1 - There is no `Depends-on` or `Commutes` line; `plan_parse.py` reads neither. Ordering is
+87 < 1   derived from Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
+85 < 2 Header markers: **Type:** — nothing else; **Files:** is not a marker and ends the header block.
+86 < 2 
+87 < 2 The compiler closes the header block at the first line that is not marker-shaped, so a
+88 < 2 marker written below the Files block is not read — it is dropped and surfaced as a
+89 < 2 conflict. Keep the marker directly under the heading.
+90 < 2 
+91 < 2 - `**Type:**` — `implementation`, the default and the only Type the Flock runs;
+92 < 2   `plan_check.py` refuses any other. A write-nothing verification is a `Run:` probe or a
+93 < 2   `Check:`, never a task of its own; a deploy goes through the plan's `**Publish:**`
+94 < 2   header (above), and nothing in a run waits on a human.
+95 < 2 - `Depends-on` and `Commutes` lines are refused by `plan_check.py` as a `grammar:`
+96 < 2   violation; `plan_parse.py` reads neither. Ordering is derived from
+97 < 2   Interfaces token-matching and Files overlap; same-path overlap is derived from Files.
+98 < 1   A Proof `Run:` whose command names a path in a sibling's Files — and not in the running
+99 < 1   task's own — is derived the same way: the sibling that owns the file goes first, because
+100 < 1   a command cannot run a file nobody has written yet.
+101 < 1   An operator who does not read diffs cannot verify an edge, so no edge is signed.
+102 < 1 
+103 < 1 The Files block carries canonical `Create:` / `Modify:` / `Delete:` bullets, backticked
+104 < 1 paths, no globs and no open write sets. It is load-bearing for edge derivation.
+105 < 1 
+107 > 1 That block is the expected footprint of a submission, not a fence. A builder that must go outside
+109 > 1 it writes there in the open: the record carries it as an `amendment` row, and nothing
+108 < 2 it writes there in the open: the record carries it as a `driver:amendment` row, and nothing
+109 < 1 reverts it as a breach. So the author still lists every file they can
+106 < 2 That block is the expected footprint of a submission, not a fence. A worker that must go outside
+107 < 2 it, that must read a clause otherwise, or that must re-aim a sim declares an amendment: the record
+108 < 2 carries it as a `driver:amendment` row and on the pull request card, and Jev reads it as a
+109 < 2 lens on the diff rather than as a breach to revert. So the author still lists every file they can
+110 < 1 foresee the task touching — an unforeseen one now costs a declared amendment, not a dead task — and
+111 < 1 reads a run's amendments as the next plan's input, since what the workers had to declare is exactly
+112 < 1 where this plan's Files sets were wrong.
+113 < 1 
+114 < 1 ### The six body slots, in this order
+115 < 1 
+116 < 1 - **Claim:** the bilingual pair. The operator's own sentence, verbatim, closed by
+117 < 1   `(quoted from #NNN)`, `(elicited)`, or `(derived)` when it descends from the plan-level
+118 < 1   Claim rather than a sentence the operator said about this task; then a `Machine:` line
+119 < 1   restating it in the
+120 < 1   system's own terms, **its clauses numbered `M1. … M2. …`** — one clause per thing the
+121 < 1   exam must establish. Write do:/see: interactions, never system states. Register drift
+122 < 1   between the two halves is a defect the gate checks.
+123 < 1 - **Authorized-by:** the reference licensing this task — issue, spec §, decision record.
+124 < 1 - **Interfaces:** `Consumes:` / `Produces:` — exact signatures, exact test names, **one
+126 > 1   symbol per bullet** (`plan_parse.py` reads the first symbol of a bullet and nothing after
+125 < 2   symbol per bullet** (the compiler reads the first symbol of a bullet and nothing after
+126 < 1   a comma, so a line listing three symbols derives no edge for the other two). **A test's
+127 < 1   import of a sibling's symbol is a `Consumes:`**; that is now the whole ordering story
+128 < 1   for test-only edges. Placeholders (`none`, `nothing`) are legal and quiet. Read every
+129 < 1   `Consumes:` against its sibling's `Produces:` yourself, because with no marker backstop
+130 < 1   a typo and a prose sentence are both silently missing edges, and nothing warns on one.
+131 < 1 - **Context:** what the implementer must know that the repo cannot tell it. Keep it short;
+132 < 1   nothing refuses on its length. Steps prose smuggled in here is
+133 < 1   caught structurally instead: fences belong in Proof, and `plan_check.py` refuses a
+134 < 1   fence anywhere else. A task-reference
+135 < 1   ordering phrase (`after Task 2`) orders nothing at all.
+136 < 1 - **Proof:** the plan's `Run:` probes, citing clauses, and nothing else. The only slot
+137 < 1   where code fences are legal. Its legs — `(a) … (b) …` —
+138 < 1   **each cite the clause they establish, `[M2]`**; nothing mechanical closes an uncited
+139 < 1   clause, a leg citing nothing, or a citation of a clause that does not exist — the gate
+140 < 1   reader names those on the read (see the Gate section below), and `plan_check.py`
+141 < 1   refuses a `Run:` tag naming a clause the Machine line does not number. **A probe
+142 < 1   computes facts and nothing else**: an exit code, a recorded argv, a byte-exact string, a
+143 < 1   count, an ordering of events, agreement with an oracle. A clause, or the part of one, that
+144 < 1   only says what the code says or how it is shaped is Jev's to read against the hunk at
+145 < 1   landing and needs no leg of its own beyond the citation. One case per behaviour, never one
+146 < 1   per variant, synonym or error flavour: an enumerated clause is still one behaviour. A
+147 < 1   universal or negation clause about a computable fact (`no file is written`, `exits 2`)
+148 < 1   still wants the one leg that names what fails or is absent.
+149 < 1   A `Run:` bullet names a command — one of the task's facts — that the builder who claimed
+150 < 1   the task runs on its copy; the task is done only when every one exits 0, so a non-zero
+151 < 1   exit keeps the builder at work on it. A task whose
+152 < 1   deliverable is prose proves itself with `Run:` commands, never with a test that
+153 < 1   matches sentences of a document.
+155 > 1   And one `Run:` names one probe — a command the engine pays once, never a loop over a glob
+154 < 2   And one `Run:` names one probe — a command the driver pays once, never a loop over a glob
+155 < 1   of sims (run-87 paid 175 s per boot sim, three passes, for two such lines). A sweep over
+156 < 1   every sim belongs to the one task that owns the sims, as one line, or nowhere.
+157 < 1   A `Run:` whose command ends in a citation tag of the same shape a leg carries —
+159 > 1   `- Run: grep -q 'evidence-read' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
+160 < 1   paired with the clause it names: `plan_parse.py` strips the tag before the engine runs the
+158 < 2   `- Run: grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]`, or `[M1, M3]` — is a *prover*,
+159 < 2   paired with the clause it names: `plan_check.py` strips the tag before the driver runs the
+160 < 1   command, refuses a tag naming a clause the Machine line does not number, and never counts
+161 < 1   the tag as a citing leg (the legs still cite). A `Run:` with no tag is a *guard* — a
+162 < 1   `bash -n`, a sim that must stay green. **An untagged prover settles nothing**: the
+163 < 1   engine's `settled` read null on every clause of every landing on run-225 because no probe
+164 < 1   carried a tag, so Jev read every clause from the diff alone (n=1 run, 3 tasks,
+165 < 1   2026-09-22) — tag every prover.
+166 < 1   Under `--base <sha>` `plan_check.py` cuts a
+167 < 1   clean worktree at BASE and runs every `Run:` there, printing one line per command that
+168 < 1   exits 0 at BASE: a `GREEN-AT-BASE fact:` line naming the task and the command, ending for
+169 < 1   a prover `this line cannot falsify its clause` and for a guard `a guard, no leg cites it`.
+170 < 1   A command still running at 30 s is killed and reported `not run (timeout after 30 s)`; a
+171 < 1   non-zero exit prints nothing. This release the line is a fact, not a refusal — `PLAN OK`
+172 < 1   still prints, and the refusal for a prover green at BASE comes after one release's census.
+173 < 1   The plan's Global Constraints `Check:` lines are not rehearsed on the laptop, and the Flock
+174 < 1   records no base run of them either — so run a check at BASE yourself before signing, since
+175 < 1   one red before any task lands keeps the whole run from settling green.
+176 < 1   Without `--base` nothing is run.
+177 < 1   A `byte-identical to BASE` or `git show HEAD:` comparison is a **tautology at the
+178 < 1   integration head**, where HEAD already carries the edit — so a BASE comparison is a
+180 > 1   `Check:` with `$ULTRA_BASE`, which the engine sets in the environment of every `Check:`
+179 < 2   `Check:` with `$ULTRA_BASE`, which the driver sets in the environment of every `Check:`
+180 < 1   and `Run:` it executes, or a probe carries the value measured *before* the edit: a
+181 < 1   **frozen pre-edit literal**, such as a `git hash-object` sha
+182 < 1   written into it, or a full **40-hex sha** fetched with
+183 < 1   `git fetch --depth=1 origin <sha>`, because `actions/checkout` leaves the clone at
+184 < 1   depth 1 and a short or unfetched sha is not in it.
+185 < 1   That frozen literal is the *only* lawful sha a probe carries: a committed probe
+186 < 1   **never reads ULTRA_BASE** and never **freezes a commit sha** of the plan's own
+188 > 1   repository, because a BASE comparison is a `Check:` or `Run:` — the engine hands that
+187 < 2   repository, because a BASE comparison is a `Check:` or `Run:` — the driver hands that
+188 < 1   command the sha, and a depth-1 clone holds no other commit to compare against.
+189 < 1 - **Stale-if:** predicates, one per line — `path-exists:` / `path-absent:` /
+190 < 1   `sha-matches: <path>@<sha>` / `issue-open: #NNN` / `issue-closed: #NNN`.
+191 < 1   A free sentence is a `grammar:` refusal from `plan_check.py`; an undecidable staleness
+192 < 1   test is inert prose.
+193 < 1 
+194 < 1 A complete task with every slot filled is in `references/example-task.md`; read it before
+195 < 1 drafting your first task.
+196 < 1 
+197 < 1 ## Elicit the claim — drafted, then confirmed
+198 < 1 
+199 < 1 A Claim is **drafted by the author** and **confirmed by the operator**, and the two happen in
+200 < 1 one touch: the author writes the sentence off the issue or the conversation, puts it with its
+201 < 1 machine restatement and its summary inside a single AskUserQuestion, and the operator's pick —
+202 < 1 or their edit — is the signature. That, and only that, is what the `(elicited)` tag on a signed
+203 < 1 Claim records: not that the operator typed the sentence, but that they saw it and adopted it.
+204 < 1 Pretending otherwise costs a round trip and buys nothing, because a Claim the author never
+205 < 1 drafted is a bare open question wearing a tag.
+206 < 1 
+207 < 1 A Claim question may also be put **without a (Recommended)** option, when the author has two
+208 < 1 honest drafts and no preference between them. Then the register row for that question records
+209 < 1 its `recommended` as `null`, and the pick carries information: an untagged question is the one
+210 < 1 place where what the operator chose is data rather than assent.
+211 < 1 
+212 < 1 **Every question carries a Please explain option.** Every AskUserQuestion of a sitting — the
+213 < 1 Claim, the execute question, every sitting-level pick — lists `Please explain` as one of its
+214 < 1 options beside the 2–3 choices, never as the `Other` path. On that pick the author asks the
+215 < 1 same question again, in place, with the explanation written into the question's own text above
+216 < 1 the Claim, the same options and the same `(Recommended)` tag, and `Please explain` still listed.
+217 < 1 The explanation escalates by round: round one in plain words — what the sentence means, what
+218 < 1 they will see or do differently after the run, and what each option costs them, all inside the
+219 < 1 re-asked question's text; round two a concrete before-and-after — one thing they see today and
+220 < 1 the same thing after the run, not more words; round three the author says the sentence itself
+221 < 1 is the problem, rewrites the Claim simpler, and offers the rewrite as a new option, and that
+222 < 1 pick is the operator's edit. Each round adds 1 to that question's `explain_rounds` in the record
+223 < 1 and is not a second touch of the ceremony. A question that took two or more rounds is a sentence
+224 < 1 to rewrite at the release census, not a question to retire (#526, #239).
+225 < 1 
+226 < 1 A question whose recommended option is **picked on every plan** of a release is not a question.
+227 < 1 At the release census it is **retired** — its default written down here, the sitting one touch
+228 < 1 shorter (#727) — and what stays in the register is only what a pick can still move.
+229 < 1 
+230 < 1 **From a filed issue** (the common path, and what keeps autonomous drains working): quote
+231 < 1 the operator's own words as the Claim, anchored to the issue; bind the machine
+232 < 1 restatement; show the pair once for confirmation — confirmation, not authorship.
+233 < 1 **Quote desired-state sentences, never diagnosis sentences**: an issue's description of
+234 < 1 the defect ("today X happens") makes a claim a passing exam renders *false* — the gate
+235 < 1 rejects it. Quote the sentence that says what should be true instead.
+236 < 1 
+237 < 1 **From a bare idea:** ask scenario questions — *"after this run, what can you see or do
+238 < 1 that you couldn't before?"* — offering 2–3 pre-chewed do:/see: options via
+239 < 1 AskUserQuestion. The operator's pick plus their edits is the claim.
+240 < 1 
+241 < 1 **The summary rides with the claim.** Draft the three `**Summary:**` sentences yourself —
+242 < 1 what this is, why it exists, how it benefits them — in the operator's register, off the
+243 < 1 issue or the conversation, and put that draft to the operator inside the *same*
+244 < 1 AskUserQuestion that carries the Claim: one touch, not two. The operator adjudicates and
+245 < 1 never authors: their edits are the summary. A summary written in the technical register —
+246 < 1 a file name, a function name, a sha — is a defect you fix before the gate.
+247 < 1 
+248 < 1 Aim claims where the suite is structurally blind: integration seams, visual states, CLI
+249 < 1 output, error-path wording. A claim that only restates what a test already asserts buys
+250 < 1 nothing.
+251 < 1 
+252 < 1 ## Authoring a queue
+253 < 1 
+254 < 1 When the operator hands over several issues at once, read `references/authoring-a-queue.md`
+255 < 1 and follow it.
+256 < 1 
+257 < 1 ## The proof gate — before any compile
+258 < 1 
+259 < 1 One fresh-context subagent per task, asked the facts-only question, word for word:
+260 < 1 
+261 < 1 > A clause that states a COMPUTABLE FACT the Claim depends on — an exit code, a recorded
+262 < 1 > argv, a byte-exact string, a count, an ordering of events — needs at least one leg that
+263 < 1 > would fail if that fact were false. A clause, or part of one, that only says what the code
+264 < 1 > says or how it is shaped is judged at run time by a model reading the diff against the
+265 < 1 > clause; it needs no leg of its own. A clause stating a negation or an absence — that
+266 < 1 > something is gone, unchanged, or exactly so many — is always a COMPUTABLE FACT and
+267 < 1 > always needs a leg, because the run-time reader sees only the diff and the diff shows
+268 < 1 > nothing for what is not there. One representative case per behaviour is enough: do
+269 < 1 > NOT ask for a leg per enumerated variant, per synonym, or per error flavour. A path absent
+270 < 1 > at BASE may be created by this task or an earlier sibling; that is not a failure. Fail
+271 < 1 > ONLY when: a computable fact the Claim's sentence depends on has no leg that could catch
+272 < 1 > it being false; or a literal a clause pins is unsatisfiable under the clauses' own rules
+273 < 1 > (compute it); or a leg contradicts its clause; or the `base` excerpts show a file already
+274 < 1 > pinning the opposite; or a leg pins exactly these keys on a record other tasks also
+275 < 1 > write — a row of a shared log, a cell of a shared JSON file — where the clause needs
+276 < 1 > only that the record carries these keys. A computable fact wants a probe, and a probe is one command with its clause tag.
+277 < 1 
+278 < 1 The question it replaced — *if this exam passes, is the sentence necessarily true* — can
+279 < 1 only be satisfied by enumeration, so its readers asked for a leg per variant: on the
+280 < 1 2026-09-18 feedback-board plan it rejected seven of nine tasks, every rejection a request
+281 < 1 for more legs, where this question passed the same seven in one round and still holds what
+282 < 1 the gate is for (n=1 plan, 16 dispatches, 2026-09-18 — an `experiment`; its rollback is
+283 < 1 that sentence). What the gate has actually caught is contradiction, unsatisfiability and
+284 < 1 vacuity — a proof line that passed with its variable unset, a cycle clause its own edge rule
+285 < 1 made impossible, a leg pinning a sha where its clause pinned `HEAD:` — and each would have
+286 < 1 cost a fleet run. **An author who answers a rejection by adding legs is answering the wrong
+287 < 1 question: narrow the clause first.** A mismatch means no compile until the task is revised.
+288 < 1 The exactly-these-keys clause exists because on run-195 (2026-09-18) one task added `ts`
+289 < 1 to every row of the run's event log and the probes of two sibling tasks, each asserting a
+290 < 1 row's exact key list, went red on the merged tree with both features right (n=2 probes on
+291 < 1 1 run, read by hand against the merged head); a Flock builder's copy keeps merging its
+292 < 1 peers' published work, so such a leg goes red under its own builder, and the gate's job is
+293 < 1 that it is never written.
+294 < 1 The literal-computing half is there because on walk run-10 a
+295 < 1 Claim pinned `4` vowels in `Ada Lovelace` — `6` under its own M1 and M2 — and the reader
+296 < 1 passed the legs on shape without ever computing the number, where a reader asked exactly
+297 < 1 this computed six on the re-read and passed the corrected plan.
+298 < 1 Nothing mechanical closes the citation gaps any more (an uncited clause, an uncited leg
+300 > 1 — the old compiler that refused them left at cut B, 2026-09-21), so the gate reads the pair
+299 < 2 — the compiler that refused them left at cut B, 2026-09-21), so the gate reads the pair
+300 < 1 clause by clause and names those too, beside the species only it can see — does leg (b)
+301 < 1 actually falsify M2, or merely mention it?
+302 < 1 
+303 < 1 Its diet is capped mechanically, not by the reader's restraint:
+304 < 1 
+305 < 1     UW=${CLAUDE_PLUGIN_ROOT}/skills/ultrawrite/scripts
+306 < 1     python3 $UW/extract_gate_input.py <plan.md> --task <id> --base <sha>
+307 < 1 
+308 < 1 Since #989 the reader reads BASE as well: with `--base <sha>` (the launch base, a 40-hex
+309 < 1 commit of the plan's repository, or a checkout directory) the diet carries one more key,
+310 < 1 `base` — for the task's Files and every path its Proof names, whether the path exists
+311 < 1 there, its line count, its headings or test names, and an `excerpt` of the lines that
+312 < 1 carry the diet's own literals, at most `8000` bytes per file and `24000` in total,
+313 < 1 `truncated` flagged when the cap cut. An entry for a path the task's own `Modify:` or
+314 < 1 `Delete:` bullet names carries `own` (`modify` or `delete`): its excerpt is the text the
+315 < 1 task is about to replace, never a rival pin (#1497). The reader's question gains its second half on that
+316 < 1 excerpt: *whether a named file already pins the opposite of a clause, and whether every
+317 < 1 section, path or symbol a leg names exists at BASE — or does not exist there at all.* — so "this sim already asserts the task count"
+318 < 1 and "this doc section does not exist" are the reader's to say, not the sandbox's. The
+319 < 1 `hash` a verdict is keyed on is `unchanged` by the excerpt — it is still over the Claim and
+320 < 1 Proof only — so a moved base never stales a verdict; record the base a verdict was read
+321 < 1 against in the tally (`tally.base`), as the 2026-09-15 plans do.
+322 < 1 `--base` takes a checkout directory or the 40-hex sha; a value that is neither a checkout
+323 < 1 directory nor a 40-hex sha — an abbreviation of a real commit, a typo — is refused with exit 2
+324 < 1 on one line, never read as a tree in which every file is absent (an 8-character abbreviation
+325 < 1 handed six readers exactly that on 2026-09-15, #1025).
+326 < 1 
+327 < 1 Feed the subagent **only** that output — no plan body, no ledger, no sibling tasks. Write
+328 < 1 each verdict, keyed on the hash the extractor prints, into the sibling
+330 > 1 `<plan-stem>.gate-verdicts.json`, with the run's `tally`. `plan_check.py` reads exactly this
+329 < 2 `<plan-stem>.gate-verdicts.json`, with the run's `tally`. The compiler reads exactly this
+330 < 1 shape: `{"tasks": {"<id>": {"hash": "<the extractor's hash>", "verdict": "pass" | "fail",
+331 < 1 "reason": "<one sentence>"}, …}, "tally": {…}}` — `tasks` keyed by task id with those three
+332 < 1 fields, `verdict` one of `pass`/`fail`, `tally` a free-form count object (`dispatched`,
+333 < 1 `rejected`, per-round counts) that is kept for the record and not validated; any extra
+334 < 1 key, such as a `history` array of every round's verdicts, is tolerated. One such key is
+335 < 1 reserved: beside `tasks` and `tally` the record carries the sitting's own `authoring` object,
+336 < 1 
+338 > 1     {"authoring": {"minutes": 118, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A", "explain_rounds": 0}]}}
+337 < 2     {"authoring": {"minutes": 118, "probes": 12, "routing": {"branch": "risk", "lane": "ultrapowers"}, "questions": [{"question": "Claim and summary", "options": ["A", "B"], "recommended": "A", "picked": "A", "explain_rounds": 0}]}}
+338 < 1 
+340 > 1 where `minutes` is the sitting's wall-clock minutes to `PLAN OK`,
+339 < 2 where `minutes` is the sitting's wall-clock minutes to `PLAN OK`, `probes` the hub probes made,
+340 < 1 `routing` the handoff rule's own verdict (§Execution handoff), and `questions` one row per
+341 < 1 AskUserQuestion of the sitting — the execute question included, `recommended` null when no
+342 < 1 option carried the tag, and `explain_rounds` the number of Please explain rounds that question
+343 < 1 took (absent reads 0). The author writes the whole object once, at the execution handoff after
+345 > 1 `PLAN OK` and before the launch; `plan_check.py` prints it as one `AUTHORING fact:` line under
+344 < 2 `PLAN OK` and before the launch; the compiler prints it as one `AUTHORING fact:` line under
+345 < 1 `plan_check.py --base`, ending with the explain count, and the launcher carries that line onto the
+346 < 1 launch line. The record is telemetry: a field it does not say, or says oddly, prints `-` and never
+347 < 1 refuses the plan (#1440). A release reads a run
+348 < 1 range with `python3 $UW/authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>`,
+349 < 1 and its last `totals:` line is what the release notes carry. A missing task, a
+351 > 1 stale hash, or a `fail` is a `plan_check.py` refusal. The verdict is an artifact, not
+352 < 1 a memory: `plan_check.py` refuses a plan whose record is missing or whose hashes are stale,
+350 < 2 stale hash, or a `fail` is a compile refusal. The verdict is an artifact, not
+351 < 2 a memory: the compiler refuses a plan whose record is missing or whose hashes are stale,
+352 < 1 so an edited Claim or Proof re-dispatches. The gate agent never authors proofs, and the
+353 < 1 plan author never chooses which proof a task satisfies.
+354 < 1 
+355 < 1 Dispatch is **per task**, not per round, and every reader runs in the foreground. Dispatch
+356 < 1 it with the Agent tool, `subagent_type: "general-purpose"`, `run_in_background: false` —
+357 < 1 one call per task, and several such calls may share one message, but none of them is
+358 < 1 backgrounded, because a backgrounded reader's verdict is delivered to the session that
+359 < 1 spawned the author rather than to the author, who then stops to wait for a message that
+360 < 1 never arrives (2026-09-08: of four concurrent authors, three had backgrounded their
+361 < 1 readers and had to be resumed by hand with the verdict pasted in, two of them with no
+362 < 1 `.gate-verdicts.json` written at all). In the foreground the verdict returns to the author
+363 < 1 that dispatched it, as that call's result: the reader answers with its verdict line and one
+364 < 1 sentence, and the author records that verdict into `<plan-stem>.gate-verdicts.json` through
+365 < 1 Jev's recording command (below), never by hand and never by the reader — the reader sees
+366 < 1 only the extractor's output and has no plan path to write beside. A task whose verdict lands first gets its next
+367 < 1 reader the moment its Claim or Proof is edited: re-extract that one task with
+368 < 1 `extract_gate_input.py`, dispatch one reader for it, and do not wait for the round's
+369 < 1 other verdicts to arrive — the verdict is still keyed on the hash, so the edit is what
+370 < 1 re-dispatches, and a round boundary buys nothing. Measured 2026-09-04 (n=1 sitting,
+371 < 1 9 rounds): the four wide rounds took 13 of the 22 minutes; rounds five through nine were
+372 < 1 one or two tasks apiece,
+373 < 1 each of them idle behind a barrier it did not need.
+374 < 1 
+375 < 1 Jev reads beside each reader. The author extracts each diet with `--base`, dispatches the
+376 < 1 reader on it, and records the reader's verdict on every round — `pass` or `fail`, a
+377 < 1 rejection included — with
+378 < 1 `bun $UW/../stories/gate_jev.ts <diet> --record <plan-stem>.gate-verdicts.json --agent <verdict> --reason "<the reader's sentence>"`
+379 < 1 on the very diet that reader was fed (the laptop's key is `~/.ultrapowers/typesafe.env`).
+380 < 1 That one call writes the verdict and Jev's reading of the same diet, clause scores
+381 < 1 included. Before signing, the author reads Jev's lowest `caught` clause and treats it as
+382 < 1 the leg to strengthen. At the release census, each disagreement between the two readers is
+383 < 1 labelled with
+384 < 1 `bun $UW/../stories/gate_jev.ts --label <file> --task <id> --round <n> --right agent|jev --because "<run evidence>"`,
+385 < 1 and the notes carry both `--agreement` lines from
+386 < 1 `bun $UW/../stories/gate_jev.ts --agreement docs/superpowers/plans`
+387 < 1 and the `--readings` lines from `bun $UW/../stories/gate_jev.ts --readings docs/superpowers/plans`.
+388 < 1 Since #1497 Jev asks `caught_v2` and never reads a base entry the extractor marks `own`
+389 < 1 (policy.json `gate_reading`, each cell its own rollback); a reworded question is a new
+390 < 1 question, so each reading is counted apart, and a round recorded before then counts as
+391 < 1 `caught/read`.
+392 < 1 
+393 < 1 The bar for Jev taking over (operator, 2026-09-30): Jev leads the reading once, across n=5 plans
+394 < 1 in which Jev saw the base on every round, there is no labelled disagreement with
+395 < 1 `right: agent`; after that the agent reader is kept only as a tie-breaker on a clause Jev
+396 < 1 scores low. Until then Jev decides nothing and the agent's verdict is the gate — an
+397 < 1 `experiment`, whose rollback is dropping these two paragraphs. The reading that prompted
+398 < 1 it: on 2026-09-29, over n=6 plans, Jev disagreed with the agent reader four times once the
+399 < 1 rejected rounds were read — Jev right once (a loosened grep), the agent reader right three
+400 < 1 times, two of them on facts Jev was never shown.
+401 < 1 
+402 < 1 Then resolve provenance and check:
+403 < 1 
+404 < 1     python3 $UW/check_provenance.py <plan.md>
+405 < 1     python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/plan_check.py --base <checkout-dir|sha> <plan.md>
+406 < 1     python3 ${CLAUDE_PLUGIN_ROOT}/skills/ultrapowers/scripts/plan_parse.py <plan.md>
+407 < 1 
+408 < 1 `plan_check.py` sits on `plan_parse.py`, the parser the sandbox runs, and refuses only
+409 < 1 what a parser cannot see: a gate record that is missing, stale or `fail`, a `Check:` carrying a backtick or naming a path one task owns, a
+410 < 1 `Check:` that freezes a pathspec covering a task's own Files, a Stale-if predicate that
+411 < 1 already holds at BASE, a `Run:` tag citing a clause the Machine line does not number, a
+412 < 1 task without its six slots once each, non-empty and in order, and a code fence outside a
+414 > 1 task's Proof. The parser itself refuses a cycle, a duplicate task id and a `(minor)` Check.
+415 < 1 Read `plan_parse.py`'s own output for the plan before launching (`proofRuns`,
+416 < 1 `proofRunClauses`, `checks`, `dag_edges`, each task's `wave` and the plan's `width`): what it
+417 < 1 prints is what the engine will do.
+413 < 2 task's Proof. The parser itself refuses a task whose `**Type:**` is not `implementation`. It is not a grammar check — the old
+414 < 2 compiler's grammar refusals left with it at cut B (2026-09-21), so read `plan_parse.py`'s
+415 < 2 own output for the plan before launching (`proofRuns`, `proofRunClauses`, `checks`,
+416 < 2 `dag_edges`): what it prints is what the engine will do.
+417 < 1 
+418 < 1 `check_provenance.py` (needs `gh`) resolves every anchor and string-matches every
+419 < 1 `quoted from #NNN` claim against its issue body at signing time. The plan is done when
+420 < 1 `plan_check.py` prints `PLAN OK` and those two checks — the proof gate and
+421 < 1 `check_provenance.py` — have passed.
+422 < 1 
+423 < 1 `--base` takes a checkout directory or a 40-hex sha, and a sha must be present locally:
+424 < 1 the check reads that commit's tree with `git show`/`git ls-tree` in the plan's own
+425 < 1 repository, so every read at BASE — which paths exist, whether a Stale-if predicate
+426 < 1 holds, which `Run:` lines are already green — resolves against the exact commit
+427 < 1 `launch.mjs --base` will hand the run, not against whatever the working tree happens to
+428 < 1 hold. Unset, `--base` defaults to the plan's own git toplevel.
+429 < 1 
+430 < 1 A `**Stale-if:**` predicate is read against the same base, and it is the one thing there
+431 < 1 that does refuse: a predicate that already holds at that base is a `STALE fact: task <id>:
+432 < 1 <entry> holds at BASE` refusal — the task is stale before it is dispatched, so the compile
+433 < 1 exits 2 and prints no `PLAN OK`. An issue predicate the laptop cannot read is unreadable,
+434 < 1 not false: no `gh` on PATH, a non-zero exit, or an answer that is neither `OPEN` nor
+435 < 1 `CLOSED` prints `STALE fact: task <id>: <entry> unreadable at BASE — <reason>` as an
+436 < 1 advisory line after the verdict, so an offline laptop still
+437 < 1 prints `PLAN OK` and exits 0. Only `plan_check.py --base` asks: a plain compile with no
+438 < 1 `--base` evaluates no predicate at all.
+439 < 1 
+440 < 1 The launcher
+441 < 1 runs this same compile at `--base` before it pushes anything and prints the same
+442 < 1 lines, so a plan that does not compile at the launch base is refused on the laptop
+443 < 1 (#865).
+444 < 1 
+445 < 1 The rejection species are listed in `references/authoring-gotchas.md` and read by the
+446 < 1 author before a reader is dispatched — nothing prints them.
+447 < 1 
+448 < 1 ## Decomposition, the worktree-pure contract, Global Constraints
+449 < 1 
+450 < 1 Read `references/decomposition.md` before splitting the work into tasks and before writing
+451 < 1 the Global Constraints block. It holds the worktree-pure contract, the decomposition
+452 < 1 judgment and the Global Constraints discipline.
+453 < 1 
+454 < 1 ## Execution handoff — analyze, then recommend
+455 < 1 
+456 < 1 Offer three options, parallel first, and do **not** default to the parallel lane. Read
+457 < 1 three signals off the plan:
+458 < 1 
+459 < 1 - **T** — the number of `implementation` tasks.
+460 < 1 - **parallel width** — are there ≥2 tasks with no edge between them, after treating non-text same-file edits between tasks as dependencies (text overlap merges in the weave)? Compute it from derived edges plus the Files blocks.
+461 < 1 - **risk** — a high-stakes surface (auth, payments, migrations, data integrity, public
+462 < 1   API, loops/cursors/pagination/budgets/termination logic), or behavior hard to verify by
+463 < 1   reading.
+464 < 1 
+465 < 1 Since 2026-09-29 the author computes none of these signals:
+466 < 1 `python3 $UW/routing.py <plan.md>` prints them, and the branch, on one `ROUTING fact:` line,
+467 < 1 and the author reads that line (#1440 moved it out of the launch-time check).
+468 < 1 
+469 < 1 First match wins: risk → Ultrapowers (the **risk override** — every task held to its own probes
+470 < 1 and the run to its checks is the value, not speed); parallel width and T≥3 → Ultrapowers; T≤2 → Inline;
+471 < 1 else → Subagent-Driven. Show a one-line analysis, then the three options, tagging the
+472 < 1 winner **(recommended)**:
+473 < 1 
+474 < 1 1. **Ultrapowers** — `/ultrapowers <plan-path>`: commits the plan and drives it on the
+475 < 1    exe.dev fleet (builders in a sandbox claim tasks from a board and merge each other's
+476 < 1    published work, the plan's probes and checks as the proof, the sandbox opens the PR). Selecting it authorizes execution: the plan is committed and the fleet run
+477 < 1    launches immediately, without a further approval pause.
+478 < 1 2. **Subagent-Driven** — sequential, fresh context and review between tasks.
+479 < 1 3. **Inline** — continuous inline execution.
+480 < 1 
+481 < 1 Both halves of that go on the record: the branch that fired and the lane they picked are
+482 < 1 written into the plan record's `routing` as `branch` — one of `risk`, `width`, `inline`,
+483 < 1 `subagent`, the four branches above, first match wins — and `lane`, one of `ultrapowers`,
+484 < 1 `subagent`, `inline`, whichever of the three options above they took (§The proof gate). The
+485 < 1 pair is what tells a release how often the recommendation was the lane.
+486 < 1 
+487 < 1 A claims-v1 plan has no steps to follow, but a sequential executor can implement
+488 < 1 task-by-task from contract plus proof.
+489 < 1 
+490 < 1 ## Self-review
+491 < 1 
+492 < 1 Before the execution handoff, read `references/self-review.md` and run every check in it
+493 < 1 on the plan.
+494 < 1 

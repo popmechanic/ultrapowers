@@ -1,0 +1,288 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // Compile a bundle into a stories-v1 plan.
+2 < 1 //
+3 < 1 //   bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>
+4 < 1 //
+5 < 1 // Every probe is derived by replaying the real store module: `given` from the
+6 < 1 // story's earlier steps, `do` from the step, `expect` from the diff the step
+7 < 1 // made. The app's older probes (stories/probes.jsonl) become guards.
+8 < 1 import {copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+9 < 1 import {dirname, join, resolve} from 'node:path';
+10 < 1 import {parseArgs} from 'node:util';
+11 < 1 import {Aliases, checksFor, hollow, type Content, type Probe} from '../../../factory/stack/tinyapp/probe';
+13 > 1 import {loadBundle, pieceOrder, writePageOrder, type Bundle, type Card} from './bundle';
+12 < 2 import {loadBundle, type Bundle, type Card} from './bundle';
+14 > 1 import {below, runChecks} from './checks';
+15 < 1 import {drawnRoles, drawsPath, readDraws, rolesSeen, type Draws} from './parts';
+13 < 2 import {runChecks} from './checks';
+14 < 1 import {renderProduct, saveProduct, type Product} from './product';
+15 < 1 
+16 < 1 type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
+17 < 1 type StoreModule = {TOOLS: Tool[]; makeStore: () => {getContent: () => Content}};
+18 < 1 type Derived = {story: string; step: number; piece: string; probe: Probe};
+19 < 1 type Line = {plan: string; signed: string; story: string; step: number; sentence: string; probe: Probe};
+20 < 1 
+21 < 1 function stable(v: unknown): unknown {
+22 < 1   if (Array.isArray(v)) return v.map(stable);
+23 < 1   if (v !== null && typeof v === 'object') {
+24 < 1     return Object.fromEntries(Object.keys(v).sort().map((k) => [k, stable((v as Record<string, unknown>)[k])]));
+25 < 1   }
+26 < 1   return v;
+27 < 1 }
+28 < 1 const json = (v: unknown) => JSON.stringify(stable(v));
+29 < 1 const fence = (p: Probe) => ['```probe', json(p), '```'];
+30 < 2 
+31 < 2 function pieceOrder(cards: Card[]): Card[] {
+32 < 2   const done = new Set<string>();
+33 < 2   const order: Card[] = [];
+34 < 2   let left = [...cards];
+35 < 2   while (left.length) {
+36 < 2     const ready = left.filter((c) => (c.depends_on ?? []).every((d) => done.has(d)));
+37 < 2     if (!ready.length) throw new Error('the pieces depend on each other in a circle');
+38 < 2     for (const c of ready) {
+39 < 2       order.push(c);
+40 < 2       done.add(c.piece);
+41 < 2     }
+42 < 2     left = left.filter((c) => !ready.includes(c));
+43 < 2   }
+44 < 2   return order;
+45 < 2 }
+46 < 1 
+47 < 2 // Every piece `piece` depends on, directly or through others; a circle ends the walk.
+48 < 2 function below(cards: Card[], piece: string): Set<string> {
+49 < 2   const seen = new Set<string>();
+50 < 2   const walk = (p: string) => {
+51 < 2     for (const d of cards.find((c) => c.piece === p)?.depends_on ?? []) {
+52 < 2       if (!seen.has(d)) {
+53 < 2         seen.add(d);
+54 < 2         walk(d);
+55 < 2       }
+56 < 2     }
+57 < 2   };
+58 < 2   walk(piece);
+59 < 2   return seen;
+60 < 2 }
+61 < 2 
+62 < 1 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
+63 < 1   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
+64 < 1   const owner = new Map(b.cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
+65 < 1   // A linked step's check goes to the link piece, the tool's owner included, that depends on every other one,
+67 > 1   // so it is built after everything it reads (#1490, #1525); with none, the owner, which runChecks reports as a fact.
+66 < 2   // so it is built after everything it reads (#1490, #1525); with none, the owner.
+67 < 1   const links = new Map((b.page.links ?? []).map((l) => [l.id, l.pieces ?? []] as const));
+68 < 1   const carrier = (link: string | undefined, own: string): string => {
+69 < 1     const ps = [...new Set([...(links.get(link ?? '') ?? []), own])];
+70 < 1     return ps.find((p) => ps.every((q) => q === p || below(b.cards, p).has(q))) ?? own;
+71 < 1   };
+72 < 1   const out: Derived[] = [];
+73 < 1   for (const s of b.page.stories) {
+74 < 1     const store = mod.makeStore();
+75 < 1     const aliases = new Aliases();
+76 < 1     const read = (): Content => {
+77 < 1       const c = store.getContent();
+78 < 1       aliases.learn(c);
+79 < 1       return aliases.rename(c);
+80 < 1     };
+81 < 1     let before = read();
+82 < 1     // Who is signed in: set by a step's `as` and kept until the next one.
+83 < 1     let who: string | null | undefined;
+84 < 1     s.steps.forEach((st, i) => {
+85 < 1       if (st.as !== undefined) who = st.as;
+86 < 1       const where = `story ${s.id} step ${i + 1}`;
+87 < 1       const tool = tools.get(st.tool);
+88 < 1       if (!tool) throw new Error(`${where}: the store module has no tool ${st.tool}`);
+89 < 1       const args = st.args ?? {};
+90 < 1       const ran = tool.run(store, aliases.args(args, tool.inputSchema), who ?? null) === true;
+91 < 1       if (ran === Boolean(st.refused)) {
+92 < 1         throw new Error(st.refused
+93 < 1           ? `${where}: ${st.tool} was to refuse ${json(args)}, but it ran`
+94 < 1           : `${where}: ${st.tool} refused ${json(args)}; fix the step, or end it with "refused": "<the refusal sentence>"`);
+95 < 1       }
+96 < 1       const after = read();
+97 < 1       if (st.layer !== 'store') {
+98 < 1         const expect = checksFor(before, after);
+99 < 1         const probe: Probe = {
+100 < 1           clause: `${s.id}.${i + 1}`,
+101 < 1           layer: st.layer,
+102 < 1           ...(who !== undefined ? {as: who} : {}),
+103 < 1           given: s.steps.slice(0, i).map((g) => ({tool: g.tool, args: g.args ?? {}, ...(g.as !== undefined ? {as: g.as} : {})})),
+104 < 1           do: st.layer === 'ui' ? st.ui! : [{tool: st.tool, args}],
+105 < 1           expect,
+106 < 1           see: st.see ?? [],
+107 < 1           judge: null,
+108 < 1           holds_before: Boolean(st.refused),
+109 < 1         };
+110 < 1         if (hollow(probe, before)) throw new Error(`${where}: hollow, the step changes nothing; end it with "refused": "<the refusal sentence>" if it must refuse`);
+111 < 1         out.push({story: s.id, step: i + 1, piece: carrier(st.link, owner.get(st.tool)!), probe});
+112 < 1       }
+113 < 1       before = after;
+114 < 1     });
+115 < 1   }
+116 < 1   return out;
+117 < 1 }
+118 < 1 
+120 > 1 // Where a new screen part goes (#1491): never client/src/pouf/, which is vendored and never patched.
+121 < 1 const PART_FILES = ['client/src/screens/catalog.ts', 'client/src/screens/registry.tsx', 'client/src/screens/draws.json'];
+122 < 1 const GROW = 'When a story needs something no part draws, add a part: its props in `client/src/screens/catalog.ts`,'
+123 < 1   + ' a wrapper over a 1st-Pouf component in `client/src/screens/registry.tsx` (never an edit under `client/src/pouf/`),'
+124 < 1   + ' and its line in `client/src/screens/draws.json` naming the role it draws and the props that name it;'
+125 < 1   + ' a label made from the data, such as a count or a total, may call a function you add to `client/src/screens/functions.ts`.'
+126 < 1   + ' When a peer has already added the part, use theirs.';
+127 < 1 
+119 < 1 // The screen the operator approved for a piece while planning, committed with the bundle.
+120 < 1 const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
+121 < 1 const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
+122 < 1 
+123 < 1 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
+124 < 1 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
+126 > 1 // draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
+127 < 1 // told to add a part, and every screen task may add one in the open.
+128 < 1 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null): string {
+125 < 2 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true): string {
+126 < 1   const {page, cards} = b;
+127 < 1   const sentences = new Map(page.stories.map((s) => [s.id, s.sentence]));
+128 < 1   const out = [`# ${page.title}`, '',
+129 < 1     '**Grammar:** stories-v1', '**Stack:** tinyapp', `**Plan-id:** ${planId}`,
+130 < 1     ...(b.page.subproject ? [`**Product:** ${b.page.subproject}`] : []),
+131 < 1     `**Kind:** ${page.kind}`, `**Summary:** ${page.summary.join(' ')}`,
+132 < 1     `**Store:** \`${page.store}\` sha256:${b.storeSha256}`,
+133 < 1     ...(page.publish ? [`**Publish:** ${page.publish.deploy}`, `**Verify:** ${page.publish.verify}`,
+134 < 1       ...(page.publish.rollback ? [`**Rollback:** ${page.publish.rollback}`] : [])] : []),
+135 < 1     '',
+136 < 1     '## Stories', '',
+137 < 1     ...page.stories.map((s) => `- ${s.id}: ${s.sentence}`)];
+138 < 1   if (page.links?.length) out.push('', '## Links', '', ...page.links.map((l) => `- ${l.id}: ${l.sentence}`));
+139 < 1   if (page.numbers?.length) {
+140 < 1     out.push('', '## Numbers', '',
+141 < 1       ...page.numbers.map((n) => `- ${n.id}: ${n.sentence} | measure: ${n.measure} | target: ${n.target}`));
+142 < 1   }
+143 < 1   if (guards.length) {
+144 < 1     out.push('', '## Guards', '');
+145 < 1     for (const g of guards) out.push(...fence({...g.probe, clause: `G:${g.story}.${g.step}`}));
+146 < 1   }
+147 < 1   pieceOrder(cards).forEach((c, i) => {
+148 < 1     const probes = mine.filter((m) => m.piece === c.piece);
+150 > 1     const drawn = draws ? drawnRoles(draws) : null;
+151 < 1     const lacking = screens && drawn ? rolesSeen(probes.flatMap((m) => m.probe.see ?? [])).filter((r) => !drawn.has(r)) : [];
+149 < 1     out.push('', `### Task ${i + 1}: The ${c.piece} piece`, '',
+150 < 1       `**Piece:** ${c.piece}`,
+151 < 1       `**Depends-on-pieces:** ${(c.depends_on ?? []).join(', ') || 'none'}`,
+152 < 1       '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+154 > 1       ...(lacking.length ? PART_FILES.map((f) => `- Modify: \`${f}\``) : []),
+153 < 1       `**Purpose:** ${c.purpose}`,
+154 < 1       ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
+155 < 1         + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
+156 < 1         + ' and `$bindState` writes only under `/draft/`.'
+158 > 1         + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')
+159 < 1         + ' ' + GROW
+160 < 1         + (lacking.length ? ` No part draws ${lacking.map((r) => `a ${r}`).join(' or ')} yet, and this task's stories expect one: add it.` : '')] : []),
+157 < 2         + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')] : []),
+158 < 1       '**Actions:**');
+159 < 1     for (const a of c.actions) {
+160 < 1       out.push(`- \`${a.name}\` — ${a.description}${a.refuses?.length ? '; refuses: ' + a.refuses.join('; ') : ''}`);
+161 < 1     }
+162 < 1     out.push('**Stories:**', ...[...new Set(probes.map((p) => p.story))].sort().map((s) => `- ${s}: ${sentences.get(s)}`));
+163 < 1     out.push('**Proof:**', ...probes.flatMap((p) => fence(p.probe)));
+164 < 1   });
+165 < 1   return out.join('\n') + '\n';
+166 < 1 }
+167 < 1 
+168 < 1 async function main(): Promise<number> {
+169 < 1   const {values: v, positionals} = parseArgs({
+170 < 1     allowPositionals: true,
+171 < 1     options: {app: {type: 'string'}, 'plan-id': {type: 'string'}, date: {type: 'string'}, out: {type: 'string'}},
+172 < 1   });
+173 < 1   const planId = v['plan-id'];
+174 < 1   if (positionals.length !== 1 || !v.app || !planId || !v.date || !v.out) {
+175 < 1     console.error('usage: compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>');
+176 < 1     return 2;
+177 < 1   }
+178 < 1   const b = loadBundle(positionals[0]);
+180 > 1   const app = resolve(v.app);
+181 < 1   // The app's own parts list when it has one; an app scaffolded before it is checked against nothing.
+182 < 1   const draws = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')) ? readDraws(drawsPath(app)) : null;
+183 < 1   const {refusals, facts} = runChecks(b, draws);
+179 < 2   const {refusals, facts} = runChecks(b);
+180 < 1   for (const f of facts) console.log(f);
+181 < 1   if (refusals.length) {
+182 < 1     console.log(refusals.join('\n'));
+183 < 1     console.log(`${refusals.length} refusal(s)`);
+184 < 1     return 2;
+185 < 1   }
+186 < 2   const app = resolve(v.app);
+187 < 1   if (!existsSync(join(app, 'node_modules', 'tinybase'))) {
+188 < 1     console.log(`compile: run bun install in ${app} first; the store module imports tinybase from there`);
+189 < 1     return 2;
+190 < 1   }
+191 < 1   const storeDst = join(app, b.page.store);
+192 < 1   const kept = existsSync(storeDst) ? readFileSync(storeDst) : null;
+193 < 1   mkdirSync(dirname(storeDst), {recursive: true});
+194 < 1   copyFileSync(join(b.dir, 'store.js'), storeDst);
+195 < 1   let mine: Derived[];
+196 < 1   let text: string;
+198 > 1   // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
+199 < 1   const screens = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts'));
+197 < 1   const exportPath = join(app, 'stories', 'probes.jsonl');
+198 < 1   const older: Line[] = existsSync(exportPath)
+199 < 1     ? readFileSync(exportPath, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
+200 < 1     : [];
+201 < 1   const guards = older.filter((l) => l.plan !== planId);
+202 < 1   try {
+203 < 1     mine = probesOf(b, (await import(storeDst)) as StoreModule);
+206 > 1     text = compilePlan(b, planId, mine, guards, screens, draws);
+205 > 2     text = compilePlan(b, planId, mine, guards, screens);
+204 < 2     text = compilePlan(b, planId, mine, guards, existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')));
+205 < 1   } catch (e) {
+206 < 1     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
+207 < 1     if (kept) writeFileSync(storeDst, kept);
+208 < 1     else rmSync(storeDst, {force: true});
+209 < 1     console.log(`compile: ${(e as Error).message}`);
+210 < 1     return 2;
+211 < 1   }
+212 < 1   mkdirSync(dirname(resolve(v.out)), {recursive: true});
+213 < 1   writeFileSync(v.out, text);
+215 > 1   if (screens) writePageOrder(b, app);
+214 < 1   // Each approved screen becomes the builder's starting spec for its piece.
+215 < 1   for (const c of b.cards) {
+217 > 1     if (!screens || !approved(b, c.piece)) continue;
+216 < 2     if (!approved(b, c.piece)) continue;
+217 < 1     const dst = join(app, 'client', 'src', 'pieces', `${c.piece}.json`);
+218 < 1     mkdirSync(dirname(dst), {recursive: true});
+219 < 1     copyFileSync(approvedPath(b, c.piece), dst);
+220 < 1   }
+221 < 1   const sentences = new Map(b.page.stories.map((s) => [s.id, s.sentence]));
+222 < 1   const lines: Line[] = [...guards, ...mine.map((m) => ({
+223 < 1     plan: planId, signed: v.date!, story: `${planId}/${m.story}`, step: m.step,
+224 < 1     sentence: sentences.get(m.story) ?? '', probe: m.probe,
+225 < 1   }))].sort((x, y) => (x.story < y.story ? -1 : x.story > y.story ? 1 : x.step - y.step));
+226 < 1   mkdirSync(dirname(exportPath), {recursive: true});
+227 < 1   writeFileSync(exportPath, lines.map((l) => json(l) + '\n').join(''));
+228 < 1   if (b.product && b.page.subproject) {
+229 < 1     const appProduct = join(app, 'stories', 'product.json');
+230 < 1     const kept: Product | null = existsSync(appProduct) ? JSON.parse(readFileSync(appProduct, 'utf8')) : null;
+231 < 1     const p: Product = structuredClone(b.product);
+232 < 1     for (const s of p.subprojects) {
+233 < 1       const before = kept?.subprojects.find((x) => x.id === s.id);
+234 < 1       if (before?.status === 'built') {
+235 < 1         s.status = 'built';
+236 < 1         s.plan = before.plan;
+237 < 1       }
+238 < 1       if (before?.history) s.history = before.history;
+239 < 1       if (s.id === b.page.subproject) {
+240 < 1         if (s.plan && s.plan !== planId) s.history = [...(s.history ?? []), s.plan];
+241 < 1         s.status = 'built';
+242 < 1         s.plan = planId;
+243 < 1       }
+244 < 1     }
+245 < 1     if (kept) p.readings = [...kept.readings, ...p.readings.filter((r) => !kept.readings.some((k) => JSON.stringify(k) === JSON.stringify(r)))];
+246 < 1     saveProduct(appProduct, p);
+247 < 1     mkdirSync(join(app, '.ultrapowers'), {recursive: true});
+248 < 1     writeFileSync(join(app, '.ultrapowers', 'product.md'), renderProduct(p, b.page));
+249 < 1   }
+250 < 1   const tasks = text.split('\n### Task ').length - 1;
+251 < 1   console.log(`COMPILED ${planId}: ${tasks} task(s), ${mine.length} probe(s), ${guards.length} guard(s)`);
+252 < 1   return 0;
+253 < 1 }
+254 < 1 
+255 < 1 if (import.meta.main) process.exit(await main());
+256 < 1 

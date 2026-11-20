@@ -1,0 +1,38 @@
+0 < 1 [Unit]
+1 < 1 Description=ultrapowers run %i
+2 < 1 After=network-online.target
+3 < 1 
+4 < 1 # A TEMPLATE, instanced per run: the run's setup script starts `fleet-run@<N>.service`
+5 < 1 # as its last act, once the bus is up and the tools are installed — the
+7 > 1 # integrations reach the VM by its `tag:fleet`; never at boot, so there is no [Install] section and nothing to enable.
+6 < 2 # integrations rode the `new` that created the VM; never at boot, so there is no [Install] section and nothing to enable.
+7 < 1 #
+8 < 1 # Type=exec, not oneshot (Counsel 3, measured on exeuntu, systemd 255): a
+9 < 1 # oneshot has TimeoutStartUSec=infinity, ignores RuntimeMaxSec=, and once it
+10 < 1 # has finished reads `inactive/dead` — the same as one never started. With
+11 < 1 # exec, `start` returns as soon as the bootstrap has execve'd (non-zero when it
+12 < 1 # cannot), the run's wall clock is bounded by RuntimeMaxSec, and
+13 < 1 # RemainAfterExit keeps the finished unit around so `systemctl show` tells
+14 < 1 # `active/exited + success` (done) from `failed + Result=timeout` (over budget)
+15 < 1 # from `inactive/dead` (never launched).
+16 < 1 #
+17 < 1 # %i is the run number. The bootstrap still reads the assignment from
+18 < 1 # Reflection; the argument only lets it assert that the comment's run= agrees.
+19 < 1 # The engine is a transient service of its own, so no KillMode games are
+20 < 1 # needed to keep it up after this exits.
+21 < 1 #
+22 < 1 # LimitNOFILE: a shell here inherits soft 1024, what bites Chromium, bun and
+23 < 1 # pytest; the image's hard limit is 524288. These bytes ride the setup script.
+24 < 1 [Service]
+25 < 1 Type=exec
+26 < 1 RemainAfterExit=yes
+27 < 1 RuntimeMaxSec=6h
+28 < 1 LimitNOFILE=524288
+29 < 1 ExecStart=/usr/local/lib/fleet/bootstrap.sh %i
+30 < 1 # The VM writes its own death (#1445): systemd runs this when the unit stops —
+31 < 1 # after a non-zero exit, a kill or the RuntimeMaxSec timeout — with
+32 < 1 # SERVICE_RESULT, EXIT_CODE and EXIT_STATUS set. After a clean exit the unit
+33 < 1 # stays `active (exited)` and this runs only when the VM goes down, where
+34 < 1 # `died` finds a finished record and writes nothing.
+35 < 1 ExecStopPost=/usr/local/lib/fleet/bootstrap.sh %i died
+36 < 1 

@@ -1,0 +1,101 @@
+0 < 1 // A bundle: page.json (with each story's steps), cards.json and store.js in
+1 < 1 // one directory. The store's fingerprint is taken here.
+2 < 1 import {createHash} from 'node:crypto';
+4 > 1 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+5 < 1 import {dirname, join, resolve} from 'node:path';
+3 < 2 import {existsSync, readFileSync} from 'node:fs';
+4 < 2 import {join, resolve} from 'node:path';
+5 < 1 import type {See, UiStep} from '../../../factory/stack/tinyapp/probe';
+6 < 1 import type {Product} from './product';
+7 < 1 
+8 < 1 // preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
+9 < 1 export const KINDS = ['behaviour', 'preserve'];
+10 < 1 export type Step = {
+11 < 1   tool: string;
+12 < 1   args?: Record<string, unknown>;
+13 < 1   layer: 'store' | 'ui' | 'saved';
+14 < 1   ui?: UiStep[];
+15 < 1   see?: See[];
+16 < 1   refused?: boolean | string;
+17 < 1   link?: string;
+18 < 1   // Who is signed in from this step on: an email, or null for nobody.
+19 < 1   as?: string | null;
+20 < 1 };
+21 < 1 export type Story = {id: string; sentence: string; steps: Step[]};
+22 < 1 export type Page = {
+23 < 1   title: string;
+24 < 1   kind: string;
+25 < 1   summary: string[];
+26 < 1   store: string;
+27 < 1   stories: Story[];
+28 < 1   links?: {id: string; sentence: string; pieces?: string[]}[];
+29 < 1   // numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
+30 < 1   numbers?: {id: string; sentence: string; measure: string; target: string}[];
+31 < 1   // A plan that deploys: the boot runs `deploy` after the self-merge, then `verify` with
+32 < 1   // ULTRA_PUBLISH_URL set, and `rollback` when verify fails.
+33 < 1   publish?: {deploy: string; verify: string; rollback?: string};
+34 < 1   subproject?: string;
+35 < 1   waivers?: {piece: string; action: string; refuses: string; arg: string; reason: string}[];
+36 < 1 };
+37 < 1 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
+38 < 1 export type Card = {
+39 < 1   piece: string;
+40 < 1   purpose: string;
+41 < 1   depends_on?: string[];
+42 < 1   state?: {tables?: Record<string, string[]>};
+43 < 1   actions: Action[];
+44 < 1   main_story?: string;
+45 < 1   near_miss?: string;
+46 < 1   concept?: string;
+47 < 1   // One screen can cover several map lines (#1508): its `concepts`, beside or instead of `concept`.
+48 < 1   concepts?: string[];
+49 < 1 };
+50 < 1 // Every concept a card names: its `concepts` and its `concept`, without duplicates.
+52 > 1 // A `concepts` that is not a list (checks.ts refuses it) adds nothing, never its letters.
+53 < 1 export const conceptsOf = (c: Card): string[] =>
+54 < 1   [...new Set([...(Array.isArray(c.concepts) ? c.concepts.filter((x) => typeof x === 'string') : []), ...(c.concept ? [c.concept] : [])])];
+51 < 2 export const conceptsOf = (c: Card): string[] => [...new Set([...(c.concepts ?? []), ...(c.concept ? [c.concept] : [])])];
+52 < 1 export type Bundle = {dir: string; page: Page; cards: Card[]; storeText: string; storeSha256: string; product: Product | null};
+53 < 1 
+54 < 1 export function loadBundle(dir: string): Bundle {
+55 < 1   const d = resolve(dir);
+56 < 1   const store = readFileSync(join(d, 'store.js'));
+57 < 1   const page = JSON.parse(readFileSync(join(d, 'page.json'), 'utf8'));
+58 < 1   page.stories ??= [];
+59 < 1   const productPath = join(d, 'product.json');
+60 < 1   const product = existsSync(productPath) ? JSON.parse(readFileSync(productPath, 'utf8')) : null;
+61 < 1   return {
+62 < 1     dir: d,
+63 < 1     page,
+64 < 1     cards: JSON.parse(readFileSync(join(d, 'cards.json'), 'utf8')),
+65 < 1     storeText: store.toString('utf8'),
+66 < 1     storeSha256: createHash('sha256').update(store).digest('hex'),
+67 < 1     product,
+68 < 1   };
+69 < 1 }
+70 < 1 
+71 < 1 /** The pieces in build order: each after every piece it depends on, ties in card order. */
+72 < 1 export function pieceOrder(cards: Card[]): Card[] {
+73 < 1   const done = new Set<string>();
+74 < 1   const order: Card[] = [];
+75 < 1   let left = [...cards];
+76 < 1   while (left.length) {
+77 < 1     const ready = left.filter((c) => (c.depends_on ?? []).every((d) => done.has(d)));
+78 < 1     if (!ready.length) throw new Error('the pieces depend on each other in a circle');
+79 < 1     for (const c of ready) {
+80 < 1       order.push(c);
+81 < 1       done.add(c.piece);
+82 < 1     }
+83 < 1     left = left.filter((c) => !ready.includes(c));
+84 < 1   }
+85 < 1   return order;
+86 < 1 }
+87 < 1 
+88 < 1 /** client/src/screens/order.json: the order the page draws its pieces in, the build order, so a
+89 < 1  *  page reads party before guests before dishes rather than by file name (#1491). */
+90 < 1 export function writePageOrder(b: Bundle, app: string) {
+91 < 1   const file = join(app, 'client', 'src', 'screens', 'order.json');
+92 < 1   mkdirSync(dirname(file), {recursive: true});
+93 < 1   writeFileSync(file, JSON.stringify({pieces: pieceOrder(b.cards).map((c) => c.piece)}, null, 2) + '\n');
+94 < 1 }
+95 < 1 

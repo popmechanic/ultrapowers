@@ -1,0 +1,143 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """The execution handoff's signals, computed (ultrawrite §Execution handoff).
+2 < 1 
+3 < 1     routing.py <plan.md>
+4 < 1 
+5 < 1 Prints `ROUTING fact: T=<n>, width <w>, risk <r>, branch <b>`: T the
+7 > 1 tasks, width the most tasks ready at once (the parse's `width`), risk one Jev reading of
+6 < 2 implementation tasks, width the largest launch wave, risk one Jev reading of
+7 < 1 `authoring_routing` / `risk` (via `skills/ultrawrite/stories/ask.ts`; any
+8 < 1 failure reads `risk unread` and the line ends `(computed without risk)`), and
+9 < 1 the branch by the first-match rule. When risk was read and the gate record's
+10 < 1 `authoring.routing.branch` names another branch, one more line says
+11 < 1 `ROUTING fact: recorded branch <r> differs from the computed branch <b>` — a
+12 < 1 pointer, never a refusal. Exits 0, or 2 when the plan does not parse.
+13 < 1 
+14 < 1 Moved out of the launch-time `plan_check.py` (#1440): its only reader is the
+15 < 1 author at the handoff, and the fetched copy the launcher runs has no `ask.ts`
+16 < 1 beside it.
+17 < 1 """
+18 < 1 from __future__ import annotations
+19 < 1 
+20 < 1 import json
+21 < 1 import shutil
+22 < 1 import subprocess
+23 < 1 import sys
+24 < 1 from pathlib import Path
+25 < 1 
+26 < 1 # scripts -> ultrawrite -> skills
+27 < 1 _SKILLS = Path(__file__).resolve().parents[2]
+28 < 1 sys.path.insert(0, str(_SKILLS / "ultrapowers/scripts"))
+29 < 1 
+30 < 1 import plan_parse  # noqa: E402
+31 < 1 from plan_check import AUTHORING_KEY, _record  # noqa: E402
+32 < 1 
+33 < 1 AUTHORING_BRANCHES = ("risk", "width", "inline", "subagent")
+34 < 1 
+35 < 1 JEV_ASK_TIMEOUT_S = 45
+36 < 1 ASK_TS = _SKILLS / "ultrawrite/stories/ask.ts"
+37 < 1 
+38 < 1 
+39 < 1 def ask_jev(question_set, question, state):
+40 < 1     """One Jev reading through `ask.ts <set> <question>` over `state`, or None
+41 < 1     for any failure — no `bun`, no `ask.ts`, a timeout, a non-zero exit,
+42 < 1     output not `{"noul": <number>}`, or a null. `ask.ts` prints that object
+43 < 1     as its one stdout line; the last line is the one read."""
+44 < 1     bun = shutil.which("bun")
+45 < 1     if bun is None or not ASK_TS.is_file():
+46 < 1         return None
+47 < 1     try:
+48 < 1         proc = subprocess.run(
+49 < 1             [bun, str(ASK_TS), question_set, question],
+50 < 1             input=json.dumps(state), capture_output=True, text=True,
+51 < 1             timeout=JEV_ASK_TIMEOUT_S)
+52 < 1     except (OSError, subprocess.SubprocessError):
+53 < 1         return None
+54 < 1     if proc.returncode != 0:
+55 < 1         return None
+56 < 1     try:
+57 < 1         value = json.loads(proc.stdout.strip().splitlines()[-1])["noul"]
+58 < 1     except (ValueError, IndexError, KeyError, TypeError):
+59 < 1         return None
+60 < 1     if isinstance(value, bool) or not isinstance(value, (int, float)):
+61 < 1         return None
+62 < 1     return value
+63 < 1 
+64 < 1 
+65 < 1 def routing_risk_threshold():
+66 < 1     """`flag_at.routing_risk` of the stories policy; 0.5 when unreadable."""
+67 < 1     try:
+68 < 1         policy = json.loads(
+69 < 1             (_SKILLS / "ultrawrite/stories/policy.json").read_text())
+70 < 1         return float(policy["flag_at"]["routing_risk"])
+71 < 1     except (OSError, ValueError, KeyError, TypeError):
+72 < 1         return 0.5
+73 < 1 
+74 < 1 
+75 < 1 def read_routing_risk(tasks):
+76 < 1     """One Jev reading of `authoring_routing` / `risk` over the plan's
+78 > 1     tasks, or None for any failure (`ask_jev`)."""
+77 < 2     implementation tasks, or None for any failure (`ask_jev`)."""
+78 < 1     value = ask_jev("authoring_routing", "risk", {"plan": {"tasks": [
+79 < 1         {"title": t["title"], "claim": t.get("claim") or "",
+80 < 1          "files": list(t.get("files") or [])} for t in tasks]}})
+81 < 1     return None if value is None else float(value)
+82 < 1 
+83 < 1 
+84 < 1 def routing_branch(T, width, risk):
+85 < 1     """ultrawrite §Execution handoff, first match wins."""
+86 < 1     if risk is not None and risk >= routing_risk_threshold():
+87 < 1         return "risk"
+88 < 1     if width >= 2 and T >= 3:
+89 < 1         return "width"
+90 < 1     if T <= 2:
+91 < 1         return "inline"
+92 < 1     return "subagent"
+93 < 1 
+94 < 1 
+95 < 1 def routing_fact_lines(result, tasks, plan_path):
+96 < 1     """The `ROUTING fact:` line, and — risk read, the record naming another
+97 < 1     of the four branches — the mismatch line. Asks Jev once."""
+99 > 2     # Every task the parser answers is an implementation task: it refuses any
+100 < 2     # other `**Type:**`, and a task with no Type line (type None) is one too.
+98 < 2     impl = [t for t in tasks if t.get("type") == "implementation"]
+99 < 1     T = len(result["tasks"])
+101 > 1     width = result["width"]
+100 < 2     width = max((len(w) for w in result["launch_waves"]), default=0)
+102 > 1     risk = read_routing_risk(tasks)
+101 < 2     risk = read_routing_risk(impl)
+102 < 1     branch = routing_branch(T, width, risk)
+103 < 1     if risk is None:
+104 < 1         lines = ["ROUTING fact: T=%d, width %d, risk unread, branch %s "
+105 < 1                  "(computed without risk)" % (T, width, branch)]
+106 < 1     else:
+107 < 1         lines = ["ROUTING fact: T=%d, width %d, risk %.2f, branch %s"
+108 < 1                  % (T, width, risk, branch)]
+109 < 1         auth = _record(plan_path).get(AUTHORING_KEY)
+110 < 1         routing = auth.get("routing") if isinstance(auth, dict) else None
+111 < 1         recorded = routing.get("branch") if isinstance(routing, dict) else None
+112 < 1         if recorded in AUTHORING_BRANCHES and recorded != branch:
+113 < 1             lines.append("ROUTING fact: recorded branch %s differs from the "
+114 < 1                          "computed branch %s" % (recorded, branch))
+115 < 1     return lines
+116 < 1 
+117 < 1 
+118 < 1 def main(argv=None):
+119 < 1     argv = sys.argv[1:] if argv is None else argv
+120 < 1     if len(argv) != 1:
+121 < 1         print("usage: routing.py <plan.md>", file=sys.stderr)
+122 < 1         return 2
+123 < 1     plan = Path(argv[0])
+124 < 1     try:
+125 < 1         result, tasks = plan_parse.parse_plan_full(plan.read_text())
+126 < 1     except (OSError, UnicodeDecodeError, plan_parse.Refusal) as exc:
+127 < 1         print("error: %s" % exc, file=sys.stderr)
+128 < 1         return 2
+129 < 1     for line in routing_fact_lines(result, tasks, plan):
+130 < 1         print(line)
+131 < 1     return 0
+132 < 1 
+133 < 1 
+134 < 1 if __name__ == "__main__":
+135 < 1     sys.exit(main())
+136 < 1 

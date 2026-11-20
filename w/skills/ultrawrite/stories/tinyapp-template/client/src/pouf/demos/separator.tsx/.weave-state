@@ -1,0 +1,18 @@
+0 < 2 import { Separator } from '../separator'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack } from '../layout'
+3 < 2 import { Text } from '../text'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 export const separatorDemos: Demo[] = [
+7 < 2   { id: 'default', render: () => (
+8 < 2       <Card variant="tight">
+9 < 2         <Stack gap={3}>
+10 < 2           <Text>Above the line.</Text>
+11 < 2           <Separator />
+12 < 2           <Text size="sm" muted>Below the line.</Text>
+13 < 2         </Stack>
+14 < 2       </Card>
+15 < 2     ) },
+16 < 2 ]
+17 < 2 

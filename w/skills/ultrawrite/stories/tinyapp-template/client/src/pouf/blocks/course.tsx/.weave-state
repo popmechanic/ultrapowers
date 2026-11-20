@@ -1,0 +1,163 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+3 < 2 import { NavLink } from '../NavLink'
+4 < 2 import { Blob, Badge } from '../media'
+5 < 2 import { Grid, Row, Shell, Sidebar, Stack } from '../layout'
+6 < 2 import { Progress } from '../progress'
+7 < 2 import { Card, RowCard } from '../surface'
+8 < 2 import { Eyebrow, Heading, Text } from '../text'
+9 < 2 
+10 < 2 const NAV: NavItem[] = [
+11 < 2   { href: '/', label: 'Home', icon: 'home', tone: 'purple' },
+12 < 2   { href: '/learn', label: 'Learn', icon: 'wand', tone: 'yellow' },
+13 < 2   { href: '/practice', label: 'Practice', icon: 'target', tone: 'mint' },
+14 < 2   { href: '/community', label: 'Community', icon: 'users', tone: 'pink' },
+15 < 2   { href: '/profile', label: 'Profile', icon: 'user', tone: 'blue' },
+16 < 2 ]
+17 < 2 
+18 < 2 const HERE = '/learn'
+19 < 2 
+20 < 2 interface Lesson {
+21 < 2   id: string
+22 < 2   title: string
+23 < 2   duration: number
+24 < 2   kind: 'Lesson' | 'Exercise' | 'Quiz'
+25 < 2 }
+26 < 2 
+27 < 2 const LESSONS: Lesson[] = [
+28 < 2   { id: 'hierarchy', title: 'Build a clear visual hierarchy', duration: 8, kind: 'Lesson' },
+29 < 2   { id: 'spacing', title: 'Use spacing as a system', duration: 12, kind: 'Exercise' },
+30 < 2   { id: 'contrast', title: 'Make contrast do real work', duration: 7, kind: 'Lesson' },
+31 < 2   { id: 'review', title: 'Review a dashboard', duration: 10, kind: 'Quiz' },
+32 < 2 ]
+33 < 2 
+34 < 2 const MINUTES = new Intl.NumberFormat('en-US', { style: 'unit', unit: 'minute' })
+35 < 2 
+36 < 2 /** A responsive learning dashboard with a meaningful course outline, progress
+37 < 2  * that updates as lessons are completed, and a focused current-lesson panel. */
+38 < 2 export function CourseBlock() {
+39 < 2   const [completed, setCompleted] = useState<string[]>(['hierarchy'])
+40 < 2   const [activeId, setActiveId] = useState('spacing')
+41 < 2 
+42 < 2   const active = LESSONS.find((lesson) => lesson.id === activeId) ?? LESSONS[0]!
+43 < 2   const progress = Math.round((completed.length / LESSONS.length) * 100)
+44 < 2   const remaining = useMemo(
+45 < 2     () => LESSONS.filter((lesson) => !completed.includes(lesson.id)).reduce((sum, lesson) => sum + lesson.duration, 0),
+46 < 2     [completed],
+47 < 2   )
+48 < 2 
+49 < 2   function toggleLesson(id: string, checked: boolean | 'indeterminate') {
+50 < 2     setCompleted((current) =>
+51 < 2       checked === true
+52 < 2         ? current.includes(id) ? current : [...current, id]
+53 < 2         : current.filter((lessonId) => lessonId !== id),
+54 < 2     )
+55 < 2   }
+56 < 2 
+57 < 2   function completeActive() {
+58 < 2     toggleLesson(active.id, true)
+59 < 2     const next = LESSONS.find((lesson) => !completed.includes(lesson.id) && lesson.id !== active.id)
+60 < 2     if (next) setActiveId(next.id)
+61 < 2   }
+62 < 2 
+63 < 2   return (
+64 < 2     <>
+65 < 2       <Shell>
+66 < 2         <Sidebar mobile="hide">
+67 < 2           <Row gap={2} wrap={false}>
+68 < 2             <Blob icon="wand" tone="yellow" size="sm" />
+69 < 2             <Heading level={3}>Small Steps</Heading>
+70 < 2           </Row>
+71 < 2           {NAV.map((item) => (
+72 < 2             <NavLink key={item.href} href={item.href} currentPath={HERE} icon={item.icon} tone={item.tone}>
+73 < 2               {item.label}
+74 < 2             </NavLink>
+75 < 2           ))}
+76 < 2         </Sidebar>
+77 < 2 
+78 < 2         <Stack gap={5}>
+79 < 2           <Row justify="between" align="top">
+80 < 2             <Stack gap={1}>
+81 < 2               <Eyebrow>Design Foundations</Eyebrow>
+82 < 2               <Heading level={1}>Learn by Doing</Heading>
+83 < 2               <Text muted>A compact course with progress you can actually complete.</Text>
+84 < 2             </Stack>
+85 < 2             <Badge tone="yellow">Course 2 of 4</Badge>
+86 < 2           </Row>
+87 < 2 
+88 < 2           <Card>
+89 < 2             <Grid cols="sidebar" gap={5}>
+90 < 2               <Stack gap={3}>
+91 < 2                 <Text size="sm" muted>Current Course</Text>
+92 < 2                 <Heading level={2}>Designing Interfaces That Read Clearly</Heading>
+93 < 2                 <Text muted>Turn hierarchy, spacing, and contrast into repeatable decisions.</Text>
+94 < 2                 <Progress value={progress} tone="mint" label="Course completion" />
+95 < 2                 <Row justify="between">
+96 < 2                   <Text size="sm">{progress}% complete</Text>
+97 < 2                   <Text size="sm" muted>{MINUTES.format(remaining)} remaining</Text>
+98 < 2                 </Row>
+99 < 2               </Stack>
+100 < 2               <div className="flex items-center justify-center">
+101 < 2                 <Blob icon={progress === 100 ? 'trophy' : 'target'} tone={progress === 100 ? 'yellow' : 'purple'} size="lg" />
+102 < 2               </div>
+103 < 2             </Grid>
+104 < 2           </Card>
+105 < 2 
+106 < 2           <Grid cols="sidebar" gap={4}>
+107 < 2             <Stack gap={3}>
+108 < 2               {LESSONS.map((lesson, index) => (
+109 < 2                 <RowCard
+110 < 2                   key={lesson.id}
+111 < 2                   selected={lesson.id === active.id}
+112 < 2                   onClick={() => setActiveId(lesson.id)}
+113 < 2                 >
+114 < 2                   <Row justify="between" wrap={false}>
+115 < 2                     <Row gap={3} wrap={false}>
+116 < 2                       <Blob
+117 < 2                         icon={completed.includes(lesson.id) ? 'ok' : lesson.kind === 'Quiz' ? 'wand' : 'play'}
+118 < 2                         tone={completed.includes(lesson.id) ? 'mint' : index % 2 === 0 ? 'blue' : 'purple'}
+119 < 2                         size="sm"
+120 < 2                       />
+121 < 2                       <Stack gap={1}>
+122 < 2                         <Text size="sm" muted>{lesson.kind} · {MINUTES.format(lesson.duration)}</Text>
+123 < 2                         <Heading level={3}>{lesson.title}</Heading>
+124 < 2                       </Stack>
+125 < 2                     </Row>
+126 < 2                     <Badge tone={completed.includes(lesson.id) ? 'up' : 'idle'}>
+127 < 2                       {completed.includes(lesson.id) ? 'Done' : 'Next'}
+128 < 2                     </Badge>
+129 < 2                   </Row>
+130 < 2                 </RowCard>
+131 < 2               ))}
+132 < 2             </Stack>
+133 < 2 
+134 < 2             <Card>
+135 < 2               <Stack gap={4}>
+136 < 2                 <Badge tone={active.kind === 'Quiz' ? 'yellow' : 'blue'}>{active.kind}</Badge>
+137 < 2                 <Heading level={2}>{active.title}</Heading>
+138 < 2                 <Text muted>
+139 < 2                   Work through a focused example, then apply the idea to a real interface.
+140 < 2                 </Text>
+141 < 2                 <Row justify="between">
+142 < 2                   <Text muted>Time</Text>
+143 < 2                   <Text num>{MINUTES.format(active.duration)}</Text>
+144 < 2                 </Row>
+145 < 2                 <Button
+146 < 2                   tone={completed.includes(active.id) ? 'purple' : 'mint'}
+147 < 2                   block
+148 < 2                   onClick={completeActive}
+149 < 2                 >
+150 < 2                   {completed.includes(active.id) ? 'Continue to Next Lesson' : 'Mark Complete'}
+151 < 2                 </Button>
+152 < 2               </Stack>
+153 < 2             </Card>
+154 < 2           </Grid>
+155 < 2         </Stack>
+156 < 2       </Shell>
+157 < 2 
+158 < 2       <BottomNav primary={NAV.slice(0, 3)} groups={[{ title: 'Learning', items: NAV }]} currentPath={HERE} />
+159 < 2     </>
+160 < 2   )
+161 < 2 }
+162 < 2 

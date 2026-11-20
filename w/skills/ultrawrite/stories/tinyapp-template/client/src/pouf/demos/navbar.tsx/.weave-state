@@ -1,0 +1,26 @@
+0 < 2 import { Navbar } from '../navbar'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { Blob } from '../media'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 const brand = (
+6 < 2   <>
+7 < 2     <Blob icon="target" tone="purple" size="sm" />
+8 < 2     Acme
+9 < 2   </>
+10 < 2 )
+11 < 2 const links = [
+12 < 2   { label: 'Product', href: '#', active: true },
+13 < 2   { label: 'Pricing', href: '#' },
+14 < 2   { label: 'Docs', href: '#' },
+15 < 2 ]
+16 < 2 
+17 < 2 export const navbarDemos: Demo[] = [
+18 < 2   { id: 'default', render: () => (
+19 < 2       <Navbar brand={brand} links={links} actions={<Button size="sm">Sign in</Button>} />
+20 < 2     ) },
+21 < 2   { id: 'minimal', render: () => (
+22 < 2       <Navbar brand={brand} actions={<><Button size="sm" variant="quiet">Log in</Button><Button size="sm" tone="mint">Start</Button></>} />
+23 < 2     ) },
+24 < 2 ]
+25 < 2 

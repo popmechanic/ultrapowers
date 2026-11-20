@@ -6,7 +6,8 @@
 5 < 1 
 6 < 1 **Give your Superpowers Ultrapowers.**
 7 < 1 
-8 < 1 Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, reviewed work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
+9 > 1 Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, proven work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
+8 < 2 Ultrapowers writes the plan and runs it. It grew up alongside [superpowers](https://github.com/obra/superpowers), the popular agent skill for a disciplined build workflow, and it now carries its own plan-authoring skill — so you can hand Claude Code a big, ambitious idea and get back finished, reviewed work, without paying frontier-model prices to build every line, and without reviewing code you'd rather not read.
 9 < 1 
 10 < 1 ## Ambition is expensive
 11 < 1 
@@ -28,14 +29,17 @@
 27 < 1   the task must be true of, and the proof that decides it — never a script of steps to retype.
 28 < 1 - **Cheaper models build.** A contract that exact leaves the builder no invention to do about
 29 < 1   *what* to deliver, so a cheaper model does it well.
-30 < 1 - **Your frontier model checks the work.** Quality is the one place it never cuts corners.
+31 > 1 - **Every task is proved, not trusted.** A task counts only when the plan's own probes pass on it.
+30 < 2 - **Your frontier model checks the work.** Quality is the one place it never cuts corners.
 31 < 1 - **Each task stays out of your main session.** You don't re-pay for one giant, ballooning
 32 < 1   transcript.
 33 < 1 - **It won't over-spend.** If a plan won't benefit from the heavy parallel machinery, ultrapowers
 34 < 1   tells you to use a lighter tool instead.
 35 < 1 
-36 < 1 Honest caveat: the parallel-and-review machinery *can* cost more than a plain sequential run — it's
-37 < 1 running extra reviewers and isolated build environments. What it saves you from is what you'd reach
+37 > 1 Honest caveat: the parallel machinery *can* cost more than a plain sequential run — it's
+38 < 1 running a pool of builders, each on its own copy of the code. What it saves you from is what you'd reach
+36 < 2 Honest caveat: the parallel-and-review machinery *can* cost more than a plain sequential run — it's
+37 < 2 running extra reviewers and isolated build environments. What it saves you from is what you'd reach
 38 < 1 for otherwise: asking one frontier model to build the whole thing directly. Against that, the
 39 < 1 savings are real. ultrapowers isn't "cheap" — it's disciplined. It refuses to waste your tokens.
 40 < 1 
@@ -44,7 +48,8 @@
 43 < 1 **1. Affordable ambition.** You don't pay frontier prices to write boilerplate. Your frontier model
 44 < 1 plans and checks; cheaper models do the building in between.
 45 < 1 
-46 < 1 **2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
+47 > 1 **2. Quality you don't have to babysit.** Every task is proved by the plan's own probes before it
+46 < 2 **2. Quality you don't have to babysit.** Every task is checked by a separate reviewer before it
 47 < 1 counts — so you don't have to read the code yourself. You make one approval at the
 48 < 1 end, on the finished result, instead of signing off on code you can't (or don't want to) judge.
 49 < 1 
@@ -77,7 +82,8 @@
 76 < 1 ## When to use it — and when not
 77 < 1 
 78 < 1 Reach for ultrapowers on big, ambitious plans with independent pieces — the kind where parallel
-79 < 1 work and independent review pay off.
+80 > 1 work pays off.
+79 < 2 work and independent review pay off.
 80 < 1 
 81 < 1 Skip it for small or tightly-connected plans, where the work has to happen in order anyway. There,
 82 < 1 a plain sequential run is the better tool — and ultrapowers will tell you so rather than spin up
@@ -87,8 +93,9 @@
 86 < 1 on a recent 7-task production run the operator's entire involvement was the
 87 < 1 planning decisions and one physical-world check no tooling could reach
 88 < 1 (confirming an email landed in a personal inbox) — everything between launch
-89 < 1 and the pre-merge gate ran autonomously, and the operator's unrelated
-90 < 1 work-in-progress was restored byte-for-byte.
+90 > 1 and the pre-merge gate ran autonomously.
+89 < 2 and the pre-merge gate ran autonomously, and the operator's unrelated
+90 < 2 work-in-progress was restored byte-for-byte.
 91 < 1 
 92 < 1 ## How it works
 93 < 1 
@@ -198,7 +205,8 @@
 197 < 1 ### 2. `/ultrapowers setup`
 198 < 1 
 199 < 1 Run `/ultrapowers setup` and answer what it asks. The agent runs the doctor, reads its rows —
-201 > 1 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper` — and fixes every red row with you,
+202 > 1 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare` — and fixes every red row with you,
+201 > 2 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper` — and fixes every red row with you,
 200 < 2 `exe-dev`, `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, `cloudflare` — and fixes every red row with you,
 201 < 1 offering each choice as options rather than asking you to invent an answer. Setup is safe to
 202 < 1 re-run: the doctor (`fleet/doctor.mjs`) only reports, and setup only touches what is still red.
@@ -261,7 +269,8 @@
 259 < 1 nothing downstream can undo it. Set the fleet up on your personal exe.dev account, and if setup
 260 < 1 offers you a choice of accounts, the GitHub integration has to stay personal.
 261 < 1 
-262 < 1 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
+263 > 1 **Go deeper.** The full mechanics — how plans become parallel work, how a task is proved, how
+262 < 2 **Go deeper.** The full mechanics — how plans become parallel work, how reviews are anchored, how
 263 < 1 the engine handles failure — live in [`skills/ultrapowers/SKILL.md`](skills/ultrapowers/SKILL.md)
 264 < 1 and [`skills/ultrapowers/references/`](skills/ultrapowers/references/).
 265 < 1 

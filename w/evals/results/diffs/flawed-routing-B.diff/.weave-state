@@ -1,0 +1,213 @@
+0 < 2 diff --git a/apistub/handlers.py b/apistub/handlers.py
+1 < 2 new file mode 100644
+2 < 2 index 0000000..3abeba9
+3 < 2 --- /dev/null
+4 < 2 +++ b/apistub/handlers.py
+5 < 2 @@ -0,0 +1,16 @@
+6 < 2 +import json
+7 < 2 +
+8 < 2 +from apistub.serialize import to_json
+9 < 2 +from apistub.validate import validate_payload
+10 < 2 +
+11 < 2 +
+12 < 2 +def route(store, method, path, payload):
+13 < 2 +    if method == "POST" and path == "/users":
+14 < 2 +        errors = validate_payload(payload or {})
+15 < 2 +        if errors:
+16 < 2 +            return 400, json.dumps({"errors": errors})
+17 < 2 +        return 201, to_json(store.add(payload["name"], payload["email"]))
+18 < 2 +    if method == "GET" and path.startswith("/users/"):
+19 < 2 +        user = store.get(int(path.rsplit("/", 1)[1]))
+20 < 2 +        return (200, to_json(user)) if user else (404, "{}")
+21 < 2 +    return 405, "{}"
+22 < 2 diff --git a/apistub/schema.py b/apistub/schema.py
+23 < 2 new file mode 100644
+24 < 2 index 0000000..e294a61
+25 < 2 --- /dev/null
+26 < 2 +++ b/apistub/schema.py
+27 < 2 @@ -0,0 +1,11 @@
+28 < 2 +from dataclasses import dataclass
+29 < 2 +
+30 < 2 +
+31 < 2 +@dataclass
+32 < 2 +class User:
+33 < 2 +    id: int
+34 < 2 +    name: str
+35 < 2 +    email: str
+36 < 2 +
+37 < 2 +
+38 < 2 +FIELDS = {"name": str, "email": str}
+39 < 2 diff --git a/apistub/serialize.py b/apistub/serialize.py
+40 < 2 new file mode 100644
+41 < 2 index 0000000..875fb95
+42 < 2 --- /dev/null
+43 < 2 +++ b/apistub/serialize.py
+44 < 2 @@ -0,0 +1,5 @@
+45 < 2 +import json
+46 < 2 +
+47 < 2 +
+48 < 2 +def to_json(user):
+49 < 2 +    return json.dumps({"v": 2, "id": user.id, "name": user.name, "email": user.email})
+50 < 2 diff --git a/apistub/store.py b/apistub/store.py
+51 < 2 new file mode 100644
+52 < 2 index 0000000..0e8915b
+53 < 2 --- /dev/null
+54 < 2 +++ b/apistub/store.py
+55 < 2 @@ -0,0 +1,21 @@
+56 < 2 +from apistub.schema import User
+57 < 2 +
+58 < 2 +SCHEMA_VERSION = 2  # wire schema version embedded by serialization
+59 < 2 +
+60 < 2 +
+61 < 2 +class InMemoryStore:
+62 < 2 +    def __init__(self):
+63 < 2 +        self._users = {}
+64 < 2 +        self._next = 1
+65 < 2 +
+66 < 2 +    def add(self, name, email):
+67 < 2 +        user = User(self._next, name, email)
+68 < 2 +        self._users[self._next] = user
+69 < 2 +        self._next += 1
+70 < 2 +        return user
+71 < 2 +
+72 < 2 +    def get(self, user_id):
+73 < 2 +        return self._users.get(user_id)
+74 < 2 +
+75 < 2 +    def all(self):
+76 < 2 +        return list(self._users.values())
+77 < 2 diff --git a/apistub/validate.py b/apistub/validate.py
+78 < 2 new file mode 100644
+79 < 2 index 0000000..2fe4f0f
+80 < 2 --- /dev/null
+81 < 2 +++ b/apistub/validate.py
+82 < 2 @@ -0,0 +1,14 @@
+83 < 2 +from apistub import schema
+84 < 2 +
+85 < 2 +
+86 < 2 +def validate_payload(payload):
+87 < 2 +    errors = []
+88 < 2 +    for key, typ in schema.FIELDS.items():
+89 < 2 +        if key not in payload:
+90 < 2 +            errors.append(f"missing: {key}")
+91 < 2 +        elif not isinstance(payload[key], typ):
+92 < 2 +            errors.append(f"wrong type: {key}")
+93 < 2 +    email = payload.get("email")
+94 < 2 +    if isinstance(email, str) and "@" not in email:
+95 < 2 +        errors.append("invalid: email")
+96 < 2 +    return errors
+97 < 2 diff --git a/tests/test_handlers.py b/tests/test_handlers.py
+98 < 2 new file mode 100644
+99 < 2 index 0000000..09913ca
+100 < 2 --- /dev/null
+101 < 2 +++ b/tests/test_handlers.py
+102 < 2 @@ -0,0 +1,20 @@
+103 < 2 +import json
+104 < 2 +
+105 < 2 +from apistub.handlers import route
+106 < 2 +from apistub.store import InMemoryStore
+107 < 2 +
+108 < 2 +
+109 < 2 +def test_post_and_get():
+110 < 2 +    s = InMemoryStore()
+111 < 2 +    code, body = route(s, "POST", "/users", {"name": "Ada", "email": "ada@ex.com"})
+112 < 2 +    assert code == 201 and json.loads(body)["id"] == 1
+113 < 2 +    code, body = route(s, "GET", "/users/1", None)
+114 < 2 +    assert code == 200 and json.loads(body)["name"] == "Ada"
+115 < 2 +    assert route(s, "GET", "/users/9", None) == (404, "{}")
+116 < 2 +
+117 < 2 +
+118 < 2 +def test_post_invalid():
+119 < 2 +    s = InMemoryStore()
+120 < 2 +    code, body = route(s, "POST", "/users", {})
+121 < 2 +    assert code == 400 and set(json.loads(body)["errors"]) == {"missing: name", "missing: email"}
+122 < 2 +    assert route(s, "PUT", "/users", None) == (405, "{}")
+123 < 2 diff --git a/tests/test_schema.py b/tests/test_schema.py
+124 < 2 new file mode 100644
+125 < 2 index 0000000..ba622af
+126 < 2 --- /dev/null
+127 < 2 +++ b/tests/test_schema.py
+128 < 2 @@ -0,0 +1,18 @@
+129 < 2 +from apistub.schema import User, FIELDS
+130 < 2 +
+131 < 2 +
+132 < 2 +def test_user_dataclass():
+133 < 2 +    u = User(1, "Ada", "ada@ex.com")
+134 < 2 +    assert (u.id, u.name, u.email) == (1, "Ada", "ada@ex.com")
+135 < 2 +
+136 < 2 +
+137 < 2 +def test_fields_contract():
+138 < 2 +    assert set(FIELDS) == {"name", "email"}
+139 < 2 +    assert FIELDS["name"] is str and FIELDS["email"] is str
+140 < 2 +
+141 < 2 +
+142 < 2 +def test_fields_insertion_order():
+143 < 2 +    # Insertion order is part of the contract: downstream validation
+144 < 2 +    # reports errors in FIELDS order, name first then email.
+145 < 2 +    assert list(FIELDS) == ["name", "email"]
+146 < 2 +    assert list(FIELDS.items()) == [("name", str), ("email", str)]
+147 < 2 diff --git a/tests/test_serialize.py b/tests/test_serialize.py
+148 < 2 new file mode 100644
+149 < 2 index 0000000..de5a0b6
+150 < 2 --- /dev/null
+151 < 2 +++ b/tests/test_serialize.py
+152 < 2 @@ -0,0 +1,17 @@
+153 < 2 +import json
+154 < 2 +
+155 < 2 +from apistub.schema import User
+156 < 2 +from apistub.serialize import to_json
+157 < 2 +
+158 < 2 +
+159 < 2 +def test_round_trip_fields():
+160 < 2 +    data = json.loads(to_json(User(1, "Ada", "ada@ex.com")))
+161 < 2 +    assert data["id"] == 1 and data["name"] == "Ada" and data["email"] == "ada@ex.com"
+162 < 2 +    assert list(data)[0] == "v"
+163 < 2 +    assert data["v"] == 2
+164 < 2 +
+165 < 2 +
+166 < 2 +def test_exact_wire_format():
+167 < 2 +    assert to_json(User(1, "Ada", "ada@ex.com")) == (
+168 < 2 +        '{"v": 2, "id": 1, "name": "Ada", "email": "ada@ex.com"}'
+169 < 2 +    )
+170 < 2 diff --git a/tests/test_store.py b/tests/test_store.py
+171 < 2 new file mode 100644
+172 < 2 index 0000000..db76e8a
+173 < 2 --- /dev/null
+174 < 2 +++ b/tests/test_store.py
+175 < 2 @@ -0,0 +1,16 @@
+176 < 2 +from apistub.store import InMemoryStore
+177 < 2 +
+178 < 2 +
+179 < 2 +def test_add_assigns_ids():
+180 < 2 +    s = InMemoryStore()
+181 < 2 +    u1 = s.add("Ada", "ada@ex.com")
+182 < 2 +    u2 = s.add("Bob", "bob@ex.com")
+183 < 2 +    assert (u1.id, u2.id) == (1, 2)
+184 < 2 +    assert s.get(1).name == "Ada" and s.get(3) is None
+185 < 2 +    assert [u.name for u in s.all()] == ["Ada", "Bob"]
+186 < 2 +
+187 < 2 +
+188 < 2 +def test_schema_version_matches_wire_v2():
+189 < 2 +    from apistub import store
+190 < 2 +
+191 < 2 +    assert store.SCHEMA_VERSION == 2
+192 < 2 diff --git a/tests/test_validate.py b/tests/test_validate.py
+193 < 2 new file mode 100644
+194 < 2 index 0000000..419f86b
+195 < 2 --- /dev/null
+196 < 2 +++ b/tests/test_validate.py
+197 < 2 @@ -0,0 +1,14 @@
+198 < 2 +from apistub.validate import validate_payload
+199 < 2 +
+200 < 2 +
+201 < 2 +def test_valid_payload():
+202 < 2 +    assert validate_payload({"name": "Ada", "email": "ada@ex.com"}) == []
+203 < 2 +
+204 < 2 +
+205 < 2 +def test_missing_both():
+206 < 2 +    errs = validate_payload({})
+207 < 2 +    assert errs == ["missing: name", "missing: email"]
+208 < 2 +
+209 < 2 +
+210 < 2 +def test_bad_email():
+211 < 2 +    assert validate_payload({"name": "Ada", "email": "nope"}) == ["invalid: email"]
+212 < 2 

@@ -1,0 +1,68 @@
+0 < 2 import { Card, RowCard } from '../surface'
+1 < 2 import { Row } from '../layout'
+2 < 2 import { Text } from '../text'
+3 < 2 import { Badge, Blob } from '../media'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 export const cardDemos: Demo[] = [
+7 < 2   { id: 'default', render: () => (
+8 < 2       <Card>
+9 < 2         <Text>Default card — 32px padding, full radius.</Text>
+10 < 2       </Card>
+11 < 2     ) },
+12 < 2   { id: 'tight', render: () => (
+13 < 2       <Card variant="tight">
+14 < 2         <Text size="sm">Tight card — 16px padding.</Text>
+15 < 2       </Card>
+16 < 2     ) },
+17 < 2   { id: 'flush', render: () => (
+18 < 2       <Card variant="flush">
+19 < 2         <Text size="sm">Flush card — no padding, clipped.</Text>
+20 < 2       </Card>
+21 < 2     ) },
+22 < 2   {
+23 < 2     id: 'playful',
+24 < 2     states: ['hover'],
+25 < 2     render: () => (
+26 < 2       <span data-subject>
+27 < 2         <Card motion="tilt-left">
+28 < 2           <Text>Starts crooked, then settles and lifts.</Text>
+29 < 2         </Card>
+30 < 2       </span>
+31 < 2     ),
+32 < 2   },
+33 < 2 ]
+34 < 2 
+35 < 2 export const rowCardDemos: Demo[] = [
+36 < 2   { id: 'default', render: () => (
+37 < 2       <RowCard>
+38 < 2         <Row justify="between" wrap={false}>
+39 < 2           <Row gap={3} wrap={false}>
+40 < 2             <Blob tone="up" size="sm" icon="up" />
+41 < 2             <Text>Apple</Text>
+42 < 2             <Badge tone="up">Trending</Badge>
+43 < 2           </Row>
+44 < 2           <Text num>+2.41%</Text>
+45 < 2         </Row>
+46 < 2       </RowCard>
+47 < 2     ) },
+48 < 2   { id: 'interactive', states: ['hover', 'active', 'focus'], render: () => (
+49 < 2       <span data-subject>
+50 < 2         <RowCard onClick={() => {}}>
+51 < 2           <Row justify="between" wrap={false}>
+52 < 2             <Text>Banana</Text>
+53 < 2             <Text num>−0.87%</Text>
+54 < 2           </Row>
+55 < 2         </RowCard>
+56 < 2       </span>
+57 < 2     ) },
+58 < 2   { id: 'selected', render: () => (
+59 < 2       <RowCard selected onClick={() => {}}>
+60 < 2         <Row justify="between" wrap={false}>
+61 < 2           <Text>Cherry — selected</Text>
+62 < 2           <Text num>+0.00%</Text>
+63 < 2         </Row>
+64 < 2       </RowCard>
+65 < 2     ) },
+66 < 2 ]
+67 < 2 

@@ -1,0 +1,193 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Controller, useForm, useWatch } from 'react-hook-form'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Stack, Row } from '../layout'
+4 < 2 import { Heading, Text } from '../text'
+5 < 2 import { Field, Input } from '../Input'
+6 < 2 import { Button } from '../Button'
+7 < 2 import { Separator } from '../separator'
+8 < 2 import { Blob } from '../media'
+9 < 2 import { Empty } from '../feedback'
+10 < 2 
+11 < 2 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+12 < 2 
+13 < 2 interface LoginValues {
+14 < 2   email: string
+15 < 2   password: string
+16 < 2 }
+17 < 2 
+18 < 2 const DEFAULT_VALUES: LoginValues = { email: '', password: '' }
+19 < 2 
+20 < 2 /** A centered auth card with real validation (inline errors, not just red
+21 < 2  * borders), a password field that toggles to plain text, and a magic-link
+22 < 2  * fallback with its own validated email step and a "check your inbox"
+23 < 2  * confirmation. Wire `handleSignIn`/`handleSendMagicLink` to your backend —
+24 < 2  * the client-side checks are real, the network call is yours. */
+25 < 2 export function LoginBlock() {
+26 < 2   const [showPassword, setShowPassword] = useState(false)
+27 < 2   const [mode, setMode] = useState<'password' | 'magic'>('password')
+28 < 2   const [magicSent, setMagicSent] = useState(false)
+29 < 2   const {
+30 < 2     control,
+31 < 2     clearErrors,
+32 < 2     handleSubmit,
+33 < 2     formState: { errors, isSubmitting },
+34 < 2   } = useForm<LoginValues>({
+35 < 2     defaultValues: DEFAULT_VALUES,
+36 < 2     mode: 'onSubmit',
+37 < 2     reValidateMode: 'onChange',
+38 < 2     shouldFocusError: true,
+39 < 2   })
+40 < 2   const email = useWatch({ control, name: 'email' })
+41 < 2 
+42 < 2   const submit = handleSubmit((values) => {
+43 < 2     if (mode === 'magic') {
+44 < 2       setMagicSent(true)
+45 < 2       return
+46 < 2     }
+47 < 2     // Validation passed — hand values.email / values.password to your auth API.
+48 < 2   })
+49 < 2 
+50 < 2   function switchToMagic() {
+51 < 2     setMode('magic')
+52 < 2     setMagicSent(false)
+53 < 2     clearErrors()
+54 < 2   }
+55 < 2 
+56 < 2   function switchToPassword() {
+57 < 2     setMode('password')
+58 < 2     clearErrors()
+59 < 2   }
+60 < 2 
+61 < 2   const emailField = (
+62 < 2     <Field label="Email" error={errors.email?.message}>
+63 < 2       {(id, describedBy) => (
+64 < 2         <Controller
+65 < 2           name="email"
+66 < 2           control={control}
+67 < 2           rules={{
+68 < 2             required: 'Email is required.',
+69 < 2             pattern: {
+70 < 2               value: EMAIL_RE,
+71 < 2               message: 'Enter a valid email address.',
+72 < 2             },
+73 < 2           }}
+74 < 2           render={({ field }) => (
+75 < 2             <Input
+76 < 2               ref={field.ref}
+77 < 2               id={id}
+78 < 2               name={field.name}
+79 < 2               describedBy={describedBy}
+80 < 2               type="email"
+81 < 2               value={field.value}
+82 < 2               onChange={field.onChange}
+83 < 2               onBlur={field.onBlur}
+84 < 2               placeholder="you@example.com…"
+85 < 2               autoComplete="email"
+86 < 2               inputMode="email"
+87 < 2               autoCapitalize="none"
+88 < 2               spellCheck={false}
+89 < 2               required
+90 < 2               invalid={!!errors.email}
+91 < 2             />
+92 < 2           )}
+93 < 2         />
+94 < 2       )}
+95 < 2     </Field>
+96 < 2   )
+97 < 2 
+98 < 2   return (
+99 < 2     <div style={{ display: 'grid', placeItems: 'center', minHeight: '70vh', padding: 24 }}>
+100 < 2       <div style={{ width: '100%', maxWidth: 420 }}>
+101 < 2         <form onSubmit={submit} noValidate>
+102 < 2           <Card>
+103 < 2             <Stack gap={5}>
+104 < 2               <Stack gap={3}>
+105 < 2                 <Blob icon={mode === 'magic' ? 'mail' : 'lock'} tone="purple" />
+106 < 2                 <Stack gap={1}>
+107 < 2                   <Heading level={2}>{mode === 'magic' ? 'Sign in with email' : 'Welcome back'}</Heading>
+108 < 2                   <Text size="sm" muted>
+109 < 2                     {mode === 'magic' ? "We'll email you a one-time sign-in link." : 'Sign in to your 1st-Pouf account.'}
+110 < 2                   </Text>
+111 < 2                 </Stack>
+112 < 2               </Stack>
+113 < 2 
+114 < 2               {mode === 'magic' ? (
+115 < 2                 magicSent ? (
+116 < 2                   <Stack gap={3}>
+117 < 2                     <div role="status" aria-live="polite">
+118 < 2                       <Empty icon="mail" title="Check your inbox">
+119 < 2                         We sent a sign-in link to {email}. It expires in 15 minutes.
+120 < 2                       </Empty>
+121 < 2                     </div>
+122 < 2                     <Button block variant="quiet" onClick={() => setMagicSent(false)}>Use a different email</Button>
+123 < 2                   </Stack>
+124 < 2                 ) : (
+125 < 2                   <Stack gap={4}>
+126 < 2                     {emailField}
+127 < 2                     <Button block type="submit" loading={isSubmitting}>Send magic link</Button>
+128 < 2                   </Stack>
+129 < 2                 )
+130 < 2               ) : (
+131 < 2                 <Stack gap={4}>
+132 < 2                   {emailField}
+133 < 2                   <Field label="Password" error={errors.password?.message}>
+134 < 2                     {(id, describedBy) => (
+135 < 2                       <Row gap={2} wrap={false}>
+136 < 2                         <div style={{ flex: 1, minWidth: 0 }}>
+137 < 2                           <Controller
+138 < 2                             name="password"
+139 < 2                             control={control}
+140 < 2                             shouldUnregister
+141 < 2                             rules={{
+142 < 2                               required: 'Password is required.',
+143 < 2                               minLength: {
+144 < 2                                 value: 8,
+145 < 2                                 message: 'Use at least 8 characters.',
+146 < 2                               },
+147 < 2                             }}
+148 < 2                             render={({ field }) => (
+149 < 2                               <Input
+150 < 2                                 ref={field.ref}
+151 < 2                                 id={id}
+152 < 2                                 name={field.name}
+153 < 2                                 describedBy={describedBy}
+154 < 2                                 type={showPassword ? 'text' : 'password'}
+155 < 2                                 value={field.value}
+156 < 2                                 onChange={field.onChange}
+157 < 2                                 onBlur={field.onBlur}
+158 < 2                                 placeholder="••••••••…"
+159 < 2                                 autoComplete="current-password"
+160 < 2                                 required
+161 < 2                                 invalid={!!errors.password}
+162 < 2                               />
+163 < 2                             )}
+164 < 2                           />
+165 < 2                         </div>
+166 < 2                         <Button variant="quiet" onClick={() => setShowPassword((s) => !s)}>
+167 < 2                           {showPassword ? 'Hide' : 'Show'}
+168 < 2                         </Button>
+169 < 2                       </Row>
+170 < 2                     )}
+171 < 2                   </Field>
+172 < 2                   <Button block type="submit" loading={isSubmitting}>Sign in</Button>
+173 < 2                 </Stack>
+174 < 2               )}
+175 < 2 
+176 < 2               <Separator />
+177 < 2               {mode === 'password' ? (
+178 < 2                 <Button block variant="quiet" onClick={switchToMagic}>Continue with a magic link</Button>
+179 < 2               ) : (
+180 < 2                 <Button block variant="quiet" onClick={switchToPassword}>Back to password sign-in</Button>
+181 < 2               )}
+182 < 2               <Row justify="center">
+183 < 2                 <Text size="sm" muted>New here? Create an account.</Text>
+184 < 2               </Row>
+185 < 2             </Stack>
+186 < 2           </Card>
+187 < 2         </form>
+188 < 2       </div>
+189 < 2     </div>
+190 < 2   )
+191 < 2 }
+192 < 2 

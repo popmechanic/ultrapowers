@@ -1,0 +1,226 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { Input, Field } from '../Input'
+3 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+4 < 2 import { NavLink } from '../NavLink'
+5 < 2 import { Empty } from '../feedback'
+6 < 2 import { Blob, Badge } from '../media'
+7 < 2 import { Grid, Row, Shell, Sidebar, Spacer, Stack } from '../layout'
+8 < 2 import { Stat } from '../readout'
+9 < 2 import { Segmented } from '../Segmented'
+10 < 2 import { Card } from '../surface'
+11 < 2 import { Table } from '../table'
+12 < 2 import { Eyebrow, Heading, Text } from '../text'
+13 < 2 
+14 < 2 const NAV: NavItem[] = [
+15 < 2   { href: '/', label: 'Overview', icon: 'overview', tone: 'purple' },
+16 < 2   { href: '/inventory', label: 'Inventory', icon: 'database', tone: 'blue' },
+17 < 2   { href: '/orders', label: 'Orders', icon: 'cart', tone: 'mint' },
+18 < 2   { href: '/suppliers', label: 'Suppliers', icon: 'users', tone: 'yellow' },
+19 < 2   { href: '/settings', label: 'Settings', icon: 'settings', tone: 'orange' },
+20 < 2 ]
+21 < 2 
+22 < 2 const HERE = '/inventory'
+23 < 2 const NUMBER = new Intl.NumberFormat('en-US')
+24 < 2 const MONEY = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
+25 < 2 
+26 < 2 interface StockItem {
+27 < 2   id: string
+28 < 2   sku: string
+29 < 2   name: string
+30 < 2   category: string
+31 < 2   stock: number
+32 < 2   reorderAt: number
+33 < 2   price: number
+34 < 2 }
+35 < 2 
+36 < 2 const INITIAL_ITEMS: StockItem[] = [
+37 < 2   { id: 'cloud-lamp', sku: 'LMP-104', name: 'Cloud lamp', category: 'Lighting', stock: 18, reorderAt: 8, price: 64 },
+38 < 2   { id: 'pebble-mug', sku: 'MUG-220', name: 'Pebble mug', category: 'Kitchen', stock: 6, reorderAt: 10, price: 24 },
+39 < 2   { id: 'soft-clock', sku: 'CLK-018', name: 'Soft clock', category: 'Decor', stock: 0, reorderAt: 5, price: 42 },
+40 < 2   { id: 'loop-vase', sku: 'VAS-431', name: 'Loop vase', category: 'Decor', stock: 24, reorderAt: 8, price: 48 },
+41 < 2   { id: 'pocket-tray', sku: 'TRY-092', name: 'Pocket tray', category: 'Storage', stock: 9, reorderAt: 6, price: 18 },
+42 < 2 ]
+43 < 2 
+44 < 2 type StockFilter = 'all' | 'low' | 'out'
+45 < 2 
+46 < 2 function stockTone(item: StockItem): 'up' | 'warn' | 'down' {
+47 < 2   if (item.stock === 0) return 'down'
+48 < 2   if (item.stock <= item.reorderAt) return 'warn'
+49 < 2   return 'up'
+50 < 2 }
+51 < 2 
+52 < 2 function stockLabel(item: StockItem): string {
+53 < 2   if (item.stock === 0) return 'Out of stock'
+54 < 2   if (item.stock <= item.reorderAt) return 'Low stock'
+55 < 2   return 'In stock'
+56 < 2 }
+57 < 2 
+58 < 2 /** A complete inventory workspace with searchable stock, meaningful status
+59 < 2  * filters, sortable columns, record detail, and a working receiving action. */
+60 < 2 export function InventoryBlock() {
+61 < 2   const [items, setItems] = useState(INITIAL_ITEMS)
+62 < 2   const [filter, setFilter] = useState<StockFilter>('all')
+63 < 2   const [query, setQuery] = useState('')
+64 < 2   const [selectedId, setSelectedId] = useState(INITIAL_ITEMS[0]!.id)
+65 < 2 
+66 < 2   const visible = useMemo(() => {
+67 < 2     const normalized = query.trim().toLowerCase()
+68 < 2     return items.filter((item) => {
+69 < 2       const matchesQuery =
+70 < 2         !normalized ||
+71 < 2         `${item.name} ${item.sku} ${item.category}`.toLowerCase().includes(normalized)
+72 < 2       const matchesFilter =
+73 < 2         filter === 'all' ||
+74 < 2         (filter === 'low' && item.stock > 0 && item.stock <= item.reorderAt) ||
+75 < 2         (filter === 'out' && item.stock === 0)
+76 < 2       return matchesQuery && matchesFilter
+77 < 2     })
+78 < 2   }, [filter, items, query])
+79 < 2 
+80 < 2   const selected = items.find((item) => item.id === selectedId) ?? items[0]!
+81 < 2   const lowCount = items.filter((item) => item.stock > 0 && item.stock <= item.reorderAt).length
+82 < 2   const outCount = items.filter((item) => item.stock === 0).length
+83 < 2   const inventoryValue = items.reduce((sum, item) => sum + item.stock * item.price, 0)
+84 < 2 
+85 < 2   function receive(id: string) {
+86 < 2     setItems((current) =>
+87 < 2       current.map((item) => (item.id === id ? { ...item, stock: item.stock + 12 } : item)),
+88 < 2     )
+89 < 2   }
+90 < 2 
+91 < 2   return (
+92 < 2     <>
+93 < 2       <Shell>
+94 < 2         <Sidebar mobile="hide">
+95 < 2           <Row gap={2} wrap={false}>
+96 < 2             <Blob icon="database" tone="blue" size="sm" />
+97 < 2             <Heading level={3}>Stockroom</Heading>
+98 < 2           </Row>
+99 < 2           {NAV.map((item) => (
+100 < 2             <NavLink key={item.href} href={item.href} currentPath={HERE} icon={item.icon} tone={item.tone}>
+101 < 2               {item.label}
+102 < 2             </NavLink>
+103 < 2           ))}
+104 < 2         </Sidebar>
+105 < 2 
+106 < 2         <Stack gap={5}>
+107 < 2           <Row justify="between" align="top">
+108 < 2             <Stack gap={1}>
+109 < 2               <Eyebrow>Operations</Eyebrow>
+110 < 2               <Heading level={1}>Inventory</Heading>
+111 < 2               <Text muted>Know what is ready to sell and what needs attention.</Text>
+112 < 2             </Stack>
+113 < 2             <Button tone="blue" size="sm" onClick={() => receive(selected.id)}>Receive 12</Button>
+114 < 2           </Row>
+115 < 2 
+116 < 2           <Grid cols={3} gap={3}>
+117 < 2             <Stat label="Inventory value" value={MONEY.format(inventoryValue)} icon="card" tone="purple" />
+118 < 2             <Stat label="Low stock" value={NUMBER.format(lowCount)} icon="warn" tone="warn" />
+119 < 2             <Stat label="Out of stock" value={NUMBER.format(outCount)} icon="fail" tone="down" />
+120 < 2           </Grid>
+121 < 2 
+122 < 2           <Card variant="tight">
+123 < 2             <Stack gap={3}>
+124 < 2               <Row gap={3}>
+125 < 2                 <div className="flex-[1_1_260px] min-w-0">
+126 < 2                   <Field label="Search Inventory">
+127 < 2                     {(id, describedBy) => (
+128 < 2                       <Input
+129 < 2                         id={id}
+130 < 2                         name="inventory-search"
+131 < 2                         value={query}
+132 < 2                         onChange={setQuery}
+133 < 2                         describedBy={describedBy}
+134 < 2                         placeholder="Try a product, SKU, or category…"
+135 < 2                         autoComplete="off"
+136 < 2                       />
+137 < 2                     )}
+138 < 2                   </Field>
+139 < 2                 </div>
+140 < 2                 <Spacer />
+141 < 2                 <Segmented
+142 < 2                   label="Stock status"
+143 < 2                   value={filter}
+144 < 2                   onChange={setFilter}
+145 < 2                   options={[
+146 < 2                     { value: 'all', label: 'All' },
+147 < 2                     { value: 'low', label: 'Low' },
+148 < 2                     { value: 'out', label: 'Out' },
+149 < 2                   ]}
+150 < 2                 />
+151 < 2               </Row>
+152 < 2             </Stack>
+153 < 2           </Card>
+154 < 2 
+155 < 2           <Grid cols="sidebar" gap={4}>
+156 < 2             <Card variant="flush">
+157 < 2               {visible.length > 0 ? (
+158 < 2                 <Table
+159 < 2                   rows={visible}
+160 < 2                   getKey={(item) => item.id}
+161 < 2                   onRowClick={(item) => setSelectedId(item.id)}
+162 < 2                   getRowLabel={(item) => `Open ${item.name}`}
+163 < 2                   columns={[
+164 < 2                     {
+165 < 2                       key: 'product',
+166 < 2                       header: 'Product',
+167 < 2                       truncate: true,
+168 < 2                       render: (item) => item.name,
+169 < 2                       sort: (a, b) => a.name.localeCompare(b.name),
+170 < 2                     },
+171 < 2                     { key: 'sku', header: 'SKU', mono: true, render: (item) => item.sku },
+172 < 2                     {
+173 < 2                       key: 'stock',
+174 < 2                       header: 'Stock',
+175 < 2                       align: 'right',
+176 < 2                       render: (item) => NUMBER.format(item.stock),
+177 < 2                       sort: (a, b) => a.stock - b.stock,
+178 < 2                     },
+179 < 2                   ]}
+180 < 2                 />
+181 < 2               ) : (
+182 < 2                 <div className="p-(--s6)">
+183 < 2                   <Empty icon="search" title="No inventory matches">
+184 < 2                     Try another search or stock filter.
+185 < 2                   </Empty>
+186 < 2                 </div>
+187 < 2               )}
+188 < 2             </Card>
+189 < 2 
+190 < 2             <Card>
+191 < 2               <Stack gap={4}>
+192 < 2                 <Row justify="between" align="top">
+193 < 2                   <Stack gap={1}>
+194 < 2                     <Text size="sm" muted mono>{selected.sku}</Text>
+195 < 2                     <Heading level={2}>{selected.name}</Heading>
+196 < 2                     <Text muted>{selected.category}</Text>
+197 < 2                   </Stack>
+198 < 2                   <Badge tone={stockTone(selected)}>{stockLabel(selected)}</Badge>
+199 < 2                 </Row>
+200 < 2                 <Row justify="between">
+201 < 2                   <Text muted>On hand</Text>
+202 < 2                   <Text num>{NUMBER.format(selected.stock)}</Text>
+203 < 2                 </Row>
+204 < 2                 <Row justify="between">
+205 < 2                   <Text muted>Reorder at</Text>
+206 < 2                   <Text num>{NUMBER.format(selected.reorderAt)}</Text>
+207 < 2                 </Row>
+208 < 2                 <Row justify="between">
+209 < 2                   <Text muted>Unit price</Text>
+210 < 2                   <Text num>{MONEY.format(selected.price)}</Text>
+211 < 2                 </Row>
+212 < 2                 <Button tone="mint" block onClick={() => receive(selected.id)}>
+213 < 2                   Receive 12 Units
+214 < 2                 </Button>
+215 < 2               </Stack>
+216 < 2             </Card>
+217 < 2           </Grid>
+218 < 2         </Stack>
+219 < 2       </Shell>
+220 < 2 
+221 < 2       <BottomNav primary={NAV.slice(0, 3)} groups={[{ title: 'Workspace', items: NAV }]} currentPath={HERE} />
+222 < 2     </>
+223 < 2   )
+224 < 2 }
+225 < 2 

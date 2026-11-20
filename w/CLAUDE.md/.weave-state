@@ -23,7 +23,8 @@
 22 < 1 ```bash
 23 < 1 python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs)
 24 < 1 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
-25 < 1 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
+26 > 1 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, width, checks
+25 < 2 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, waves, checks
 26 < 1 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 27 < 1 python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a plan's Run: probes on the working tree, one line each (never a hand loop)
 28 < 1 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
@@ -72,8 +73,10 @@
 70 < 1   ultrapowers declare in frontmatter: once either skill is invoked it blocks a turn's first
 71 < 1   stop while background work is running, and allows the second. `register.js` is the intent
 72 < 1   tray's hooks module, listed under the `modules` key of `hooks/hooks.json`.
-73 < 1 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; the
-74 < 1   version lives in both.
+74 > 1 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; only
+75 < 1   `plugin.json` carries the version (§Releasing).
+73 < 2 - `.claude-plugin/{plugin.json,marketplace.json}` — manifest and marketplace entry; the
+74 < 2   version lives in both.
 75 < 1 - `docs/superpowers/{specs,plans}/` — design docs, `YYYY-MM-DD-<topic>.md`. **Untracked**
 76 < 1   (`.git/info/exclude`; `docs/README.md` is the tracked stub). A plan reaches the fleet only
 77 < 1   as `.ultrapowers/plan.md`, one commit on the run's base, so a plan may never ask a worker to
@@ -91,7 +94,8 @@
 89 < 1 - **The engine's values, in tie-break order (map #1131):** the mechanical facts (never
 90 < 1   traded), then clock speed, then simplicity in lines and roles, then tokens. **A judgment is
 91 < 1   a question, never a sentence or a regex** (each lives in the `questions.json` beside its
-92 < 1   reader — `factory/` for the engine, `skills/ultrawrite/stories/` for authoring — and every
+93 > 1   reader — `skills/ultrawrite/stories/` for authoring; the engine asks none since 2026-11-14 — and every
+92 < 2   reader — `factory/` for the engine, `skills/ultrawrite/stories/` for authoring — and every
 93 < 1   threshold is a cell of the `policy.json` beside its reader, with its rollback). Hand work has its own
 94 < 1   tie-break (§Working with the operator).
 95 < 1 - **Don't vendor the vendor.** Before building a mechanism, ask whether exe.dev already
@@ -102,14 +106,19 @@
 100 < 1   `fleet-counsel`; `--model=claude-opus-5` reads files; read long answers back with
 101 < 1   `shelley client read`) before editing a script. A hack is only a bridge she has blessed.
 102 < 1 - **Run in parallel; same-file overlap meets in the weave.** Launch plans concurrently whatever
-103 < 1   files they share. A live run follows main (policy `flock.main.mode = peer`): a main that moves
+104 > 1   files they share. A live run follows main: a main that moves
+103 < 2   files they share. A live run follows main (policy `flock.main.mode = peer`): a main that moves
 104 < 1   mid-run is merged into the run like a builder's work, and a clash is a conflict a builder
 105 < 1   resolves. For a main that moves after the engine exits, a PR whose base moved is refused (405, `strict=true` + `enforce_admins`)
 106 < 1   and the sandbox catches the run up to the new main (`factory/flock/catchup.mjs`, on main's stored
-107 < 1   weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
+108 > 1   weave where the run has one — `factory/flock/weave_store.py` — else through the
+107 < 2   weave where the run has one — `factory/flock/weave_store.py`, policy `flock.main.mode` — else through the
 108 < 1   weave), so overlaps meet in Manyana (decision 11, #715; read live on flock-baseline runs 16–21,
-109 < 1   n=6 runs, 2026-11-13: five ready, one draft). A run whose builder must delete a line main wrote
-110 < 1   ends a draft for the operator (#1401's read, operator's pick 2026-11-12). A conflict is the
+110 > 1   n=6 runs, 2026-11-13: five ready, one draft). A builder's edit over a line main or a peer wrote is
+111 < 1   recorded (`peer:rewrite`) and never drafts a run: the Jev read that drafted it was cut (operator's
+112 < 1   pick 2026-11-14; n=110 runs, it drafted 4 green runs and caught no lost line). A conflict is the
+109 < 2   n=6 runs, 2026-11-13: five ready, one draft). A run whose builder must delete a line main wrote
+110 < 2   ends a draft for the operator (#1401's read, operator's pick 2026-11-12). A conflict is the
 111 < 1   resolver's measurement, not a reason to serialize. Contention, not allocated vCPU, bounds
 112 < 1   concurrent runs.
 113 < 1 - **One merge, many writers (#1292).** Every builder writes its own weave replica and merges its
@@ -160,10 +169,18 @@
 153 < 1   gate rejection by narrowing the clause, never by adding legs. A size budget is a note the PR
 154 < 1   reports, never a clause. Publish runs after the engine, in plain sequence, never inside it
 155 < 1   (`factory/publish.mjs`, #1441).
-156 < 1 - **The plan is a submission, not a contract (#990).** A worker that outgrows a clause or its
-157 < 1   Files set declares an amendment in the open (`driver:amendment` row, the reviewer's lens,
-158 < 1   the PR card, the release census); a reviewer judges it on merits and never reverts it for
-159 < 1   being outside the plan. The plan-defect park is only for a leg no implementation can pass.
+157 > 1 - **The plan is a submission, not a contract (#990).** A builder that outgrows a clause or its
+160 > 1   Files set writes outside it in the open (the engine's `amendment` row, which the scope rule (`factory/flock/scope.mjs`) and
+159 > 2   Files set writes outside it in the open (the engine's `driver:amendment` row, which the scope rule (`factory/flock/scope.mjs`) and
+160 < 1   `evals/readings/wrong_plans.py` read), and nothing reverts it for being
+158 < 2   Files set writes outside it in the open (the engine's `driver:amendment` row, which policy
+159 < 2   `flock.scope` and `evals/readings/wrong_plans.py` read), and nothing reverts it for being
+160 < 1   outside the plan. A task no implementation can pass is the builder's objection (`object`),
+161 < 1   which parks it for the operator.
+156 < 2 - **The plan is a submission, not a contract (#990).** A worker that outgrows a clause or its
+157 < 2   Files set declares an amendment in the open (`driver:amendment` row, the reviewer's lens,
+158 < 2   the PR card, the release census); a reviewer judges it on merits and never reverts it for
+159 < 2   being outside the plan. The plan-defect park is only for a leg no implementation can pass.
 160 < 1 
 161 < 1 ## Working with the operator
 162 < 1 
@@ -210,8 +227,10 @@
 202 < 1   LLM work runs inside Claude Code on the user's subscription. On the fleet it arrives as an
 203 < 1   edge-injected bearer (`ANTHROPIC_BASE_URL` → `claude-max.int.exe.xyz`,
 204 < 1   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
-205 < 1   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
-206 < 1   same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
+206 > 1   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached only
+207 < 1   from the laptop, by ultrawrite's authoring checks (the sandbox asks Jev nothing since 2026-11-14)
+205 < 2   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached the
+206 < 2   same way by the boot and engine, and from the laptop by ultrawrite's authoring checks
 207 < 1   (`skills/ultrawrite/stories/jev_checks.ts` and `skills/ultrawrite/stories/arrange.ts`, key
 208 < 1   in `~/.ultrapowers/typesafe.env`) — for judgments over prose, never generation or facts
 209 < 1   (Jev choosing and placing a screen's pieces is a judgment, never generation).

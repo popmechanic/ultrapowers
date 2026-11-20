@@ -1,0 +1,502 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_intent_tray.mjs — the exam for `hooks/register.js`, the
+2 < 1  * intent tray mod (#1495, #1526).
+3 < 1  *
+4 < 1  * The module runs inside Claude Code, which this sim does not have. It is
+5 < 1  * imported under Node and driven through a stand-in `$` that offers only the
+6 < 1  * calls the tray may make, each refusing a shape the hooks API types refuse
+7 < 1  * (the plugin-authoring skill's `types/claude-code.d.ts`, Claude Code 2.1.286):
+8 < 1  * an unknown `$` noun throws, a Button hotkey other than one digit or one
+9 < 1  * lowercase letter throws, a value `$.store` cannot keep as JSON throws.
+10 < 1  * Each `load()` imports a fresh copy of the module (a query string on the
+11 < 1  * URL), so one copy is one session; copies sharing a `store` Map are sessions
+12 < 1  * sharing the plugin's one store file.
+13 < 1  *
+14 < 1  * Legs:
+15 < 1  *   (z) the stand-in refuses wrong shapes
+16 < 1  *   (a) Send clears the screen; the band is hidden after it
+17 < 1  *   (b) Clear clears the screen; the band is hidden after it
+18 < 1  *   (c) the tray is kept per working directory; the old global `tray` key is ignored
+19 < 1  *   (d) band buttons carry no bare-digit hotkey: n, s, c
+20 < 1  *   (e) feedback is read by byte offset, only up to the last newline
+21 < 1  *   (f) a repo's feedback history from before the first session is not taken
+22 < 1  *   (g) a second repo's feedback is read from its own offset
+23 < 1  *   (h) two sessions in one repo take a feedback line once
+24 < 1  *   (i) a dropped or failed submit keeps the tray
+26 > 1  *   (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+27 < 1  *   (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+28 < 1  *   (l) two sessions in one repo keep each other's notes; a sent note stays gone
+29 < 1  *   (m) a replaced feedback file is read from its start
+30 < 1  *   (n) a preview pick names its piece, and a pick without one still reads
+25 < 2  *   (j) the README's tray section names no digit hotkey for the band
+26 < 1  */
+27 < 1 
+28 < 1 import assert from 'node:assert/strict'
+29 < 2 import fs from 'node:fs'
+30 < 2 import path from 'node:path'
+31 < 2 import { fileURLToPath } from 'node:url'
+32 < 1 
+33 < 2 const HERE = path.dirname(fileURLToPath(import.meta.url))
+34 < 2 const ROOT = path.resolve(HERE, '..', '..')
+35 < 1 const MODULE = new URL('../../hooks/register.js', import.meta.url).href
+36 < 1 const FEED = '.ultrapowers/feedback.jsonl'
+37 < 1 const PASSED = Symbol('next')
+38 < 1 
+39 < 1 let copies = 0
+40 < 1 async function load() {
+41 < 1   copies += 1
+42 < 1   return import(`${MODULE}?session=${copies}`)
+43 < 1 }
+44 < 1 
+45 < 1 // ── the stand-in $ ───────────────────────────────────────────────────────
+46 < 1 
+47 < 1 function strict(obj, where) {
+48 < 1   return new Proxy(obj, {
+49 < 1     get(target, prop) {
+50 < 1       if (typeof prop === 'symbol' || prop === 'then') return target[prop]
+51 < 1       if (!(prop in target)) throw new Error(`stand-in: $${where}.${prop} is not offered`)
+52 < 1       return target[prop]
+53 < 1     },
+54 < 1   })
+55 < 1 }
+56 < 1 
+57 < 1 function onlyKeys(o, allowed, what) {
+58 < 1   assert.ok(o && typeof o === 'object' && !Array.isArray(o), `${what}: takes one object`)
+59 < 1   for (const k of Object.keys(o)) {
+60 < 1     if (!allowed.includes(k)) throw new Error(`${what}: unknown field ${k}`)
+61 < 1   }
+62 < 1 }
+63 < 1 
+64 < 1 function jsonValue(v, what) {
+65 < 1   const text = JSON.stringify(v)
+66 < 1   if (text === undefined) throw new Error(`${what}: not JSON data`)
+67 < 1   const walk = (x) => {
+68 < 1     if (typeof x === 'function' || typeof x === 'symbol' || typeof x === 'bigint') throw new Error(`${what}: not JSON data`)
+69 < 1     if (x && typeof x === 'object') for (const y of Object.values(x)) walk(y)
+70 < 1   }
+71 < 1   walk(v)
+72 < 1   return text
+73 < 1 }
+74 < 1 
+75 < 1 const isHotkey = (h) => h === undefined || /^[0-9a-z]$/.test(h)
+76 < 1 
+77 < 1 function elements() {
+78 < 1   const children = (p, what) => {
+79 < 1     if (p.children === undefined) return
+80 < 1     assert.ok(Array.isArray(p.children), `${what}: children is an array`)
+81 < 1   }
+82 < 1   return {
+83 < 1     Box: (p) => {
+84 < 1       onlyKeys(p, ['key', 'flexDirection', 'children'], 'Box')
+85 < 1       assert.equal(typeof p.key, 'string', 'Box: key')
+86 < 1       assert.ok(p.flexDirection === undefined || ['row', 'column'].includes(p.flexDirection), 'Box: flexDirection')
+87 < 1       children(p, 'Box')
+88 < 1       return { type: 'Box', props: p }
+89 < 1     },
+90 < 1     Text: (p) => {
+91 < 1       onlyKeys(p, ['key', 'children', 'dimColor', 'bold'], 'Text')
+92 < 1       children(p, 'Text')
+93 < 1       return { type: 'Text', props: p }
+94 < 1     },
+95 < 1     Button: (p) => {
+96 < 1       onlyKeys(p, ['key', 'label', 'hotkey', 'onPress', 'children', 'plain', 'action'], 'Button')
+97 < 1       assert.equal(typeof p.key, 'string', 'Button: key')
+98 < 1       if (!isHotkey(p.hotkey)) throw new Error(`Button: hotkey ${JSON.stringify(p.hotkey)} is refused`)
+99 < 1       assert.equal(typeof p.onPress, 'function', 'Button: onPress')
+100 < 1       children(p, 'Button')
+101 < 1       return { type: 'Button', props: p }
+102 < 1     },
+103 < 1     Input: (p) => {
+104 < 1       onlyKeys(p, ['key', 'label', 'placeholder', 'value', 'submitLabel', 'autoFocus', 'onInput', 'onSubmit'], 'Input')
+105 < 1       assert.equal(typeof p.key, 'string', 'Input: key')
+106 < 1       assert.equal(typeof p.onSubmit, 'function', 'Input: onSubmit')
+107 < 1       assert.ok(p.autoFocus === undefined || p.autoFocus === true, 'Input: autoFocus is true or absent')
+108 < 1       return { type: 'Input', props: p }
+109 < 1     },
+110 < 1   }
+111 < 1 }
+112 < 1 
+113 < 1 /** One host: a store (shared between sessions when passed in), a file system
+114 < 1  *  of absolute path → text, and how `prompt.submit` answers. */
+116 > 1 function host({ store = new Map(), files = new Map(), submit = 'ok', process = false } = {}) {
+117 < 1   const h = { store, files, submits: [], opens: [], ticks: [], spawns: [], submit }
+115 < 2 function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
+116 < 2   const h = { store, files, submits: [], opens: [], ticks: [], submit }
+117 < 1   const missing = (p) => Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
+118 < 1   h.$ = strict({
+119 < 1     store: strict({
+120 < 1       get: async (k) => {
+121 < 1         assert.equal(typeof k, 'string', 'store.get: key')
+122 < 1         return store.has(k) ? JSON.parse(store.get(k)) : undefined
+123 < 1       },
+124 < 1       set: async (k, v) => {
+125 < 1         assert.equal(typeof k, 'string', 'store.set: key')
+126 < 1         store.set(k, jsonValue(v, 'store.set'))
+127 < 1       },
+128 < 1       delete: async (k) => { store.delete(k) },
+129 < 1       keys: async () => [...store.keys()],
+130 < 1     }, '.store'),
+131 < 1     fs: strict({
+132 < 1       read: async (p, opts) => {
+133 < 1         assert.equal(typeof p, 'string', 'fs.read: path')
+134 < 1         assert.ok(opts === undefined || (opts && (opts.as === 'text' || opts.as === 'bytes')), 'fs.read: options')
+135 < 1         if (!files.has(p)) throw missing(p)
+136 < 1         const text = files.get(p)
+137 < 1         if (opts && opts.as === 'bytes') return { base64: Buffer.from(text, 'utf8').toString('base64') }
+138 < 1         return text
+139 < 1       },
+140 < 1       stat: async (p) => {
+141 < 1         assert.equal(typeof p, 'string', 'fs.stat: path')
+142 < 1         if (!files.has(p)) throw missing(p)
+143 < 1         return { kind: 'file', size: Buffer.byteLength(files.get(p), 'utf8'), mtimeMs: 1, isLink: false }
+144 < 1       },
+145 < 1       exists: async (p) => files.has(p),
+146 < 1     }, '.fs'),
+147 < 1     ui: strict({
+148 < 1       invalidate: (...a) => { assert.equal(a.length, 0, 'ui.invalidate takes nothing') },
+149 < 1       open: async (o) => {
+150 < 1         onlyKeys(o, ['id', 'title', 'focus', 'closeOnEscape', 'holdToasts', 'rows'], 'ui.open')
+151 < 1         assert.equal(typeof o.id, 'string', 'ui.open: id')
+152 < 1         assert.ok(o.focus === undefined || o.focus === true, 'ui.open: focus is true or absent')
+153 < 1         h.opens.push(o)
+154 < 1         return { isPlaced: true }
+155 < 1       },
+156 < 1       resolve: () => elements(),
+157 < 1       toast: (t) => { assert.equal(typeof t, 'string', 'ui.toast: text') },
+158 < 1     }, '.ui'),
+159 < 1     prompt: strict({
+160 < 1       submit: async (o) => {
+161 < 1         onlyKeys(o, ['text', 'context'], 'prompt.submit')
+162 < 1         assert.equal(typeof o.text, 'string', 'prompt.submit: text')
+163 < 1         h.submits.push(o.text)
+165 > 1         if (typeof h.submit === 'function') return h.submit(o)
+164 < 1         if (h.submit === 'throw') throw new Error('submit refused')
+165 < 1         if (h.submit === 'drop') return { drop: 'a hook refused it' }
+166 < 1         return { text: o.text }
+167 < 1       },
+168 < 1     }, '.prompt'),
+169 < 1     command: strict({
+170 < 1       register: async (o) => {
+171 < 1         onlyKeys(o, ['name', 'description', 'argumentHint', 'immediate'], 'command.register')
+172 < 1         assert.match(o.name, /^[a-z][a-z0-9-]*$/, 'command.register: name')
+173 < 1         assert.equal(typeof o.description, 'string', 'command.register: description')
+174 < 1         assert.ok(o.immediate === undefined || o.immediate === true, 'command.register: immediate')
+175 < 1       },
+176 < 1     }, '.command'),
+177 < 1     tool: strict({
+178 < 1       register: async (o) => {
+179 < 1         onlyKeys(o, ['name', 'description', 'inputSchema'], 'tool.register')
+180 < 1         assert.equal(typeof o.name, 'string', 'tool.register: name')
+181 < 1         assert.equal(typeof o.description, 'string', 'tool.register: description')
+182 < 1       },
+183 < 1     }, '.tool'),
+184 < 1     clock: strict({
+185 < 1       every: (ms, fn) => {
+186 < 1         assert.ok(typeof ms === 'number' && ms >= 1, 'clock.every: ms')
+187 < 1         assert.equal(typeof fn, 'function', 'clock.every: fn')
+188 < 1         h.ticks.push(fn)
+189 < 1         return { cancel() {} }
+190 < 1       },
+191 < 1     }, '.clock'),
+193 > 1     ...(process
+194 < 1       ? {
+195 < 1           process: strict({
+196 < 1             spawn: (o) => {
+197 < 1               onlyKeys(o, ['argv', 'cwd', 'env'], 'process.spawn')
+198 < 1               assert.ok(Array.isArray(o.argv) && o.argv.every((a) => typeof a === 'string'), 'process.spawn: argv')
+199 < 1               h.spawns.push(o.argv)
+200 < 1               return { async *[Symbol.asyncIterator]() {}, result: Promise.resolve({ code: 0 }) }
+201 < 1             },
+202 < 1           }, '.process'),
+203 < 1         }
+204 < 1       : {}),
+192 < 1   }, '')
+193 < 1   return h
+194 < 1 }
+195 < 1 
+196 < 1 /** One session: a fresh copy of the module on a host, started in `cwd`. */
+197 < 1 async function session(h, cwd) {
+198 < 1   const { register } = await load()
+199 < 1   const hooks = []
+200 < 1   register((ev, a, b) => {
+201 < 1     assert.equal(typeof ev, 'string', 'on: event name')
+202 < 1     hooks.push(b ? { ev, match: a, fn: b } : { ev, match: {}, fn: a })
+203 < 1   })
+204 < 1   const fire = async (ev, e) => {
+205 < 1     const mine = hooks.filter((x) => x.ev === ev && Object.entries(x.match).every(([k, v]) => e[k] === v))
+206 < 1     let i = 0
+207 < 1     const next = async (x) => (i < mine.length ? mine[i++].fn(h.$, x, next) : PASSED)
+208 < 1     return next(e)
+209 < 1   }
+210 < 1   const ticksBefore = h.ticks.length
+211 < 1   await fire('session.start', { cwd })
+212 < 1   const tick = h.ticks[ticksBefore]
+213 < 1   assert.equal(typeof tick, 'function', 'session.start starts one clock.every')
+214 < 1   const s = {
+215 < 1     fire,
+216 < 1     tick: () => tick(),
+217 < 1     pane: () => fire('ui.render', { component: 'Pane', requestId: 'intent-tray' }),
+218 < 1     band: () => fire('ui.render', { component: 'AbovePrompt' }),
+219 < 1     show: (input) => fire('tool.call', { tool: 'mcp__ultrapowers__show_screen', input }),
+220 < 1   }
+221 < 1   return s
+222 < 1 }
+223 < 1 
+224 < 1 function find(n, key) {
+225 < 1   if (!n || typeof n !== 'object') return undefined
+226 < 1   if (n.props && n.props.key === key) return n
+227 < 1   for (const c of [].concat((n.props && n.props.children) || [])) {
+228 < 1     const x = find(c, key)
+229 < 1     if (x) return x
+230 < 1   }
+231 < 1   return undefined
+232 < 1 }
+233 < 1 
+234 < 1 function buttons(n, out = []) {
+235 < 1   if (!n || typeof n !== 'object') return out
+236 < 1   if (n.type === 'Button') out.push(n.props)
+237 < 1   for (const c of [].concat((n.props && n.props.children) || [])) buttons(c, out)
+238 < 1   return out
+239 < 1 }
+240 < 1 
+241 < 1 const label = (band) => (band === PASSED ? 'hidden' : String(find(band, 'band-label').props.children[0]))
+242 < 1 const feed = (cwd) => `${cwd}/${FEED}`
+243 < 1 const line = (o) => JSON.stringify(o) + '\n'
+244 < 1 const press = async (s, where, key) => {
+245 < 1   const tree = where === 'band' ? await s.band() : await s.pane()
+246 < 1   const node = find(tree, key)
+247 < 1   assert.ok(node, `${where} has ${key}`)
+248 < 1   return node.props.onPress ? node.props.onPress() : undefined
+249 < 1 }
+250 < 1 
+251 < 1 // (z) the stand-in refuses wrong shapes
+252 < 1 {
+253 < 1   const h = host()
+254 < 1   assert.throws(() => h.$.session, /not offered/, '(z) an unknown $ noun throws')
+255 < 1   assert.throws(() => elements().Button({ key: 'k', hotkey: '12', onPress() {} }), /refused/, '(z) a two-character hotkey is refused')
+256 < 1   assert.throws(() => elements().Button({ key: 'k', hotkey: 'S', onPress() {} }), /refused/, '(z) an uppercase hotkey is refused')
+257 < 1   await assert.rejects(h.$.store.set('k', { f() {} }), /not JSON/, '(z) a function is not JSON data')
+258 < 1   await assert.rejects(h.$.ui.open({ id: 'x', focus: false }), /focus/, '(z) focus is true or absent')
+259 < 1   await assert.rejects(h.$.fs.read('/nowhere/x'), /ENOENT/, '(z) a missing file rejects')
+260 < 1 }
+261 < 1 
+262 < 1 // (a) Send clears the screen; the band is hidden after it
+263 < 1 {
+264 < 1   const h = host()
+265 < 1   const s = await session(h, '/work/a')
+266 < 1   await s.show({ name: 'Todo list', stage: 'how it looks', versions: ['A', 'B'] })
+267 < 1   assert.equal(label(await s.band()), 'Intent tray: Todo list, 0 items', '(a) the band shows once a screen is shown')
+268 < 1   await press(s, 'pane', 'pick-B')
+269 < 1   await press(s, 'band', 'band-send')
+270 < 1   assert.equal(h.submits.length, 1, '(a) Send submits one prompt')
+271 < 1   assert.equal(label(await s.band()), 'hidden', '(a) after Send the band is hidden')
+272 < 1   assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'No screen shown', '(a) after Send the pane shows no screen')
+273 < 1 }
+274 < 1 
+275 < 1 // (b) Clear clears the screen; the band is hidden after it
+276 < 1 {
+277 < 1   const h = host()
+278 < 1   const s = await session(h, '/work/a')
+279 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+280 < 1   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
+281 < 1   await press(s, 'band', 'band-clear')
+282 < 1   assert.equal(h.submits.length, 0, '(b) Clear submits nothing')
+283 < 1   assert.equal(label(await s.band()), 'hidden', '(b) after Clear the band is hidden')
+284 < 1 }
+285 < 1 
+286 < 1 // (c) the tray is kept per working directory; the old global `tray` key is ignored
+287 < 1 {
+288 < 1   const store = new Map([['tray', JSON.stringify({ screen: { name: 'Old', stage: '', versions: [], url: '' }, pick: null, notes: [], taken: 0 })]])
+289 < 1   const a = await session(host({ store }), '/work/a')
+290 < 1   await a.show({ name: 'Todo list', versions: ['A'] })
+291 < 1   await find(await a.pane(), 'view-note').props.onSubmit('feels cramped')
+292 < 1   const b = await session(host({ store }), '/work/b')
+293 < 1   assert.equal(label(await b.band()), 'hidden', '(c) a session in another repo shows no band')
+294 < 1   const a2 = await session(host({ store }), '/work/a')
+295 < 1   assert.equal(label(await a2.band()), 'Intent tray: Todo list, 1 item', '(c) a later session in the same repo gets its tray back')
+296 < 1 }
+297 < 1 
+298 < 1 // (d) band buttons carry no bare-digit hotkey
+299 < 1 {
+300 < 1   const s = await session(host(), '/work/a')
+301 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+302 < 1   const keys = buttons(await s.band()).map((b) => `${b.key}=${b.hotkey}`)
+303 < 1   assert.deepEqual(keys, ['band-note=n', 'band-send=s', 'band-clear=c'], '(d) band hotkeys are n, s, c')
+304 < 1 }
+305 < 1 
+306 < 1 // (e) feedback is read by byte offset, only up to the last newline
+307 < 1 {
+308 < 1   const h = host()
+309 < 1   const s = await session(h, '/work/a')
+310 < 1   await s.show({ name: 'Todo list', versions: ['A'] })
+311 < 1   h.files.set(feed('/work/a'), line({ note: 'café ☕ first' }) + '{"note":"sec')
+312 < 1   await s.tick()
+313 < 1   assert.equal(label(await s.band()), 'Intent tray: Todo list, 1 item', '(e) a half-written line is not taken yet')
+314 < 1   h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + 'ond"}\n')
+315 < 1   await s.tick()
+316 < 1   assert.equal(label(await s.band()), 'Intent tray: Todo list, 2 items', '(e) the line is taken once it ends')
+317 < 1   await press(s, 'band', 'band-send')
+318 < 1   assert.match(h.submits[0], /"note":"second"/, '(e) the completed line reads whole')
+319 < 1   assert.match(h.submits[0], /"note":"café ☕ first"/, '(e) a multibyte line reads whole')
+320 < 1   await s.tick()
+321 < 1   assert.equal(label(await s.band()), 'hidden', '(e) nothing is taken twice')
+322 < 1 }
+323 < 1 
+324 < 1 // (f) a repo's feedback history from before the first session is not taken
+325 < 1 {
+326 < 1   const h = host()
+327 < 1   h.files.set(feed('/work/a'), line({ note: 'old one' }) + line({ note: 'old two' }))
+328 < 1   const s = await session(h, '/work/a')
+329 < 1   await s.tick()
+330 < 1   assert.equal(label(await s.band()), 'hidden', '(f) old lines are history, not feedback')
+331 < 1   h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + line({ note: 'new' }))
+332 < 1   await s.tick()
+333 < 1   assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(f) a line written after the start is taken')
+334 < 1 }
+335 < 1 
+336 < 1 // (g) a second repo's feedback is read from its own offset
+337 < 1 {
+338 < 1   const store = new Map()
+339 < 1   const ha = host({ store })
+340 < 1   const a = await session(ha, '/work/a')
+341 < 1   ha.files.set(feed('/work/a'), line({ note: 'one' }) + line({ note: 'two' }))
+342 < 1   await a.tick()
+343 < 1   assert.equal(label(await a.band()), 'Intent tray: feedback, 2 items', '(g) repo a takes its two lines')
+344 < 1   const hb = host({ store })
+345 < 1   const b = await session(hb, '/work/b')
+346 < 1   hb.files.set(feed('/work/b'), line({ note: 'only' }))
+347 < 1   await b.tick()
+348 < 1   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(g) repo b takes its own line')
+349 < 1 }
+350 < 1 
+351 < 1 // (h) two sessions in one repo take a feedback line once
+352 < 1 {
+353 < 1   const store = new Map()
+354 < 1   const files = new Map()
+355 < 1   const a = await session(host({ store, files }), '/work/a')
+356 < 1   const b = await session(host({ store, files }), '/work/a')
+357 < 1   files.set(feed('/work/a'), line({ note: 'once' }))
+358 < 1   await a.tick()
+359 < 1   await b.tick()
+360 < 1   const held = [label(await a.band()), label(await b.band())]
+361 < 1   assert.deepEqual(held, ['Intent tray: feedback, 1 item', 'hidden'], '(h) the line is taken by one session only')
+362 < 1 }
+363 < 1 
+364 < 1 // (i) a dropped or failed submit keeps the tray
+365 < 1 for (const mode of ['drop', 'throw']) {
+366 < 1   const h = host({ submit: mode })
+367 < 1   const s = await session(h, '/work/a')
+368 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+369 < 1   await press(s, 'pane', 'pick-A')
+370 < 1   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
+371 < 1   await press(s, 'band', 'band-send')
+372 < 1   assert.equal(h.submits.length, 1, `(i ${mode}) Send tried once`)
+373 < 1   assert.equal(label(await s.band()), 'Intent tray: Todo list, 2 items', `(i ${mode}) the pick and the note are kept`)
+374 < 1   h.submit = 'ok'
+375 < 1   await press(s, 'band', 'band-send')
+376 < 1   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
+377 < 1 }
+378 < 1 
+380 > 1 // (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+381 < 1 {
+382 < 1   const url = 'http://127.0.0.1:4100/compare'
+383 < 1   const desk = await session(host(), '/work/a')
+384 < 1   await desk.show({ name: 'Todo list', versions: ['A'], url })
+385 < 1   assert.equal(find(await desk.band(), 'band-open'), undefined, '(j) no $.process: the band has no Open screen')
+386 < 1   assert.equal(find(await desk.pane(), 'open-screen'), undefined, '(j) no $.process: the pane has no Open screen')
+387 < 1   const h = host({ process: true })
+388 < 1   const cli = await session(h, '/work/a')
+389 < 1   await cli.show({ name: 'Todo list', versions: ['A'], url })
+390 < 1   assert.ok(find(await cli.pane(), 'open-screen'), '(j) with $.process the pane has Open screen')
+391 < 1   await press(cli, 'band', 'band-open')
+392 < 1   assert.deepEqual(h.spawns, [['open', url]], '(j) Open screen opens the preview url')
+393 < 1 }
+394 < 1 
+395 < 1 // (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+396 < 1 {
+397 < 1   let enter
+398 < 1   const h = host({ submit: (o) => new Promise((done) => { enter = () => done({ text: o.text }) }) })
+399 < 1   const s = await session(h, '/work/a')
+400 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+401 < 1   await press(s, 'pane', 'pick-B')
+402 < 1   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
+403 < 1   const out = press(s, 'band', 'band-send')
+404 < 1   await new Promise((r) => setImmediate(r))
+405 < 1   assert.equal(h.submits.length, 1, '(k) the first Send is out')
+406 < 1   await press(s, 'band', 'band-send')
+407 < 1   assert.equal(h.submits.length, 1, '(k) a second Send while the first is out submits nothing')
+408 < 1   h.files.set(feed('/work/a'), line({ kind: 'element', target: 'button "Add"', note: 'too small' }))
+409 < 1   await s.tick()
+410 < 1   enter()
+411 < 1   await out
+412 < 1   assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(k) the sent screen and pick are cleared, the late note stays')
+413 < 1   const left = await s.pane()
+414 < 1   assert.equal(String(find(left, 'text-0').props.children[0]), '[element] button "Add": too small', '(k) the note that came in meanwhile stays')
+415 < 1   assert.doesNotMatch(h.submits[0], /too small/, '(k) the late note was not in the first Send')
+416 < 1   h.submit = 'ok'
+417 < 1   await press(s, 'pane', 'send')
+418 < 1   assert.equal(h.submits.length, 2, '(k) the next Send goes')
+419 < 1   assert.match(h.submits[1], /too small/, '(k) and carries the late note')
+420 < 1 }
+421 < 1 
+422 < 1 // (l) two sessions in one repo keep each other's notes; a sent note stays gone
+423 < 1 {
+424 < 1   const store = new Map()
+425 < 1   const files = new Map()
+426 < 1   const ha = host({ store, files })
+427 < 1   const a = await session(ha, '/work/a')
+428 < 1   const b = await session(host({ store, files }), '/work/a')
+429 < 1   await find(await a.pane(), 'view-note').props.onSubmit('from a')
+430 < 1   await find(await b.pane(), 'view-note').props.onSubmit('from b')
+431 < 1   const held = JSON.parse(store.get('tray:/work/a'))
+432 < 1   assert.deepEqual(held.notes.map((n) => n.note), ['from a', 'from b'], '(l) the second session kept the first one\'s note')
+433 < 1   await press(a, 'band', 'band-send')
+434 < 1   assert.match(ha.submits[0], /from a/, '(l) Send carries the first note')
+435 < 1   assert.match(ha.submits[0], /from b/, '(l) and the other session\'s note')
+436 < 1   await find(await b.pane(), 'view-note').props.onSubmit('later')
+437 < 1   const after = JSON.parse(store.get('tray:/work/a'))
+438 < 1   assert.deepEqual(after.notes.map((n) => n.note), ['later'], '(l) a sent note does not come back from a session that held it')
+439 < 1   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(l) the other session drops the sent notes too')
+440 < 1 }
+441 < 1 
+442 < 1 // (m) a replaced feedback file is read from its start
+443 < 1 {
+444 < 1   const h = host()
+445 < 1   const s = await session(h, '/work/a')
+446 < 1   h.files.set(feed('/work/a'), line({ note: 'first file' }))
+447 < 1   await s.tick()
+448 < 1   await press(s, 'band', 'band-send')
+449 < 1   h.files.set(feed('/work/a'), line({ note: 'second file, longer than the first' }) + line({ note: 'and more' }))
+450 < 1   await s.tick()
+451 < 1   assert.equal(label(await s.band()), 'Intent tray: feedback, 2 items', '(m) a new, longer file is taken from its first line')
+452 < 1   await press(s, 'band', 'band-send')
+453 < 1   assert.match(h.submits[1], /second file/, '(m) its first line is read')
+454 < 1 }
+455 < 1 
+456 < 1 // (n) a preview pick names its piece, and a pick without one still reads
+457 < 1 {
+458 < 1   const h = host()
+459 < 1   const s = await session(h, '/work/a')
+460 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+461 < 1   h.files.set(feed('/work/a'), line({ kind: 'pick', piece: 'todo', chose: 'B' }))
+462 < 1   await s.tick()
+463 < 1   assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'Todo list  picked: todo B', '(n) the pane names the piece')
+464 < 1   await press(s, 'band', 'band-send')
+465 < 1   assert.match(h.submits[0], /\{"kind":"pick","screen":"Todo list","piece":"todo","chose":"B"\}/, '(n) the pick is sent with its piece')
+466 < 1   h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + line({ kind: 'pick', chose: 'A' }))
+467 < 1   await s.tick()
+468 < 1   await press(s, 'band', 'band-send')
+469 < 1   assert.match(h.submits[1], /\{"kind":"pick","screen":"","chose":"A"\}/, '(n) an old pick with no piece still reads')
+470 < 1 }
+471 < 1 
+379 < 2 // (j) the README's tray section names no digit hotkey for the band
+380 < 2 {
+381 < 2   const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8')
+382 < 2   const section = readme.split('## The intent tray')[1].split('\n## ')[0]
+383 < 2   assert.ok(!/\(`[0-9]`\)/.test(section), '(j) the README pins no digit hotkey on a band button')
+384 < 2   assert.ok(/\*\*Add note\*\* \(`n`\)/.test(section) && /\*\*Send\*\* \(`s`\)/.test(section) && /\*\*Clear\*\*\s+\(`c`\)/.test(section),
+385 < 2     '(j) the README names the band hotkeys n, s and c')
+386 < 2 }
+387 < 2 
+388 < 1 console.log('ALL TESTS PASSED')
+389 < 1 

@@ -1,0 +1,192 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Controller, useForm } from 'react-hook-form'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Stack, Row, Spacer } from '../layout'
+4 < 2 import { Heading, Text, Eyebrow } from '../text'
+5 < 2 import { Field, Input } from '../Input'
+6 < 2 import { RadioGroup } from '../radiogroup'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Progress } from '../progress'
+9 < 2 
+10 < 2 const STEPS = ['Account', 'Workspace', 'Preferences']
+11 < 2 
+12 < 2 const PLAN_OPTIONS = [
+13 < 2   { value: 'solo', label: 'Just me' },
+14 < 2   { value: 'team', label: 'With a team' },
+15 < 2   { value: 'org', label: 'Whole organization' },
+16 < 2 ]
+17 < 2 
+18 < 2 interface OnboardingValues {
+19 < 2   name: string
+20 < 2   workspace: string
+21 < 2   plan: string
+22 < 2 }
+23 < 2 
+24 < 2 /** An example onboarding wizard: a progress bar, per-step forms, and
+25 < 2  * back/next navigation — each step's answer is held in state that outlives
+26 < 2  * the step, so paging back and forth (or finishing) never loses what was
+27 < 2  * typed. The finish screen recaps every answer to prove it. */
+28 < 2 export function OnboardingBlock() {
+29 < 2   const [step, setStep] = useState(0)
+30 < 2   const [done, setDone] = useState(false)
+31 < 2   const {
+32 < 2     control,
+33 < 2     clearErrors,
+34 < 2     reset: resetForm,
+35 < 2     trigger,
+36 < 2     watch,
+37 < 2     formState: { errors },
+38 < 2   } = useForm<OnboardingValues>({
+39 < 2     defaultValues: { name: '', workspace: '', plan: 'solo' },
+40 < 2     mode: 'onSubmit',
+41 < 2     reValidateMode: 'onChange',
+42 < 2   })
+43 < 2   const { name, workspace, plan } = watch()
+44 < 2 
+45 < 2   const pct = done ? 100 : ((step + 1) / STEPS.length) * 100
+46 < 2 
+47 < 2   async function goNext() {
+48 < 2     const field = step === 0 ? 'name' : step === 1 ? 'workspace' : undefined
+49 < 2     if (field && !(await trigger(field, { shouldFocus: true }))) return
+50 < 2     if (step === STEPS.length - 1) setDone(true)
+51 < 2     else setStep((s) => s + 1)
+52 < 2   }
+53 < 2 
+54 < 2   function goBack() {
+55 < 2     clearErrors()
+56 < 2     setStep((s) => Math.max(0, s - 1))
+57 < 2   }
+58 < 2 
+59 < 2   function reset() {
+60 < 2     setStep(0)
+61 < 2     resetForm()
+62 < 2     setDone(false)
+63 < 2   }
+64 < 2 
+65 < 2   return (
+66 < 2     <div style={{ maxWidth: 480, margin: '0 auto', padding: 24 }}>
+67 < 2       <Card>
+68 < 2         <Stack gap={5}>
+69 < 2           <Stack gap={2}>
+70 < 2             <Eyebrow>{done ? 'All set' : `Step ${step + 1} of ${STEPS.length} · ${STEPS[step]}`}</Eyebrow>
+71 < 2             <Progress value={pct} tone="mint" label="Setup progress" />
+72 < 2           </Stack>
+73 < 2 
+74 < 2           {done ? (
+75 < 2             <Stack gap={4}>
+76 < 2               <Heading level={2}>You're all set, {name}</Heading>
+77 < 2               <Text muted>Nothing you typed on the way here was lost — here's what we kept.</Text>
+78 < 2               <Stack gap={2}>
+79 < 2                 <Row justify="between" wrap={false}>
+80 < 2                   <Text size="sm" muted>Workspace</Text>
+81 < 2                   <Text size="sm">{workspace}</Text>
+82 < 2                 </Row>
+83 < 2                 <Row justify="between" wrap={false}>
+84 < 2                   <Text size="sm" muted>Plan</Text>
+85 < 2                   <Text size="sm">{PLAN_OPTIONS.find((o) => o.value === plan)?.label}</Text>
+86 < 2                 </Row>
+87 < 2               </Stack>
+88 < 2             </Stack>
+89 < 2           ) : (
+90 < 2             <form
+91 < 2               onSubmit={(event) => {
+92 < 2                 event.preventDefault()
+93 < 2                 void goNext()
+94 < 2               }}
+95 < 2               noValidate
+96 < 2             >
+97 < 2               {step === 0 && (
+98 < 2                 <Stack gap={4}>
+99 < 2                   <Heading level={2}>Welcome to 1st-Pouf</Heading>
+100 < 2                   <Field label="Your name" error={errors.name?.message}>
+101 < 2                     {(id, describedBy) => (
+102 < 2                       <Controller
+103 < 2                         name="name"
+104 < 2                         control={control}
+105 < 2                         rules={{ validate: (value) => value.trim().length > 0 || 'Tell us what to call you.' }}
+106 < 2                         render={({ field }) => (
+107 < 2                           <Input
+108 < 2                             ref={field.ref}
+109 < 2                             id={id}
+110 < 2                             name={field.name}
+111 < 2                             describedBy={describedBy}
+112 < 2                             value={field.value}
+113 < 2                             onChange={field.onChange}
+114 < 2                             onBlur={field.onBlur}
+115 < 2                             placeholder="Ada Lovelace…"
+116 < 2                             autoComplete="name"
+117 < 2                             invalid={!!errors.name}
+118 < 2                             required
+119 < 2                           />
+120 < 2                         )}
+121 < 2                       />
+122 < 2                     )}
+123 < 2                   </Field>
+124 < 2                 </Stack>
+125 < 2               )}
+126 < 2               {step === 1 && (
+127 < 2                 <Stack gap={4}>
+128 < 2                   <Heading level={2}>Name your workspace</Heading>
+129 < 2                   <Field label="Workspace" hint="You can change this later." error={errors.workspace?.message}>
+130 < 2                     {(id, describedBy) => (
+131 < 2                       <Controller
+132 < 2                         name="workspace"
+133 < 2                         control={control}
+134 < 2                         rules={{
+135 < 2                           validate: (value) => value.trim().length > 0 || 'Pick a name for your workspace.',
+136 < 2                         }}
+137 < 2                         render={({ field }) => (
+138 < 2                           <Input
+139 < 2                             ref={field.ref}
+140 < 2                             id={id}
+141 < 2                             name={field.name}
+142 < 2                             describedBy={describedBy}
+143 < 2                             value={field.value}
+144 < 2                             onChange={field.onChange}
+145 < 2                             onBlur={field.onBlur}
+146 < 2                             placeholder="Acme…"
+147 < 2                             autoComplete="organization"
+148 < 2                             invalid={!!errors.workspace}
+149 < 2                             required
+150 < 2                           />
+151 < 2                         )}
+152 < 2                       />
+153 < 2                     )}
+154 < 2                   </Field>
+155 < 2                 </Stack>
+156 < 2               )}
+157 < 2               {step === 2 && (
+158 < 2                 <Stack gap={4}>
+159 < 2                   <Heading level={2}>How will you use it?</Heading>
+160 < 2                   <Controller
+161 < 2                     name="plan"
+162 < 2                     control={control}
+163 < 2                     render={({ field }) => (
+164 < 2                       <RadioGroup label="Plan" value={field.value} onChange={field.onChange} options={PLAN_OPTIONS} />
+165 < 2                     )}
+166 < 2                   />
+167 < 2                 </Stack>
+168 < 2               )}
+169 < 2               <div style={{ marginTop: 24 }}>
+170 < 2                 <Row wrap={false}>
+171 < 2                   <Button variant="quiet" disabled={step === 0} onClick={goBack}>Back</Button>
+172 < 2                   <Spacer />
+173 < 2                   {step < STEPS.length - 1 ? (
+174 < 2                     <Button type="submit">Continue</Button>
+175 < 2                   ) : (
+176 < 2                     <Button type="submit" tone="mint">Finish</Button>
+177 < 2                   )}
+178 < 2                 </Row>
+179 < 2               </div>
+180 < 2             </form>
+181 < 2           )}
+182 < 2 
+183 < 2           {done ? (
+184 < 2             <Button variant="quiet" onClick={reset}>Start over</Button>
+185 < 2           ) : null}
+186 < 2         </Stack>
+187 < 2       </Card>
+188 < 2     </div>
+189 < 2   )
+190 < 2 }
+191 < 2 

@@ -1,0 +1,152 @@
+0 < 2 import { useRef, useState } from 'react'
+1 < 2 import { Controller, useForm } from 'react-hook-form'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Stack, Row, Spacer } from '../layout'
+4 < 2 import { Heading, Text, Eyebrow } from '../text'
+5 < 2 import { Checkbox } from '../checkbox'
+6 < 2 import { Field, Input } from '../Input'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Segmented } from '../Segmented'
+9 < 2 import { Empty } from '../feedback'
+10 < 2 
+11 < 2 interface Item {
+12 < 2   id: string
+13 < 2   text: string
+14 < 2   done: boolean
+15 < 2 }
+16 < 2 
+17 < 2 const SEED: Item[] = [
+18 < 2   { id: '1', text: 'Register pouf.dev', done: true },
+19 < 2   { id: '2', text: 'Push to GitHub', done: false },
+20 < 2   { id: '3', text: 'Enable Pages', done: false },
+21 < 2   { id: '4', text: 'Tell everyone', done: false },
+22 < 2 ]
+23 < 2 
+24 < 2 interface TodoValues {
+25 < 2   task: string
+26 < 2 }
+27 < 2 
+28 < 2 /** An example todo list: add, filter, check off, and clear completed — with a
+29 < 2  *  real empty state whenever the current filter (or the whole list) has
+30 < 2  *  nothing to show. */
+31 < 2 export function TodoBlock() {
+32 < 2   const [items, setItems] = useState(SEED)
+33 < 2   const [filter, setFilter] = useState('all')
+34 < 2   const nextId = useRef(SEED.length + 1)
+35 < 2   const {
+36 < 2     control,
+37 < 2     handleSubmit,
+38 < 2     resetField,
+39 < 2     formState: { errors },
+40 < 2   } = useForm<TodoValues>({ defaultValues: { task: '' } })
+41 < 2 
+42 < 2   const shown = items.filter((i) => (filter === 'active' ? !i.done : filter === 'done' ? i.done : true))
+43 < 2   const left = items.filter((i) => !i.done).length
+44 < 2 
+45 < 2   const add = handleSubmit(({ task }) => {
+46 < 2     const text = task.trim()
+47 < 2     setItems((xs) => [...xs, { id: String(nextId.current++), text, done: false }])
+48 < 2     resetField('task')
+49 < 2   })
+50 < 2 
+51 < 2   function clearCompleted() {
+52 < 2     setItems((xs) => xs.filter((x) => !x.done))
+53 < 2   }
+54 < 2 
+55 < 2   const hasCompleted = items.some((i) => i.done)
+56 < 2 
+57 < 2   return (
+58 < 2     <div style={{ maxWidth: 480, margin: '0 auto', padding: 24 }}>
+59 < 2       <Card>
+60 < 2         <Stack gap={4}>
+61 < 2           <Stack gap={1}>
+62 < 2             <Eyebrow>{left} left</Eyebrow>
+63 < 2             <Heading level={2}>Today</Heading>
+64 < 2           </Stack>
+65 < 2 
+66 < 2           {/* React Hook Form belongs to this example, not the Input primitive:
+67 < 2             * the shared control stays usable with any form strategy. */}
+68 < 2           <form onSubmit={add} noValidate>
+69 < 2             <Row gap={2} wrap={false}>
+70 < 2               <div style={{ flex: 1, minWidth: 0 }}>
+71 < 2                 <Field label="New task" error={errors.task?.message}>
+72 < 2                   {(id, describedBy) => (
+73 < 2                     <Controller
+74 < 2                       name="task"
+75 < 2                       control={control}
+76 < 2                       rules={{
+77 < 2                         validate: (value) => value.trim().length > 0 || 'Enter a task first.',
+78 < 2                       }}
+79 < 2                       render={({ field }) => (
+80 < 2                         <Input
+81 < 2                           ref={field.ref}
+82 < 2                           id={id}
+83 < 2                           name={field.name}
+84 < 2                           describedBy={describedBy}
+85 < 2                           value={field.value}
+86 < 2                           onChange={field.onChange}
+87 < 2                           onBlur={field.onBlur}
+88 < 2                           placeholder="Add a task…"
+89 < 2                           autoComplete="off"
+90 < 2                           invalid={!!errors.task}
+91 < 2                           required
+92 < 2                         />
+93 < 2                       )}
+94 < 2                     />
+95 < 2                   )}
+96 < 2                 </Field>
+97 < 2               </div>
+98 < 2               <Spacer />
+99 < 2               <Button type="submit" label="Add">Add</Button>
+100 < 2             </Row>
+101 < 2           </form>
+102 < 2 
+103 < 2           <Row justify="between" wrap={false}>
+104 < 2             <Segmented
+105 < 2               label="Filter"
+106 < 2               value={filter}
+107 < 2               onChange={setFilter}
+108 < 2               options={[
+109 < 2                 { value: 'all', label: 'All' },
+110 < 2                 { value: 'active', label: 'Active' },
+111 < 2                 { value: 'done', label: 'Done' },
+112 < 2               ]}
+113 < 2             />
+114 < 2             <Button
+115 < 2               size="sm"
+116 < 2               variant="quiet"
+117 < 2               disabled={!hasCompleted}
+118 < 2               onClick={clearCompleted}
+119 < 2               label="Clear completed tasks"
+120 < 2             >
+121 < 2               Clear completed
+122 < 2             </Button>
+123 < 2           </Row>
+124 < 2 
+125 < 2           {shown.length === 0 ? (
+126 < 2             <Empty icon="ok" title="Nothing here">You're all caught up.</Empty>
+127 < 2           ) : (
+128 < 2             <Stack gap={2}>
+129 < 2               {shown.map((i) => (
+130 < 2                 <Row key={i.id} gap={3} wrap={false}>
+131 < 2                   {/* hideLabel, because the <Text> beside it already shows the
+132 < 2                     * task. Passing `label` alone printed the text twice on
+133 < 2                     * every row; dropping `label` would have left the box with
+134 < 2                     * no accessible name. This keeps the name and one copy. */}
+135 < 2                   <Checkbox
+136 < 2                     checked={i.done}
+137 < 2                     onChange={() => setItems((xs) => xs.map((x) => (x.id === i.id ? { ...x, done: !x.done } : x)))}
+138 < 2                     label={i.text}
+139 < 2                     hideLabel
+140 < 2                   />
+141 < 2                   <Text muted={i.done}>{i.text}</Text>
+142 < 2                 </Row>
+143 < 2               ))}
+144 < 2             </Stack>
+145 < 2           )}
+146 < 2         </Stack>
+147 < 2       </Card>
+148 < 2     </div>
+149 < 2   )
+150 < 2 }
+151 < 2 

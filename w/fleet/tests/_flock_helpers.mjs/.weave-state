@@ -1,0 +1,95 @@
+0 < 1 // fleet/tests/_flock_helpers.mjs — a throwaway git target and a scripted Flock run, for the flock sims.
+1 < 1 import { spawn, spawnSync } from 'node:child_process'
+2 < 1 import fs from 'node:fs'
+3 < 1 import os from 'node:os'
+4 < 1 import path from 'node:path'
+5 < 1 import { fileURLToPath } from 'node:url'
+6 < 1 import { simEnv } from './_helpers.mjs'
+7 < 1 
+8 < 1 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+9 < 1 
+11 > 1 // A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's.
+12 < 1 // `git` throws on a non-zero exit.
+10 < 2 // A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's; Jev is
+11 < 2 // off (TYPESAFE_BASE_URL empty) unless `env` names it. `git` throws on a non-zero exit.
+12 < 1 export function flockTarget (files, { env = {} } = {}) {
+13 < 1   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-sim-'))
+14 < 1   const T = path.join(tmp, 'target')
+15 < 1   fs.mkdirSync(T)
+17 > 1   const over = { ...env }
+16 < 2   const over = { TYPESAFE_BASE_URL: '', ...env }
+17 < 1   const ENV = simEnv({ home: tmp, env: over })
+18 < 1   const git = (...a) => {
+19 < 1     const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', '-c', 'init.defaultBranch=main', ...a], { cwd: T, encoding: 'utf8', env: ENV })
+20 < 1     if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`)
+21 < 1     return r.stdout.trim()
+22 < 1   }
+23 < 1   for (const [p, text] of Object.entries(files)) fs.writeFileSync(path.join(T, p), text)
+24 < 1   git('init', '-q'); git('add', '-A'); git('commit', '-qm', 'base')
+25 < 1   return { tmp, T, RUN: path.join(tmp, 'run'), over, git, base: git('rev-parse', 'HEAD'), done: () => fs.rmSync(tmp, { recursive: true, force: true }) }
+26 < 1 }
+27 < 1 
+28 < 1 // One claims-v1 task. `files` are the Files lines (`Modify: \`a.txt\``), `run` the one probe (tagged M1).
+29 < 1 export const task = ({ id, title, files, claim, run, stale, iface = '- Produces: none' }) => `### Task ${id}: ${title}
+30 < 1 
+31 < 1 **Type:** implementation
+32 < 1 
+33 < 1 **Files:**
+34 < 1 ${files.map((f) => `- ${f}`).join('\n')}
+35 < 1 
+36 < 1 **Claim:** ${claim} (derived)
+37 < 1 Machine: M1. ${claim}
+38 < 1 
+39 < 1 **Authorized-by:** sim
+40 < 1 
+41 < 1 **Interfaces:**
+42 < 1 ${iface}
+43 < 1 
+44 < 1 **Context:** none
+45 < 1 
+46 < 1 **Proof:**
+47 < 1 - Run: ${run} [M1]
+48 < 1 - Legs: (a) ${claim} [M1].
+49 < 1 
+50 < 1 **Stale-if:**
+51 < 1 - ${stale}
+52 < 1 `
+53 < 1 
+54 < 1 // A claims-v1 plan of `tasks` with one run-wide `check`, written into the target's temp dir.
+55 < 1 export function writePlan (t, { claim, check, tasks }) {
+56 < 1   const plan = path.join(t.tmp, 'plan.md')
+57 < 1   fs.writeFileSync(plan, `# Sim plan
+58 < 1 
+59 < 1 **Grammar:** claims-v1
+60 < 1 **Claim:** ${claim} (elicited)
+61 < 1 **Summary:** One. Two. Three.
+62 < 1 **Goal:** sim
+63 < 1 **Tech Stack:** bash
+64 < 1 
+65 < 1 ## Global Constraints
+66 < 1 
+67 < 1 - Check: ${check}
+68 < 1 
+69 < 1 ${tasks.join('\n')}`)
+70 < 1   return plan
+71 < 1 }
+72 < 1 
+73 < 1 // The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}. `args` are
+74 < 1 // further engine arguments.
+75 < 1 export async function flockRun (t, { plan, script, args = [] }) {
+76 < 1   const scriptFile = path.join(t.tmp, 'script.json')
+77 < 1   fs.writeFileSync(scriptFile, JSON.stringify(script))
+78 < 1   const { code, out } = await new Promise((resolve) => {
+79 < 1     const p = spawn('node', [path.join(REPO, 'factory', 'flock', 'engine.mjs'), '--plan', plan, '--target', t.T, '--base', t.base,
+81 > 1       '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', ...args], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
+80 < 2       '--run-dir', t.RUN, '--builder', `scripted:${scriptFile}`, '--clock', '120', '--stall-minutes', '2', ...args], { env: simEnv({ home: t.tmp, env: t.over }), stdio: ['ignore', 'pipe', 'pipe'] })
+81 < 1     let out = ''
+82 < 1     p.stdout.on('data', (c) => { out += c }); p.stderr.on('data', (c) => { out += c })
+83 < 1     const kill = setTimeout(() => p.kill('SIGKILL'), 180000)
+84 < 1     p.on('close', (c) => { clearTimeout(kill); resolve({ code: c, out }) })
+85 < 1   })
+86 < 1   const evPath = path.join(t.RUN, 'events.jsonl')
+87 < 1   const rows = fs.existsSync(evPath) ? fs.readFileSync(evPath, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : null
+88 < 1   return { code, out, rows, of: (k) => (rows || []).filter((r) => r.kind === k) }
+89 < 1 }
+90 < 1 

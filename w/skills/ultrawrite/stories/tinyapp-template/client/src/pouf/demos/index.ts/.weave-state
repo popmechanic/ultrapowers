@@ -1,0 +1,18 @@
+0 < 2 import type { Demo } from './types'
+1 < 2 import { coreDemos } from './core-index'
+2 < 2 import { areaChartDemos, barChartDemos, lineChartDemos, pieChartDemos } from './charts'
+3 < 2 
+4 < 2 export { coreDemos }
+5 < 2 
+6 < 2 export const chartDemos: Record<string, Demo[]> = {
+7 < 2   'area-chart': areaChartDemos,
+8 < 2   'bar-chart': barChartDemos,
+9 < 2   'line-chart': lineChartDemos,
+10 < 2   'pie-chart': pieChartDemos,
+11 < 2 }
+12 < 2 
+13 < 2 export const allDemos: Record<string, Demo[]> = {
+14 < 2   ...coreDemos,
+15 < 2   ...chartDemos,
+16 < 2 }
+17 < 2 

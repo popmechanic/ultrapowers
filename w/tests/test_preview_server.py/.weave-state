@@ -1,0 +1,182 @@
+0 < 1 """The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): a pick names
+1 < 1 its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
+2 < 1 a time, and the page names elements the way the browser checker does. The server legs need bun
+3 < 1 and an offline-installable app; the naming leg needs the checker's own browser."""
+4 < 1 import json
+5 < 1 import os
+6 < 1 import shutil
+7 < 1 import subprocess
+8 < 1 import time
+9 < 1 import urllib.error
+10 < 1 import urllib.request
+11 < 1 
+12 < 1 import pytest
+13 < 1 
+14 < 1 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+15 < 1 STORIES = os.path.join(ROOT, "skills/ultrawrite/stories")
+16 < 1 PREVIEW = os.path.join(STORIES, "preview.ts")
+17 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+18 < 1 
+19 < 1 
+20 < 1 @pytest.fixture(scope="module")
+21 < 1 def bun():
+22 < 1     if not shutil.which("bun"):
+23 < 1         pytest.skip("bun is not installed")
+24 < 1 
+25 < 1 
+26 < 1 def run_bun(script, cwd=ROOT):
+27 < 1     r = subprocess.run(["bun", "-e", script], cwd=cwd, capture_output=True, text=True, timeout=300)
+28 < 1     assert r.returncode == 0, r.stderr[-2000:]
+29 < 1     return json.loads(r.stdout.strip().splitlines()[-1])
+30 < 1 
+31 < 1 
+32 < 1 def test_feedback_record_takes_a_pick_with_its_piece_and_the_old_shape(bun):
+33 < 1     got = run_bun("""
+34 < 1 import {feedbackRecord} from %s;
+35 < 1 console.log(JSON.stringify([
+36 < 1   feedbackRecord({chose: 'B', piece: 'todo', kind: 'pick'}),
+37 < 1   feedbackRecord({kind: 'pick', chose: 'A'}),
+38 < 1   feedbackRecord({kind: 'pick', piece: 7, chose: 'A'}),
+39 < 1   feedbackRecord({kind: 'pick', piece: 'todo', chose: 'A', extra: 1}),
+40 < 1 ]));
+41 < 1 """ % json.dumps(PREVIEW))
+42 < 1     assert json.dumps(got[0]) == '{"kind": "pick", "piece": "todo", "chose": "B"}'
+43 < 1     assert got[1] == {"kind": "pick", "chose": "A"}
+44 < 1     assert got[2] is None
+45 < 1     assert got[3] is None
+46 < 1 
+47 < 1 
+48 < 1 def test_plays_run_one_at_a_time(bun):
+49 < 1     got = run_bun("""
+50 < 1 import {inTurn} from %s;
+51 < 1 const log = [];
+52 < 1 const job = (name, ms, fail) => () => new Promise((ok, no) => {
+53 < 1   log.push(name + ' start');
+54 < 1   setTimeout(() => { log.push(name + ' end'); fail ? no(new Error(name)) : ok(name); }, ms);
+55 < 1 });
+56 < 1 const a = inTurn(job('a', 40, true)).catch((e) => 'refused ' + e.message);
+57 < 1 const b = inTurn(job('b', 5));
+58 < 1 const c = inTurn(job('c', 1));
+59 < 1 console.log(JSON.stringify({log, answers: await Promise.all([a, b, c])}));
+60 < 1 """ % json.dumps(os.path.join(STORIES, "preview/play.ts")))
+61 < 1     assert got["log"] == ["a start", "a end", "b start", "b end", "c start", "c end"]
+62 < 1     assert got["answers"] == ["refused a", "b", "c"]
+63 < 1 
+64 < 1 
+65 < 1 @pytest.fixture(scope="module")
+66 < 1 def server(bun, tmp_path_factory):
+67 < 1     base = tmp_path_factory.mktemp("preview")
+68 < 1     app = str(base / "app")
+69 < 1     bundle = str(base / "bundle")
+70 < 1     shutil.copytree(TODO, bundle)
+71 < 1     subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), bundle, app],
+72 < 1                    check=True, capture_output=True, text=True)
+73 < 1     r = subprocess.run(["bun", "install", "--offline"], cwd=app, capture_output=True, text=True, timeout=300)
+74 < 1     if r.returncode:
+75 < 1         pytest.skip("bun install --offline failed: " + r.stderr.strip()[-200:])
+76 < 1     feedback = str(base / "feedback.jsonl")
+77 < 1     proc = subprocess.Popen(["bun", PREVIEW, bundle, "--app", app, "--port", "0", "--feedback", feedback],
+78 < 1                             cwd=str(base), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+79 < 1     try:
+80 < 1         lines = []
+81 < 1         deadline = time.time() + 120
+82 < 1         url = None
+83 < 1         while time.time() < deadline:
+84 < 1             line = proc.stdout.readline()
+85 < 1             if not line:
+86 < 1                 break
+87 < 1             lines.append(line)
+88 < 1             if line.startswith("PREVIEW http://"):
+89 < 1                 url = line.split(" ", 1)[1].strip().rstrip("/")
+90 < 1                 break
+91 < 1         assert url, "the preview did not start (the page did not build?):\n" + "".join(lines)[-2000:]
+92 < 1         yield {"url": url, "feedback": feedback}
+93 < 1     finally:
+94 < 1         proc.kill()
+95 < 1         proc.wait(timeout=10)
+96 < 1 
+97 < 1 
+98 < 1 def request(url, body=None):
+99 < 1     data = None if body is None else json.dumps(body).encode()
+100 < 1     req = urllib.request.Request(url, data=data, method="GET" if body is None else "POST",
+101 < 1                                  headers={} if body is None else {"content-type": "application/json"})
+102 < 1     try:
+103 < 1         with urllib.request.urlopen(req, timeout=30) as r:
+104 < 1             return r.status
+105 < 1     except urllib.error.HTTPError as e:
+106 < 1         return e.code
+107 < 1 
+108 < 1 
+109 < 1 def test_the_server_writes_a_pick_with_its_piece(server):
+110 < 1     assert request(server["url"] + "/feedback", {"kind": "pick", "piece": "todo", "chose": "B"}) == 204
+111 < 1     assert request(server["url"] + "/feedback", {"kind": "pick", "chose": "A"}) == 204
+112 < 1     assert request(server["url"] + "/feedback", {"kind": "pick", "chose": "A", "screen": "x"}) == 400
+113 < 1     with open(server["feedback"]) as f:
+114 < 1         assert f.read().splitlines() == ['{"kind":"pick","piece":"todo","chose":"B"}', '{"kind":"pick","chose":"A"}']
+115 < 1 
+116 < 1 
+117 < 1 def test_a_malformed_path_answers_400(server):
+118 < 1     assert request(server["url"] + "/%E0") == 400
+119 < 1     assert request(server["url"] + "/no-such-file.js") == 404
+120 < 1 
+121 < 1 
+122 < 1 NAMES_PAGE = """<!doctype html><html><body>
+123 < 1 <main>Main text</main><nav>Nav text</nav><form>Form text</form>
+124 < 1 <ul><li>Item one</li><li tabindex="0">Item two</li></ul>
+125 < 1 <table><tr><th>Head</th></tr><tr><td>Cell</td></tr><tr tabindex="0"><td>Row two</td></tr></table>
+126 < 1 <h2>Heading</h2><button>Btn</button><a href="#x">Lnk</a><section aria-label="Sec">Section text</section>
+127 < 1 <div role="switch">Sw</div><div role="tab">Tb</div><div role="tooltip">Tip</div><div role="menuitem">Mi</div>
+128 < 1 <div role="radio">Rd</div><div role="checkbox">Cb</div><div role="article">Art</div><div role="status">St</div>
+129 < 1 <div role="dialog">Dlg</div><div role="group">Grp</div><div role="listitem">Li3</div>
+130 < 1 <header>Hdr</header><footer>Ftr</footer><aside>Asd</aside><div title="Tt" role="note">Nt</div>
+131 < 1 <label>Due <input type="text"></label>
+132 < 1 <script src="/names.js"></script></body></html>"""
+133 < 1 
+134 < 1 CASES = [["main", "Main text"], ["navigation", "Nav text"], ["form", "Form text"], ["list", "Item one Item two"],
+135 < 1          ["listitem", "Item one"], ["listitem", "Item two"], ["table", "Head Cell Row two"], ["row", "Cell"], ["columnheader", "Head"],
+136 < 1          ["row", "Row two"], ["cell", "Cell"], ["heading", "Heading"], ["button", "Btn"], ["link", "Lnk"],
+137 < 1          ["region", "Sec"], ["switch", "Sw"], ["tab", "Tb"], ["tooltip", "Tip"], ["menuitem", "Mi"],
+138 < 1          ["radio", "Rd"], ["checkbox", "Cb"], ["article", "Art"], ["status", "St"], ["dialog", "Dlg"],
+139 < 1          ["group", "Grp"], ["listitem", "Li3"], ["banner", "Hdr"], ["contentinfo", "Ftr"],
+140 < 1          ["complementary", "Asd"], ["note", "Tt"], ["note", "Nt"], ["textbox", "Due"]]
+141 < 1 
+142 < 1 
+143 < 1 def test_the_page_names_elements_the_way_the_checker_does(bun, tmp_path):
+144 < 1     """Each (role, name) counted by preview/names.ts and by the checker's Chrome must agree.
+145 < 1     Names only: Chrome's own role mapping (an <img> is `image`, a table with no header is a
+146 < 1     layout table with no cells) is not what this leg reads."""
+147 < 1     browser = os.path.join(ROOT, "factory/stack/tinyapp/browser.ts")
+148 < 1     entry = tmp_path / "entry.ts"
+149 < 1     entry.write_text("import * as n from %s;\n(window as any).__names = n;\n"
+150 < 1                      % json.dumps(os.path.join(STORIES, "preview/names.ts")))
+151 < 1     script = """
+152 < 1 import {existsSync} from 'node:fs';
+153 < 1 import {launchBrowser} from %(browser)s;
+154 < 1 const built = await Bun.build({entrypoints: [%(entry)s], format: 'iife'});
+155 < 1 const js = await built.outputs[0].text();
+156 < 1 const html = %(html)s;
+157 < 1 const srv = Bun.serve({port: 0, hostname: '127.0.0.1', fetch: (req) => new URL(req.url).pathname === '/names.js'
+158 < 1   ? new Response(js, {headers: {'content-type': 'text/javascript'}})
+159 < 1   : new Response(html, {headers: {'content-type': 'text/html'}})});
+160 < 1 const origin = `http://127.0.0.1:${srv.port}`;
+161 < 1 let b;
+162 < 1 try { b = await launchBrowser(); } catch (e) { console.log(JSON.stringify({skip: String(e)})); process.exit(0); }
+163 < 1 try {
+164 < 1   const p = await b.openUrl({url: origin + '/', origin, clock: '2026-01-01T00:00:00Z'});
+165 < 1   for (let i = 0; i < 100 && !(await p.evaluate('!!window.__names')); i++) await Bun.sleep(50);
+166 < 1   const out = [];
+167 < 1   for (const [role, name] of %(cases)s) {
+168 < 1     const ours = await p.evaluate(`[...document.querySelectorAll('*')].filter((e) => __names.roleOf(e) === ${JSON.stringify(role)} && __names.nameOf(e) === ${JSON.stringify(name)}).length`);
+169 < 1     out.push([role, name, ours, await p.count({role, name})]);
+170 < 1   }
+171 < 1   await p.close();
+172 < 1   console.log(JSON.stringify({out}));
+173 < 1 } finally { await b.close(); srv.stop(); }
+174 < 1 """ % {"browser": json.dumps(browser), "entry": json.dumps(str(entry)), "html": json.dumps(NAMES_PAGE),
+175 < 1        "cases": json.dumps(CASES)}
+176 < 1     got = run_bun(script)
+177 < 1     if "skip" in got:
+178 < 1         pytest.skip("no browser for the checker: " + got["skip"])
+179 < 1     differ = [c for c in got["out"] if c[2] != c[3]]
+180 < 1     assert differ == [], "role, name, names.ts count, checker count: %r" % differ
+181 < 1 

@@ -11,8 +11,10 @@
 10 < 1  *
 11 < 1  * Legs, each naming the Machine clause it comes from:
 12 < 1  *
-15 > 1  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the ninth `cloudflare`,
-16 < 1  *       and `doctor()` answers ten rows in that same order.
+16 > 1  *   (a) [M1] `ROW_IDS` is exactly the nine pinned ids, the ninth `cloudflare`,
+17 < 1  *       and `doctor()` answers nine rows in that same order.
+15 > 2  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the ninth `cloudflare`,
+16 < 2  *       and `doctor()` answers ten rows in that same order.
 14 > 2  *   (a) [M1] `ROW_IDS` is exactly the eleven pinned ids, the tenth `cloudflare`,
 15 < 2  *       and `doctor()` answers eleven rows in that same order.
 13 < 2  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the tenth `cloudflare`,
@@ -49,8 +51,9 @@
 44 < 1 const BASE_KNOWN = new Map([
 45 < 1   [lobbyKey('whoami'), { code: 1, stdout: '' }],
 46 < 1   [lobbyKey('billing plan --json'), { code: 1, stdout: '' }],
-47 < 1   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
-48 < 1   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
+48 > 1   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }]
+47 < 2   [lobbyKey('integrations setup github --list'), { code: 1, stdout: '' }],
+48 < 2   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 49 < 1 ])
 50 < 1 
 51 < 1 /**
@@ -79,19 +82,22 @@
 74 < 1 
 75 < 1 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
 76 < 1 {
-79 > 1   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper']
+80 > 1   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare']
+79 > 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper']
 78 > 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare', 'reaper']
 77 < 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'kata', 'cloudflare']
 78 < 1   assert.deepEqual(
 79 < 1     [...ROW_IDS], want,
-82 > 1     `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+83 > 1     `(a) [M1] ROW_IDS is exactly the nine pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
+82 > 2     `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
 81 > 2     `(a) [M1] ROW_IDS is exactly the eleven pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
 80 < 2     `(a) [M1] ROW_IDS is exactly the ten pinned ids in order — got: ${JSON.stringify([...ROW_IDS])}`
 81 < 1   )
 82 < 1 
 83 < 1   const exec = makeExec(JSON.stringify([]))
 84 < 1   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
-87 > 1   assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
+88 > 1   assert.equal(result.rows.length, 9, `(a) [M1] doctor() answers nine rows — got ${result.rows.length}`)
+87 > 2   assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
 86 > 2   assert.equal(result.rows.length, 11, `(a) [M1] doctor() answers eleven rows — got ${result.rows.length}`)
 85 < 2   assert.equal(result.rows.length, 10, `(a) [M1] doctor() answers ten rows — got ${result.rows.length}`)
 86 < 1   assert.deepEqual(

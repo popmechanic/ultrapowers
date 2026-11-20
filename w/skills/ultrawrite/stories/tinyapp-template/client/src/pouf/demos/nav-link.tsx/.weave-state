@@ -1,0 +1,13 @@
+0 < 2 import { NavLink } from '../NavLink'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const navLinkDemos: Demo[] = [
+4 < 2   { id: 'active', states: ['hover', 'focus'], render: () => (
+5 < 2       <span data-subject>
+6 < 2         <NavLink href="#overview" currentPath="#overview" icon="overview">Overview</NavLink>
+7 < 2       </span>
+8 < 2     ) },
+9 < 2   { id: 'inactive', render: () => <NavLink href="#settings" currentPath="#overview" icon="settings">Settings</NavLink> },
+10 < 2   { id: 'tone', render: () => <NavLink href="#live" currentPath="#live" icon="live" tone="orange">Live</NavLink> },
+11 < 2 ]
+12 < 2 

@@ -1,0 +1,717 @@
+0 < 1 #!/usr/bin/env python3
+2 > 1 """The weave keeper (map #1292): every agent's copy of every
+1 < 2 """PROTOTYPE (map #1292, ticket 4). The weave keeper: every agent's copy of every
+2 < 1 file as a Manyana weave, driven over stdin/stdout, one JSON request per line.
+3 < 1 
+4 < 1 Line identity comes from edit calls (`edit`), never from diffing a finished
+5 < 1 file, except for the fallback (`rewrite`: a Write or a shell change), which
+6 < 1 diffs the visible text and replays the result as edits.
+7 < 1 
+8 < 1 Authorship rides beside the weave, keyed by line identity (`line_keys`): one
+9 < 1 sidecar per copy, `{path: {key: set(label)}}`, gossiped with the copy. A label
+10 < 1 is `task_label(agent, task)` (`A.2`: builder A on task 2), so a builder's later
+11 < 1 task sees its earlier task's lines as a peer's. Stored lines are plain text;
+12 < 1 a line with no sidecar entry is authored `base` (every line of BASE is).
+13 < 1 
+14 < 1 Requests (all answer {"ok": true, ...} or {"ok": false, "error": ...}):
+15 < 1   base     {root, paths}                  read BASE files into the base weave
+16 < 1   edit     {agent, path, vstart, vend, lines}
+17 < 1   rewrite  {agent, path, content|null}    fallback: Write / shell / delete
+18 < 1   view     {agent, path}                  visible text of one path
+19 < 1   publish  {agent}                        this agent's copy becomes its published copy
+20 < 1   pull     {agent}                        merge every peer's published copy into this one
+21 < 1   merged   {}                             the join of every published copy
+22 < 1 
+23 < 1 Added for ticket 2 (#359; every earlier request answers as before, plus fields):
+24 < 1   pull          also answers sameAnchor [{path, from, flags}] (see same_anchor)
+26 > 1   merged        takes an optional order; also answers sameAnchor
+25 < 2   merged        takes an optional order; also answers sameAnchor, digest
+26 < 1   authors_keyed {agent, path}             [author] per visible line, by identity
+27 < 1 
+28 < 1 Added for #1401: edit and rewrite also answer peerRewrites [{peers, peer, before, after}], one per
+29 < 1 sub-edit that replaced or deleted lines a peer wrote: `peer` the peer's lines, `before` what those
+30 < 1 lines had replaced when the peer wrote them, `after` what this edit put there.
+31 < 1   merged        also answers lost [{path, author, by, lines}]: lines of the join of every published
+32 < 1                                           copy that someone other than their author (`by`) removed
+33 < 1 
+34 < 1 Added for main-is-a-peer, stage 2 (main's memory, weave_store.py):
+35 < 1   memory        {repo, commit, remote?}   after `base`, before any copy: the stored weaves of `commit`'s
+36 < 1                                           tree replace the base weaves of the paths the store holds, so
+37 < 1                                           a run's lines keep the identity they have on main. Answers
+38 < 1                                           {memory: true, tree, via, stored, unwoven, installed} or
+39 < 1                                           {memory: false, reason}. The store's authorship stays out of
+40 < 1                                           the run's sidecars: a line from an earlier run reads `base`.
+41 < 1   store         {repo, commit, run}       the join of every published copy becomes the entry of
+42 < 1                                           `commit`'s tree, its lines authored `@r<run>:<task>`:
+43 < 1                                           {stored: true, entry, tree, paths} or {stored: false, reason}
+44 < 1 
+45 < 1 Added for main-is-a-peer, stage 3 (a moved main arrives mid-run):
+46 < 1   main          {repo, commit, remote?, skip?}  the default branch moved to `commit`: its stored weaves
+47 < 1                                           become the published copy of the peer `main`, so every pull
+48 < 1                                           and the join take them in like a builder's work. Its lines
+49 < 1                                           written since the run's base carry the store's own labels
+50 < 1                                           (`@r<run>:<task>`, `@c:<sha12>`) as their authors; `blame`
+51 < 1                                           reads such a line as `base`, since it is no work of this run.
+52 < 1                                           `skip` is the engine's pattern of paths it never weaves.
+53 < 1                                           {moved: true, tree, via, paths} or {moved: false, reason}
+54 < 1 
+55 < 1 Added for #1404 (one authorship mechanism, keyed by task):
+56 < 1   edit, rewrite take an optional task; every label recorded, compared or answered is task_label(agent, task)
+57 < 1   blame         {}                        {path: [label per visible line of the join]} (`a|b` or `base`)
+58 < 1 """
+59 < 1 import difflib, json, os, sys, threading
+60 < 1 
+61 < 1 KERNEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "skills", "ultrapowers", "kernel")
+62 < 1 sys.path[:0] = [os.path.join(KERNEL, "vendor")]
+63 < 1 import manyana  # noqa: E402
+64 < 1 
+65 < 1 # The vendored kernel's merge walk (`merge_states` -> `state_to_tree` ->
+66 < 1 # `pull_out_tree`/`merge_trees`/`insert_tree`) recurses once per weave-state
+67 < 1 # entry, ~2*lines+4 frames. Raising `sys.setrecursionlimit` alone does not buy
+68 < 1 # those frames: the C stack runs out first and the interpreter dies on a
+69 < 1 # SIGSEGV. So the recursion limit is raised on a thread given a 1 GiB stack,
+70 < 1 # which is what lets a large file weave.
+71 < 1 STACK_BYTES = 1 << 30
+72 < 1 THREAD_RECURSION_LIMIT = 1_000_000
+73 < 1 
+74 < 1 
+75 < 1 def run_on_kernel_thread(fn, *args, **kwargs):
+76 < 1     """Run `fn` on a thread with a 1 GiB stack and the fixed recursion limit.
+77 < 1 
+78 < 1     The result and any exception are marshalled back to the caller — including
+79 < 1     `SystemExit`, so exit codes are unchanged by the hop. A platform that
+80 < 1     refuses the big stack (`ValueError` from `threading.stack_size`) or the
+81 < 1     thread itself (`RuntimeError` from `Thread.start()`) falls through to a
+82 < 1     main-thread call plus one stderr line: the work still runs, just without
+83 < 1     the headroom. `threading.stack_size` is process-global like the recursion
+84 < 1     limit, so the prior stack size is restored in every path — a thread's
+85 < 1     stack is fixed at `start()`, so threads created later are unaffected.
+86 < 1 
+87 < 1     `sys.setrecursionlimit` is interpreter-global, not per-thread, so raising
+88 < 1     it inside the thread raises it for the whole process. The limit is
+89 < 1     therefore restored before the thread ends — the caller (and, in-process,
+90 < 1     every later caller) keeps the limit it had. Restoring is safe because the
+91 < 1     thread's own stack is shallow again by then: `fn` has already returned or
+92 < 1     unwound.
+93 < 1     """
+94 < 1     box = {}
+95 < 1 
+96 < 1     def target():
+97 < 1         prior = sys.getrecursionlimit()
+98 < 1         sys.setrecursionlimit(THREAD_RECURSION_LIMIT)
+99 < 1         try:
+100 < 1             box["result"] = fn(*args, **kwargs)
+101 < 1         except BaseException as e:      # marshal everything back, incl. SystemExit
+102 < 1             box["exc"] = e
+103 < 1         finally:
+104 < 1             sys.setrecursionlimit(prior)
+105 < 1 
+106 < 1     try:
+107 < 1         prior_stack = threading.stack_size(STACK_BYTES)
+108 < 1     except ValueError as e:
+109 < 1         # Nothing was changed: stack_size raises before mutating.
+110 < 1         print("weave: big-stack thread unavailable (%s); running in main "
+111 < 1               "thread" % e, file=sys.stderr)
+112 < 1         return fn(*args, **kwargs)
+113 < 1     try:
+114 < 1         t = threading.Thread(target=target, name="weave-kernel")
+115 < 1         t.start()
+116 < 1     except RuntimeError as e:
+117 < 1         print("weave: big-stack thread unavailable (%s); running in main "
+118 < 1               "thread" % e, file=sys.stderr)
+119 < 1         return fn(*args, **kwargs)
+120 < 1     finally:
+121 < 1         # Process-global, like the recursion limit: a thread's stack is fixed
+122 < 1         # at start(), so restoring here affects only threads created later.
+123 < 1         threading.stack_size(prior_stack)
+124 < 1     t.join()
+125 < 1     if "exc" in box:
+126 < 1         raise box["exc"]
+127 < 1     return box["result"]
+128 < 1 
+129 < 1 M = manyana
+130 < 1 
+131 < 1 
+132 < 1 def task_label(agent, task):
+133 < 1     """The authorship label of `agent` working `task`: `A.2`, or `A` with no task."""
+134 < 1     return agent if task is None else agent + "." + str(task)
+135 < 1 
+136 < 1 
+137 < 1 def strip(line):
+138 < 1     # Identity: no stored line carries a label (in-line stamping cut run-247's line, #1326).
+139 < 1     return line
+140 < 1 
+141 < 1 
+142 < 1 def label_of(side, key):
+143 < 1     """A line's author labels from a keyed sidecar, joined `|` in sorted order, or `base`."""
+144 < 1     who = side.get(key)
+145 < 1     return "|".join(sorted(who)) if who else "base"
+146 < 1 
+147 < 1 
+148 < 1 def visible_raw(state):
+149 < 1     return M.current_lines(state)
+150 < 1 
+151 < 1 
+152 < 1 def apply_edit(state_str, vstart, vend, new_lines):
+153 < 1     """Mark visible [vstart, vend) deleted and insert new_lines there, with
+154 < 1     update_state's own anchoring rule. Returns (state, deleted raw lines)."""
+155 < 1     state = M.deserialize_state(state_str)
+156 < 1     if not state:
+157 < 1         return M.initial_state(new_lines), []
+158 < 1     vis = [i for i, e in enumerate(state) if e[3] % 2]
+159 < 1     gone = []
+160 < 1     for d in vis[vstart:vend]:
+161 < 1         state[d][3] += 1
+162 < 1         gone.append(state[d][0])
+163 < 1     if new_lines:
+164 < 1         if vend > vstart:
+165 < 1             pos = vis[vstart]
+166 < 1         elif vstart > 0:
+167 < 1             pos = vis[vstart - 1] + 1
+168 < 1         else:
+169 < 1             pos = 0
+170 < 1         out = []
+171 < 1         for p in range(len(state) + 1):
+172 < 1             if p == pos:
+173 < 1                 if p == len(state):
+174 < 1                     up = True
+175 < 1                 elif p == 0:
+176 < 1                     up = False
+177 < 1                 else:
+178 < 1                     up = state[p - 1][1] > state[p][1]
+179 < 1                 if up:
+180 < 1                     out.append([new_lines[0], state[p - 1][1] + 1, False, 1])
+181 < 1                 else:
+182 < 1                     out.append([new_lines[0], state[p][1] + 1, True, 1])
+183 < 1                 for line in new_lines[1:]:
+184 < 1                     out.append([line, out[-1][1] + 1, False, 1])
+185 < 1             if p < len(state):
+186 < 1                 out.append(state[p])
+187 < 1         state = out
+188 < 1     return M.serialize_state(state), gone
+189 < 1 
+190 < 1 
+191 < 1 # ── line identity (map #1292 ticket 2 / #359) ─────────────────────────────
+192 < 1 # Additive: nothing above changes. Manyana already has a notion of "the same
+193 < 1 # line": two entries are one line when they hang off the same parent, on the
+194 < 1 # same side, with the same text (merge_tree_lists matches them). `line_keys`
+195 < 1 # makes that notion explicit as a short hash per entry, computed from the
+196 < 1 # state alone, so a sidecar can be keyed by it and gossiped beside the weave.
+197 < 1 import collections, copy as _copy, hashlib  # noqa: E402
+198 < 1 
+199 < 1 
+200 < 1 def _parents(st):
+201 < 1     """Parent index per entry (-1 = root) and side, by state_to_tree's rule."""
+202 < 1     n = len(st)
+203 < 1     parent = [-1] * n
+204 < 1     last = {}
+205 < 1     for i, (_, depth, ar, _c) in enumerate(st):
+206 < 1         if not ar:
+207 < 1             parent[i] = -1 if depth == 0 else last[depth - 1]
+208 < 1         last[depth] = i
+209 < 1     last = {}
+210 < 1     for i in range(n - 1, -1, -1):
+211 < 1         _, depth, ar, _c = st[i]
+212 < 1         if ar:
+213 < 1             parent[i] = last[depth - 1]
+214 < 1         last[depth] = i
+215 < 1     return parent
+216 < 1 
+217 < 1 
+218 < 1 def line_keys(state):
+219 < 1     """[key] per entry of `state` (a state string or a deserialized list).
+220 < 1     key = hash(parent key, side, text, rank among equal-text siblings on that
+221 < 1     side). The rank is the one positional part: it is the XaXbX residue."""
+222 < 1     st = M.deserialize_state(state) if isinstance(state, str) else state
+223 < 1     parent = _parents(st)
+224 < 1     keys = [None] * len(st)
+225 < 1     seen = collections.Counter()
+226 < 1     for i in sorted(range(len(st)), key=lambda i: (st[i][1], i)):   # parents are one depth up
+227 < 1         p = parent[i]
+228 < 1         pk = "root" if p < 0 else keys[p]
+229 < 1         text, ar = st[i][0], st[i][2]
+230 < 1         rank = seen[(pk, ar, text)]
+231 < 1         seen[(pk, ar, text)] += 1
+232 < 1         keys[i] = hashlib.blake2b(("%s\0%d\0%s\0%d" % (pk, ar, text, rank)).encode(), digest_size=8).hexdigest()
+233 < 1     return keys
+234 < 1 
+235 < 1 
+236 < 1 def same_anchor(left, right, merged, lauth, rauth):
+237 < 1     """Concurrent inserts at ONE anchor, from different authors, in a merge of
+238 < 1     `left` and `right` (states) into `merged`. `lauth`/`rauth` are the two
+239 < 1     sides' authorship sidecars {key: set(author)}. Two shapes:
+240 < 1       siblings  lines only on the left and lines only on the right hang off the
+241 < 1                 same parent on the same side: Manyana orders them by text
+242 < 1                 (it flags the region, and an adds-only union then hides it);
+243 < 1       unified   both sides inserted the same text at the same anchor (one key,
+244 < 1                 two authors, neither side knew the other's), so the kernel
+245 < 1                 merged them as one line, and what follows it differs by side:
+246 < 1                 the kernel flags nothing at all.
+247 < 1     Returns [{kind, anchor, lines, authors}]."""
+248 < 1     lk, rk = set(line_keys(left)), set(line_keys(right))
+249 < 1     st = M.deserialize_state(merged)
+250 < 1     keys, parent = line_keys(st), _parents(st)
+251 < 1     kids = collections.defaultdict(list)
+252 < 1     for i, p in enumerate(parent):
+253 < 1         kids[(p, st[i][2])].append(i)
+254 < 1     out = []
+255 < 1 
+256 < 1     def anchor_text(p):
+257 < 1         return None if p < 0 else strip(st[p][0])
+258 < 1 
+259 < 1     def who(auth, k):
+260 < 1         return auth.get(k) or set()
+261 < 1     for (p, side), idx in kids.items():
+262 < 1         vis = [i for i in idx if st[i][3] % 2]
+263 < 1         lonly = [i for i in vis if keys[i] in lk and keys[i] not in rk]
+264 < 1         ronly = [i for i in vis if keys[i] in rk and keys[i] not in lk]
+265 < 1         if lonly and ronly:
+266 < 1             la = set().union(*(who(lauth, keys[i]) for i in lonly))
+267 < 1             ra = set().union(*(who(rauth, keys[i]) for i in ronly))
+268 < 1             if la != ra or not la:
+269 < 1                 out.append({"kind": "siblings", "anchor": anchor_text(p), "side": "below" if side else "above",
+270 < 1                             "lines": [strip(st[i][0]) for i in lonly + ronly], "authors": sorted(la | ra)})
+271 < 1     for i, k in enumerate(keys):
+272 < 1         a, b = who(lauth, k), who(rauth, k)
+273 < 1         if a and b and not (a <= b or b <= a) and st[i][3] % 2:
+274 < 1             follow = [j for side in (False, True) for j in kids[(i, side)]
+275 < 1                       if (keys[j] in lk) != (keys[j] in rk)]
+276 < 1             one_side = len({keys[j] in lk for j in follow}) == 1   # both sides: "siblings" already says it
+277 < 1             if follow and one_side:
+278 < 1                 out.append({"kind": "unified", "anchor": anchor_text(parent[i]), "line": strip(st[i][0]),
+279 < 1                             "lines": [strip(st[j][0]) for j in follow], "authors": sorted(a | b)})
+280 < 1     return out
+281 < 1 
+282 < 1 
+283 < 1 def both_created(left, right, lauth, rauth):
+284 < 1     """A path with no text at the run's base that main and a builder each began apart: `left` and
+285 < 1     `right` each show lines the other does not hold, one side's written by main since the base (a
+286 < 1     stored label, `@…`) and the other's by a builder. The kernel marks that adds-only, and the union
+287 < 1     is two whole files one after the other. The same from two builders of one run is not this: both
+288 < 1     their tasks' probes run on the join, and no probe of this run speaks for main's file."""
+289 < 1     def only(mine, theirs, auth):
+290 < 1         st = M.deserialize_state(mine)
+291 < 1         held = set(line_keys(theirs))
+292 < 1         return {l for e, k in zip(st, line_keys(st)) if e[3] % 2 and k not in held for l in auth.get(k, ())}
+293 < 1     lo, ro = only(left, right, lauth), only(right, left, rauth)
+294 < 1     stored = lambda who: any(l.startswith("@") for l in who)
+295 < 1     built = lambda who: any(not l.startswith("@") for l in who)
+296 < 1     return (stored(lo) and built(ro)) or (built(lo) and stored(ro))
+297 < 1 
+298 < 1 
+299 < 1 def _union_auth(into, other):
+300 < 1     for path, m in other.items():
+301 < 1         dst = into.setdefault(path, {})
+302 < 1         for k, who in m.items():
+303 < 1             dst.setdefault(k, set()).update(who)
+304 < 1 
+305 < 1 
+306 < 1 def _union_del(into, other):
+307 < 1     # every deleting label per entry, a set, unioned like kauth (#1409)
+308 < 1     _union_auth(into, other)
+309 < 1 
+310 < 1 
+311 < 1 def _lost_of(join, auth, dels):
+312 < 1     """Per (path, author label, deleting labels): the entries of the join that are invisible, were
+313 < 1     written by someone (not base), and none of whose deleting labels is among their authors, in weave order."""
+314 < 1     lost = {}
+315 < 1     for p, st in join.items():
+316 < 1         js, side, dside = M.deserialize_state(st), auth.get(p, {}), dels.get(p, {})
+317 < 1         for e, k in zip(js, line_keys(js)):
+318 < 1             if e[3] % 2 or not (side.get(k, set()) - {"base"}):
+319 < 1                 continue
+320 < 1             by = dside.get(k, set())
+321 < 1             if by & side[k]:
+322 < 1                 continue
+323 < 1             lost.setdefault((p, label_of(side, k), "|".join(sorted(by))), []).append(e[0])
+324 < 1     return [{"path": p, "author": a, "by": b or None, "lines": ls}
+325 < 1             for (p, a, b), ls in sorted(lost.items(), key=lambda kv: kv[0])]
+326 < 1 
+327 < 1 
+328 < 1 def _union_rep(into, other):
+329 < 1     # one identity may be written by several labels (identical text at one spot): keep each
+330 < 1     # label's replaced lines; the tuples are immutable and shared, never copied
+331 < 1     for path, m in other.items():
+332 < 1         dst = into.setdefault(path, {})
+333 < 1         for k, by in m.items():
+334 < 1             mine = dst.get(k)
+335 < 1             if mine is None:
+336 < 1                 dst[k] = dict(by)
+337 < 1             else:
+338 < 1                 for lab, gone in by.items():
+339 < 1                     mine.setdefault(lab, gone)
+340 < 1 
+341 < 1 
+342 < 1 def _copy_rep(side):
+343 < 1     # the structure is copied, the shared tuples of replaced lines are not
+344 < 1     return {p: {k: dict(by) for k, by in m.items()} for p, m in side.items()}
+345 < 1 
+346 < 1 
+347 < 1 def _before(by):
+348 < 1     # the replaced lines of every writing label, in sorted label order, repeats removed
+349 < 1     seen, out = set(), []
+350 < 1     for lab in sorted(by):
+351 < 1         for line in by[lab]:
+352 < 1             if line not in seen:
+353 < 1                 seen.add(line)
+354 < 1                 out.append(line)
+355 < 1     return out
+356 < 1 
+357 < 1 
+358 < 1 class Keeper:
+359 < 1     def __init__(self):
+360 < 1         self.base = {}        # path -> weave state
+361 < 1         self.copies = {}      # agent -> {path -> state}
+362 < 1         self.published = {}   # agent -> {path -> state}
+363 < 1         # ticket 2 (additive): authorship keyed by line identity, one sidecar per
+364 < 1         # copy, gossiped with it (a union, so order-free).
+365 < 1         self.kauth = {}       # copy -> {path -> {key -> set(author)}}
+366 < 1         self.kauth_pub = {}   # agent -> the sidecar as of its last publish
+367 < 1         # #1404: the label of the edit that deleted each entry, published and pulled like kauth
+368 < 1         self.kdel = {}        # copy -> {path -> {key -> set(label)}}  (#1409: every deleter)
+369 < 1         self.kdel_pub = {}    # agent -> the sidecar as of its last publish
+370 < 1         # #1410: the visible lines the edit that wrote each entry replaced, keyed by identity
+371 < 1         self.krep = {}        # copy -> {path -> {key -> {label -> (line, ...)}}}
+372 < 1         self.krep_pub = {}    # agent -> the sidecar as of its last publish
+373 < 1         # main's memory (weave_store.py): the Memory the run started on, and the paths whose base
+374 < 1         # weave it supplied
+375 < 1         self.mem = None
+376 < 1         self.mem_installed = set()
+377 < 1 
+378 < 1     def auth(self, who):
+379 < 1         return self.kauth.setdefault(who, {})
+380 < 1 
+381 < 1     def dels(self, who):
+382 < 1         return self.kdel.setdefault(who, {})
+383 < 1 
+384 < 1     def reps(self, who):
+385 < 1         return self.krep.setdefault(who, {})
+386 < 1 
+387 < 1     def copy(self, agent):
+388 < 1         if agent not in self.copies:
+389 < 1             self.copies[agent] = dict(self.base)
+390 < 1         return self.copies[agent]
+391 < 1 
+392 < 1     def state(self, agent, path):
+393 < 1         c = self.copy(agent)
+394 < 1         if path not in c:
+395 < 1             c[path] = M.initial_state([])   # absent: the shared empty ancestor for adds
+396 < 1         return c[path]
+397 < 1 
+398 < 1     def lines(self, agent, path):
+399 < 1         return [strip(l) for l in visible_raw(self.state(agent, path))]
+400 < 1 
+401 < 1     # ── requests ──────────────────────────────────────────────────────────
+402 < 1     def r_base(self, root, paths):
+403 < 1         for p in paths:
+404 < 1             # newline="": a CRLF file's lines keep their \r, as the file has them on disk and as the
+405 < 1             # store weaves them; universal newlines made every such line drift on its first sync
+406 < 1             with open(os.path.join(root, p), encoding="utf-8", newline="") as f:
+407 < 1                 self.base[p] = M.initial_state(f.read().split("\n"))
+408 < 1         return {"paths": len(paths)}
+409 < 1 
+410 < 1     def who(self, agent, path, key):
+411 < 1         """The author labels of the entry `key` in `agent`'s copy of `path`, by the keyed sidecar."""
+412 < 1         return label_of(self.auth(agent).get(path, {}), key)
+413 < 1 
+414 < 1     def r_edit(self, agent, path, vstart, vend, lines, refine=True, task=None):
+415 < 1         label = task_label(agent, task)
+416 < 1         cur = self.lines(agent, path)
+417 < 1         subs = [(vstart, vend, lines)]
+418 < 1         if refine and vend > vstart and lines:
+419 < 1             ops = difflib.SequenceMatcher(None, cur[vstart:vend], lines, autojunk=False).get_opcodes()
+420 < 1             subs = [(vstart + i1, vstart + i2, lines[j1:j2]) for t, i1, i2, j1, j2 in ops if t != "equal"]
+421 < 1         deleted, touched, peers, rewrites = 0, 0, set(), []
+422 < 1         for a, z, new_lines in reversed(subs):
+423 < 1             st = self.state(agent, path)
+424 < 1             ss = M.deserialize_state(st)
+425 < 1             vis_keys = [k for e, k in zip(ss, line_keys(ss)) if e[3] % 2][a:z]
+426 < 1             owners = [self.who(agent, path, k) for k in vis_keys]
+427 < 1             gone_text = visible_raw(st)[a:z]
+428 < 1             theirs = [(o, t, k) for o, t, k in zip(owners, gone_text, vis_keys) if o not in (label, "base")]
+429 < 1             if theirs:
+430 < 1                 rside = self.reps(agent).get(path, {})
+431 < 1                 rewrites.append({"peers": sorted({p for o, _, _ in theirs for p in o.split("|")}),
+432 < 1                                  "peer": [t for _, t, _ in theirs],
+433 < 1                                  "before": [b for _, _, k in theirs for b in _before(rside.get(k, {}))],
+434 < 1                                  "after": list(new_lines)})
+435 < 1             new, gone = apply_edit(st, a, z, list(new_lines))
+436 < 1             self.copy(agent)[path] = new
+437 < 1             if new_lines:   # ticket 2: the keyed sidecar learns the new lines' identity
+438 < 1                 fresh = collections.Counter(line_keys(new)) - collections.Counter(line_keys(st))
+439 < 1                 side = self.auth(agent).setdefault(path, {})
+440 < 1                 rside = self.reps(agent).setdefault(path, {})
+441 < 1                 gone_t = tuple(gone_text)   # one per sub-edit, shared by its new lines
+442 < 1                 for k in fresh:
+443 < 1                     side.setdefault(k, set()).add(label)
+444 < 1                     rside.setdefault(k, {})[label] = gone_t
+445 < 1             dside = self.dels(agent).setdefault(path, {})   # a key survives its deletion: the counter is not in it
+446 < 1             for k in vis_keys:
+447 < 1                 dside.setdefault(k, set()).add(label)
+448 < 1             deleted += len(gone)
+449 < 1             for o in owners:
+450 < 1                 if o not in (label, "base"):
+451 < 1                     touched += 1
+452 < 1                     peers.add(o)
+453 < 1         return {"deleted": deleted, "peer_lines_touched": touched, "peers": sorted(peers), "subedits": len(subs),
+454 < 1                 "peerRewrites": rewrites[::-1]}
+455 < 1 
+456 < 1     def r_rewrite(self, agent, path, content, task=None):
+457 < 1         old = self.lines(agent, path)
+458 < 1         new = [] if content is None else content.split("\n")
+459 < 1         if content is not None and not old and path not in self.copy(agent):
+460 < 1             self.copy(agent)[path] = M.initial_state([])
+461 < 1         ops = difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes()
+462 < 1         touched, peers, rewrites = 0, set(), []
+463 < 1         for tag_, i1, i2, j1, j2 in reversed(ops):
+464 < 1             if tag_ == "equal":
+465 < 1                 continue
+466 < 1             r = self.r_edit(agent, path, i1, i2, new[j1:j2], refine=False, task=task)
+467 < 1             touched += r["peer_lines_touched"]
+468 < 1             peers |= set(r["peers"])
+469 < 1             rewrites[:0] = r["peerRewrites"]
+470 < 1         return {"ops": sum(1 for o in ops if o[0] != "equal"), "peer_lines_touched": touched, "peers": sorted(peers),
+471 < 1                 "peerRewrites": rewrites}
+472 < 1 
+473 < 1     def r_view(self, agent, path):
+474 < 1         return {"text": "\n".join(self.lines(agent, path))}
+475 < 1 
+476 < 1     def r_publish(self, agent):
+477 < 1         self.published[agent] = dict(self.copy(agent))
+478 < 1         self.kauth_pub[agent] = _copy.deepcopy(self.auth(agent))
+479 < 1         self.kdel_pub[agent] = _copy.deepcopy(self.dels(agent))
+480 < 1         self.krep_pub[agent] = _copy_rep(self.reps(agent))
+481 < 1         return {"paths": len(self.published[agent])}
+482 < 1 
+484 > 1     def r_pull(self, agent):
+483 < 2     def r_pull(self, agent, paths=None):
+484 < 2         # paths (optional): take in only these paths' published changes; absent, take in all
+485 < 2         want = None if paths is None else set(paths)
+486 < 1         mine = self.copy(agent)
+487 < 1         changed, flagged = [], []
+488 < 1         for peer, pub in self.published.items():
+489 < 1             if peer == agent:
+490 < 1                 continue
+491 < 1             peer_auth = self.kauth_pub.get(peer, {})
+492 < 1             for p, st in pub.items():
+493 < 2                 if want is not None and p not in want:
+494 < 2                     continue
+495 < 1                 before = mine.get(p)
+496 < 1                 flags, made = [], False
+497 < 1                 if before is not None and st == self.base.get(p):
+498 < 1                     continue   # the peer never changed this path: every copy began from this weave, so mine already holds it
+499 < 1                 if before is None:
+500 < 1                     mine[p] = st
+501 < 1                     after, conflict, ann = st, False, []
+502 < 1                 elif st == before:
+503 < 1                     after, conflict, ann = before, False, []   # one weave: nothing to merge, its authors still to take in
+504 < 1                 else:
+505 < 1                     after, ann = M.merge_states(before, st)
+506 < 1                     conflict = ann != M.current_lines(after)
+507 < 1                     mine[p] = after
+508 < 1                     if st != before:   # ticket 2: concurrent inserts at one anchor (even when mine already holds theirs)
+509 < 1                         flags = same_anchor(before, st, after, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
+510 < 1                         made = conflict and p not in self.base and both_created(before, st, self.auth(agent).get(p, {}), peer_auth.get(p, {}))
+511 < 1                 _union_auth(self.auth(agent), {p: peer_auth.get(p, {})})
+512 < 1                 _union_del(self.dels(agent), {p: self.kdel_pub.get(peer, {}).get(p, {})})
+513 < 1                 _union_rep(self.reps(agent), {p: self.krep_pub.get(peer, {}).get(p, {})})
+514 < 1                 if flags:
+515 < 1                     flagged.append({"path": p, "from": peer, "flags": flags})
+516 < 1                 if before != after:
+517 < 1                     old = [strip(l) for l in visible_raw(before)] if before else []
+518 < 1                     new_raw = visible_raw(after)
+519 < 1                     new = [strip(l) for l in new_raw]
+520 < 1                     if old != new or conflict:
+521 < 1                         heads = [l for l in ann if l.startswith(("<<<<<<< begin", "======= begin"))] if before is not None and conflict else []
+522 < 1                         changed.append({"path": p, "from": peer, "conflict": conflict,
+523 < 1                                         "addsOnly": bool(heads) and all("added" in h for h in heads),
+524 < 1                                         "bothCreated": made,
+525 < 1                                         "annotated": "\n".join(strip(l) for l in ann) if conflict else None,
+526 < 1                                         "added": sum(1 for o in difflib.ndiff(old, new) if o.startswith("+ ")),
+527 < 1                                         "removed": sum(1 for o in difflib.ndiff(old, new) if o.startswith("- ")),
+528 < 1                                         "text": "\n".join(new), "exists": bool(new_raw),
+529 < 1                                         "sameAnchor": flags})
+530 < 1         return {"changed": changed, "sameAnchor": flagged}
+531 < 1 
+532 < 1     def r_merged(self, order=None):
+533 < 1         out, conflicts, annotated, adds_only, made = {}, [], {}, {}, {}
+534 < 1         same, auth, dels = {}, {}, {}   # ticket 2 (additive): same-anchor flags, the join's digest
+535 < 1         for who in (order or list(self.published)):
+536 < 1             _union_del(dels, self.kdel_pub.get(who, {}))
+537 < 1             pub, pauth = self.published[who], self.kauth_pub.get(who, {})
+538 < 1             for p, st in pub.items():
+539 < 1                 if p not in out:
+540 < 1                     out[p] = st
+541 < 1                 elif st == out[p] or st == self.base.get(p):
+542 < 1                     pass   # the same weave, or the base every copy began from: the join already holds it
+543 < 1                 else:
+544 < 1                     m, ann = M.merge_states(out[p], st)
+545 < 1                     if st != out[p]:
+546 < 1                         same.setdefault(p, []).extend(same_anchor(out[p], st, m, auth.get(p, {}), pauth.get(p, {})))
+547 < 1                     if ann != M.current_lines(m):
+548 < 1                         conflicts.append(p)
+549 < 1                         heads = [l for l in ann if l.startswith(("<<<<<<< begin", "======= begin"))]
+550 < 1                         only = all(("added" in h) for h in heads)
+551 < 1                         adds_only[p] = adds_only.get(p, True) and only
+552 < 1                         if p not in self.base and both_created(out[p], st, auth.get(p, {}), pauth.get(p, {})):
+553 < 1                             made[p] = True
+554 < 1                         annotated[p] = "\n".join(strip(l) for l in ann)
+555 < 1                     out[p] = m
+556 < 1             _union_auth(auth, pauth)
+557 < 1         files = {p: "\n".join(strip(l) for l in visible_raw(st)) for p, st in out.items()}
+558 < 1         exists = {p: bool(visible_raw(st)) for p, st in out.items()}
+559 < 2         digest = hashlib.blake2b(json.dumps(sorted(out.items())).encode(), digest_size=8).hexdigest()
+560 < 1         return {"files": files, "exists": exists, "conflicts": sorted(set(conflicts)), "annotated": annotated, "addsOnly": adds_only,
+561 < 1                 "bothCreated": made,
+563 > 1                 "sameAnchor": {p: f for p, f in same.items() if f},
+562 < 2                 "sameAnchor": {p: f for p, f in same.items() if f}, "digest": digest,
+563 < 1                 # the survival fact from this same join, so a snapshot and its lost lines never part
+564 < 1                 "lost": _lost_of(out, auth, dels)}
+565 < 1 
+566 < 1     def r_memory(self, repo, commit, remote=None):
+567 < 1         import weave_store as S
+568 < 1         if self.copies:
+569 < 1             raise RuntimeError("memory comes before any copy")
+570 < 1         try:
+571 < 1             mem = S.open_store(repo, commit, remote)
+572 < 1         except S.Drift as e:
+573 < 1             return {"memory": False, "reason": "drift", "paths": e.paths}
+574 < 1         if mem is None:
+575 < 1             return {"memory": False, "reason": "before-genesis"}
+576 < 1         # only paths the engine handed to `base`: a stored path absent at this tree (deleted, or one
+577 < 1         # the engine never weaves) stays out of every copy, and `store` meets it again
+578 < 1         for p, st in mem.states.items():
+579 < 1             if p in self.base:
+580 < 1                 self.base[p] = st
+581 < 1                 self.mem_installed.add(p)
+582 < 1         self.mem = mem
+583 < 1         return {**mem.summary(), "installed": len(self.mem_installed)}
+584 < 1 
+585 < 1     def r_main(self, repo, commit, remote=None, skip=None):
+586 < 1         import re
+587 < 1         import weave_store as S
+588 < 1         old = self.mem
+589 < 1         if old is None:
+590 < 1             return {"moved": False, "reason": "no-memory"}
+591 < 1         if remote:
+592 < 1             S.sync(repo, remote)
+593 < 1         try:
+594 < 1             new = S.resolve(repo, commit)
+595 < 1         except S.Drift as e:
+596 < 1             return {"moved": False, "reason": "drift", "paths": e.paths}
+597 < 1         if new is None:
+598 < 1             return {"moved": False, "reason": "before-genesis"}
+599 < 1         # a path this run weaves that main stopped keeping as text has no weave to merge: the run
+600 < 1         # stops following main, and the publish's catch-up decides that path by its bytes
+601 < 1         gone = sorted(p for p in self.base if p in new.unwoven and p not in old.unwoven)
+602 < 1         if gone:
+603 < 1             return {"moved": False, "reason": "no-longer-text", "paths": gone}
+604 < 1         pub = self.published.setdefault("main", {})
+605 < 1         fresh = lambda now, was: {k: who - was.get(k, set()) for k, who in now.items() if who - was.get(k, set())}
+606 < 1         changed = []
+607 < 1         for p, st in new.states.items():
+608 < 1             if st == old.states.get(p) or (skip and re.search(skip, p)):
+609 < 1                 continue                       # main has not changed it since the Memory this run holds
+610 < 1             if p not in self.base and p not in pub and not M.current_lines(st):
+611 < 1                 continue                       # absent at the run's base and absent on main still
+612 < 1             pub[p] = st
+613 < 1             self.mem_installed.add(p)
+614 < 1             changed.append(p)
+615 < 1             # only what main wrote since: an older line keeps reading `base` inside the run
+616 < 1             _union_auth(self.kauth_pub.setdefault("main", {}), {p: fresh(new.auth.get(p, {}), old.auth.get(p, {}))})
+617 < 1             _union_del(self.kdel_pub.setdefault("main", {}), {p: fresh(new.dels.get(p, {}), old.dels.get(p, {}))})
+618 < 1         self.mem = new
+619 < 1         return {"moved": True, "tree": new.tree, "via": new.via, "paths": sorted(changed)}
+620 < 1 
+621 < 1     def r_store(self, repo, commit, run="?"):
+622 < 1         import weave_store as S
+623 < 1         mem = self.mem
+624 < 1         if mem is None:
+625 < 1             return {"stored": False, "reason": "no-memory"}
+626 < 1         join, auth, dels = self._join()
+627 < 1         # `A.2` (builder A on task 2) is stored `@r<run>:2`: the builder's letter means nothing after the run
+628 < 1         # a label the store already gave (`@...`, a line main brought mid-run) is kept as it is
+629 < 1         named = lambda side: {k: {l if l.startswith("@") else "@r%s:%s" % (run, l.split(".", 1)[1] if "." in l else "?") for l in who}
+630 < 1                               for k, who in side.items()}
+631 < 1         changed = 0
+632 < 1         for p, st in join.items():
+633 < 1             if p in mem.unwoven:
+634 < 1                 continue
+635 < 1             old = mem.states.get(p)
+636 < 1             if old is None and st == self.base.get(p):
+637 < 1                 continue                         # untouched, and never stored: its weave is still its text
+638 < 1             if old is not None and p not in self.mem_installed:
+639 < 1                 st = M.merge_states(old, st)[0]  # a path the store held but this run began anew (deleted, made again)
+640 < 1             if st == old:
+641 < 1                 continue
+642 < 1             mem.states[p] = st
+643 < 1             mem.dirty.add(p)
+644 < 1             S.union(mem.auth.setdefault(p, {}), named(auth.get(p, {})))
+645 < 1             S.union(mem.dels.setdefault(p, {}), named(dels.get(p, {})))
+646 < 1             changed += 1
+647 < 1         self.mem = None   # the Memory now describes `commit`, not this run's base
+648 < 1         try:
+649 < 1             entry = S.settle(repo, commit, mem)
+650 < 1         except S.Drift as e:
+651 < 1             return {"stored": False, "reason": "drift", "paths": e.paths}
+652 < 1         return {"stored": True, "entry": entry, "tree": mem.tree, "paths": changed}
+653 < 1 
+654 < 1     def _join(self):
+655 < 1         """The join of every published copy (merged as r_merged merges them), with the union of
+656 < 1         their authorship and deletion sidecars."""
+657 < 1         join, auth, dels = {}, {}, {}
+658 < 1         for who, pub in self.published.items():
+659 < 1             for p, st in pub.items():
+660 < 1                 join[p] = st if p not in join else M.merge_states(join[p], st)[0]
+661 < 1             _union_auth(auth, self.kauth_pub.get(who, {}))
+662 < 1             _union_del(dels, self.kdel_pub.get(who, {}))
+663 < 1         return join, auth, dels
+664 < 1 
+665 < 1     def r_blame(self):
+666 < 1         """{path: [label per visible line]} for the join of every published copy."""
+667 < 1         join, auth, _ = self._join()
+668 < 1         out = {}
+669 < 1         for p, st in join.items():
+670 < 1             js, side = M.deserialize_state(st), auth.get(p, {})
+671 < 1             # a line main brought mid-run (`@...`) is no work of this run: it reads as base
+672 < 1             mine = {k: {l for l in who if not l.startswith("@")} for k, who in side.items()}
+673 < 1             out[p] = [label_of(mine, k) for e, k in zip(js, line_keys(js)) if e[3] % 2]
+674 < 1         return {"blame": out}
+675 < 1 
+676 < 2     def r_wrote(self, path, authors):
+677 < 2         """The lines the labels in `authors` wrote in `path`, in the join's order, shown or not."""
+678 < 2         join, auth, _ = self._join()
+679 < 2         if path not in join:
+680 < 2             return {"lines": []}
+681 < 2         js, side, want = M.deserialize_state(join[path]), auth.get(path, {}), set(authors)
+682 < 2         return {"lines": [strip(e[0]) for e, k in zip(js, line_keys(js)) if side.get(k, set()) & want]}
+683 < 2 
+684 < 1     # ── ticket 2 (additive): authorship by identity ──
+685 < 1     def r_authors_keyed(self, agent, path):
+686 < 1         """[author] per visible line, from the keyed sidecar ("base" when none)."""
+687 < 1         st = M.deserialize_state(self.state(agent, path))
+688 < 1         side = self.auth(agent).get(path, {})
+689 < 1         return {"authors": ["|".join(sorted(side[k])) if side.get(k) else "base"
+690 < 1                             for e, k in zip(st, line_keys(st)) if e[3] % 2]}
+691 < 1 
+692 < 1 
+693 < 1 def serve():
+694 < 1     k = Keeper()
+695 < 1     for line in sys.stdin:
+696 < 1         line = line.strip()
+697 < 1         if not line:
+698 < 1             continue
+699 < 1         try:
+700 < 1             req = json.loads(line)
+701 < 1             op = req.pop("op")
+702 < 1             res = getattr(k, "r_" + op)(**req)
+703 < 1             res["ok"] = True
+704 < 1         except Exception as e:  # the prototype reports, never dies
+705 < 1             res = {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
+706 < 1         sys.stdout.write(json.dumps(res) + "\n")
+707 < 1         sys.stdout.flush()
+708 < 1 
+709 < 1 
+710 < 1 if __name__ == "__main__":
+711 < 1     run_on_kernel_thread(serve)
+712 < 1 

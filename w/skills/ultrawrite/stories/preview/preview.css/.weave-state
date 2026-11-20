@@ -1,0 +1,153 @@
+0 < 1 @import '../../client/src/app.css';
+1 < 1 
+2 < 1 /* The preview's own chrome: plain CSS, not Tailwind classes. */
+3 < 1 .preview-compare {
+4 < 1   display: flex;
+5 < 1   gap: 24px;
+6 < 1   align-items: flex-start;
+7 < 1   padding: 16px;
+8 < 1 }
+9 < 1 .preview-compare > section[data-version] {
+10 < 1   flex: 1 1 0;
+11 < 1   min-width: 0;
+12 < 1   padding: 12px;
+13 < 1   border: 1px dashed rgba(58, 46, 92, 0.35);
+14 < 1   border-radius: 12px;
+15 < 1 }
+16 < 1 .preview-compare > section[data-version][data-chosen] {
+17 < 1   outline: 4px solid #3a2e5c;
+18 < 1   outline-offset: 2px;
+19 < 1 }
+20 < 1 .preview-version-head {
+21 < 1   display: flex;
+22 < 1   align-items: center;
+23 < 1   justify-content: space-between;
+24 < 1   margin-bottom: 12px;
+25 < 1   font-weight: 700;
+26 < 1 }
+27 < 1 .preview-choose {
+28 < 1   font: inherit;
+29 < 1   padding: 4px 12px;
+30 < 1   border-radius: 999px;
+31 < 1   border: 1px solid rgba(58, 46, 92, 0.5);
+32 < 1   background: #fff;
+33 < 1   cursor: pointer;
+34 < 1 }
+35 < 1 .preview-choose[aria-pressed='true'] {
+36 < 1   background: #3a2e5c;
+37 < 1   color: #fff;
+38 < 1 }
+39 < 1 .preview-single > section[data-piece] {
+40 < 1   padding: 16px;
+41 < 1 }
+42 < 1 
+43 < 1 /* Comment mode: the floating bar, hover outline and label, drag box, note form and pins. */
+44 < 1 .preview-comment-bar {
+45 < 1   position: fixed;
+46 < 1   right: 16px;
+47 < 1   bottom: 16px;
+48 < 1   z-index: 1000;
+49 < 1   display: flex;
+50 < 1   gap: 8px;
+51 < 1   padding: 6px;
+52 < 1   border-radius: 999px;
+53 < 1   background: #fff;
+54 < 1   box-shadow: 0 4px 16px rgba(58, 46, 92, 0.2);
+55 < 1 }
+56 < 1 .preview-comment-button {
+57 < 1   font: inherit;
+58 < 1   padding: 4px 12px;
+59 < 1   border-radius: 999px;
+60 < 1   border: 1px solid rgba(58, 46, 92, 0.5);
+61 < 1   background: #fff;
+62 < 1   cursor: pointer;
+63 < 1 }
+64 < 1 .preview-comment-button[aria-pressed='true'] {
+65 < 1   background: #3a2e5c;
+66 < 1   color: #fff;
+67 < 1 }
+68 < 1 .preview-commenting #app {
+69 < 1   cursor: crosshair;
+70 < 1 }
+71 < 1 .preview-comment-outline,
+72 < 1 .preview-comment-drag {
+73 < 1   position: fixed;
+74 < 1   z-index: 999;
+75 < 1   pointer-events: none;
+76 < 1   border: 2px solid #e0567a;
+77 < 1   border-radius: 4px;
+78 < 1   box-sizing: border-box;
+79 < 1 }
+80 < 1 .preview-comment-drag {
+81 < 1   border-style: dashed;
+82 < 1   background: rgba(224, 86, 122, 0.08);
+83 < 1 }
+84 < 1 .preview-comment-tip {
+85 < 1   position: fixed;
+86 < 1   z-index: 1000;
+87 < 1   pointer-events: none;
+88 < 1   padding: 2px 8px;
+89 < 1   border-radius: 4px;
+90 < 1   background: #3a2e5c;
+91 < 1   color: #fff;
+92 < 1   font: 12px/1.6 ui-monospace, monospace;
+93 < 1   white-space: nowrap;
+94 < 1 }
+95 < 1 .preview-comment-outline[hidden],
+96 < 1 .preview-comment-tip[hidden],
+97 < 1 .preview-comment-drag[hidden] {
+98 < 1   display: none;
+99 < 1 }
+100 < 1 .preview-comment-form {
+101 < 1   position: fixed;
+102 < 1   z-index: 1001;
+103 < 1   width: 280px;
+104 < 1   display: flex;
+105 < 1   flex-direction: column;
+106 < 1   gap: 8px;
+107 < 1   padding: 12px;
+108 < 1   border-radius: 12px;
+109 < 1   background: #fff;
+110 < 1   box-shadow: 0 4px 16px rgba(58, 46, 92, 0.25);
+111 < 1 }
+112 < 1 .preview-comment-form-view {
+113 < 1   right: 16px;
+114 < 1   bottom: 64px;
+115 < 1 }
+116 < 1 .preview-comment-form-target {
+117 < 1   font: 12px/1.4 ui-monospace, monospace;
+118 < 1   color: rgba(58, 46, 92, 0.8);
+119 < 1 }
+120 < 1 .preview-comment-note {
+121 < 1   font: inherit;
+122 < 1   resize: vertical;
+123 < 1   padding: 6px;
+124 < 1   border: 1px solid rgba(58, 46, 92, 0.4);
+125 < 1   border-radius: 6px;
+126 < 1 }
+128 > 1 .preview-comment-error {
+129 < 1   font: 12px/1.4 system-ui, sans-serif;
+130 < 1   color: #b3261e;
+131 < 1 }
+132 < 1 .preview-comment-error[hidden] {
+133 < 1   display: none;
+134 < 1 }
+127 < 1 .preview-comment-form-actions {
+128 < 1   display: flex;
+129 < 1   justify-content: flex-end;
+130 < 1   gap: 8px;
+131 < 1 }
+132 < 1 .preview-comment-pin {
+133 < 1   position: absolute;
+134 < 1   z-index: 998;
+135 < 1   pointer-events: none;
+136 < 1   transform: translate(-50%, -50%);
+137 < 1   width: 22px;
+138 < 1   height: 22px;
+139 < 1   border-radius: 50%;
+140 < 1   background: #e0567a;
+141 < 1   color: #fff;
+142 < 1   font: 700 12px/22px sans-serif;
+143 < 1   text-align: center;
+144 < 1 }
+145 < 1 

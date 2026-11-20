@@ -1,0 +1,87 @@
+0 < 1 // The plan reader: turns a signed plan into the Flock's workload, reading it
+1 < 1 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
+2 < 1 import { spawnSync } from 'node:child_process';
+3 < 1 import { readFileSync } from 'node:fs';
+4 < 1 import { dirname, join, resolve } from 'node:path';
+5 < 1 import { fileURLToPath } from 'node:url';
+6 < 1 
+7 < 1 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+8 < 1 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
+9 < 1 
+10 < 1 const bash = (cmd) => ['bash', '-lc', cmd];
+11 < 1 
+12 < 1 // A stories-v1 plan's facts are checker calls, one per probe.
+13 < 1 const CHECKER = join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
+14 < 1 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
+15 < 1 export const checkerArgv = (planPath, clause) =>
+16 < 1   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
+17 < 1 
+18 < 1 // A task that writes its piece's json-render screen also runs the browser-free screens check,
+19 < 1 // last and with no clause (the engine pairs facts[i] with clauses[i]).
+20 < 1 const SCREENS = join(REPO, 'factory', 'stack', 'tinyapp', 'screens.ts');
+21 < 1 export const screensArgv = (planPath, piece) =>
+22 < 1   ['bun', SCREENS, '--plan', planPath, '--piece', piece, '--copy', '.'];
+23 < 1 
+24 < 1 function storiesWorkload (parsed, planPath) {
+25 < 1   const abs = resolve(planPath);
+26 < 1   const tasks = parsed.tasks.map((t) => {
+27 < 1     if (!t.probes.length) throw new Error(`plan task ${t.id} (${t.piece}) has no probes: a task with nothing to check cannot finish`);
+28 < 1     const files = t.files || [];
+29 < 1     const screens = t.piece && files.includes(`client/src/pieces/${t.piece}.json`) ? [screensArgv(abs, t.piece)] : [];
+30 < 1     return {
+31 < 1       id: t.id, title: t.title, body: t.body ?? '', files,
+32 < 1       depends_on: t.depends_on || [],
+33 < 1       facts: [...t.probes.map((p) => checkerArgv(abs, p.clause)), ...screens],
+34 < 1       clauses: t.probes.map((p) => p.clause),
+35 < 1     };
+36 < 1   });
+37 < 1   const guards = (parsed.guards || []).map((g) => checkerArgv(abs, g.clause).map(sq).join(' '));
+38 < 1   return {
+39 < 1     grammar: 'stories-v1',
+40 < 1     tasks,
+41 < 1     check: bash(['bun run typecheck', ...guards].join(' && ')),
+42 < 1     // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
+43 < 1     // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
+44 < 1     checkTimeoutMs: 120000 + 15000 * guards.length,
+45 < 1     setup: bash(parsed.bootstrapCmd),
+47 > 1     stories: { sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
+46 < 2     stories: { planPath: abs, sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
+47 < 1   };
+48 < 1 }
+49 < 1 
+50 < 1 // The parser's JSON: the run's one parse when the boot wrote it (`planJson`, #1449), else
+51 < 1 // plan_parse.py over `planPath` (a hand run or a sim).
+52 < 1 export function parsedPlan(planPath, planJson) {
+53 < 1   if (planJson) return JSON.parse(readFileSync(planJson, 'utf8'));
+54 < 1   const r = spawnSync('python3', [PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+55 < 1   if (r.error) throw r.error;
+56 < 1   if (r.status !== 0) {
+57 < 1     throw new Error(`plan_parse.py exited ${r.status} on ${planPath}: ${r.stderr}`);
+58 < 1   }
+59 < 1   return JSON.parse(r.stdout);
+60 < 1 }
+61 < 1 
+62 < 1 export function workloadFromPlan(planPath, planJson) {
+63 < 1   const parsed = parsedPlan(planPath, planJson);
+64 < 1   if (parsed.grammar === 'stories-v1') return storiesWorkload(parsed, planPath);
+65 < 1   const edges = parsed.dag_edges || [];
+66 < 1 
+67 < 1   const tasks = (parsed.tasks || []).map((t) => ({
+68 < 1     id: t.id,
+69 < 1     title: t.title,
+70 < 1     body: t.body ?? '',
+71 < 1     files: t.files || [],
+72 < 1     depends_on: edges.filter((e) => e.to === t.id).map((e) => e.from),
+73 < 1     facts: (t.proofRuns || []).map(bash),
+74 < 2     // the clause ids each fact is tagged with (`Run: ... [M1]`), one list per fact
+75 < 2     factClauses: t.proofRunClauses || [],
+76 < 1   }));
+77 < 1 
+79 > 1   const cmds = (parsed.checks || []).map((c) => c.cmd);
+78 < 2   const cmds = (parsed.checks || []).filter((c) => !c.minor).map((c) => c.cmd);
+79 < 1   const check = cmds.length ? bash(cmds.join(' && ')) : null;
+80 < 1   const setup = parsed.bootstrapCmd ? bash(parsed.bootstrapCmd) : null;
+81 < 1 
+82 < 1   return { grammar: 'claims-v1', tasks, check, setup };
+83 < 1 }
+84 < 1 

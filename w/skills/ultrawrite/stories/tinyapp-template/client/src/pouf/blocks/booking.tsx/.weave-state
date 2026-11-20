@@ -1,0 +1,279 @@
+0 < 2 import { useRef, useState, type FormEvent } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { Empty } from '../feedback'
+3 < 2 import { Footer } from '../footer'
+4 < 2 import { Field, Input, Textarea } from '../Input'
+5 < 2 import { Grid, Row, Stack } from '../layout'
+6 < 2 import { Badge, Blob } from '../media'
+7 < 2 import { Navbar } from '../navbar'
+8 < 2 import { Progress } from '../progress'
+9 < 2 import { Card, RowCard } from '../surface'
+10 < 2 import { Eyebrow, Heading, Text } from '../text'
+11 < 2 
+12 < 2 interface Service {
+13 < 2   id: string
+14 < 2   name: string
+15 < 2   description: string
+16 < 2   duration: string
+17 < 2   price: number
+18 < 2   icon: 'sparkle' | 'smile' | 'wand'
+19 < 2   tone: 'purple' | 'pink' | 'mint'
+20 < 2 }
+21 < 2 
+22 < 2 const SERVICES: Service[] = [
+23 < 2   { id: 'consult', name: 'First consultation', description: 'A calm 45-minute session to map goals and next steps.', duration: '45 min', price: 90, icon: 'sparkle', tone: 'purple' },
+24 < 2   { id: 'followup', name: 'Follow-up session', description: 'Keep the momentum with a focused working session.', duration: '30 min', price: 65, icon: 'smile', tone: 'mint' },
+25 < 2   { id: 'workshop', name: 'Team workshop', description: 'A hands-on session for up to 6 people.', duration: '90 min', price: 240, icon: 'wand', tone: 'pink' },
+26 < 2 ]
+27 < 2 
+28 < 2 const DAYS = ['2026-08-03', '2026-08-04', '2026-08-05', '2026-08-06']
+29 < 2 const TIMES = ['09:30', '11:00', '14:00', '16:30']
+30 < 2 const dateFormatter = new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+31 < 2 const moneyFormatter = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+32 < 2 const formatDay = (iso: string) => dateFormatter.format(new Date(`${iso}T12:00:00`))
+33 < 2 
+34 < 2 /** A complete booking route: site chrome, service/date selection, contact
+35 < 2  * details, review, and a confirmation state. */
+36 < 2 export function BookingBlock() {
+37 < 2   const [step, setStep] = useState(0)
+38 < 2   const [serviceId, setServiceId] = useState(SERVICES[0]!.id)
+39 < 2   const [day, setDay] = useState(DAYS[0]!)
+40 < 2   const [time, setTime] = useState(TIMES[0]!)
+41 < 2   const [name, setName] = useState('')
+42 < 2   const [email, setEmail] = useState('')
+43 < 2   const [notes, setNotes] = useState('')
+44 < 2   const [error, setError] = useState('')
+45 < 2   const [errorField, setErrorField] = useState<'name' | 'email' | null>(null)
+46 < 2   const [confirmed, setConfirmed] = useState(false)
+47 < 2   const nameRef = useRef<HTMLInputElement>(null)
+48 < 2   const emailRef = useRef<HTMLInputElement>(null)
+49 < 2   const service = SERVICES.find((item) => item.id === serviceId) ?? SERVICES[0]!
+50 < 2 
+51 < 2   const saveDetails = (event: FormEvent) => {
+52 < 2     event.preventDefault()
+53 < 2     if (!name.trim()) {
+54 < 2       setError('Add your name and a complete email before reviewing the booking.')
+55 < 2       setErrorField('name')
+56 < 2       nameRef.current?.focus()
+57 < 2       return
+58 < 2     }
+59 < 2     if (!email.includes('@')) {
+60 < 2       setError('Add your name and a complete email before reviewing the booking.')
+61 < 2       setErrorField('email')
+62 < 2       emailRef.current?.focus()
+63 < 2       return
+64 < 2     }
+65 < 2     setError('')
+66 < 2     setErrorField(null)
+67 < 2     setStep(3)
+68 < 2   }
+69 < 2 
+70 < 2   return (
+71 < 2     <div style={{ maxWidth: 1180, margin: '0 auto', padding: 24 }}>
+72 < 2       <Stack gap={6}>
+73 < 2         <Navbar
+74 < 2           brand={<><Blob icon="calendar" tone="purple" size="sm" /> Soft Hours</>}
+75 < 2           links={[
+76 < 2             { label: 'Services', href: '#services', active: true },
+77 < 2             { label: 'About', href: '#about' },
+78 < 2             { label: 'FAQ', href: '#faq' },
+79 < 2           ]}
+80 < 2           actions={<Badge tone="mint">Accepting bookings</Badge>}
+81 < 2         />
+82 < 2 
+83 < 2         <Grid cols="sidebar" gap={6}>
+84 < 2           <Stack gap={4}>
+85 < 2             <Eyebrow>Book a session</Eyebrow>
+86 < 2             <Heading level={1}>Make time for the work that matters.</Heading>
+87 < 2             <Text muted>
+88 < 2               Pick a service and a time. You’ll see every detail before anything is confirmed.
+89 < 2             </Text>
+90 < 2             <Card variant="tight">
+91 < 2               <Stack gap={2}>
+92 < 2                 <Text size="sm" muted>Simple promise</Text>
+93 < 2                 <Text>No payment today. Reschedule free up to 24 hours before your session.</Text>
+94 < 2               </Stack>
+95 < 2             </Card>
+96 < 2           </Stack>
+97 < 2 
+98 < 2           <Card>
+99 < 2             {confirmed ? (
+100 < 2               <Stack gap={5}>
+101 < 2                 <Empty icon="ok" title="You’re booked">
+102 < 2                   {formatDay(day)} at {time}. A confirmation is on its way to {email}.
+103 < 2                 </Empty>
+104 < 2                 <Card variant="tight">
+105 < 2                   <Stack gap={2}>
+106 < 2                     <Badge tone={service.tone}>{service.duration}</Badge>
+107 < 2                     <Heading level={3}>{service.name}</Heading>
+108 < 2                     <Text muted>{moneyFormatter.format(service.price)} · {name}</Text>
+109 < 2                   </Stack>
+110 < 2                 </Card>
+111 < 2                 <Button
+112 < 2                   block
+113 < 2                   variant="quiet"
+114 < 2                   onClick={() => {
+115 < 2                     setConfirmed(false)
+116 < 2                     setStep(0)
+117 < 2                   }}
+118 < 2                 >
+119 < 2                   Book another session
+120 < 2                 </Button>
+121 < 2               </Stack>
+122 < 2             ) : (
+123 < 2               <Stack gap={5}>
+124 < 2                 <Stack gap={2}>
+125 < 2                   <Row justify="between">
+126 < 2                     <Text size="sm" muted>Step {step + 1} of 4</Text>
+127 < 2                     <Badge tone="blue">{Math.round(((step + 1) / 4) * 100)}%</Badge>
+128 < 2                   </Row>
+129 < 2                   <Progress value={step + 1} max={4} label="Booking progress" />
+130 < 2                 </Stack>
+131 < 2 
+132 < 2                 {step === 0 ? (
+133 < 2                   <Stack gap={3}>
+134 < 2                     <Heading level={2}>Choose a service</Heading>
+135 < 2                     {SERVICES.map((item) => (
+136 < 2                       <RowCard
+137 < 2                         key={item.id}
+138 < 2                         selected={item.id === serviceId}
+139 < 2                         onClick={() => setServiceId(item.id)}
+140 < 2                       >
+141 < 2                         <Row justify="between" wrap={false} align="top">
+142 < 2                           <Row gap={3} wrap={false} align="top">
+143 < 2                             <Blob icon={item.icon} tone={item.tone} size="sm" />
+144 < 2                             <Stack gap={1}>
+145 < 2                               <Text>{item.name}</Text>
+146 < 2                               <Text size="sm" muted>{item.description}</Text>
+147 < 2                             </Stack>
+148 < 2                           </Row>
+149 < 2                           <Stack gap={1}>
+150 < 2                             <Text num>{moneyFormatter.format(item.price)}</Text>
+151 < 2                             <Text size="sm" muted>{item.duration}</Text>
+152 < 2                           </Stack>
+153 < 2                         </Row>
+154 < 2                       </RowCard>
+155 < 2                     ))}
+156 < 2                     <Row justify="end"><Button onClick={() => setStep(1)}>Choose a time</Button></Row>
+157 < 2                   </Stack>
+158 < 2                 ) : null}
+159 < 2 
+160 < 2                 {step === 1 ? (
+161 < 2                   <Stack gap={4}>
+162 < 2                     <Heading level={2}>Choose a time</Heading>
+163 < 2                     <Grid cols={2} gap={3}>
+164 < 2                       {DAYS.map((item) => (
+165 < 2                         <RowCard key={item} selected={item === day} onClick={() => setDay(item)}>
+166 < 2                           <Text>{formatDay(item)}</Text>
+167 < 2                         </RowCard>
+168 < 2                       ))}
+169 < 2                     </Grid>
+170 < 2                     <Grid cols={2} gap={3}>
+171 < 2                       {TIMES.map((item) => (
+172 < 2                         <RowCard key={item} selected={item === time} onClick={() => setTime(item)}>
+173 < 2                           <Text num>{item}</Text>
+174 < 2                         </RowCard>
+175 < 2                       ))}
+176 < 2                     </Grid>
+177 < 2                     <Row justify="between">
+178 < 2                       <Button variant="quiet" onClick={() => setStep(0)}>Back</Button>
+179 < 2                       <Button onClick={() => setStep(2)}>Add your details</Button>
+180 < 2                     </Row>
+181 < 2                   </Stack>
+182 < 2                 ) : null}
+183 < 2 
+184 < 2                 {step === 2 ? (
+185 < 2                   <form onSubmit={saveDetails} noValidate>
+186 < 2                     <Stack gap={4}>
+187 < 2                       <Heading level={2}>Your details</Heading>
+188 < 2                       <Field label="Name" error={errorField === 'name' ? error : undefined}>
+189 < 2                         {(id, describedBy) => (
+190 < 2                           <Input
+191 < 2                             ref={nameRef}
+192 < 2                             id={id}
+193 < 2                             name="name"
+194 < 2                             value={name}
+195 < 2                             onChange={(value) => { setName(value); setError(''); setErrorField(null) }}
+196 < 2                             describedBy={describedBy}
+197 < 2                             invalid={errorField === 'name'}
+198 < 2                             autoComplete="name"
+199 < 2                             placeholder="Ada Lovelace…"
+200 < 2                           />
+201 < 2                         )}
+202 < 2                       </Field>
+203 < 2                       <Field label="Email" error={errorField === 'email' ? error : undefined}>
+204 < 2                         {(id, describedBy) => (
+205 < 2                           <Input
+206 < 2                             ref={emailRef}
+207 < 2                             id={id}
+208 < 2                             name="email"
+209 < 2                             type="email"
+210 < 2                             value={email}
+211 < 2                             onChange={(value) => { setEmail(value); setError(''); setErrorField(null) }}
+212 < 2                             describedBy={describedBy}
+213 < 2                             invalid={errorField === 'email'}
+214 < 2                             autoComplete="email"
+215 < 2                             spellCheck={false}
+216 < 2                             placeholder="ada@example.com…"
+217 < 2                           />
+218 < 2                         )}
+219 < 2                       </Field>
+220 < 2                       <Field label="Anything we should know?" hint="Optional">
+221 < 2                         {(id, describedBy) => (
+222 < 2                           <Textarea
+223 < 2                             id={id}
+224 < 2                             name="notes"
+225 < 2                             value={notes}
+226 < 2                             onChange={setNotes}
+227 < 2                             describedBy={describedBy}
+228 < 2                             autoComplete="off"
+229 < 2                             placeholder="Accessibility needs, context, or a goal…"
+230 < 2                             rows={4}
+231 < 2                           />
+232 < 2                         )}
+233 < 2                       </Field>
+234 < 2                       <Row justify="between">
+235 < 2                         <Button variant="quiet" onClick={() => setStep(1)}>Back</Button>
+236 < 2                         <Button type="submit">Review booking</Button>
+237 < 2                       </Row>
+238 < 2                     </Stack>
+239 < 2                   </form>
+240 < 2                 ) : null}
+241 < 2 
+242 < 2                 {step === 3 ? (
+243 < 2                   <Stack gap={4}>
+244 < 2                     <Heading level={2}>Review your booking</Heading>
+245 < 2                     <Card variant="tight">
+246 < 2                       <Stack gap={3}>
+247 < 2                         <Row justify="between"><Text muted>Service</Text><Text>{service.name}</Text></Row>
+248 < 2                         <Row justify="between"><Text muted>Date</Text><Text>{formatDay(day)}</Text></Row>
+249 < 2                         <Row justify="between"><Text muted>Time</Text><Text num>{time}</Text></Row>
+250 < 2                         <Row justify="between"><Text muted>Total</Text><Text num>{moneyFormatter.format(service.price)}</Text></Row>
+251 < 2                       </Stack>
+252 < 2                     </Card>
+253 < 2                     <Text size="sm" muted>Confirmation will be sent to {email}.</Text>
+254 < 2                     <Row justify="between">
+255 < 2                       <Button variant="quiet" onClick={() => setStep(2)}>Edit details</Button>
+256 < 2                       <Button tone="mint" onClick={() => setConfirmed(true)}>Confirm booking</Button>
+257 < 2                     </Row>
+258 < 2                   </Stack>
+259 < 2                 ) : null}
+260 < 2               </Stack>
+261 < 2             )}
+262 < 2           </Card>
+263 < 2         </Grid>
+264 < 2 
+265 < 2         <Footer
+266 < 2           brand="Soft Hours"
+267 < 2           tagline="Thoughtful sessions for teams and founders."
+268 < 2           columns={[
+269 < 2             { title: 'Explore', links: [{ label: 'Services', href: '#services' }, { label: 'About', href: '#about' }] },
+270 < 2             { title: 'Support', links: [{ label: 'FAQ', href: '#faq' }, { label: 'Contact', href: '#contact' }] },
+271 < 2           ]}
+272 < 2           note="© 2026 Soft Hours. Example booking template."
+273 < 2         />
+274 < 2       </Stack>
+275 < 2     </div>
+276 < 2   )
+277 < 2 }
+278 < 2 

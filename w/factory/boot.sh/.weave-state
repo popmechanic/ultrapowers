@@ -1,5 +1,6 @@
 0 < 1 #!/bin/bash
-1 < 1 # factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
+2 > 1 # factory/boot.sh — the sandbox side of a run: clones the target, takes the
+1 < 2 # factory/boot.sh — the sandbox side of a factory run: clones the target, takes the
 2 < 1 # plan off `live/<slug>/run-<N>` of the operator's evidence repository (named in
 3 < 1 # `$FLEET_HOME/fleet-evidence-repo`), proves the credential through `factory/preflight.mjs`,
 4 < 1 # runs the Flock (`factory/flock/engine.mjs`) as a transient user service while keeping the record in
@@ -11,12 +12,12 @@
 10 < 1 FLEET_HOME="${FLEET_HOME:-/home/exedev}"
 11 < 1 REFLECTION_URL="${REFLECTION_URL:-https://reflection.int.exe.xyz}"
 12 < 1 ANTHROPIC_PROXY_URL="${ANTHROPIC_PROXY_URL:-https://claude-max.int.exe.xyz}"
-13 < 1 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
+13 < 2 TYPESAFE_PROXY_URL="${TYPESAFE_PROXY_URL:-https://typesafe.int.exe.xyz}"
 14 < 1 GITHUB_INT_HOST="${GITHUB_INT_HOST:-github.int.exe.xyz}"
 15 < 2 # The hub, through the host where the edge injects its bearer: the engine writes the board there, and `board.mjs` closes the run there.
 16 < 2 KATA_ADMIN_URL="https://kata.int.exe.xyz"
-17 < 1 # The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
-18 < 1 REAPER_URL="https://reaper.int.exe.xyz"
+17 < 2 # The hub's reaper: a merged run, or a done run with no PR, whose tag verified asks it, once, to remove this VM (#1470).
+18 < 2 REAPER_URL="https://reaper.int.exe.xyz"
 20 > 1 # 10 s since 2026-11-13: the record is what a reader watches a run through (fleet/run-read.mjs), so it
 21 < 1 # is at most one tick behind. It was 60 while the hub carried the live view.
 22 < 1 FLEET_COMMIT_SECONDS="${FLEET_COMMIT_SECONDS:-10}"
@@ -34,15 +35,15 @@
 30 < 1 BRANCH=""; SLUG=""; LIVE_BRANCH=""; EVIDENCE_REPO=""; EVIDENCE_REL=""; PLAN_FILE=""; PLAN_JSON=""; PAST_DIR=""
 31 < 1 ENGINE_REPO_DIR=""; STATUS_FILE=""; STATE=""; PHASE=""; PR_URL=""; PR_AUTHOR=""
 32 < 1 ERROR=""; VM_NAME=""; STARTED_AT=""; EVIDENCE_READY=""; HOLD_FLAG=0
-33 < 1 # RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
-34 < 1 RECORDED=""
+33 < 2 # RECORDED is 1 once `record_tags` saw the run's tag listed at the pushed head, else empty.
+34 < 2 RECORDED=""
 35 < 1 # MERGED_SHA is the merge commit `factory/publish.mjs` reported (else empty, which `write_status` renders as `null`).
 36 < 1 MERGED_SHA=""
 37 < 1 fleet_curl()        { curl "$@"; }
 38 < 1 fleet_git()         { git "$@"; }
 39 < 1 fleet_npm()         { npm "$@"; }
 40 < 1 fleet_systemd_run() { systemd-run "$@"; }
-41 < 1 fleet_systemctl()   { systemctl "$@"; }
+41 < 2 fleet_systemctl()   { systemctl "$@"; }
 42 < 1 fleet_python3()     { python3 "$@"; }
 43 < 1 fleet_node()        { node "$@"; }
 44 < 1 fleet_journalctl()  { journalctl "$@"; }
@@ -311,7 +312,8 @@
 289 < 1     fleet_systemd_run --user "--unit=fleet-engine-$RUN_N" --pipe --wait --collect \
 290 < 1       -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p "RuntimeMaxSec=$FLEET_RUN_MAX_SECONDS" -p "WorkingDirectory=$TARGET_DIR" -- \
 291 < 1       env -u CLAUDE_CONFIG_DIR "ANTHROPIC_BASE_URL=$ANTHROPIC_PROXY_URL" \
-292 < 1         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
+293 > 1         CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
+292 < 2         "TYPESAFE_BASE_URL=$TYPESAFE_PROXY_URL" CLAUDE_CODE_OAUTH_TOKEN=placeholder DISABLE_AUTOUPDATER=1 \
 293 < 1         "ULTRAPOWERS_FLEET_RUN=$RUN_ID" node "$ENGINE_REPO_DIR/$engine_entry" \
 294 < 1         --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --target "$TARGET_DIR" --base "$BASE_SHA" --run-dir "$RUN_DIR" \
 296 > 1         ${past_args[@]+"${past_args[@]}"} >>"$ENGINE_LOG" 2>&1
@@ -342,13 +344,15 @@
 319 < 1     --target-repo "$TARGET_REPO" --target-dir "$TARGET_DIR" --branch "$BRANCH" --base-sha "$BASE_SHA" \
 320 < 1     --plan "$PLAN_FILE" --plan-json "$PLAN_JSON" --run-dir "$RUN_DIR" --evidence-dir "$EVIDENCE_DIR/$EVIDENCE_REL" \
 321 < 1     --evidence-url "https://github.com/$EVIDENCE_REPO/tree/$SLUG/$RUN_ID/$EVIDENCE_REL" --github-host "$GITHUB_INT_HOST" \
-322 < 1     --anthropic-url "$ANTHROPIC_PROXY_URL" --typesafe-url "$TYPESAFE_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
+323 > 1     --anthropic-url "$ANTHROPIC_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
+322 < 2     --anthropic-url "$ANTHROPIC_PROXY_URL" --typesafe-url "$TYPESAFE_PROXY_URL" --log "$BOOT_LOG")" || rc=$?
 323 < 1   [ "$rc" = 0 ] || fail "${out:-publish: publish.mjs exited $rc}"
 324 < 1   state="$(sed -n 1p <<<"$out")"; phase_text="$(sed -n 2p <<<"$out")"
 325 < 1   PR_URL="$(sed -n 3p <<<"$out")"; PR_AUTHOR="$(sed -n 4p <<<"$out")"; MERGED_SHA="$(sed -n 5p <<<"$out")"
 326 < 1   finish "$state" "$phase_text"
 327 < 1 }
-329 > 1 # A run's end, in plain sequence: the record, the tag, the reap request.
+330 > 1 # A run's end, in plain sequence: the record, then the tag. A finished VM is removed by the janitor.
+329 > 2 # A run's end, in plain sequence: the record, the tag, the reap request.
 328 < 2 # A run's end, in plain sequence: the record, the board's close, the audit row, the tag, the reap request.
 329 < 1 finish() { # $1 = state, $2 = phase
 330 < 2   local audit_args audit_line
@@ -359,11 +363,11 @@
 335 < 2   [ -n "${audit_line:-}" ] && printf '%s\n' "$audit_line" >>"$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
 336 < 2   evidence_commit "$RUN_ID: audit"
 337 < 1   record_tags
-338 < 1   # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
-339 < 1   if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
-340 < 1     fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
-341 < 1     log "reap: asked the hub to remove this VM"
-342 < 1   fi
+338 < 2   # The boot's last act, which never fails the run: the hub answers before it removes (#1470).
+339 < 2   if [ "$1" = done ] && { [ -n "$MERGED_SHA" ] || [ -z "$PR_URL" ]; } && [ "$HOLD_FLAG" != 1 ] && [ "$RECORDED" = 1 ]; then
+340 < 2     fleet_curl -m 5 -sS -X POST "$REAPER_URL/reap" -H 'content-type: application/json' -d "{\"run\":$RUN_N,\"target\":\"$TARGET_REPO\"}" -o /dev/null || true
+341 < 2     log "reap: asked the hub to remove this VM"
+342 < 2   fi
 343 < 1 }
 344 < 1 # What a run leaves behind is its one tag in the evidence repository; the live branch is only where it worked, deleted only once the listing agrees — every unhappy path logs one `record:` line and returns 0.
 345 < 1 record_tags() {
@@ -373,7 +377,7 @@
 349 < 1   fleet_git -C "$EVIDENCE_DIR" push origin "HEAD:$tag" || { log "record: pushing $tag at $head was rejected — $LIVE_BRANCH kept"; return 0; }
 350 < 1   listed="$(fleet_git -C "$EVIDENCE_DIR" ls-remote --tags origin "$tag" 2>/dev/null | awk -v r="$tag" '$2 == r { print $1 }' || true)"
 351 < 1   [ "$listed" = "$head" ] || { log "record: $EVIDENCE_REPO lists $tag at '${listed:-<nothing>}', not $head — $LIVE_BRANCH kept"; return 0; }
-352 < 1   RECORDED=1
+352 < 2   RECORDED=1
 353 < 1   fleet_git -C "$EVIDENCE_DIR" push origin --delete "refs/heads/$LIVE_BRANCH" || { log "record: $tag is on $EVIDENCE_REPO but deleting $LIVE_BRANCH was rejected"; return 0; }
 354 < 1   log "record: $tag at $head in $EVIDENCE_REPO — $LIVE_BRANCH deleted"
 355 < 1 }
@@ -399,7 +403,8 @@
 376 > 1   engine_deps; claude_current; preflight; run_engine
 375 < 2   engine_deps; claude_current; preflight; kata_record; run_engine
 376 < 1   code="$(cat "$DONE_MARKER")"; collect_evidence
-377 < 1   # a run that followed main (policy flock.main.mode `peer`) ends on the main it moved to, and says
+378 > 1   # a run whose main moved while it ran ends on the main it moved to, and says
+377 < 2   # a run that followed main (policy flock.main.mode `peer`) ends on the main it moved to, and says
 378 < 1   # so in $RUN_DIR/base: "nothing ahead of base" and the publish's catch-up are judged against that
 379 < 1   moved="$(head -n 1 "$RUN_DIR/base" 2>/dev/null || true)"
 380 < 1   if is_sha "$moved" && [ "$moved" != "$BASE_SHA" ]; then log "engine: the run's base moved to $moved (was $BASE_SHA)"; BASE_SHA="$moved"; fi

@@ -40,7 +40,7 @@
 29 < 1   git,
 30 < 2   hubFromEnv,
 31 < 1   integrationBranchFor,
-32 < 1   isFullSha,
+32 < 2   isFullSha,
 33 < 1   isRunNumber,
 34 < 1   isSafeTarget,
 35 < 1   isVmName,
@@ -77,7 +77,8 @@
 63 < 2  */
 64 < 1 export const REAPABLE_STATES = Object.freeze(['done', 'parked', 'failed'])
 65 < 1 /** Page states that claim the run is still in flight — the ones worth a probe. */
-66 < 1 const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
+67 > 1 const LIVE_STATES = Object.freeze(['running', 'publishing'])
+66 < 2 const LIVE_STATES = Object.freeze(['booting', 'running', 'publishing'])
 67 < 1 /** How long a finished run keeps its VM, so its status page can still be read. */
 68 < 1 const DEFAULT_AGE = '1h'
 69 < 1 /** No status update for this long is a stale run, reported and left alone. */
@@ -98,9 +99,11 @@
 84 < 1     : { action: 'pending', reapableAt: new Date(at).toISOString() }
 85 < 1 }
 86 < 1 /**
-88 > 1  * The comment that takes a VM out of the reap: the hub VM's own comment ends
-89 < 1  * `persistent service, do not reap`. The guard matches this substring,
-90 < 1  * case-sensitively, so any row someone marks by hand is kept the same way.
+89 > 1  * The comment that takes a VM out of the reap: a fleet VM someone marks by
+90 < 1  * hand with a comment holding `do not reap` (case-sensitive) is kept.
+88 > 2  * The comment that takes a VM out of the reap: the hub VM's own comment ends
+89 < 2  * `persistent service, do not reap`. The guard matches this substring,
+90 < 2  * case-sensitively, so any row someone marks by hand is kept the same way.
 87 < 2  * The comment that takes a VM out of the reap. The hub's own comment is
 88 < 2  * `kata hub — persistent service, do not reap`, and `fleet/kata-hub.mjs` writes
 89 < 2  * it; the guard matches this substring, case-sensitively, so any row someone
@@ -342,13 +345,17 @@
 294 < 1 }
 295 < 1 
 296 < 1 /**
-297 < 1  * A row's assignment: the run, the target, and the plan its comment carries
-298 < 1  * (`null` when the comment names none, or names something other than a
-299 < 1  * 40-hex sha), or null when the comment is absent or says nothing this tool
-300 < 1  * can read. The comment's `run=` is the run; the name's is the fallback,
-301 < 1  * since the name is only where the run is running this time. The plan is how
-302 < 1  * the janitor tells a colliding launch's abandoned run issue from the run
-303 < 1  * that actually won the number (#1036, `runIssueOf`).
+298 > 1  * A row's assignment: the run and the target its comment carries, or null
+299 < 1  * when the comment is absent or says nothing this tool can read. The
+300 < 1  * comment's `run=` is the run; the name's is the fallback, since the name is
+301 < 1  * only where the run is running this time.
+297 < 2  * A row's assignment: the run, the target, and the plan its comment carries
+298 < 2  * (`null` when the comment names none, or names something other than a
+299 < 2  * 40-hex sha), or null when the comment is absent or says nothing this tool
+300 < 2  * can read. The comment's `run=` is the run; the name's is the fallback,
+301 < 2  * since the name is only where the run is running this time. The plan is how
+302 < 2  * the janitor tells a colliding launch's abandoned run issue from the run
+303 < 2  * that actually won the number (#1036, `runIssueOf`).
 304 < 1  */
 305 < 1 function assignmentOf (row) {
 306 < 1   if (!isVmName(row.name)) return null
@@ -356,8 +363,9 @@
 308 < 1   const run = isRunNumber(fields.run) ? Number(fields.run) : runOfVmName(row.name)
 309 < 1   const target = isSafeTarget(fields.target) ? fields.target : null
 310 < 1   if (run === null || target === null) return null
-311 < 1   const plan = isFullSha(fields.plan) ? fields.plan : null
-312 < 1   return { run, target, plan }
+312 > 1   return { run, target }
+311 < 2   const plan = isFullSha(fields.plan) ? fields.plan : null
+312 < 2   return { run, target, plan }
 313 < 1 }
 314 < 1 
 315 < 1 /**
@@ -881,7 +889,8 @@
 745 < 1       unknown.push({ vm: row.name, comment: row.comment })
 746 < 1       continue
 747 < 1     }
-748 < 1     const { run, target, plan: planSha } = assignment
+749 > 1     const { run, target } = assignment
+748 < 2     const { run, target, plan: planSha } = assignment
 749 < 1     targets.add(target)
 750 < 1     carried.add(`${target}#${run}`)
 751 < 1 
@@ -895,7 +904,7 @@
 755 < 1       vm: row.name,
 756 < 1       run,
 757 < 1       target,
-758 < 1       plan: planSha,
+758 < 2       plan: planSha,
 759 < 1       live: reading?.live ?? null,
 760 < 1       state: reading?.state ?? null
 761 < 1     })
@@ -1025,8 +1034,9 @@
 854 < 1  * off the run's own live branch, `live/<slug>/run-<N>`, fetched from the
 855 < 1  * evidence repository into `FETCH_HEAD` (no ref of the checkout is written). A
 856 < 1  * fetch or a `rev-parse` that fails means the branch is gone — the run is
-857 < 1  * publishing or has published, and no engine reads its task issues any more —
-858 < 1  * so that row is not a duplicate.
+858 > 1  * publishing or has published — so that row is not a duplicate.
+857 < 2  * publishing or has published, and no engine reads its task issues any more —
+858 < 2  * so that row is not a duplicate.
 859 < 1  */
 860 < 1 async function liveDuplicatesOf ({ exec, repoDir, target, evidence, planText, runs }) {
 861 < 1   const candidates = runs.filter((r) => r.target === target && r.live !== false && isRunNumber(r.run))

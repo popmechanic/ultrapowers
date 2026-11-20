@@ -1,0 +1,47 @@
+0 < 1 <!-- Moved out of ultrawrite's SKILL.md to keep it under 500 lines. Commands here name the
+1 < 1      plugin directory as `<plugin-root>`; SKILL.md shows its real path. -->
+2 < 1 
+3 < 1 ## Self-review
+4 < 1 
+5 < 1 The author reads `references/authoring-gotchas.md` — the lessons every claims-v1 sitting
+6 < 1 since run-45 paid for, each a rule with its reason — before the gate readers are
+7 < 1 dispatched, and checks the plan against each of them. They are the author's own to
+8 < 1 check — nothing prints them.
+9 < 1 
+10 < 1 `plan_check.py` refuses two shape slips outright, so this list leaves them out: the six
+11 < 1 slots each once, non-empty and in order, and a fence only in Proof. Three wording rules are
+12 < 1 the author's alone (the checker stopped refusing them, #1440): the `**Summary:**` is exactly
+13 < 1 three sentences; `**Closes:**` sits directly under the `**Goal:**` paragraph; and a dated
+14 < 1 reading in a Context or the Summary carries its `n=`.
+15 < 1 
+16 < 1 - No task carries checkbox steps.
+17 < 1 - The plan carries one `**Claim:**` above the first task, elicited or quoted from an
+18 < 1   issue. Every task Claim is either the operator's words with a provenance tag or
+19 < 1   `(derived)` under the plan-level Claim, paired with a machine restatement at the same
+20 < 1   layer, and its gate verdict is recorded and fresh.
+21 < 1 - The plan's `**Summary:**` is in the operator's register — what this is, why it exists,
+22 < 1   how it benefits them.
+23 < 1 - Every Stale-if entry is a predicate; every Proof `Run:` prover ends in the tag of a
+24 < 1   clause the Machine line numbers, and no test-file or guard bullet is written.
+25 < 1 - No Proof pins a sentence of a document as its evidence; a prose task's Proof is a
+26 < 1   `Run:`.
+27 < 1 - Every Machine clause is numbered and cited by a leg; every computable fact a clause states
+28 < 1   has the one leg that would catch it false, and no behaviour has a leg per variant.
+29 < 1 - Every cross-task edge is derivable — Interfaces symbols match a sibling's `Produces:`,
+30 < 1   or the Files blocks overlap. Nothing rides on prose.
+31 < 1 - No edge is written to keep same-file edits apart; every ordering left standing is a
+32 < 1   fact the engine can derive — a `Consumes:` matching a sibling's `Produces:`, or a
+33 < 1   `Create:` a sibling later `Modify:`s — and any probe that quantifies over a directory was
+34 < 1   checked against BASE for pre-existing violators (#536).
+35 < 1 - Global Constraints state results, not process.
+36 < 1 - The `**Closes:**` line, when present, names only the target repository's issues.
+37 < 1 - No pinned number is a guess: every pinned literal was computed, not assumed — the author
+38 < 1   ran the command or did the arithmetic at BASE and pasted back what it printed, rather
+39 < 1   than the figure the sentence wanted to be true.
+40 < 1 - Every reading a plan's Context or Summary cites carries `n=… (window)` — `n=9 merged
+41 < 1   runs (131–140)`, never a bare count — and a plan whose default flip rests on a reading
+42 < 1   under the floor says `experiment` in its Summary and names its `rollback` there; the
+44 > 1   floor is `CLAUDE.md`'s `Readings carry their size (#994)` bullet (n = 5 runs, 20 tasks for a per-task
+43 < 2   floor is `CLAUDE.md`'s `Test doctrine` bullet (n = 5 runs, 20 tasks for a per-task
+44 < 1   reading).
+45 < 1 

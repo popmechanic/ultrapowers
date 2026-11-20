@@ -1,0 +1,160 @@
+0 < 2 {
+1 < 2   "root": "node_0",
+2 < 2   "elements": {
+3 < 2     "node_0": {
+4 < 2       "type": "Stack",
+5 < 2       "props": {
+6 < 2         "gap": 3
+7 < 2       },
+8 < 2       "children": [
+9 < 2         "node_1",
+10 < 2         "node_2",
+11 < 2         "node_4",
+12 < 2         "node_3",
+13 < 2         "node_5",
+14 < 2         "node_6",
+15 < 2         "node_7"
+16 < 2       ]
+17 < 2     },
+18 < 2     "node_1": {
+19 < 2       "type": "Heading",
+20 < 2       "props": {
+21 < 2         "text": "Shopping list",
+22 < 2         "level": 1
+23 < 2       },
+24 < 2       "children": []
+25 < 2     },
+26 < 2     "node_2": {
+27 < 2       "type": "Text",
+28 < 2       "props": {
+29 < 2         "text": "Keep one shopping list the household shares, so whoever shops buys what is needed.",
+30 < 2         "muted": true
+31 < 2       },
+32 < 2       "children": []
+33 < 2     },
+34 < 2     "node_3": {
+35 < 2       "type": "DraftInput",
+36 < 2       "props": {
+37 < 2         "label": "Item",
+38 < 2         "placeholder": "eggs",
+39 < 2         "value": {
+40 < 2           "$bindState": "/draft/name"
+41 < 2         }
+42 < 2       },
+43 < 2       "children": []
+44 < 2     },
+45 < 2     "node_4": {
+46 < 2       "type": "DraftInput",
+47 < 2       "props": {
+48 < 2         "label": "How many",
+49 < 2         "placeholder": "6",
+50 < 2         "value": {
+51 < 2           "$bindState": "/draft/qty"
+52 < 2         }
+53 < 2       },
+54 < 2       "children": []
+55 < 2     },
+56 < 2     "node_5": {
+57 < 2       "type": "ActionButton",
+58 < 2       "props": {
+59 < 2         "label": "Add",
+60 < 2         "action": "addItem",
+61 < 2         "args": {
+62 < 2           "name": {
+63 < 2             "$state": "/draft/name"
+64 < 2           },
+65 < 2           "qty": {
+66 < 2             "$state": "/draft/qty"
+67 < 2           }
+68 < 2         }
+69 < 2       },
+70 < 2       "children": [],
+71 < 2       "on": {
+72 < 2         "press": [
+73 < 2           {
+74 < 2             "action": "setState",
+75 < 2             "params": {
+76 < 2               "statePath": "/draft/name",
+77 < 2               "value": ""
+78 < 2             }
+79 < 2           },
+80 < 2           {
+81 < 2             "action": "setState",
+82 < 2             "params": {
+83 < 2               "statePath": "/draft/qty",
+84 < 2               "value": ""
+85 < 2             }
+86 < 2           }
+87 < 2         ]
+88 < 2       }
+89 < 2     },
+90 < 2     "node_6": {
+91 < 2       "type": "ActionButton",
+92 < 2       "props": {
+93 < 2         "label": "Clear ticked",
+94 < 2         "action": "clearTicked"
+95 < 2       },
+96 < 2       "children": []
+97 < 2     },
+98 < 2     "node_7": {
+99 < 2       "type": "Stack",
+100 < 2       "props": {
+101 < 2         "gap": 2
+102 < 2       },
+103 < 2       "repeat": {
+104 < 2         "statePath": "/tables/items",
+105 < 2         "key": "id"
+106 < 2       },
+107 < 2       "children": [
+108 < 2         "node_7_row"
+109 < 2       ]
+110 < 2     },
+111 < 2     "node_7_row": {
+112 < 2       "type": "Row",
+113 < 2       "props": {
+114 < 2         "justify": "between",
+115 < 2         "align": "center"
+116 < 2       },
+117 < 2       "children": [
+118 < 2         "node_7_0",
+119 < 2         "node_7_1"
+120 < 2       ]
+121 < 2     },
+122 < 2     "node_7_0": {
+123 < 2       "type": "ActionCheckbox",
+124 < 2       "props": {
+125 < 2         "label": {
+126 < 2           "$item": "line"
+127 < 2         },
+128 < 2         "checked": {
+129 < 2           "$item": "bought"
+130 < 2         },
+131 < 2         "action": "tickItem",
+132 < 2         "args": {
+133 < 2           "id": {
+134 < 2             "$item": "id"
+135 < 2           }
+136 < 2         }
+137 < 2       },
+138 < 2       "children": []
+139 < 2     },
+140 < 2     "node_7_1": {
+141 < 2       "type": "ActionButton",
+142 < 2       "props": {
+143 < 2         "label": {
+144 < 2           "$template": "Remove ${line}"
+145 < 2         },
+146 < 2         "action": "removeItem",
+147 < 2         "args": {
+148 < 2           "id": {
+149 < 2             "$item": "id"
+150 < 2           }
+151 < 2         },
+152 < 2         "variant": "quiet",
+153 < 2         "size": "sm"
+154 < 2       },
+155 < 2       "children": []
+156 < 2     }
+157 < 2   }
+158 < 2 }
+159 < 2 

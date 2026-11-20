@@ -1,0 +1,144 @@
+0 < 2 import { useEffect, useState } from 'react'
+1 < 2 import { Card, RowCard } from '../surface'
+2 < 2 import { Stack, Row, Spacer } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Slider } from '../slider'
+5 < 2 import { IconButton } from '../Button'
+6 < 2 import { Icon } from '../Icon'
+7 < 2 import { Badge } from '../media'
+8 < 2 
+9 < 2 interface Track {
+10 < 2   id: string
+11 < 2   title: string
+12 < 2   artist: string
+13 < 2   /** Seconds — the scrubber and the elapsed/remaining readout both derive
+14 < 2    *  from this rather than a separately-typed "3:24" string that could drift
+15 < 2    *  out of sync with it. */
+16 < 2   duration: number
+17 < 2 }
+18 < 2 
+19 < 2 const QUEUE: Track[] = [
+20 < 2   { id: '1', title: 'Marshmallow Skies', artist: 'The Poufs', duration: 204 },
+21 < 2   { id: '2', title: 'Pastel Dawn', artist: 'Cushion Club', duration: 241 },
+22 < 2   { id: '3', title: 'Bounce', artist: 'Claymates', duration: 167 },
+23 < 2   { id: '4', title: 'Soft Focus', artist: 'The Poufs', duration: 238 },
+24 < 2 ]
+25 < 2 
+26 < 2 function formatTime(seconds: number): string {
+27 < 2   const m = Math.floor(seconds / 60)
+28 < 2   const s = Math.floor(seconds % 60)
+29 < 2   return `${m}:${String(s).padStart(2, '0')}`
+30 < 2 }
+31 < 2 
+32 < 2 /** An example music player: album art, a draggable scrubber that moves
+33 < 2  *  playback position, transport controls that actually change track, and a
+34 < 2  *  queue you can select from. */
+35 < 2 export function MusicBlock() {
+36 < 2   const [queueIndex, setQueueIndex] = useState(0)
+37 < 2   // Position as a percent (0-100), like the Slider itself wants — 72 lines
+38 < 2   // up with the seeded track's 204s duration so the readout below starts at
+39 < 2   // a believable 2:27 rather than 0:00.
+40 < 2   const [pos, setPos] = useState([72])
+41 < 2   const [vol, setVol] = useState([60])
+42 < 2   /* Starts paused on purpose. This block is embedded in a gallery page, and a
+43 < 2    * transport that begins ticking on mount is motion nobody asked for: it
+44 < 2    * re-renders once a second forever, cycles the queue unattended, and ignores
+45 < 2    * prefers-reduced-motion. Paused also makes Play the obvious thing to press,
+46 < 2    * which demonstrates the feature better than arriving mid-song. */
+47 < 2   const [playing, setPlaying] = useState(false)
+48 < 2 
+49 < 2   const track = QUEUE[queueIndex]!
+50 < 2   const elapsed = Math.round((pos[0]! / 100) * track.duration)
+51 < 2 
+52 < 2   function goTo(index: number) {
+53 < 2     setQueueIndex(((index % QUEUE.length) + QUEUE.length) % QUEUE.length)
+54 < 2     setPos([0])
+55 < 2   }
+56 < 2 
+57 < 2   // Ticks the scrubber forward once a second while playing — a scrubber that
+58 < 2   // never moves on its own reads as a static progress bar, not a transport.
+59 < 2   useEffect(() => {
+60 < 2     if (!playing) return
+61 < 2     const id = setInterval(() => {
+62 < 2       setPos(([p]) => {
+63 < 2         const next = (p ?? 0) + 100 / track.duration
+64 < 2         return [Math.min(100, next)]
+65 < 2       })
+66 < 2     }, 1000)
+67 < 2     return () => clearInterval(id)
+68 < 2   }, [playing, track.duration])
+69 < 2 
+70 < 2   // Reaching the end advances the queue rather than just sitting at 100% —
+71 < 2   // kept separate from the ticking effect so the interval callback stays a
+72 < 2   // pure function of "add one second", not a queue-mutating one.
+73 < 2   useEffect(() => {
+74 < 2     if (pos[0]! >= 100) goTo(queueIndex + 1)
+75 < 2     // eslint-disable-next-line react-hooks/exhaustive-deps
+76 < 2   }, [pos])
+77 < 2 
+78 < 2   return (
+79 < 2     <div style={{ maxWidth: 440, margin: '0 auto', padding: 24 }}>
+80 < 2       <Stack gap={4}>
+81 < 2         <Card>
+82 < 2           <Stack gap={5}>
+83 < 2             <div style={{ position: 'relative' }}>
+84 < 2               <div style={{ aspectRatio: '1', borderRadius: 24, background: 'linear-gradient(135deg, var(--purple), var(--pink))', boxShadow: 'var(--pouf-blob)' }} />
+85 < 2               <div style={{ position: 'absolute', top: 14, left: 14 }}><Badge tone="mint">Now playing</Badge></div>
+86 < 2             </div>
+87 < 2             <Row justify="between" align="top">
+88 < 2               <Stack gap={1}>
+89 < 2                 <Heading level={2}>{track.title}</Heading>
+90 < 2                 <Text muted>{track.artist}</Text>
+91 < 2               </Stack>
+92 < 2               <IconButton icon={<Icon name="heart" size="sm" />} label="Like" />
+93 < 2             </Row>
+94 < 2             <Stack gap={2}>
+95 < 2               <Slider value={pos} onChange={setPos} label="Seek" />
+96 < 2               <Row justify="between">
+97 < 2                 <Text size="sm" muted num>{formatTime(elapsed)}</Text>
+98 < 2                 <Text size="sm" muted num>{formatTime(track.duration)}</Text>
+99 < 2               </Row>
+100 < 2             </Stack>
+101 < 2             <Row justify="center" gap={3}>
+102 < 2               <IconButton size="lg" icon={<Icon name="rewind" size="md" />} label="Previous" onClick={() => goTo(queueIndex - 1)} />
+103 < 2               <IconButton size="lg" icon={<Icon name={playing ? 'pause' : 'play'} size="md" />} label={playing ? 'Pause' : 'Play'} tone="purple" variant="solid" onClick={() => setPlaying((p) => !p)} />
+104 < 2               <IconButton size="lg" icon={<Icon name="forward" size="md" />} label="Next" onClick={() => goTo(queueIndex + 1)} />
+105 < 2             </Row>
+106 < 2             <Row gap={3} wrap={false} align="center">
+107 < 2               <Icon name="wind" size="sm" />
+108 < 2               <div style={{ flex: 1, minWidth: 0 }}><Slider value={vol} onChange={setVol} label="Volume" /></div>
+109 < 2             </Row>
+110 < 2           </Stack>
+111 < 2         </Card>
+112 < 2 
+113 < 2         <Stack gap={2}>
+114 < 2           <Eyebrow>Up next</Eyebrow>
+115 < 2           {QUEUE.map((t, idx) => (
+116 < 2             <RowCard
+117 < 2               key={t.id}
+118 < 2               onClick={() => {
+119 < 2                 setQueueIndex(idx)
+120 < 2                 setPos([0])
+121 < 2                 setPlaying(true)
+122 < 2               }}
+123 < 2               selected={idx === queueIndex}
+124 < 2             >
+125 < 2               <Row justify="between" wrap={false}>
+126 < 2                 <Row gap={3} wrap={false}>
+127 < 2                   <Icon name={idx === queueIndex ? 'music' : 'play'} size="sm" />
+128 < 2                   <Stack gap={1}>
+129 < 2                     <Text>{t.title}</Text>
+130 < 2                     <Text size="sm" muted>{t.artist}</Text>
+131 < 2                   </Stack>
+132 < 2                 </Row>
+133 < 2                 <Spacer />
+134 < 2                 <Text size="sm" muted num>{formatTime(t.duration)}</Text>
+135 < 2               </Row>
+136 < 2             </RowCard>
+137 < 2           ))}
+138 < 2         </Stack>
+139 < 2       </Stack>
+140 < 2     </div>
+141 < 2   )
+142 < 2 }
+143 < 2 

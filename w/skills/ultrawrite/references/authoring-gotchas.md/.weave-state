@@ -1,0 +1,262 @@
+0 < 1 # Authoring gotchas — the lessons the claims-v1 sittings paid for
+1 < 1 
+2 < 1 Load this at self-review, before the gate readers are dispatched, and check the
+3 < 1 plan against each rule. Every lesson is a rule with the one-line reason that
+4 < 1 makes it a rule and the run or sitting that cost it — a fresh clone, a subagent
+5 < 1 author and a stranger operator get the same guidance from this file that the
+6 < 1 last sitting got from one agent's memory.
+7 < 1 
+8 < 1 Two of these rules are refused outright: a `Run:`/`Check:` command carrying a
+9 < 1 backtick is `command carries a backtick` from `plan_check.py`, and a `Check:` that
+10 < 1 freezes a path covering a task's own Files is refused the same way
+11 < 1 (below). Every other species below is the author's own to check, here, against this
+12 < 1 file — `suite-total-pin`, `directory-absence-pin` and, since the compiler left at cut B
+13 < 1 (2026-09-21), the `one Run, one exam` sweep included. Nothing prints them.
+14 < 1 
+15 < 1 ## The rows
+16 < 1 
+17 < 1 - **A zero-count grep over a source file counts its comments too.** A `Run:` that pins
+18 < 1   `grep -c <symbol> <file>` = 0 goes red the moment the implementer deletes the code and
+19 < 1   leaves the comment that named it — three of four tasks on run-127 (2026-09-14) took a second
+20 < 1   attempt on exactly that, where run-126's Task 2 had listed the 14 comment carriers of
+21 < 1   `serialize` in Context and took none. Before dispatch, `grep -n` the literal across the
+22 < 1   task's Files and put the comment carriers in Context, or pin the definition (`^def x`,
+23 < 1   `^export const x`) instead of the bare word.
+24 < 1 
+25 < 1 - **A producer's published work must leave its consumers' copies green.** A
+26 < 1   producer that deletes or renames a symbol whose consumers another task rewrites
+27 < 1   turns every copy that has merged it red by construction — the old consumers
+28 < 1   still import the old name — and a doc↔code pin (doctor `ROW_IDS` ↔
+29 < 1   `first-run.md` headings) split across two tasks does the same. Builders merge
+30 < 1   each other's published work continuously and the run settles green only on
+31 < 1   every probe and `Check:`, so "the consumer rewrites it later" is not a plan.
+32 < 1   Keep the old export as a shim in the producer's task, or put the consumers in
+33 < 1   the producer's own task; keep both halves of any pin in one task (run-72,
+34 < 1   2026-09-04).
+35 < 1 - **No backticks inside a `Run:` command.** The compiler strips only a
+36 < 1   whole-value backtick wrapper; an inner backtick reaches `bash -lc` as a
+37 < 1   command substitution and the proof exits 127, and no builder can repair a
+38 < 1   proof it does not own, so the task never goes green with a correct patch. Grep for the word, never for the backticked literal. Since 0.3.10 the
+39 < 1   compiler refuses it outright with `command carries a backtick` (run-74,
+40 < 1   2026-09-04).
+41 < 1 - **The gate readers never see Context, so read every ordered Machine clause
+42 < 1   against every measured fact in the same task's Context before dispatching
+43 < 1   readers.** A clause that started a status server before waiting for the user
+44 < 1   bus — the exact race the Context had measured — passed nine rounds and was
+46 > 1   caught as `plan-defect` by the gate; a clause that orders a `--user` call
+45 < 2   caught as `plan-defect` by both referees; a clause that orders a `--user` call
+46 < 1   names the bus precondition (run-75, 2026-09-04).
+47 < 1 - **The gate's recurring rejection species, each with its fix** (19 of 33
+48 < 1   dispatches on 2026-09-04, 18 of 25 on 2026-09-05, every rejection correct): an
+49 < 1   enumerated clause ("X, Y and Z are gone") needs one leg per row — a
+50 < 1   count-and-pass pin lets one row survive; a universal sentence ("no file under
+51 < 1   tests/…") with a per-file probe is rejected — sweep the whole tree using
+52 < 1   named exclusions, or narrow the derived Claim to the files the task owns; `node
+53 < 1   sim.mjs` exiting 0 is not the sentinel — pipe it into
+54 < 1   `grep -q 'ALL TESTS PASSED'`; "finishes quickly" needs a clock
+55 < 1   (`timeout 60 node …`); a timing threshold wants both sides, with durations
+56 < 1   that separate sum from max; pin a decorator to its def
+57 < 1   (`grep -B3 'def x' | grep -q 'scope="session"'`), never with a bare presence
+58 < 1   grep; an enumerated value list (`low|medium|high`) needs one leg per value —
+59 < 1   write the leg as "for each of …"; a whole-file `grep -q` for a doc sentence is
+60 < 1   rejected every time — scope it with
+61 < 1   `sed -n '/^## A/,/^## B/p' … | tr '\n' ' ' | grep -q 'part one.*part two'` and
+62 < 1   pin the sentence's operative halves in order; a clause with two triggers needs
+63 < 1   a leg per trigger; "no reply" and BLOCKED are two rows; two independent
+64 < 1   conditions (path AND phrase) need a negative row for each — a row lacking both
+65 < 1   falsifies neither; a rule that would fire on an existing fixture is a plan
+66 < 1   defect, so read the sibling fixture before writing the clause; and `leg (e)`
+67 < 1   written inside another leg's prose splits the leg even when (e) is another
+68 < 1   file's leg — say "the previous leg" or "its frozen-sha comparison"; a
+69 < 1   negation or absence clause ("the enumerable keys are still exactly three",
+70 < 1   "none of these four words appear") is always a computable fact and always
+71 < 1   needs a leg of its own, because the diff shows nothing for what is not
+72 < 1   there — run-192 (n=1 run, 8 tasks, 2026-09-18) scored two such clauses 0.19
+73 < 1   and 0.40 by Jev where both exams passed. Nothing
+74 < 1   prints this list: read it here, row by row, before a reader is dispatched.
+75 < 1 - **Absolute collected-count pins are integration-hostile.**
+76 < 1   `test "$(pytest --collect-only -q | tail -1 | cut -d' ' -f1)" = 1461` passes
+77 < 1   in the task's clone and fails on the merged tree, where every sibling's
+78 < 1   deletions have merged in — five blocking findings on a correct tree. Pin per-file counts
+79 < 1   (`--collect-only -q <file> | grep -c ::`) or state the delta, never the suite
+80 < 1   total. Likewise `test ! -e tests/<dir>` fails on a `__pycache__` survivor in
+81 < 1   the integration clone — pin the source files. The compiler names both:
+82 < 1   `suite-total-pin` and `directory-absence-pin` (run-4, 2026-09-04).
+83 < 1 - **Every file a task can foresee touching is in its own Files,
+84 < 1   even a sibling's one-liner.** On run-2 (2026-09-04) a compelled edit outside
+85 < 1   Files was ruled lawful, then reverted, then blocked, and the task died with a
+86 < 1   correct patch; same-file text merges in the weave, so listing the file costs
+87 < 1   nothing. A file the author could not foresee is no longer that death: it is a
+88 < 1   declared amendment, read on its merits and never reverted, the rule since
+89 < 1   #990 — so the listing is foresight, not a fence. That foresight never becomes
+90 < 1   an authored ordering: the engine reads every overlapping or consuming pair
+91 < 1   itself, so a chain added only to keep two same-file edits apart is a defect,
+92 < 1   not caution — on run-193 the author chained the engine task behind the
+93 < 1   hunk-picker task to keep two import inserts from meeting at merge, and the
+94 < 1   consumer waited on a producer it needed nothing from, about nine minutes of
+95 < 1   clock lost (n=1 run, 2026-09-18).
+96 < 1 - **Never a process or authorship sentence in the plan-level Claim.** "Every
+97 < 1   task's exam was written by a peer before the implementer started" parked an
+98 < 1   otherwise clean run as `deferred:external`: Jev reads the tree, and no
+99 < 1   tree shows authorship order — that fact lives in the run record. The Claim is
+100 < 1   do:/see: about the product; the process is the engine's to record (walk run-3,
+101 < 1   2026-09-04).
+102 < 1 - **A behaviour change owns every existing pin of it.** Before dispatch,
+103 < 1   `git grep` the literal a clause replaces across `tests/` and `fleet/tests/`
+104 < 1   and list every hit in the task's Files — an unlisted pin of the old value was
+105 < 1   run-8's one blocking finding. A sibling of the same species: a clause can
+106 < 1   contradict a frozen sim the plan also names as a `Run:` — both cannot pass, so
+107 < 1   read every sim a Proof invokes for the shape it pins before writing a
+108 < 1   rendering clause (run-8, 2026-09-04).
+109 < 1 - **Check every field name a Context names against the report format.** A
+110 < 1   Context that wrote `report.review.findings` for what is
+111 < 1   `completenessFindings` made the examiner mark the leg unsatisfiable and adapt
+112 < 1   (run-10, 2026-09-05).
+113 < 1 - **Two concurrent runs on disjoint Files can conflict on a seam.** One run's
+114 < 1   new test drove the other's changed label routing, and only CI on the merge
+115 < 1   commit caught it; run the fleet bridge on `merge(main, branch)` before arming
+116 < 1   the second auto-merge (2026-09-05).
+117 < 1 - **Expect and budget for rejection rounds — a zero-streak indicts the gate, not
+118 < 1   the plan.** A whitespace edit to a Claim or a Proof changes the hash and
+119 < 1   re-dispatches, even a line-wrap fix, so re-dispatch per task as verdicts land
+120 < 1   rather than per round. And the provenance quote is trusted to no eyeball
+121 < 1   check: a `quoted from #NNN` claim is a verbatim substring of the raw issue
+122 < 1   body, markdown asterisks and backticks included (run-45, 2026-09-01).
+123 < 1 - **A `Run:` grep pins another file's wording, and wording folds.** On run-13,
+124 < 1   `set-filter.test.ts` leg (g) grepped `lint-cli.test.ts` for the literal
+125 < 1   `toContain('setFilter')`, and run-12's publish fold had already merged that file
+126 < 1   semantically, so the literal was gone. A text pin on a sibling file belongs in a
+127 < 1   `Run:` line of the plan, and wording folds (run-13 and run-12,
+128 < 1   popmechanic/tinyapp-fixture, 2026-09-15; #1019).
+130 > 1 - **A `Run:` that runs a whole directory of tests is a sweep; do not write one.**
+131 < 1   One claim, one prover: when fixture exam files each spawned a runner over
+132 < 1   their neighbours, one leg took 573 s and the suite grew from 2.4 to 19 minutes
+133 < 1   over four fixture runs (to run-24, 2026-09). Regression is the run's `Check:`
+134 < 1   lines, so a sweep the operator wants is written once, as a `Check:`.
+129 < 2 - **A `Run:` that names two exams at once is a sweep; do not write one.** A Proof
+130 < 2   `Run:` naming two or more paths under `tests/state-exams/` — or the bare
+131 < 2   `tests/state-exams` directory, which names all of them — was the old compiler's
+132 < 2   `one Run, one exam` refusal; nothing refuses it now. The reading behind it: 19
+133 < 2   of 29 fixture exam files spawned a runner over their neighbours, one leg took
+134 < 2   573 s, and the integration suite grew from 2.4 to 19 minutes over four fixture
+135 < 2   runs ending at run-24. One claim, one prover; regression is the run's `Check:`
+136 < 2   lines, so a sweep the operator wants is written once in the owning task's own
+137 < 2   `Run:` (a `Check:` line is not read by this rule).
+138 < 1 - **A `Run:`/`Check:` line writes only to stdout.** `tee /dev/stderr` — and any
+139 < 1   write to `/dev/stderr` or `/dev/tty` — is refused under the sandbox's
+140 < 1   service shell (`tee: /dev/stderr: Permission denied`), so the proof exits
+141 < 1   non-zero on plumbing with the claim already proven. The engine captures the
+142 < 1   command's stdout and stderr already, so a line that wants its output on the
+143 < 1   record lets the engine keep it and never duplicates it; and a proof line's exit comes from
+144 < 1   the command that proves the claim, not from plumbing (fixture run-25,
+145 < 1   popmechanic/tinyapp-fixture, 2026-09-17).
+146 < 2 - **A fake that stands in for a client a sibling feature also calls
+147 < 2   over-counts the moment the sibling lands.** Give the fake per-exam shape
+148 < 2   recognition so it records only the states with this exam's own shape
+149 < 2   (`note`, `amendment`) and answers null to the rest, never an exact call
+150 < 2   count on a fake shared across features — run-183's
+151 < 2   `test_run_engine_worker_notes.mjs` pinned "exactly three asks" on the one
+152 < 2   `jev.ask` fake, run-182's tier rows asked the same client at every dispatch
+153 < 2   and review, the count read 7 where the exam pinned 3, and the publish fold
+154 < 2   went red on a correct tree; the amendments exam had the same leg, 4 ≠ 2
+155 < 2   (run-183, PR #1111, hand fold `f3c69320`).
+156 < 2 
+157 < 1 - **A `Check:` red at BASE is a red no task of the plan owns, unless one
+158 < 1   task's Files hold the offender.** A run-wide `Check:` is paid by every task
+159 < 1   on every pass; one already failing before any work is done keeps the run from
+160 < 1   settling green, because no task caused it and no task can turn it green. The
+161 < 1   Flock records no base run of a `Check:`, so the author's defence before launch
+162 < 1   is to run the command by hand in an installed checkout. A fixture `Check:`
+163 < 1   copied verbatim from `greenfield-stack.md` exited 1 at BASE on a file no task
+164 < 1   owned, went red on both integration passes, and bought two repair attempts that
+165 < 1   could change nothing (fixture run-36, popmechanic/tinyapp-fixture, 2026-09-21;
+166 < 1   #1173).
+167 < 1 
+168 < 1 - **A `Check:` that freezes a path must not cover any task's own Files.**
+169 < 1   A run-wide `git diff --quiet $ULTRA_BASE -- <paths>` is green at BASE by construction: it
+170 < 1   goes red the moment a task's own patch lands under a frozen path. `plan_check.py` refuses
+171 < 1   such a plan outright — one line naming the check, the
+172 < 1   pathspec, the task and the path, exit 2 (#1202) — so freeze files, not the directory they
+173 < 1   sit in. Run-199 froze `fleet/` while its one task's probe was
+174 < 1   `fleet/tests/test_factory_select_dirs.mjs`: the check exited 1 on both fold passes, the
+175 < 1   repair could change nothing, and a task adopted green parked as `done: false` with a draft
+176 < 1   pull request (n=1 run, 2026-09-21) — the gate fix of #1172 working exactly as designed on a
+177 < 1   plan defect.
+178 < 1 
+179 < 1 - **A clause about a record other tasks also write says the record carries these keys,
+180 < 1   never that it has exactly these keys.** A whole-row deep-equal is lawful only over
+181 < 1   a row the probe's own fake received from the one function under test — never over a row
+182 < 1   read back from a shared log or a shared JSON file that another task's own leg also
+183 < 1   writes. On run-195 (2026-09-18) one task added `ts` to every row of the run's event log
+184 < 1   and the probes of two sibling tasks, each asserting a row's exact key list, went red on
+185 < 1   the merged tree with both features right; the gate now refuses such a leg before
+186 < 1   launch.
+187 < 1 
+188 < 1 - **A probe cannot pass in a lone clone at BASE when it drives a sibling's region.** A
+189 < 1   task whose probe boots the whole system exercises every sibling's lines, so an
+190 < 1   assertion that only a sibling's edit satisfies is red in that task's own clone
+191 < 1   whatever the task does — the author's "passes at BASE" assumption is the thing to
+192 < 1   check, clause by clause, against the Files of every sibling. Either the clause names
+193 < 1   only what this task's Files can change, or a run-wide `Check:` is its measurement. On
+194 < 1   run-215 (2026-09-22) task 3 was red on a `ts` a sibling wrote — three attempts,
+195 < 1   90 worker-minutes — before the clause was narrowed to what its own Files
+196 < 1   could change.
+197 < 1 
+198 < 1 - **An untagged `Run:` settles nothing.** The engine settles a clause only through a
+199 < 1   probe that cites it; on run-225 every landing's `settled` read null (n=1 run, 3 tasks,
+200 < 1   2026-09-22) because the plan's nine probes carried no tag, and Jev read every clause
+201 < 1   from the diff alone. Tag every prover.
+202 < 1 
+203 < 1 - **A probe that imports the producer's created module is a proof-run edge, kept hard.**
+204 < 1   On run-1 of vibecoding-analyzer (2026-09-23, 17 tasks) four consumers whose probes
+205 < 1   imported a file a sibling was creating were dispatched at second zero because the pair
+206 < 1   reader was asked about them; eleven folds were red on a module that did not exist and
+207 < 1   two implementers were re-dispatched (~50 min, n=1 run, #1265); since this plan the
+208 < 1   parser reads the import as the path it names and the engine keeps a `proof-run` edge as
+209 < 1   a hard predecessor, so the author writes the import and no ordering — and a Context
+210 < 1   that carries the shared shape as a literal is still right, because the literal is for
+211 < 1   the shape and the edge is for the file.
+212 < 1 
+213 < 1 - **A backgrounded server inside a `Run:` chain goes in its own parentheses.** In
+214 < 1   `cd server && … && p=$((…)) && (sleep 5; exec celld …) & out=$(bun probe …)` the `&`
+215 < 1   binds the whole `cd … && … &&` chain, not the subshell: the chain runs in the
+216 < 1   background, the foreground never entered `server/`, `$p` is empty, and every rehearsal
+217 < 1   is red on a probe that passes by hand. Write the background as a subshell inside a
+218 < 1   grouping — `… && ( (sleep 5; exec celld …) >"$log" 2>&1 & echo $! >"$pid" ); out=$(…)` —
+219 < 1   and rehearse the exact line on a box that has the binary before launching. Fixture
+220 < 1   run-41 (popmechanic/tinyapp-fixture, 2026-09-24): three red rehearsals, two
+221 < 1   implementers and a repair round on a correct probe; run-42 with the regrouped line
+222 < 1   landed on the first try (n=1 pair of runs).
+223 < 1 
+224 < 1 - **A probe reads what it reads, not only what its task wrote.** On run-225 task 2
+225 < 1   pinned how task 1's `record.mjs` rendered a cell, the two tasks shared no file, and
+226 < 1   the merged tree was red by hand (#1250). A Flock builder's copy keeps merging its
+227 < 1   peers' published work, so a probe green before a sibling publishes can go red after,
+228 < 1   on a correct task: write a probe over a sibling's output only when the pair is
+229 < 1   ordered by a derived edge, or pin only what this task's own Files write.
+230 < 1 
+231 < 1 - **Inside `python3 -c "…"`, a literal dollar sign is `chr(36)` and a backtick is
+232 < 1   `chr(96)`.** The double-quoted program reaches bash first: a `$ULTRA_BASE` written
+233 < 1   there is expanded by the shell before Python sees it, so a fixture meant to carry the
+234 < 1   literal carries the base sha or nothing — build it as `chr(36)+'ULTRA_BASE'`. A
+235 < 1   backtick a fixture needs cannot be typed at all, because `plan_check.py` refuses any
+236 < 1   backtick in a `Run:` as `command carries a backtick` — build it as `chr(96)`. Both
+237 < 1   slips were caught by the proof gate, not by a run: one gate rejection each on
+238 < 1   2026-09-24.
+239 < 1 
+240 < 1 ## Three older lessons of the same kind
+241 < 1 
+242 < 1 - **Quote desired-state sentences, never diagnosis sentences.** An issue's
+243 < 1   "today X happens" taken as the Claim is rendered false by a passing exam; the
+244 < 1   skill's elicitation section says so, and the instinct to quote the vivid line
+245 < 1   is strong (run-45, 2026-09-01).
+246 < 1 - **The probe's quantifier matches the claim's.** "Some swallows stay" needs a
+247 < 1   probe asserting at least one survives, and a probe broader than the claim — any
+248 < 1   `raise` where the claim names `FailedLookup` — fails the same way; loosen the
+249 < 1   claim or tighten the probe, deliberately (run-45, 2026-09-01).
+250 < 1 - **Two plan-defect species of run-45 recur:** a probe/Files enumeration
+251 < 1   mismatch, where a glob probe quantifies over a directory the Files block
+252 < 1   under-enumerates, and a contract that assumes a consumed function's behaviour
+253 < 1   — raising where it only advises — so read the consumed symbol before writing
+254 < 1   the clause that depends on it (run-45, 2026-09-01).
+255 < 1 

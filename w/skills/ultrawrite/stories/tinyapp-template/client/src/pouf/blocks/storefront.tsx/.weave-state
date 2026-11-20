@@ -1,0 +1,416 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import { Controller, useForm, useWatch } from 'react-hook-form'
+2 < 2 import { Navbar } from '../navbar'
+3 < 2 import { Footer } from '../footer'
+4 < 2 import { Card } from '../surface'
+5 < 2 import { Stack, Row, Grid, Spacer } from '../layout'
+6 < 2 import { Heading, Text, Eyebrow, Highlight } from '../text'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Field, Input } from '../Input'
+9 < 2 import { Segmented } from '../Segmented'
+10 < 2 import { Empty } from '../feedback'
+11 < 2 import { Badge, Blob } from '../media'
+12 < 2 import { Icon } from '../Icon'
+13 < 2 
+14 < 2 type Category = 'all' | 'desk' | 'travel' | 'home'
+15 < 2 
+16 < 2 interface Product {
+17 < 2   id: string
+18 < 2   name: string
+19 < 2   description: string
+20 < 2   price: number
+21 < 2   category: Exclude<Category, 'all'>
+22 < 2   tone: 'purple' | 'pink' | 'blue' | 'mint' | 'yellow' | 'orange'
+23 < 2   icon: 'sparkle' | 'music' | 'clock' | 'home' | 'drop' | 'cart'
+24 < 2   badge?: string
+25 < 2 }
+26 < 2 
+27 < 2 interface SearchForm {
+28 < 2   query: string
+29 < 2 }
+30 < 2 
+31 < 2 const PRODUCTS: Product[] = [
+32 < 2   {
+33 < 2     id: 'cloud-lamp',
+34 < 2     name: 'Cloud lamp',
+35 < 2     description: 'A soft desk light with three warm settings.',
+36 < 2     price: 68,
+37 < 2     category: 'desk',
+38 < 2     tone: 'yellow',
+39 < 2     icon: 'sparkle',
+40 < 2     badge: 'Bestseller',
+41 < 2   },
+42 < 2   {
+43 < 2     id: 'focus-timer',
+44 < 2     name: 'Focus timer',
+45 < 2     description: 'A silent, tactile timer for deep-work sessions.',
+46 < 2     price: 42,
+47 < 2     category: 'desk',
+48 < 2     tone: 'purple',
+49 < 2     icon: 'clock',
+50 < 2   },
+51 < 2   {
+52 < 2     id: 'pocket-speaker',
+53 < 2     name: 'Pocket speaker',
+54 < 2     description: 'Big sound, tiny body, twelve-hour battery.',
+55 < 2     price: 84,
+56 < 2     category: 'travel',
+57 < 2     tone: 'pink',
+58 < 2     icon: 'music',
+59 < 2     badge: 'New',
+60 < 2   },
+61 < 2   {
+62 < 2     id: 'weekend-bag',
+63 < 2     name: 'Weekend bag',
+64 < 2     description: 'A roomy carry-on made from recycled canvas.',
+65 < 2     price: 116,
+66 < 2     category: 'travel',
+67 < 2     tone: 'blue',
+68 < 2     icon: 'cart',
+69 < 2   },
+70 < 2   {
+71 < 2     id: 'soft-vase',
+72 < 2     name: 'Soft vase',
+73 < 2     description: 'A playful ceramic home for small bouquets.',
+74 < 2     price: 54,
+75 < 2     category: 'home',
+76 < 2     tone: 'mint',
+77 < 2     icon: 'home',
+78 < 2   },
+79 < 2   {
+80 < 2     id: 'rain-carafe',
+81 < 2     name: 'Rain carafe',
+82 < 2     description: 'Hand-blown glass with a comfortable rounded grip.',
+83 < 2     price: 72,
+84 < 2     category: 'home',
+85 < 2     tone: 'orange',
+86 < 2     icon: 'drop',
+87 < 2   },
+88 < 2 ]
+89 < 2 
+90 < 2 const money = (value: number) =>
+91 < 2   value.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+92 < 2 
+93 < 2 const brand = (
+94 < 2   <>
+95 < 2     <Blob icon="sparkle" tone="yellow" size="sm" />
+96 < 2     Lumo
+97 < 2   </>
+98 < 2 )
+99 < 2 
+100 < 2 /** A complete storefront route: responsive site chrome, merchandising,
+101 < 2  * category and search filters, an empty state, a working bag, quantity
+102 < 2  * controls, totals, and an order-complete state. Search is wired with React
+103 < 2  * Hook Form; the 1st-Pouf controls themselves stay library-neutral. */
+104 < 2 export function StorefrontBlock() {
+105 < 2   const [category, setCategory] = useState<Category>('all')
+106 < 2   const [cart, setCart] = useState<Record<string, number>>({})
+107 < 2   const [placed, setPlaced] = useState(false)
+108 < 2   const { control } = useForm<SearchForm>({ defaultValues: { query: '' } })
+109 < 2   const query = useWatch({ control, name: 'query' })
+110 < 2 
+111 < 2   const visible = useMemo(() => {
+112 < 2     const needle = query.trim().toLowerCase()
+113 < 2     return PRODUCTS.filter(
+114 < 2       (product) =>
+115 < 2         (category === 'all' || product.category === category) &&
+116 < 2         (!needle ||
+117 < 2           `${product.name} ${product.description} ${product.category}`
+118 < 2             .toLowerCase()
+119 < 2             .includes(needle)),
+120 < 2     )
+121 < 2   }, [category, query])
+122 < 2 
+123 < 2   const lines = PRODUCTS.filter((product) => (cart[product.id] ?? 0) > 0)
+124 < 2   const count = lines.reduce((total, product) => total + (cart[product.id] ?? 0), 0)
+125 < 2   const subtotal = lines.reduce(
+126 < 2     (total, product) => total + product.price * (cart[product.id] ?? 0),
+127 < 2     0,
+128 < 2   )
+129 < 2   const shipping = subtotal >= 100 || subtotal === 0 ? 0 : 8
+130 < 2 
+131 < 2   function changeQuantity(id: string, delta: number) {
+132 < 2     setPlaced(false)
+133 < 2     setCart((current) => {
+134 < 2       const next = Math.max(0, (current[id] ?? 0) + delta)
+135 < 2       if (next === 0) {
+136 < 2         const { [id]: _removed, ...rest } = current
+137 < 2         return rest
+138 < 2       }
+139 < 2       return { ...current, [id]: next }
+140 < 2     })
+141 < 2   }
+142 < 2 
+143 < 2   function scrollToShop() {
+144 < 2     scrollToSection('shop')
+145 < 2   }
+146 < 2 
+147 < 2   function scrollToSection(id: string) {
+148 < 2     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+149 < 2     document.getElementById(id)?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth' })
+150 < 2   }
+151 < 2 
+152 < 2   return (
+153 < 2     <div className="max-w-[1180px] mx-auto p-(--s5) max-[620px]:p-(--s3)">
+154 < 2       <Stack gap={6}>
+155 < 2         <Navbar
+156 < 2           brand={brand}
+157 < 2           links={[
+158 < 2             { label: 'Shop', href: '#shop', active: true },
+159 < 2             { label: 'Story', href: '#story' },
+160 < 2             { label: 'Shipping', href: '#shipping' },
+161 < 2           ]}
+162 < 2           actions={
+163 < 2             <Button size="sm" variant="quiet" onClick={() => scrollToSection('bag')}>
+164 < 2               <Icon name="cart" size="sm" />
+165 < 2               Bag ({count})
+166 < 2             </Button>
+167 < 2           }
+168 < 2         />
+169 < 2 
+170 < 2         <Grid cols="sidebar" gap={5}>
+171 < 2           <Stack gap={4}>
+172 < 2             <Eyebrow>Useful things, softer edges</Eyebrow>
+173 < 2             <Heading level={1}>
+174 < 2               Small objects. <Highlight>Big delight.</Highlight>
+175 < 2             </Heading>
+176 < 2             <Text muted>
+177 < 2               Thoughtful pieces for desks, homes, and weekends away. Free
+178 < 2               shipping over $100 and easy returns for 30 days.
+179 < 2             </Text>
+180 < 2             <Row gap={2}>
+181 < 2               <Button size="lg" onClick={scrollToShop}>Shop the collection</Button>
+182 < 2               <Button
+183 < 2                 size="lg"
+184 < 2                 variant="quiet"
+185 < 2                 onClick={() => scrollToSection('story')}
+186 < 2               >
+187 < 2                 Our story
+188 < 2               </Button>
+189 < 2             </Row>
+190 < 2           </Stack>
+191 < 2 
+192 < 2           <Card>
+193 < 2             <Stack gap={3}>
+194 < 2               <Blob icon="cart" tone="pink" />
+195 < 2               <Heading level={3}>The weekend edit</Heading>
+196 < 2               <Text size="sm" muted>
+197 < 2                 Three light, durable pieces chosen for spontaneous trips.
+198 < 2               </Text>
+199 < 2               <Badge tone="mint">Ships today</Badge>
+200 < 2             </Stack>
+201 < 2           </Card>
+202 < 2         </Grid>
+203 < 2 
+204 < 2         <section id="shop">
+205 < 2           <Stack gap={4}>
+206 < 2             <Row justify="between" align="top">
+207 < 2               <Stack gap={1}>
+208 < 2                 <Eyebrow>Collection</Eyebrow>
+209 < 2                 <Heading level={2}>Find your new favorite</Heading>
+210 < 2               </Stack>
+211 < 2               <Segmented
+212 < 2                 label="Product category"
+213 < 2                 value={category}
+214 < 2                 onChange={setCategory}
+215 < 2                 options={[
+216 < 2                   { value: 'all', label: 'All' },
+217 < 2                   { value: 'desk', label: 'Desk' },
+218 < 2                   { value: 'travel', label: 'Travel' },
+219 < 2                   { value: 'home', label: 'Home' },
+220 < 2                 ]}
+221 < 2               />
+222 < 2             </Row>
+223 < 2 
+224 < 2             <form role="search" onSubmit={(event) => event.preventDefault()}>
+225 < 2               <Field label="Search products">
+226 < 2                 {(id, describedBy) => (
+227 < 2                   <Controller
+228 < 2                     name="query"
+229 < 2                     control={control}
+230 < 2                     render={({ field }) => (
+231 < 2                       <Input
+232 < 2                         ref={field.ref}
+233 < 2                         id={id}
+234 < 2                         name={field.name}
+235 < 2                         describedBy={describedBy}
+236 < 2                         value={field.value}
+237 < 2                         onChange={field.onChange}
+238 < 2                         onBlur={field.onBlur}
+239 < 2                         placeholder="Try “lamp” or “travel”…"
+240 < 2                         autoComplete="off"
+241 < 2                       />
+242 < 2                     )}
+243 < 2                   />
+244 < 2                 )}
+245 < 2               </Field>
+246 < 2             </form>
+247 < 2 
+248 < 2             <Grid cols="sidebar" gap={5}>
+249 < 2               <div aria-live="polite">
+250 < 2                 {visible.length === 0 ? (
+251 < 2                   <Card>
+252 < 2                     <Empty icon="search" title="No products found">
+253 < 2                       Try another word or choose a different category.
+254 < 2                     </Empty>
+255 < 2                   </Card>
+256 < 2                 ) : (
+257 < 2                   <Grid cols={2} gap={4}>
+258 < 2                     {visible.map((product) => (
+259 < 2                       <Card key={product.id}>
+260 < 2                         <Stack gap={3}>
+261 < 2                           <Row justify="between" align="top">
+262 < 2                             <Blob icon={product.icon} tone={product.tone} />
+263 < 2                             {product.badge ? <Badge tone={product.tone}>{product.badge}</Badge> : null}
+264 < 2                           </Row>
+265 < 2                           <Stack gap={1}>
+266 < 2                             <Heading level={3}>{product.name}</Heading>
+267 < 2                             <Text size="sm" muted>{product.description}</Text>
+268 < 2                           </Stack>
+269 < 2                           <Row justify="between">
+270 < 2                             <Text num>{money(product.price)}</Text>
+271 < 2                             <Button
+272 < 2                               size="sm"
+273 < 2                               tone={product.tone}
+274 < 2                               onClick={() => changeQuantity(product.id, 1)}
+275 < 2                             >
+276 < 2                               Add to bag
+277 < 2                             </Button>
+278 < 2                           </Row>
+279 < 2                         </Stack>
+280 < 2                       </Card>
+281 < 2                     ))}
+282 < 2                   </Grid>
+283 < 2                 )}
+284 < 2               </div>
+285 < 2 
+286 < 2               <div id="bag">
+287 < 2                 <Card>
+288 < 2                   <Stack gap={4}>
+289 < 2                     <Row justify="between">
+290 < 2                       <Heading level={3}>Your bag</Heading>
+291 < 2                       <Badge tone={count > 0 ? 'purple' : 'blue'}>{count} items</Badge>
+292 < 2                     </Row>
+293 < 2 
+294 < 2                     {lines.length === 0 ? (
+295 < 2                       <Empty icon="cart" title="Your bag is empty">
+296 < 2                         Add something you love. It will wait here for you.
+297 < 2                       </Empty>
+298 < 2                     ) : (
+299 < 2                       <Stack gap={3}>
+300 < 2                         {lines.map((product) => {
+301 < 2                           const quantity = cart[product.id] ?? 0
+302 < 2                           return (
+303 < 2                             <Row key={product.id} gap={2} wrap={false}>
+304 < 2                               <Blob icon={product.icon} tone={product.tone} size="sm" />
+305 < 2                               <Stack gap={1}>
+306 < 2                                 <Text truncate>{product.name}</Text>
+307 < 2                                 <Text size="sm" muted num>
+308 < 2                                   {money(product.price * quantity)}
+309 < 2                                 </Text>
+310 < 2                               </Stack>
+311 < 2                               <Spacer />
+312 < 2                               <Row gap={1} wrap={false}>
+313 < 2                                 <Button
+314 < 2                                   size="sm"
+315 < 2                                   variant="quiet"
+316 < 2                                   label={`Remove one ${product.name}`}
+317 < 2                                   onClick={() => changeQuantity(product.id, -1)}
+318 < 2                                 >
+319 < 2                                   <Icon name="remove" size="sm" />
+320 < 2                                 </Button>
+321 < 2                                 <Text num>{quantity}</Text>
+322 < 2                                 <Button
+323 < 2                                   size="sm"
+324 < 2                                   variant="quiet"
+325 < 2                                   label={`Add one ${product.name}`}
+326 < 2                                   onClick={() => changeQuantity(product.id, 1)}
+327 < 2                                 >
+328 < 2                                   <Icon name="add" size="sm" />
+329 < 2                                 </Button>
+330 < 2                               </Row>
+331 < 2                             </Row>
+332 < 2                           )
+333 < 2                         })}
+334 < 2                         <div className="pt-(--s3) [border-top:1px_solid_rgba(201,168,255,0.3)]">
+335 < 2                           <Stack gap={2}>
+336 < 2                             <Row justify="between">
+337 < 2                               <Text size="sm" muted>Subtotal</Text>
+338 < 2                               <Text size="sm" num>{money(subtotal)}</Text>
+339 < 2                             </Row>
+340 < 2                             <Row justify="between">
+341 < 2                               <Text size="sm" muted>Shipping</Text>
+342 < 2                               <Text size="sm" num>{shipping ? money(shipping) : 'Free'}</Text>
+343 < 2                             </Row>
+344 < 2                             <Row justify="between">
+345 < 2                               <Text>Total</Text>
+346 < 2                               <Text num>{money(subtotal + shipping)}</Text>
+347 < 2                             </Row>
+348 < 2                           </Stack>
+349 < 2                         </div>
+350 < 2                       </Stack>
+351 < 2                     )}
+352 < 2 
+353 < 2                     {placed ? <Badge tone="mint">Order reserved</Badge> : null}
+354 < 2                     <Button
+355 < 2                       block
+356 < 2                       tone="mint"
+357 < 2                       disabled={count === 0}
+358 < 2                       onClick={() => setPlaced(true)}
+359 < 2                     >
+360 < 2                       {placed ? 'Order ready for checkout' : 'Reserve order'}
+361 < 2                     </Button>
+362 < 2                     <Text size="sm" muted>
+363 < 2                       Taxes calculated at checkout. Secure payment connects in
+364 < 2                       your app.
+365 < 2                     </Text>
+366 < 2                   </Stack>
+367 < 2                 </Card>
+368 < 2               </div>
+369 < 2             </Grid>
+370 < 2           </Stack>
+371 < 2         </section>
+372 < 2 
+373 < 2         <section id="story">
+374 < 2           <Grid cols={3}>
+375 < 2             <Card>
+376 < 2               <Stack gap={2}>
+377 < 2                 <Blob icon="heart" tone="pink" size="sm" />
+378 < 2                 <Heading level={3}>Made to keep</Heading>
+379 < 2                 <Text size="sm" muted>Durable materials, repairable parts, honest guarantees.</Text>
+380 < 2               </Stack>
+381 < 2             </Card>
+382 < 2             <Card>
+383 < 2               <Stack gap={2}>
+384 < 2                 <Blob icon="sparkle" tone="yellow" size="sm" />
+385 < 2                 <Heading level={3}>Small-batch</Heading>
+386 < 2                 <Text size="sm" muted>Produced in careful runs instead of disposable seasons.</Text>
+387 < 2               </Stack>
+388 < 2             </Card>
+389 < 2             <Card>
+390 < 2               <Stack gap={2}>
+391 < 2                 <Blob icon="users" tone="blue" size="sm" />
+392 < 2                 <Heading level={3}>Human support</Heading>
+393 < 2                 <Text size="sm" muted>Real replies from the people who know every product.</Text>
+394 < 2               </Stack>
+395 < 2             </Card>
+396 < 2           </Grid>
+397 < 2         </section>
+398 < 2 
+399 < 2         <div id="shipping">
+400 < 2           <Footer
+401 < 2             brand={brand}
+402 < 2             tagline="Good objects for ordinary days."
+403 < 2             columns={[
+404 < 2               { title: 'Shop', links: [{ label: 'Desk', href: '#shop' }, { label: 'Travel', href: '#shop' }, { label: 'Home', href: '#shop' }] },
+405 < 2               { title: 'Help', links: [{ label: 'Shipping', href: '#shipping' }, { label: 'Returns', href: '#shipping' }, { label: 'Contact', href: '#shipping' }] },
+406 < 2               { title: 'About', links: [{ label: 'Our story', href: '#story' }, { label: 'Materials', href: '#story' }] },
+407 < 2             ]}
+408 < 2             note="© 2026 Lumo Goods. Built for demonstration—replace the catalog and checkout adapter with yours."
+409 < 2           />
+410 < 2         </div>
+411 < 2       </Stack>
+412 < 2     </div>
+413 < 2   )
+414 < 2 }
+415 < 2 

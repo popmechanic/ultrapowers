@@ -1,6 +1,7 @@
 0 < 1 # First run — one section per doctor row
 1 < 1 
-4 > 1 `node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
+5 > 1 `node <plugin-root>/fleet/doctor.mjs --json` answers with nine rows in a fixed
+4 > 2 `node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
 3 > 2 `node <plugin-root>/fleet/doctor.mjs --json` answers with eleven rows in a fixed
 2 < 2 `node <plugin-root>/fleet/doctor.mjs --json` answers with ten rows in a fixed
 3 < 1 order. Each row that is not `ok` has a section here, named for the row's `id`.
@@ -460,40 +461,40 @@
 451 < 1   each plan, refusing a `**Publish:**` plan that has no credential at the edge
 452 < 1   rather than a plan that will never ask for one.
 453 < 1 
-454 < 1 ## reaper
-455 < 1 
-456 < 1 A finished run's VM asks the hub to remove it, and the hub removes it through `lobby-rm`, an
-457 < 1 integration only the hub may use. Its bearer is an exe.dev key named `hub-reaper` that can do one
-458 < 1 thing, `rm`. The key expires, and an expired key fails without a sound: the hub answers the VM and
-460 > 1 removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row asks the
-461 < 1 remover itself, from the hub, and is red when it answers `invalid token`; it is also red when the
-462 < 1 key has expired or is gone, and says how many days a live one has left.
+454 < 2 ## reaper
+455 < 2 
+456 < 2 A finished run's VM asks the hub to remove it, and the hub removes it through `lobby-rm`, an
+457 < 2 integration only the hub may use. Its bearer is an exe.dev key named `hub-reaper` that can do one
+458 < 2 thing, `rm`. The key expires, and an expired key fails without a sound: the hub answers the VM and
+460 > 2 removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row asks the
+461 < 2 remover itself, from the hub, and is red when it answers `invalid token`; it is also red when the
+462 < 2 key has expired or is gone, and says how many days a live one has left.
 459 < 2 removes nothing, so every finished VM runs, and bills, until someone runs the janitor. This row is
 460 < 2 red when that key has expired or is gone, and says how many days a live one has left.
-461 < 1 
-463 > 1 **The operator runs** one command, which types nothing and never prints the key:
+461 < 2 
+463 > 2 **The operator runs** one command, which types nothing and never prints the key:
 462 < 2 **The operator runs** both halves, so the key is never on an argv and never in the chat. The first
 463 < 2 prints the new key once; the second reads it on stdin:
-464 < 1 
-465 < 1 ```bash
-467 > 1 bash fleet/reaper-key.sh
+464 < 2 
+465 < 2 ```bash
+467 > 2 bash fleet/reaper-key.sh
 466 < 2 ssh exe.dev "ssh-key generate-api-key --label=hub-reaper-<year>-<month> --cmds=rm --exp=1y"
-467 < 1 ```
-468 < 1 
-470 > 1 It mints a new key that can only `rm` (labelled `hub-reaper-<date>-<time>`, good for one year), hands
-471 < 1 it to `lobby-rm` on stdin, then asks the remover from the hub to remove a VM that does not exist. It
-472 < 1 ends `WORKING` when the remover answers anything but `invalid token`, and lists the older keys that
-473 < 1 can then be deleted. Run it from a terminal or a Run button alike: nothing secret is shown.
+467 < 2 ```
+468 < 2 
+470 > 2 It mints a new key that can only `rm` (labelled `hub-reaper-<date>-<time>`, good for one year), hands
+471 < 2 it to `lobby-rm` on stdin, then asks the remover from the hub to remove a VM that does not exist. It
+472 < 2 ends `WORKING` when the remover answers anything but `invalid token`, and lists the older keys that
+473 < 2 can then be deleted. Run it from a terminal or a Run button alike: nothing secret is shown.
 469 < 2 ```bash
 470 < 2 ssh exe.dev "integrations edit lobby-rm --bearer=-"
 471 < 2 ```
-472 < 1 
-473 < 1 Two things a newcomer would not know:
-474 < 1 
-475 < 1 - **The label is how the doctor finds the key, and exe.dev never reuses one.** A renewal under the
-476 < 1   old label is refused (`a key named "hub-reaper" already exists`, 2026-11-13), so each new key
-477 < 1   carries its month. Any label that begins `hub-reaper` is read, and the one that lasts longest is
-478 < 1   the one reported, so an expired key left in the list does no harm.
-479 < 1 - **A missing `lobby-rm` is a green row.** Without it a finished VM waits for the janitor, which is
-480 < 1   slower and never wrong; `fleet/RUNBOOK.md` §The hub's reaper installs it.
-481 < 1 
+472 < 2 
+473 < 2 Two things a newcomer would not know:
+474 < 2 
+475 < 2 - **The label is how the doctor finds the key, and exe.dev never reuses one.** A renewal under the
+476 < 2   old label is refused (`a key named "hub-reaper" already exists`, 2026-11-13), so each new key
+477 < 2   carries its month. Any label that begins `hub-reaper` is read, and the one that lasts longest is
+478 < 2   the one reported, so an expired key left in the list does no harm.
+479 < 2 - **A missing `lobby-rm` is a green row.** Without it a finished VM waits for the janitor, which is
+480 < 2   slower and never wrong; `fleet/RUNBOOK.md` §The hub's reaper installs it.
+481 < 2 

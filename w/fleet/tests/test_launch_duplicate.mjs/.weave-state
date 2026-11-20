@@ -46,7 +46,8 @@
 45 < 1 import { janitor } from '../janitor.mjs'
 46 < 1 import { Refusal } from '../lobby.mjs'
 47 < 1 import {
-48 < 1   HELP_FROM_VERBS, NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
+49 > 1   NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
+48 < 2   HELP_FROM_VERBS, NO_NETWORK_GIT, NO_RECORD, NO_REMOTE_OPS, PLAN,
 49 < 1   answer, launchRules, launchWorkspace, makeExec, pushCalls, recordRule, sshRule,
 50 < 1   thrown, vmRow, vmsPayload
 51 < 1 } from './_lobby_helpers.mjs'
@@ -76,7 +77,8 @@
 75 < 1 
 76 < 1 /** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
 77 < 1 const readRules = ({ repo, evidence, rows, record }) =>
-78 < 1   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
+79 > 1   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record })
+78 < 2   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
 79 < 1 
 80 < 1 // ── The workspace: a target whose origin already carries plan branches ──────
 81 < 1 
@@ -222,7 +224,8 @@
 219 < 1   const recorded = await janitorIn(RUNNING)
 220 < 1   assert.deepEqual(
 221 < 1     recorded.runs,
-222 < 1     [{ vm: LIVE_VM, run: 7, target: TARGET, plan: ws.run7, live: true, state: 'running' }],
+223 > 1     [{ vm: LIVE_VM, run: 7, target: TARGET, live: true, state: 'running' }],
+222 < 2     [{ vm: LIVE_VM, run: 7, target: TARGET, plan: ws.run7, live: true, state: 'running' }],
 223 < 1     '(f) [M6] one entry: the assignment row, read live; the kept row and the target-less row are not in it'
 224 < 1   )
 225 < 1   const unrecorded = await janitorIn(NO_RECORD)

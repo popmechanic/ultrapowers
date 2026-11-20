@@ -1,0 +1,108 @@
+0 < 2 import type { Demo } from './types'
+1 < 2 import { buttonDemos } from './button'
+2 < 2 import { inputDemos } from './input'
+3 < 2 import { stackDemos, rowDemos, gridDemos, shellDemos, sidebarDemos } from './layout'
+4 < 2 import { headingDemos, textDemos } from './text'
+5 < 2 import { cardDemos, rowCardDemos } from './surface'
+6 < 2 import { statDemos, metricDemos } from './readout'
+7 < 2 import { segmentedDemos } from './segmented'
+8 < 2 import { numberInputDemos } from './number-input'
+9 < 2 import { blobDemos, badgeDemos, dotDemos, figureDemos } from './media'
+10 < 2 import { statusDemos, freshnessDemos, modeBannerDemos } from './status'
+11 < 2 import { emptyDemos, skeletonDemos, errorNoteDemos } from './feedback'
+12 < 2 import { toastDemos } from './toast'
+13 < 2 import { toasterDemos } from './toaster'
+14 < 2 import { alertBellDemos } from './alert-bell'
+15 < 2 import { selectDemos, switchDemos, tooltipDemos, confirmDemos, dialogDemos, comboboxDemos } from './controls'
+16 < 2 import { navLinkDemos } from './nav-link'
+17 < 2 import { bottomNavDemos } from './bottom-nav'
+18 < 2 import { iconDemos } from './icon'
+19 < 2 import { errorBoundaryDemos } from './error-boundary'
+20 < 2 import { checkboxDemos } from './checkbox'
+21 < 2 import { radioGroupDemos } from './radio-group'
+22 < 2 import { sliderDemos } from './slider'
+23 < 2 import { tabsDemos, accordionDemos, collapsibleDemos } from './disclosure'
+24 < 2 import { separatorDemos } from './separator'
+25 < 2 import { dropdownMenuDemos } from './dropdown-menu'
+26 < 2 import { contextMenuDemos } from './context-menu'
+27 < 2 import { menubarDemos } from './menubar'
+28 < 2 import { navbarDemos } from './navbar'
+29 < 2 import { footerDemos } from './footer'
+30 < 2 import { ctaDemos } from './cta'
+31 < 2 import { hoverCardDemos } from './hover-card'
+32 < 2 import { progressDemos } from './progress'
+33 < 2 import { avatarDemos } from './avatar'
+34 < 2 import { sheetDemos } from './sheet'
+35 < 2 import { scrollAreaDemos } from './scroll-area'
+36 < 2 import { aspectRatioDemos } from './aspect-ratio'
+37 < 2 import { toggleGroupDemos } from './toggle-group'
+38 < 2 import { tableDemos } from './table'
+39 < 2 import { paginationDemos } from './pagination'
+40 < 2 import { breadcrumbDemos } from './breadcrumb'
+41 < 2 
+42 < 2 /** Demo catalogue without charting dependencies. The documentation page uses
+43 < 2  * this as its primary island so Recharts stays out of the initial route. */
+44 < 2 export const coreDemos: Record<string, Demo[]> = {
+45 < 2   stack: stackDemos,
+46 < 2   row: rowDemos,
+47 < 2   grid: gridDemos,
+48 < 2   shell: shellDemos,
+49 < 2   sidebar: sidebarDemos,
+50 < 2   heading: headingDemos,
+51 < 2   text: textDemos,
+52 < 2   card: cardDemos,
+53 < 2   'row-card': rowCardDemos,
+54 < 2   stat: statDemos,
+55 < 2   metric: metricDemos,
+56 < 2   segmented: segmentedDemos,
+57 < 2   button: buttonDemos,
+58 < 2   input: inputDemos,
+59 < 2   'number-input': numberInputDemos,
+60 < 2   blob: blobDemos,
+61 < 2   badge: badgeDemos,
+62 < 2   dot: dotDemos,
+63 < 2   figure: figureDemos,
+64 < 2   status: statusDemos,
+65 < 2   freshness: freshnessDemos,
+66 < 2   'mode-banner': modeBannerDemos,
+67 < 2   empty: emptyDemos,
+68 < 2   skeleton: skeletonDemos,
+69 < 2   'error-note': errorNoteDemos,
+70 < 2   toast: toastDemos,
+71 < 2   toaster: toasterDemos,
+72 < 2   'alert-bell': alertBellDemos,
+73 < 2   select: selectDemos,
+74 < 2   switch: switchDemos,
+75 < 2   tooltip: tooltipDemos,
+76 < 2   confirm: confirmDemos,
+77 < 2   dialog: dialogDemos,
+78 < 2   combobox: comboboxDemos,
+79 < 2   'nav-link': navLinkDemos,
+80 < 2   'bottom-nav': bottomNavDemos,
+81 < 2   icon: iconDemos,
+82 < 2   'error-boundary': errorBoundaryDemos,
+83 < 2   checkbox: checkboxDemos,
+84 < 2   'radio-group': radioGroupDemos,
+85 < 2   slider: sliderDemos,
+86 < 2   tabs: tabsDemos,
+87 < 2   accordion: accordionDemos,
+88 < 2   collapsible: collapsibleDemos,
+89 < 2   separator: separatorDemos,
+90 < 2   'dropdown-menu': dropdownMenuDemos,
+91 < 2   'context-menu': contextMenuDemos,
+92 < 2   menubar: menubarDemos,
+93 < 2   navbar: navbarDemos,
+94 < 2   footer: footerDemos,
+95 < 2   cta: ctaDemos,
+96 < 2   'hover-card': hoverCardDemos,
+97 < 2   progress: progressDemos,
+98 < 2   avatar: avatarDemos,
+99 < 2   sheet: sheetDemos,
+100 < 2   'scroll-area': scrollAreaDemos,
+101 < 2   'aspect-ratio': aspectRatioDemos,
+102 < 2   'toggle-group': toggleGroupDemos,
+103 < 2   table: tableDemos,
+104 < 2   pagination: paginationDemos,
+105 < 2   breadcrumb: breadcrumbDemos,
+106 < 2 }
+107 < 2 

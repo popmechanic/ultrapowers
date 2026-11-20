@@ -1,0 +1,53 @@
+0 < 2 # Objectives — ultrapowers
+1 < 2 
+2 < 2 _What ultrapowers is optimizing for this quarter, in plain English. Triage scores
+3 < 2 alignment against this file. It is versioned; edit it freely._
+4 < 2 
+5 < 2 _Last set: 2026-06-30 (operator interview)._
+6 < 2 
+7 < 2 ## North star
+8 < 2 
+9 < 2 **Greater agent autonomy**, in service of our three value props — **token
+10 < 2 efficiency, code quality, and execution speed** — on top of the **simplest,
+11 < 2 most maintainable codebase that costs us none of those three.**
+12 < 2 
+13 < 2 The thesis underneath the autonomy: ultrapowers earns the right to do more on its
+14 < 2 own by being *checkable*. Every claim the system makes about itself is gated by
+15 < 2 something it cannot touch — sealed exams, integration-ancestry proofs, held-out
+16 < 2 verification. Autonomy expands only as fast as that verification boundary can
+17 < 2 gate it.
+18 < 2 
+19 < 2 ## What we optimize for, in priority order
+20 < 2 
+21 < 2 1. **Agent autonomy.** The operator's attention belongs in planning, not
+22 < 2    implementation. Move work off the operator's plate and trend the drain toward
+23 < 2    more hands-off (auto-merging green portfolios, lighter end-gate review) — as
+24 < 2    the verification boundary proves out, not before it.
+25 < 2 2. **Token efficiency.** Fewer wasted tokens per landed task: no redundant
+26 < 2    bootstrapping, right-sized model tiers, no re-derivation of known facts.
+27 < 2 3. **Code quality.** Independently verified correctness. Nothing reaches the
+28 < 2    integration line, or `main`, without clearing a check it cannot game.
+29 < 2 4. **Execution speed.** Wall-clock to landed work: parallel waves, isolated
+30 < 2    worktrees, no needless serialization.
+31 < 2 5. **Simplicity & maintainability.** The simplest design that costs none of the
+32 < 2    four above. Bias to the simpler option. The one hard exception to
+33 < 2    "simpler wins" is **per-task model-tier correctness** — never run Opus-grade
+34 < 2    work on a cheaper tier to save lines of code.
+35 < 2 
+36 < 2 ## This quarter's priorities
+37 < 2 
+38 < 2 - **Integration correctness ranks highest** — it is the merge boundary the entire
+39 < 2   drain rests on. Silent done-task drops, cross-phase integration review before
+40 < 2   the final PR, and branch-restore guards all defend it.
+41 < 2 - Then **authoring robustness** — plans must compile to waves deterministically
+42 < 2   (parser hardening, load-bearing marker guidance).
+43 < 2 - Then **path hygiene** — get ultrapowers scratch out of `.git/` protected paths.
+44 < 2 
+45 < 2 ## Risk posture
+46 < 2 
+47 < 2 Conservative-by-default, loosening with proof. The build drain is **v1** today:
+48 < 2 red exam → park (no autonomous salvage), one pre-merge end gate, `main` never
+49 < 2 touched unattended. The *direction* is more hands-off, but each loosening is
+50 < 2 earned by first hardening the exam and integration boundary that makes the
+51 < 2 autonomy safe.
+52 < 2 

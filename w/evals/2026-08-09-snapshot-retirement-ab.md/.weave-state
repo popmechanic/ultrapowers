@@ -1,0 +1,111 @@
+0 < 2 # Snapshot-family retirement A/B — results (2026-08-09)
+1 < 2 
+2 < 2 **Verdict: ALL PASS → UNFROZEN-BY-EVAL.** The #104 deletion branch
+3 < 2 (`ultra/integration-d104-20260809` @ `b0208ca`) meets all four mechanics
+4 < 2 hard-gate criteria of the spec
+5 < 2 (`docs/superpowers/specs/2026-08-09-snapshot-family-retirement-design.md`
+6 < 2 §The eval gate) against main @ `e223254`. Per the subtraction-eval doctrine
+7 < 2 this unfreezes the verification periphery for exactly this deletion; the
+8 < 2 merge condition is satisfied.
+9 < 2 
+10 < 2 ## Cells
+11 < 2 
+12 < 2 One A/B pair on the `chained` fixture (5 tasks / 5 waves, sealed acceptance,
+13 < 2 sealId `4b5e2d78b16f`), driven headlessly by
+14 < 2 `.claude/ultrapowers/run-d104-20260809/run_ab_cell.py` over
+15 < 2 `evals/ab_runner.py` functions, operator-administered from a plain terminal
+16 < 2 (engine pinned per cell in a throwaway `CLAUDE_CONFIG_DIR`, #107 isolation).
+17 < 2 Pre-existing operator dirt seeded before launch in both cells
+18 < 2 (untracked `OPERATOR-WIP.txt` + tracked edit to `docs/plans/plan.md`).
+19 < 2 
+20 < 2 | | A (control) | B (deletion) |
+21 < 2 |---|---|---|
+22 < 2 | engine | main @ `e223254` | `ultra/integration-d104-20260809` @ `b0208ca` |
+23 < 2 | mode | headless | headless |
+24 < 2 | engine run | `wf_9b550b07-5a9` (stamp 20260809-215013) | `wf_ab38597d-0d0` (stamp 20260809-221432) |
+25 < 2 | workdir | `…/T/ab-run-chained-A-kvgu55rc/repo` | `…/T/ab-run-chained-B-o6a059n_/repo` |
+26 < 2 | fixture baseline | `61bb68e3b498…` | `7522dff684ec…` |
+27 < 2 | gate verdict | NEEDS_ACK (exit 2) | PASS (exit 0) |
+28 < 2 
+29 < 2 ## Mechanics hard-gate (per spec, all four must hold)
+30 < 2 
+31 < 2 **1. B completes with a non-crash gate verdict — PASS.** B ran headless to the
+32 < 2 pre-merge gate; `gate_check` returned verdict `PASS`, `gateCheckExit 0`;
+33 < 2 sealed acceptance administered deterministically (`sealId 4b5e2d78b16f`,
+34 < 2 `status OK`, 8 passed, exit 0). All ultra_run preflight stages ok.
+35 < 2 
+36 < 2 **2. `gateCheck.checks[]` set-identical A vs B; dirt passes-with-note on
+37 < 2 both — PASS.** Both cells produced exactly the same 8 checks, all `ok: true`:
+38 < 2 `report-parse, lock, clean-tree, wave-merges, head-match, git-verified,
+39 < 2 ancestry, deliverables`. The clean-tree check passed **with the identical
+40 < 2 note** on both engines: "pre-existing dirt carried through from before
+41 < 2 launch, not gate-relevant: docs/plans/plan.md, .headless-result.json,
+42 < 2 OPERATOR-WIP.txt". The seeded dirt survived untouched through both runs
+43 < 2 (`dirtSeededBefore` = seeded set; `dirtAfter` = seeded set + the driver's
+44 < 2 own `.headless-result.json`).
+45 < 2 
+46 < 2 **3. Pre/post branch + HEAD equal per workdir — PASS.**
+47 < 2 A: `main` / `61bb68e3b498698a2161aa6623fe7fa7fa90d774` before launch and
+48 < 2 after the gate. B: `main` / `7522dff684ec2f259623932696f067bf6cf1f64c`
+49 < 2 before and after. The property the snapshot/restore family claimed to
+50 < 2 protect holds on the engine that no longer has the family.
+51 < 2 
+52 < 2 **4. No stage in B's receipts errors on a missing snapshot — PASS.** B's
+53 < 2 `receipt.json` + `gate-receipt.json` contain zero occurrences of
+54 < 2 `snapshot` / `restore` / `error` in any stage or check.
+55 < 2 
+56 < 2 ### The one A/B difference, explained (not deletion-caused)
+57 < 2 
+58 < 2 A's overall verdict was NEEDS_ACK where B's was PASS. The acks are two
+59 < 2 `deferred:runtime` items A's engine run declared in its workflow report
+60 < 2 (plan pins Python 3.11, sandbox had 3.9.6; `ledger/cli.py` never invoked as
+61 < 2 a real process). `gate_check.py` — byte-identical on both engines —
+62 < 2 faithfully converts report-declared deferrals into acks; B's run declared
+63 < 2 none. The divergence is reviewer-judgment variance in report *content*
+64 < 2 (the report producer `waves.js` is untouched by the branch), not gate
+65 < 2 machinery. n=1 variance, consistent with the 0.1.0 doctrine.
+66 < 2 
+67 < 2 ## Advisory (not gated)
+68 < 2 
+69 < 2 Driver-session measurements only (workflow subagent tokens not included):
+70 < 2 
+71 < 2 | | A | B |
+72 < 2 |---|---|---|
+73 < 2 | wall clock | 19m06s | 18m36s |
+74 < 2 | output tokens | 33,325 | 21,992 |
+75 < 2 | cache read / create | 2.53M / 171k | 2.40M / 149k |
+76 < 2 
+77 < 2 ## Eval-kit findings (the ceremony's own defects, fixed to get here)
+78 < 2 
+79 < 2 Three rounds were needed; the first two failed in the *kit*, not the engines
+80 < 2 — both engines failed identically each time, so no cell ever produced a
+81 < 2 biased comparison.
+82 < 2 
+83 < 2 1. **#107 follow-up — auth does not ride into a virgin `CLAUDE_CONFIG_DIR`**
+84 < 2    ("Not logged in"), and the first remedy — copying
+85 < 2    `~/.claude/.credentials.json` into the throwaway — fails once the
+86 < 2    operator's live session rotates the refresh token: both cells died with
+87 < 2    "OAuth session expired and could not be refreshed" (file was ~21h stale).
+88 < 2    **Fix:** export the live credentials from the macOS Keychain
+89 < 2    (`security find-generic-password -s "Claude Code-credentials" -w`) at
+90 < 2    cell-run time, file copy as fallback. A durable eval-config-isolation
+91 < 2    answer must source auth from the Keychain at launch, never from a stored
+92 < 2    copy. (For issue #107's closed thread / #122.)
+93 < 2 2. **Headless print mode races the SessionStart hook:** the Workflow
+94 < 2    engine's saved-workflow registry snapshots before the hook's harness copy
+95 < 2    lands, so the probe got `Workflow "ultrapowers-probe" not found` even
+96 < 2    though `probe.js` was on disk by end of startup. Interactively the hook
+97 < 2    wins this race (why live `/ultrapowers` sessions work); headlessly it
+98 < 2    loses. **Fix:** the cell driver pre-seeds the pinned engine's harnesses
+99 < 2    into `repo/.claude/workflows/` before any claude process starts, and
+100 < 2    mirrors the production gitignore (`.claude/` in `.git/info/exclude`) so
+101 < 2    the dirt measurement stays scoped to the deliberately seeded dirt.
+102 < 2 
+103 < 2 ## Disposition
+104 < 2 
+105 < 2 Merge condition satisfied: `gate_check.py` and `run_acceptance.sh` verified
+106 < 2 byte-identical to main on the branch (`git diff main...` empty on both);
+107 < 2 branch merges `--no-ff` to main; docket #104 queued → executed.
+108 < 2 canaryMetric (spec §Acceptance): post-release sense passes must show zero
+109 < 2 checkout-drift incidents at engineVersion ≥ the adopting release.
+110 < 2 

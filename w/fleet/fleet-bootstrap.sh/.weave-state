@@ -1,0 +1,53 @@
+0 < 1 #!/usr/bin/env bash
+2 > 1 # fleet/fleet-bootstrap.sh — the VM's one fixed script, installed root-owned and
+1 < 2 # fleet/fleet-bootstrap.sh — the image's only moving part, installed root-owned and
+2 < 1 # 0555 at /usr/local/lib/fleet/bootstrap.sh by the first-boot setup script, started
+3 < 1 # by fleet-run@<N>.service, which passes the run number as $1 (optional, checked) and, from its ExecStopPost=, `died` as $2.
+4 < 1 #
+5 < 1 # Immutable on purpose. run-68 died because the boot script re-exec'd itself from
+6 < 1 # a checkout that replaced it at its own path while bash kept reading the old
+7 < 1 # inode. So no run ever overwrites this file: it reads the assignment once, clones
+8 < 1 # the engine it names into a content-addressed directory, and execs THAT checkout's
+10 > 1 # boot script. A boot-script fix ships as an engine sha; a tool change ships in the
+11 < 1 # setup script. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
+9 < 2 # boot script. A boot-script fix ships as an engine sha; the image is rebuilt for
+10 < 2 # tools only. Writes engines/ and fleet-boot.log under FLEET_HOME (/home/exedev).
+11 < 1 set -euo pipefail
+12 < 1 home="${FLEET_HOME:-/home/exedev}"
+13 < 1 say() { printf '%s bootstrap: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$home/fleet-boot.log" >&2; }
+14 < 1 # $2 is the mode: absent is `boot`; `died` is the unit's ExecStopPost= (#1445),
+15 < 1 # where a refusal is logged and exits 0 — a stop-post never fails the stop.
+16 < 1 mode="${2:-boot}"
+17 < 1 case "$mode" in boot) no=1 ;; died) no=0 ;; *) say "unknown mode $mode — refusing"; exit 1 ;; esac
+18 < 1 
+19 < 1 # One read, no waiting: the launcher writes the comment before it starts the
+20 < 1 # unit, so an empty or malformed one is a launcher bug and the run fails here.
+21 < 1 comment="$(curl -fsS https://reflection.int.exe.xyz/comment | sed -n 's/.*"comment"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')" \
+22 < 1   || { say 'reflection /comment unreachable'; exit "$no"; }
+23 < 1 say "comment: ${comment:-<empty>}${1:+ (unit run=$1)}"
+24 < 1 # The unit instance and the comment name the same run, or this is the wrong box.
+25 < 1 run="$(printf '%s\n' "$comment" | tr ' ' '\n' | sed -n 's/^run=\([0-9]\{1,\}\)$/\1/p' | head -n 1)"
+26 < 1 [ -z "${1:-}" ] || [ "$1" = "$run" ] || { say "unit run=$1 but the comment says run=${run:-<none>} — refusing"; exit "$no"; }
+27 < 1 sha="$(printf '%s\n' "$comment" | tr ' ' '\n' | sed -n 's/^engine=\([0-9a-f]\{40\}\)$/\1/p' | head -n 1)"
+28 < 1 [ -n "$sha" ] || { say 'no engine=<40 hex> in the comment — nothing to run'; exit "$no"; }
+29 < 1 
+30 < 1 dst="$home/engines/$sha"
+31 < 1 # Never clone at stop time: a death with no engine has no boot script to write it.
+32 < 1 [ "$mode" = boot ] || [ -d "$dst" ] || { say "died: no engine at $sha — nothing to write"; exit 0; }
+33 < 1 if [ -d "$dst" ]; then
+34 < 1   say "engine $sha already present"
+35 < 1 else
+36 < 1   # Clone beside the final name and mv last: a clone that dies halfway is never
+37 < 1   # mistaken for an engine, and the next attempt starts by discarding it.
+38 < 1   say "cloning engine at $sha"
+39 < 1   rm -rf "$dst.tmp"; mkdir -p "$home/engines"
+40 < 1   git clone -q https://github.com/popmechanic/ultrapowers.git "$dst.tmp"
+41 < 1   git -C "$dst.tmp" checkout -q "$sha"
+42 < 1   mv "$dst.tmp" "$dst"
+43 < 1 fi
+44 < 1 # A pre-factory sha carries no factory/boot.sh and is no longer launchable.
+45 < 1 boot="$dst/factory/boot.sh"
+46 < 1 [ -f "$boot" ] || { say "engine $sha carries no factory/boot.sh"; exit "$no"; }
+47 < 1 say "exec $boot $mode"
+48 < 1 FLEET_ASSIGNMENT="$comment" exec "$boot" "$mode"
+49 < 1 

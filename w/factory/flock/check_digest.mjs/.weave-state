@@ -1,0 +1,22 @@
+0 < 1 // The run's checks/ folder as one small row per result file (#1491), so a step whose receipt or Jev
+1 < 1 // reading is missing can be read off the record instead of guessed at. Pure but for reading `dir`:
+3 > 1 // file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`,
+4 < 1 // null for a name with no `@`) and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
+2 < 2 // file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`)
+3 < 2 // and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
+4 < 1 import fs from 'node:fs'
+5 < 1 import path from 'node:path'
+6 < 1 
+7 < 1 export function checkDigest (dir) {
+8 < 1   if (!fs.existsSync(dir)) return []
+9 < 1   return fs.readdirSync(dir).filter((f) => f.endsWith('.json')).sort().map((file) => {
+10 < 1     const p = path.join(dir, file)
+12 > 1     const head = { file, copy: file.includes('@') ? file.slice(file.lastIndexOf('@') + 1, -'.json'.length) : null, mtime: new Date(fs.statSync(p).mtimeMs).toISOString() }
+11 < 2     const head = { file, copy: file.slice(file.lastIndexOf('@') + 1, -'.json'.length), mtime: new Date(fs.statSync(p).mtimeMs).toISOString() }
+12 < 1     let r
+13 < 1     try { r = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { return { ...head, unreadable: true } }
+14 < 1     if (!r || typeof r !== 'object') return { ...head, unreadable: true }
+15 < 1     return { ...head, clause: r.clause, exit: r.exit, stage: r.stage, diff: Array.isArray(r.diff) }
+16 < 1   })
+17 < 1 }
+18 < 1 

@@ -1,0 +1,47 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Segmented } from '../Segmented'
+2 < 2 import { Row } from '../layout'
+3 < 2 import { Text } from '../text'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 function InteractiveViewSegmented() {
+7 < 2   const [value, setValue] = useState('grid')
+8 < 2   return (
+9 < 2     <span data-subject style={{ display: 'block', width: '100%' }}>
+10 < 2       <Row gap={3}>
+11 < 2         <Segmented
+12 < 2           label="View"
+13 < 2           value={value}
+14 < 2           onChange={setValue}
+15 < 2           options={[
+16 < 2             { value: 'grid', label: 'grid' },
+17 < 2             { value: 'list', label: 'list' },
+18 < 2           ]}
+19 < 2         />
+20 < 2         <Text size="sm" muted>Showing {value}</Text>
+21 < 2       </Row>
+22 < 2     </span>
+23 < 2   )
+24 < 2 }
+25 < 2 
+26 < 2 function InteractiveSortSegmented() {
+27 < 2   const [value, setValue] = useState('alpha')
+28 < 2   return (
+29 < 2     <Segmented
+30 < 2       label="Sort"
+31 < 2       value={value}
+32 < 2       onChange={setValue}
+33 < 2       tone="mint"
+34 < 2       options={[
+35 < 2         { value: 'alpha', label: 'A–Z' },
+36 < 2         { value: 'recent', label: 'Recent' },
+37 < 2       ]}
+38 < 2     />
+39 < 2   )
+40 < 2 }
+41 < 2 
+42 < 2 export const segmentedDemos: Demo[] = [
+43 < 2   { id: 'default', states: ['hover', 'active', 'focus'], render: () => <InteractiveViewSegmented /> },
+44 < 2   { id: 'tone', render: () => <InteractiveSortSegmented /> },
+45 < 2 ]
+46 < 2 

@@ -16,7 +16,8 @@
 14 < 1 1. Validate: the plan's hash pins (`plan-pins.mjs`), then `plan_check.py --base` through
 15 < 1    `compiler.mjs`, which fetches and runs `plan_check.py` and `plan_parse.py` at `engine=`.
 16 < 1    Its `STALE fact:`, `GREEN-AT-BASE fact:` and `AUTHORING fact:` lines print on the launch line. The VM is sized from
-17 < 1    `plan_parse.py`'s widest wave. `toolchain.mjs` checks what a fresh sandbox can run.
+18 > 1    `plan_parse.py`'s `width` (the most tasks ready at once). `toolchain.mjs` checks what a fresh sandbox can run.
+17 < 2    `plan_parse.py`'s widest wave. `toolchain.mjs` checks what a fresh sandbox can run.
 18 < 1 2. Read the evidence repository (`--evidence-repo`, else `"evidence"` in
 19 < 1    `~/.ultrapowers/fleet.json`; neither is a refusal) and the pool from `billing plan --json`;
 20 < 1    compute N from the evidence repository's `live/<owner>-<repo>/run-*` branches and
@@ -58,9 +59,10 @@
 48 < 1 
 49 < 1 ## The other laptop tools
 50 < 1 
-54 > 1 - `doctor.mjs` — which of its ten rows is missing (the last, `reaper`, asks the hub's VM remover
+55 > 1 - `doctor.mjs` — which of its nine rows is missing (`exe-verbs.json` feeds its verb-drift row;
+54 > 2 - `doctor.mjs` — which of its ten rows is missing (the last, `reaper`, asks the hub's VM remover
 53 > 2 - `doctor.mjs` — which of its eleven rows is missing (the last, `reaper`, asks the hub's VM remover
-54 < 1   whether its exe.dev key still works and reads that key's expiry; `reaper-key.sh` renews it; `exe-verbs.json` feeds its verb-drift row;
+54 < 2   whether its exe.dev key still works and reads that key's expiry; `reaper-key.sh` renews it; `exe-verbs.json` feeds its verb-drift row;
 52 > 2 - `doctor.mjs` — which of its eleven rows is missing (the last, `reaper`, reads whether the exe.dev
 53 < 2   key the hub removes finished VMs with has expired; `exe-verbs.json` feeds its verb-drift row;
 51 < 2 - `doctor.mjs` — which of its ten rows is missing (`exe-verbs.json` feeds its verb-drift row;
@@ -78,13 +80,18 @@
 62 < 1   or orphaned run (`failRun`, then `sealRun`), seals a run that ended with its live branch left
 63 < 1   and no tag, and deletes the closed-unmerged `ultra/integration-run-*` branches, all on the
 64 < 1   targets its rows name (`--target` adds one no VM names).
-65 < 1 - `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
-66 < 1   VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
-68 > 1   its tag in the evidence repository says `done`, read through the read-only integration
-69 < 1   `evidence-read` (attached to `vm:kata-hub` and to the viewer's `vm:ultraviz`, never to the tag). `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
+66 > 1 - No hub VM: the janitor is the one VM remover, at each launch or by hand. The hub's reaper
+68 > 1   (`reaper.py` on `kata-hub`) retired on 2026-11-14; `fleet/CONTRACT.md` §The hub VM says what left;
+69 < 1   the operator removed the VM, its integrations and key from exe.dev on 2026-11-16. `evidence-read` stays attached to the viewer's `vm:ultraviz`.
+67 < 2   (`reaper.py` on `kata-hub`) retired on 2026-11-14; `fleet/CONTRACT.md` §The hub VM says what left
+68 < 2   and what the operator removes by hand. `evidence-read` stays attached to the viewer's `vm:ultraviz`.
+65 < 2 - `reaper.py` — the hub's VM remover (`reaper.service` on `kata-hub`, port 8001). A finished fleet
+66 < 2   VM POSTs `/reap`; it answers 202 and removes that one VM only when the run's `status.json` at
+68 > 2   its tag in the evidence repository says `done`, read through the read-only integration
+69 < 2   `evidence-read` (attached to `vm:kata-hub` and to the viewer's `vm:ultraviz`, never to the tag). `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
 67 < 2   its tag in the evidence repository says `done`, read through the hub-only read-only integration
 69 > 2   `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO`. The hub VM
-70 < 1   keeps its name from the days it ran the kata daemon. Unit tests: `tests/test_reaper.py`.
+70 < 2   keeps its name from the days it ran the kata daemon. Unit tests: `tests/test_reaper.py`.
 68 < 2   `evidence-read`. `/etc/reaper/reaper.env` on the hub holds `REAPER_EVIDENCE_REPO` and, for the
 69 < 2   rollback to the kata run issue, `REAPER_RECORD=kata`. Unit tests: `tests/test_reaper.py`.
 56 < 2 - `janitor.mjs` — reaps finished runs by reading each fleet VM's comment and asking the kata

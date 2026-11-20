@@ -1,0 +1,69 @@
+0 < 2 import { Blob, Badge, Dot, Figure } from '../media'
+1 < 2 import { Row } from '../layout'
+2 < 2 import { Text } from '../text'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 const SAMPLE_IMAGE =
+6 < 2   'data:image/svg+xml;utf8,' +
+7 < 2   encodeURIComponent(
+8 < 2     `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180">
+9 < 2        <rect width="320" height="180" fill="#c7b9f5"/>
+10 < 2        <text x="160" y="96" font-family="sans-serif" font-size="20" font-weight="bold"
+11 < 2              fill="#3a2e5c" text-anchor="middle">sample image</text>
+12 < 2      </svg>`,
+13 < 2   )
+14 < 2 
+15 < 2 export const blobDemos: Demo[] = [
+16 < 2   { id: 'tones', render: () => (
+17 < 2       <Row>
+18 < 2         <Blob tone="pink" icon="up" />
+19 < 2         <Blob tone="purple" icon="channels" />
+20 < 2         <Blob tone="blue" icon="activity" />
+21 < 2         <Blob tone="mint" icon="ok" />
+22 < 2         <Blob tone="yellow" icon="overview" />
+23 < 2         <Blob tone="orange" icon="live" />
+24 < 2       </Row>
+25 < 2     ) },
+26 < 2   { id: 'sizes', render: () => (
+27 < 2       <Row>
+28 < 2         <Blob tone="purple" icon="settings" size="sm" />
+29 < 2         <Blob tone="purple" icon="settings" size="md" />
+30 < 2         <Blob tone="purple" icon="settings" size="lg" />
+31 < 2       </Row>
+32 < 2     ) },
+33 < 2   { id: 'labelled', render: () => <Blob tone="mint" icon="ok" label="Connected" /> },
+34 < 2 ]
+35 < 2 
+36 < 2 export const badgeDemos: Demo[] = [
+37 < 2   { id: 'tones', render: () => (
+38 < 2       <Row>
+39 < 2         <Badge tone="up">Shipped</Badge>
+40 < 2         <Badge tone="down">Blocked</Badge>
+41 < 2         <Badge tone="warn">At risk</Badge>
+42 < 2         <Badge tone="info">Draft</Badge>
+43 < 2       </Row>
+44 < 2     ) },
+45 < 2 ]
+46 < 2 
+47 < 2 export const dotDemos: Demo[] = [
+48 < 2   { id: 'tones', render: () => (
+49 < 2       <Row gap={5}>
+50 < 2         <Row gap={2} wrap={false}>
+51 < 2           <Dot tone="up" /><Text size="sm">Connected</Text>
+52 < 2         </Row>
+53 < 2         <Row gap={2} wrap={false}>
+54 < 2           <Dot tone="down" /><Text size="sm">Disconnected</Text>
+55 < 2         </Row>
+56 < 2         <Row gap={2} wrap={false}>
+57 < 2           <Dot tone="warn" /><Text size="sm">Degraded</Text>
+58 < 2         </Row>
+59 < 2       </Row>
+60 < 2     ) },
+61 < 2 ]
+62 < 2 
+63 < 2 export const figureDemos: Demo[] = [
+64 < 2   { id: 'default', render: () => (
+65 < 2       <Figure src={SAMPLE_IMAGE} alt="A worked example screenshot" width={320} height={180} />
+66 < 2     ) },
+67 < 2 ]
+68 < 2 

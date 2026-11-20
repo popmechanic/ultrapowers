@@ -1,0 +1,22 @@
+0 < 2 import { ErrorBoundary } from '../ErrorBoundary'
+1 < 2 import { Text } from '../text'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 function Boom(): never {
+5 < 2   throw new Error('Something went wrong rendering this widget.')
+6 < 2 }
+7 < 2 
+8 < 2 export const errorBoundaryDemos: Demo[] = [
+9 < 2   { id: 'healthy', render: () => (
+10 < 2       <ErrorBoundary name="Demo section">
+11 < 2         <Text>Renders children normally when nothing throws.</Text>
+12 < 2       </ErrorBoundary>
+13 < 2     ) },
+14 < 2   // Deterministic: throws unconditionally on render, every render.
+15 < 2   { id: 'fallback', render: () => (
+16 < 2       <ErrorBoundary name="Demo section">
+17 < 2         <Boom />
+18 < 2       </ErrorBoundary>
+19 < 2     ) },
+20 < 2 ]
+21 < 2 

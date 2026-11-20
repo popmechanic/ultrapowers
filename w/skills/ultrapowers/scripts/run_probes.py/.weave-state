@@ -1,0 +1,61 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """Run a plan's `Run:` probes against the working tree, the way the sandbox would.
+2 < 1 
+3 < 1 Usage: python3 run_probes.py <plan.md> [<task id> ...]
+4 < 1 
+5 < 1 Reads the plan through `plan_parse` (the sandbox's parser, so the tags are
+7 > 1 stripped exactly as the engine strips them) and runs each task's `Run:` lines
+6 < 2 stripped exactly as the driver strips them) and runs each task's `Run:` lines
+7 < 1 in the current directory, one `bash -c` per line with stdin closed, printing
+8 < 1 one line per probe:
+9 < 1 
+10 < 1     task 1 run 1 [M1] exit 0
+11 < 1     task 1 run 2 [guard] exit 1
+12 < 1 
+13 < 1 and a last `probes: <n> run, <k> red` line. Exits 0 when every probe exited
+14 < 1 0, 1 when any did not, 2 when the plan cannot be read. `$ULTRA_BASE` is left
+15 < 1 as the caller's environment has it.
+16 < 1 
+17 < 1 It exists because a hand loop over a plan's probes misreports: on 2026-09-28
+18 < 1 `echo "$(basename …) exit $?"` read `$?` after the command substitution had
+19 < 1 reset it, and printed exit 0 for a probe that failed (the stall-stop plan's
+20 < 1 first probe, after #1348). Use this instead of a loop.
+21 < 1 """
+22 < 1 
+23 < 1 import subprocess
+24 < 1 import sys
+25 < 1 from pathlib import Path
+26 < 1 
+27 < 1 sys.path.insert(0, str(Path(__file__).resolve().parent))
+28 < 1 from plan_parse import Refusal, parse_plan_full  # noqa: E402
+29 < 1 
+30 < 1 
+31 < 1 def main(argv):
+32 < 1     if not argv:
+33 < 1         print("usage: run_probes.py <plan.md> [<task id> ...]", file=sys.stderr)
+34 < 1         return 2
+35 < 1     try:
+36 < 1         result, _ = parse_plan_full(Path(argv[0]).read_text())
+37 < 1     except (OSError, Refusal) as e:
+38 < 1         print(f"run_probes: cannot read {argv[0]}: {e}", file=sys.stderr)
+39 < 1         return 2
+40 < 1     only = set(argv[1:])
+41 < 1     ran = red = 0
+42 < 1     for task in result["tasks"]:
+43 < 1         if only and str(task["id"]) not in only:
+44 < 1             continue
+45 < 1         clauses = task.get("proofRunClauses") or []
+46 < 1         for i, cmd in enumerate(task.get("proofRuns") or [], 1):
+47 < 1             tag = ", ".join(clauses[i - 1]) if i <= len(clauses) and clauses[i - 1] else "guard"
+48 < 1             rc = subprocess.run(["bash", "-c", cmd], stdin=subprocess.DEVNULL,
+49 < 1                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+50 < 1             ran += 1
+51 < 1             red += rc != 0
+52 < 1             print(f"task {task['id']} run {i} [{tag}] exit {rc}", flush=True)
+53 < 1     print(f"probes: {ran} run, {red} red")
+54 < 1     return 1 if red else 0
+55 < 1 
+56 < 1 
+57 < 1 if __name__ == "__main__":
+58 < 1     sys.exit(main(sys.argv[1:]))
+59 < 1 

@@ -1,0 +1,18 @@
+0 < 2 import { Empty, Skeleton, ErrorNote } from '../feedback'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const emptyDemos: Demo[] = [
+4 < 2   { id: 'default', render: () => <Empty icon="ok" title="Nothing here yet">Add your first item to get started.</Empty> },
+5 < 2   { id: 'no-description', render: () => <Empty icon="idle" title="Nothing here yet" /> },
+6 < 2 ]
+7 < 2 
+8 < 2 export const skeletonDemos: Demo[] = [
+9 < 2   { id: 'row', render: () => <Skeleton variant="row" count={2} /> },
+10 < 2   { id: 'text', render: () => <Skeleton variant="text" count={3} /> },
+11 < 2   { id: 'card', render: () => <Skeleton variant="card" /> },
+12 < 2 ]
+13 < 2 
+14 < 2 export const errorNoteDemos: Demo[] = [
+15 < 2   { id: 'default', render: () => <ErrorNote>Couldn’t save your changes — check your connection and try again.</ErrorNote> },
+16 < 2 ]
+17 < 2 

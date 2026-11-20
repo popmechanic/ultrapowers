@@ -1,0 +1,169 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Avatar } from '../avatar'
+2 < 2 import { IconButton } from '../Button'
+3 < 2 import { Icon } from '../Icon'
+4 < 2 import { Grid, Row, Stack } from '../layout'
+5 < 2 import { Badge, Blob } from '../media'
+6 < 2 import { Segmented } from '../Segmented'
+7 < 2 import { Card } from '../surface'
+8 < 2 import { Eyebrow, Heading, Text } from '../text'
+9 < 2 
+10 < 2 interface Story {
+11 < 2   id: string
+12 < 2   group: 'Design' | 'Engineering' | 'Founders'
+13 < 2   quote: string
+14 < 2   name: string
+15 < 2   role: string
+16 < 2   result: string
+17 < 2   tone: 'purple' | 'pink' | 'blue' | 'mint'
+18 < 2 }
+19 < 2 
+20 < 2 const STORIES: Story[] = [
+21 < 2   {
+22 < 2     id: 'ada',
+23 < 2     group: 'Design',
+24 < 2     quote: 'The depth system gave every interaction a physical answer. Our prototypes finally felt like the product.',
+25 < 2     name: 'Ada L.',
+26 < 2     role: 'Design director, Looma',
+27 < 2     result: '2× faster prototyping',
+28 < 2     tone: 'purple',
+29 < 2   },
+30 < 2   {
+31 < 2     id: 'grace',
+32 < 2     group: 'Engineering',
+33 < 2     quote: 'Closed variants stopped one-off styling at the source. The team ships changes without a cleanup week afterward.',
+34 < 2     name: 'Grace H.',
+35 < 2     role: 'Staff engineer, Relay',
+36 < 2     result: '41% less UI churn',
+37 < 2     tone: 'blue',
+38 < 2   },
+39 < 2   {
+40 < 2     id: 'maya',
+41 < 2     group: 'Founders',
+42 < 2     quote: 'We launched with a real personality instead of another grey dashboard. Customers remembered us.',
+43 < 2     name: 'Maya B.',
+44 < 2     role: 'Founder, Pollen',
+45 < 2     result: '18% higher activation',
+46 < 2     tone: 'pink',
+47 < 2   },
+48 < 2   {
+49 < 2     id: 'alan',
+50 < 2     group: 'Engineering',
+51 < 2     quote: 'The components are strict in the useful places and editable everywhere else. That balance is rare.',
+52 < 2     name: 'Alan T.',
+53 < 2     role: 'Engineering lead, Tally',
+54 < 2     result: '6 routes in 9 days',
+55 < 2     tone: 'mint',
+56 < 2   },
+57 < 2 ]
+58 < 2 
+59 < 2 const FILTERS = ['All', 'Design', 'Engineering', 'Founders'] as const
+60 < 2 type Filter = (typeof FILTERS)[number]
+61 < 2 
+62 < 2 /** A filterable testimonial section with keyboard-friendly carousel controls. */
+63 < 2 export function TestimonialsBlock() {
+64 < 2   const [filter, setFilter] = useState<Filter>('All')
+65 < 2   const [index, setIndex] = useState(0)
+66 < 2   const shown = filter === 'All' ? STORIES : STORIES.filter((story) => story.group === filter)
+67 < 2   const story = shown[index % shown.length]!
+68 < 2 
+69 < 2   const changeFilter = (next: Filter) => {
+70 < 2     setFilter(next)
+71 < 2     setIndex(0)
+72 < 2   }
+73 < 2 
+74 < 2   const move = (direction: 1 | -1) => {
+75 < 2     setIndex((current) => (current + direction + shown.length) % shown.length)
+76 < 2   }
+77 < 2 
+78 < 2   return (
+79 < 2     <div style={{ maxWidth: 1060, margin: '0 auto', padding: 24 }}>
+80 < 2       <Stack gap={6}>
+81 < 2         <Row justify="between" align="top">
+82 < 2           <Stack gap={2}>
+83 < 2             <Eyebrow>Customer stories</Eyebrow>
+84 < 2             <Heading level={1}>Loved by teams with taste.</Heading>
+85 < 2           </Stack>
+86 < 2           <Badge tone="yellow">4.9 average rating</Badge>
+87 < 2         </Row>
+88 < 2 
+89 < 2         <Segmented
+90 < 2           label="Filter stories"
+91 < 2           value={filter}
+92 < 2           onChange={changeFilter}
+93 < 2           options={FILTERS.map((value) => ({ value, label: value }))}
+94 < 2         />
+95 < 2 
+96 < 2         <Grid cols="sidebar" gap={5}>
+97 < 2           <Card motion="tilt-left">
+98 < 2             <div aria-live="polite" aria-atomic="true">
+99 < 2               <Stack gap={5}>
+100 < 2                 <Row justify="between" wrap={false}>
+101 < 2                   <Blob icon="comment" tone={story.tone} size="md" />
+102 < 2                   <Badge tone={story.tone}>{story.group}</Badge>
+103 < 2                 </Row>
+104 < 2                 <blockquote style={{ margin: 0 }}>
+105 < 2                   <Heading level={2}>{story.quote}</Heading>
+106 < 2                 </blockquote>
+107 < 2                 <Row justify="between">
+108 < 2                   <Row gap={3} wrap={false}>
+109 < 2                     <Avatar fallback={story.name.slice(0, 2)} tone={story.tone} />
+110 < 2                     <Stack gap={1}>
+111 < 2                       <Text>{story.name}</Text>
+112 < 2                       <Text size="sm" muted>{story.role}</Text>
+113 < 2                     </Stack>
+114 < 2                   </Row>
+115 < 2                   <Row gap={2} wrap={false}>
+116 < 2                     <IconButton
+117 < 2                       icon={<Icon name="prev" size="sm" />}
+118 < 2                       label="Previous story"
+119 < 2                       onClick={() => move(-1)}
+120 < 2                     />
+121 < 2                     <IconButton
+122 < 2                       icon={<Icon name="next" size="sm" />}
+123 < 2                       label="Next story"
+124 < 2                       onClick={() => move(1)}
+125 < 2                     />
+126 < 2                   </Row>
+127 < 2                 </Row>
+128 < 2               </Stack>
+129 < 2             </div>
+130 < 2           </Card>
+131 < 2 
+132 < 2           <Stack gap={3}>
+133 < 2             <Card variant="tight">
+134 < 2               <Stack gap={2}>
+135 < 2                 <Text size="sm" muted>Reported outcome</Text>
+136 < 2                 <Heading level={2}>{story.result}</Heading>
+137 < 2               </Stack>
+138 < 2             </Card>
+139 < 2             <Card variant="tight">
+140 < 2               <Stack gap={2}>
+141 < 2                 <Text size="sm" muted>Story</Text>
+142 < 2                 <Heading level={2}>{index % shown.length + 1} of {shown.length}</Heading>
+143 < 2               </Stack>
+144 < 2             </Card>
+145 < 2             <Card variant="tight">
+146 < 2               <Row gap={2}>
+147 < 2                 {shown.map((item, itemIndex) => (
+148 < 2                   <span
+149 < 2                     key={item.id}
+150 < 2                     aria-hidden="true"
+151 < 2                     style={{
+152 < 2                       width: itemIndex === index % shown.length ? 28 : 10,
+153 < 2                       height: 10,
+154 < 2                       borderRadius: 999,
+155 < 2                       background: itemIndex === index % shown.length ? 'var(--purple)' : 'var(--bg)',
+156 < 2                       boxShadow: 'var(--pouf-field)',
+157 < 2                     }}
+158 < 2                   />
+159 < 2                 ))}
+160 < 2               </Row>
+161 < 2             </Card>
+162 < 2           </Stack>
+163 < 2         </Grid>
+164 < 2       </Stack>
+165 < 2     </div>
+166 < 2   )
+167 < 2 }
+168 < 2 

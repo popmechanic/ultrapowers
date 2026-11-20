@@ -1,0 +1,17 @@
+0 < 2 import { Footer } from '../footer'
+1 < 2 import { Blob } from '../media'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 const brand = (<><Blob icon="target" tone="pink" size="sm" />Acme</>)
+5 < 2 const columns = [
+6 < 2   { title: 'Product', links: [{ label: 'Features', href: '#' }, { label: 'Pricing', href: '#' }, { label: 'Changelog', href: '#' }] },
+7 < 2   { title: 'Company', links: [{ label: 'About', href: '#' }, { label: 'Blog', href: '#' }, { label: 'Careers', href: '#' }] },
+8 < 2   { title: 'Legal', links: [{ label: 'Privacy', href: '#' }, { label: 'Terms', href: '#' }] },
+9 < 2 ]
+10 < 2 
+11 < 2 export const footerDemos: Demo[] = [
+12 < 2   { id: 'default', render: () => (
+13 < 2       <Footer brand={brand} tagline="Soft software, seriously built." columns={columns} note="© 2026 Acme. All rights reserved." />
+14 < 2     ) },
+15 < 2 ]
+16 < 2 

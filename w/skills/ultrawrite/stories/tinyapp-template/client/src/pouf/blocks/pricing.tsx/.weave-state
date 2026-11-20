@@ -1,0 +1,106 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Grid } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow, Highlight } from '../text'
+4 < 2 import { Badge, Dot } from '../media'
+5 < 2 import { Button } from '../Button'
+6 < 2 import { Segmented } from '../Segmented'
+7 < 2 import { Icon } from '../Icon'
+8 < 2 
+9 < 2 interface Plan {
+10 < 2   name: string
+11 < 2   monthly: number
+12 < 2   blurb: string
+13 < 2   features: string[]
+14 < 2   cta: string
+15 < 2   tone: 'purple' | 'mint' | 'blue'
+16 < 2   featured?: boolean
+17 < 2 }
+18 < 2 
+19 < 2 const PLANS: Plan[] = [
+20 < 2   { name: 'Free', monthly: 0, blurb: 'For weekend projects.', tone: 'blue', cta: 'Start free', features: ['1 project', 'Community support', 'Core components'] },
+21 < 2   { name: 'Pro', monthly: 12, blurb: 'For serious builders.', tone: 'purple', featured: true, cta: 'Go Pro', features: ['Unlimited projects', 'Priority support', 'Every component', 'Example templates', 'Early features'] },
+22 < 2   { name: 'Team', monthly: 40, blurb: 'For the whole studio.', tone: 'mint', cta: 'Start a team', features: ['Everything in Pro', 'Shared workspace', 'SSO & roles', 'Audit log'] },
+23 < 2 ]
+24 < 2 
+25 < 2 function Feature({ text }: { text: string }) {
+26 < 2   return (
+27 < 2     <Row gap={2} wrap={false}>
+28 < 2       <span style={{ display: 'inline-flex', flex: 'none', width: 22, height: 22, borderRadius: 999, alignItems: 'center', justifyContent: 'center', background: 'var(--mint)', color: 'var(--on-accent)' }}>
+29 < 2         <Icon name="ok" size="sm" />
+30 < 2       </span>
+31 < 2       <Text size="sm">{text}</Text>
+32 < 2     </Row>
+33 < 2   )
+34 < 2 }
+35 < 2 
+36 < 2 /** An example pricing page: three plans, one featured, each with its own
+37 < 2  * feature checklist. The monthly/annual Segmented toggle recomputes every
+38 < 2  * displayed price (and the per-plan savings line) rather than just relabeling
+39 < 2  * them, and picking a plan's CTA marks it as the current one. */
+40 < 2 export function PricingBlock() {
+41 < 2   const [cycle, setCycle] = useState('monthly')
+42 < 2   const [selected, setSelected] = useState<string | null>(null)
+43 < 2   const annual = cycle === 'annual'
+44 < 2   return (
+45 < 2     <div style={{ maxWidth: 1000, margin: '0 auto', padding: 24 }}>
+46 < 2       <Stack gap={6}>
+47 < 2         <Stack gap={3}>
+48 < 2           <Eyebrow>Pricing</Eyebrow>
+49 < 2           <Heading level={1}>Pick a <Highlight>cushion</Highlight></Heading>
+50 < 2           <Text muted>Simple plans. Cancel anytime.</Text>
+51 < 2           <Row gap={3}>
+52 < 2             <Segmented
+53 < 2               label="Billing cycle"
+54 < 2               value={cycle}
+55 < 2               onChange={setCycle}
+56 < 2               options={[{ value: 'monthly', label: 'Monthly' }, { value: 'annual', label: 'Annual' }]}
+57 < 2             />
+58 < 2             {annual && <Badge tone="mint">Save 20%</Badge>}
+59 < 2           </Row>
+60 < 2         </Stack>
+61 < 2 
+62 < 2         <Grid cols={3}>
+63 < 2           {PLANS.map((p) => {
+64 < 2             const price = annual ? Math.round(p.monthly * 12 * 0.8) : p.monthly
+65 < 2             const savings = p.monthly * 12 - price
+66 < 2             const isCurrent = selected === p.name
+67 < 2             return (
+68 < 2             <Card key={p.name} variant={p.featured ? 'default' : 'tight'}>
+69 < 2               <Stack gap={4}>
+70 < 2                 <Row justify="between">
+71 < 2                   <Row gap={2} wrap={false}>
+72 < 2                     <Dot tone={p.tone} />
+73 < 2                     <Heading level={3}>{p.name}</Heading>
+74 < 2                   </Row>
+75 < 2                   {p.featured && <Badge tone="yellow">Popular</Badge>}
+76 < 2                 </Row>
+77 < 2                 <Row gap={1} wrap={false}>
+78 < 2                   <span style={{ fontSize: 40, fontWeight: 900, letterSpacing: -1, color: 'var(--ink)' }}>${price}</span>
+79 < 2                   <Text muted>{annual ? '/yr' : '/mo'}</Text>
+80 < 2                 </Row>
+81 < 2                 {annual && savings > 0 && (
+82 < 2                   <Text size="sm" muted>Save ${savings}/yr versus paying monthly</Text>
+83 < 2                 )}
+84 < 2                 <Text size="sm" muted>{p.blurb}</Text>
+85 < 2                 <Stack gap={2}>
+86 < 2                   {p.features.map((f) => <Feature key={f} text={f} />)}
+87 < 2                 </Stack>
+88 < 2                 <Button
+89 < 2                   block
+90 < 2                   tone={p.tone}
+91 < 2                   variant={isCurrent ? 'quiet' : p.featured ? 'solid' : 'quiet'}
+92 < 2                   disabled={isCurrent}
+93 < 2                   onClick={() => setSelected(p.name)}
+94 < 2                 >
+95 < 2                   {isCurrent ? 'Current plan' : p.cta}
+96 < 2                 </Button>
+97 < 2               </Stack>
+98 < 2             </Card>
+99 < 2           )})}
+100 < 2         </Grid>
+101 < 2       </Stack>
+102 < 2     </div>
+103 < 2   )
+104 < 2 }
+105 < 2 

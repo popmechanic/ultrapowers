@@ -1,0 +1,102 @@
+0 < 1 // The compact record: what each tested snapshot changed, as a unified diff against the previous
+1 < 1 // tested snapshot (base for the first) that `git apply` accepts, and the weave's ops with file
+2 < 1 // texts as fingerprints. No file text is copied whole into the record: a snapshot is replayed by
+3 < 1 // applying the rows' patches in order onto base. The 512 KB cap over all patches is about ten
+4 < 1 // times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
+5 < 1 import crypto from 'node:crypto'
+6 < 1 
+8 > 1 const PATCH_LIMIT = 524288
+7 < 2 export const PATCH_LIMIT = 524288
+8 < 1 const CONTEXT = 3
+9 < 1 
+10 < 1 const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
+11 < 1 
+12 < 1 // Lines with their terminators kept, so a last line without '\n' compares unequal to one with it.
+13 < 1 function lines (text) {
+14 < 1   const out = text.match(/[^\n]*\n|[^\n]+$/g)
+15 < 1   return out || []
+16 < 1 }
+17 < 1 
+18 < 1 function hunkLine (mark, l) {
+19 < 1   return l.endsWith('\n') ? mark + l : mark + l + '\n\\ No newline at end of file\n'
+20 < 1 }
+21 < 1 
+22 < 1 // One hunk around the region between the common prefix and the common suffix.
+23 < 1 function hunk (a, b) {
+24 < 1   let pre = 0
+25 < 1   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++
+26 < 1   let suf = 0
+27 < 1   while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++
+28 < 1   if (pre === a.length && pre === b.length) return ''
+29 < 1   const s0 = pre - Math.min(pre, CONTEXT)
+30 < 1   const tail = Math.min(suf, CONTEXT)
+31 < 1   const aEnd = a.length - suf + tail; const bEnd = b.length - suf + tail
+32 < 1   const oldN = aEnd - s0; const newN = bEnd - s0
+33 < 1   let out = `@@ -${oldN ? s0 + 1 : s0},${oldN} +${newN ? s0 + 1 : s0},${newN} @@\n`
+34 < 1   for (let i = s0; i < pre; i++) out += hunkLine(' ', a[i])
+35 < 1   for (let i = pre; i < a.length - suf; i++) out += hunkLine('-', a[i])
+36 < 1   for (let i = pre; i < b.length - suf; i++) out += hunkLine('+', b[i])
+37 < 1   for (let i = a.length - suf; i < aEnd; i++) out += hunkLine(' ', a[i])
+38 < 1   return out
+39 < 1 }
+40 < 1 
+41 < 1 // A unified diff of one path from `before` to `after` (null: absent).
+43 > 1 function fileDiff (p, before, after) {
+42 < 2 export function fileDiff (p, before, after) {
+43 < 1   if (before === after) return ''
+44 < 1   const head = `diff --git a/${p} b/${p}\n`
+45 < 1   if (before === null) {
+46 < 1     return head + 'new file mode 100644\n' + (after === '' ? '' : `--- /dev/null\n+++ b/${p}\n` + hunk([], lines(after)))
+47 < 1   }
+48 < 1   if (after === null) {
+49 < 1     return head + 'deleted file mode 100644\n' + (before === '' ? '' : `--- a/${p}\n+++ /dev/null\n` + hunk(lines(before), []))
+50 < 1   }
+51 < 1   return head + `--- a/${p}\n+++ b/${p}\n` + hunk(lines(before), lines(after))
+52 < 1 }
+53 < 1 
+54 < 1 // snapshots: [{snap, t, files, exists}]; baseFiles: {path: text}; weaveOpsLines: the raw
+55 < 1 // weave-ops.jsonl lines. Answers the contents of snapshots.jsonl and weave-ops.digest.jsonl.
+56 < 1 export function compactRecord (snapshots, baseFiles, weaveOpsLines) {
+57 < 1   let bytes = 0
+58 < 1   let prev = { ...baseFiles }; let prevSnap = 'base'
+59 < 1   const rows = snapshots.map((s) => {
+60 < 1     const changed = []; const deleted = []
+61 < 1     const tree = {}
+62 < 1     for (const p of Object.keys(baseFiles)) tree[p] = baseFiles[p]
+63 < 1     for (const p of Object.keys(s.files)) {
+64 < 1       if (s.exists[p]) tree[p] = s.files[p]; else delete tree[p]
+65 < 1     }
+66 < 1     for (const p of Object.keys(baseFiles)) if (s.exists && p in s.exists && !s.exists[p]) delete tree[p]
+67 < 1     for (const p of Object.keys(s.files).sort()) {
+68 < 1       if (!s.exists[p]) continue
+69 < 1       const text = s.files[p]
+70 < 1       if (p in baseFiles && baseFiles[p] === text) continue
+71 < 1       changed.push({ path: p, sha1: sha1(text), bytes: Buffer.byteLength(text, 'utf8') })
+72 < 1     }
+73 < 1     for (const p of Object.keys(baseFiles).sort()) if (!(p in tree)) deleted.push(p)
+74 < 1     let patch = ''
+75 < 1     for (const p of [...new Set([...Object.keys(prev), ...Object.keys(tree)])].sort()) {
+76 < 1       patch += fileDiff(p, p in prev ? prev[p] : null, p in tree ? tree[p] : null)
+77 < 1     }
+78 < 1     const n = Buffer.byteLength(patch, 'utf8')
+79 < 1     const row = { snap: s.snap, t: s.t, from: prevSnap, changed, deleted }
+80 < 1     if (bytes + n <= PATCH_LIMIT) { row.patch = patch; bytes += n } else { row.patch = null; row.truncated = true }
+81 < 1     prev = tree; prevSnap = s.snap
+82 < 1     return JSON.stringify(row)
+83 < 1   })
+84 < 1   const ops = weaveOpsLines.filter(Boolean).map((l) => {
+85 < 1     const o = JSON.parse(l)
+86 < 1     if (o.op === 'base' && Array.isArray(o.paths)) {
+87 < 1       const { paths, ...rest } = o
+88 < 1       return JSON.stringify({ ...rest, paths_count: paths.length })
+89 < 1     }
+90 < 1     if (typeof o.content !== 'string') return l
+91 < 1     const { content, ...rest } = o
+92 < 1     return JSON.stringify({ ...rest, content_sha1: sha1(content), content_bytes: Buffer.byteLength(content, 'utf8') })
+93 < 1   })
+94 < 1   return {
+95 < 1     snapshots: rows.map((r) => r + '\n').join(''),
+96 < 1     digest: ops.map((r) => r + '\n').join(''),
+97 < 1   }
+98 < 1 }
+99 < 1 

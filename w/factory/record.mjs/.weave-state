@@ -4,8 +4,9 @@
 3 < 1  * This module decides nothing: it takes what the boot and `factory/publish.mjs` already know
 4 < 1  * and turns it into the bytes they write — the twelve-cell status page (`status`, the
 5 < 1  * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
-6 < 1  * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
-8 > 1  * closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
+7 > 1  * plan's summary, the receipt, provenance, a draft's reason and the closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
+6 < 2  * plan's summary, the receipt, provenance, a draft's reason, Jev's step readings and the
+8 > 2  * closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
 7 < 2  * closes). Nothing here writes a file or reads an environment variable; each subcommand prints
 8 < 1  * one thing to stdout and its exit code says whether that printing happened. The JSON the
 9 < 1  * publish used to build here by hand is `publish.mjs`'s own now (#1441).
@@ -30,11 +31,11 @@
 27 < 1 function renderObject (entries) {
 28 < 1   return '{' + entries.map(([k, v]) => JSON.stringify(k) + ':' + JSON.stringify(v)).join(',') + '}'
 29 < 1 }
-30 < 1 
-31 < 1 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
-32 < 1  *  parse is skipped — the projection is a fact over what did land, not a reason
-33 < 1  *  to fail over what didn't — and a file that is missing or empty gives no rows. */
-34 < 1 export { readEventRows }
+30 < 2 
+31 < 2 /** `events.jsonl`'s lines, parsed as JSON in file order; a line that fails to
+32 < 2  *  parse is skipped — the projection is a fact over what did land, not a reason
+33 < 2  *  to fail over what didn't — and a file that is missing or empty gives no rows. */
+34 < 2 export { readEventRows }
 35 < 1 
 36 < 1 /** The status page's `tasks` cell: one entry per task a `landing` or
 37 < 1  *  `parked` row names, in the order each task first appears, its state and
@@ -210,23 +211,23 @@
 207 < 1   return out
 208 < 1 }
 209 < 1 
-210 < 1 /** `### Jev read each story step (record only)` — a two-column table, one row
-211 < 1  *  per clause naming the latest `jev:step` row for it (file order breaks a
-212 < 1  *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
-213 < 1 function jevStepLines (rows) {
-214 < 1   const last = new Map()
-215 < 1   for (const row of rows) {
-216 < 1     if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
-217 < 1   }
-218 < 1   if (!last.size) return []
-219 < 1   const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
-220 < 1   for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
-222 > 1     out.push(`| ${clause} | ${r.answer == null ? 'no reading' : safeText(r.answer).replace(/\|/g, '\\|')} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
+210 < 2 /** `### Jev read each story step (record only)` — a two-column table, one row
+211 < 2  *  per clause naming the latest `jev:step` row for it (file order breaks a
+212 < 2  *  tie), sorted by clause; no `jev:step` row at all gives no lines. */
+213 < 2 function jevStepLines (rows) {
+214 < 2   const last = new Map()
+215 < 2   for (const row of rows) {
+216 < 2     if (row && row.kind === 'jev:step' && typeof row.clause === 'string') last.set(row.clause, row)
+217 < 2   }
+218 < 2   if (!last.size) return []
+219 < 2   const out = ['### Jev read each story step (record only)', '', '| step | reading | confidence |', '|---|---|---|']
+220 < 2   for (const [clause, r] of [...last].sort(([a], [b]) => a.localeCompare(b))) {
+222 > 2     out.push(`| ${clause} | ${r.answer == null ? 'no reading' : safeText(r.answer).replace(/\|/g, '\\|')} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
 221 < 2     out.push(`| ${clause} | ${r.answer ?? 'no reading'} | ${typeof r.confidence === 'number' ? r.confidence.toFixed(2) : '—'} |`)
-222 < 1   }
-223 < 1   return out
-224 < 1 }
-225 < 1 
+222 < 2   }
+223 < 2   return out
+224 < 2 }
+225 < 2 
 226 < 1 /** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
 227 < 1  *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
 228 < 1  *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
@@ -292,7 +293,9 @@
 270 < 1 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
 271 < 1  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
 272 < 1  *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
-273 < 1  *  closing line saying the cleanup was dropped and which snapshot landed. */
+274 > 1  *  closing line saying the cleanup was dropped and which snapshot landed, or, with no `terminal` row
+275 < 1  *  (an engine killed before its end), that the run ended before its outcome was recorded. */
+273 < 2  *  closing line saying the cleanup was dropped and which snapshot landed. */
 274 < 1 function looseEndsLines (events) {
 275 < 1   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
 276 < 1   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
@@ -310,16 +313,23 @@
 285 < 1   }
 286 < 1   if (fb) {
 287 < 1     const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
-288 < 1     out.push('', end && end.pr === 'ready' && end.snap === fb.snap
-289 < 1       ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
-290 < 1       : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
+289 > 1     out.push('', !end
+290 < 1       ? 'The run ended before its outcome was recorded.'
+291 < 1       : end.pr === 'ready' && end.snap === fb.snap
+292 < 1         ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+293 < 1         : `The cleanup's fallback was itself drafted: ${end.why ? end.why : fb.why}.`)
+288 < 2     out.push('', end && end.pr === 'ready' && end.snap === fb.snap
+289 < 2       ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+290 < 2       : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
 291 < 1   }
 292 < 1   return out
 293 < 1 }
 294 < 1 
 295 < 1 /** The `### What each step changed` section over the `step:receipt` rows: the heading, an empty
 296 < 1  *  line, then one line per row in file order naming each diff entry, `no change` for an empty
-297 < 1  *  diff and a trailing `; and more not shown` when truncated. No such row adds nothing. */
+298 > 1  *  diff, `stopped at <stage> before changing anything` for a row with no diff (#1491), and a
+299 < 1  *  trailing `; and more not shown` when truncated. No such row adds nothing. */
+297 < 2  *  diff and a trailing `; and more not shown` when truncated. No such row adds nothing. */
 298 < 1 function stepReceiptLines (events) {
 299 < 1   const receipts = events.filter((r) => r && r.kind === 'step:receipt')
 300 < 1   if (!receipts.length) return []
@@ -335,18 +345,37 @@
 306 < 2       if (d.diff_type === 'removed') return `removed ${path} (was ${d.from})`
 307 < 2       return `changed ${path} ${d.from} \u2192 ${d.to}`
 308 < 1     })
-309 < 1     let changes = parts.length ? parts.join('; ') : 'no change'
+310 > 1     let changes = parts.length ? parts.join('; ')
+311 < 1       : r.diff === null ? `stopped at ${safeText(r.stage || 'its first stage')} before changing anything` : 'no change'
+309 < 2     let changes = parts.length ? parts.join('; ') : 'no change'
 310 < 1     if (r.truncated === true) changes += '; and more not shown'
 312 > 1     out.push(`- ${safeText(r.clause)} (exit ${safeText(r.exit)}): ${changes}`)
 311 < 2     out.push(`- ${r.clause} (exit ${r.exit}): ${changes}`)
 312 < 1   }
+314 > 1   return out
+315 < 1 }
+316 < 1 
+317 < 1 /** The `### New screen parts` section over the last `parts:new` row (#1491): the heading, an empty
+318 < 1  *  line, one line per part a builder added (its name, the role it draws, the props naming it), then
+319 < 1  *  a line on keeping it. No row adds nothing. */
+320 < 1 function newPartsLines (events) {
+321 < 1   const row = events.filter((r) => r && r.kind === 'parts:new').at(-1)
+322 < 1   const parts = row && Array.isArray(row.parts) ? row.parts.filter((p) => p && typeof p === 'object') : []
+323 < 1   if (!parts.length) return []
+324 < 1   const out = ['### New screen parts', '']
+325 < 1   for (const p of parts) {
+326 < 1     const names = Array.isArray(p.name) && p.name.length ? `, named by ${p.name.map(safeText).join(' or ')}` : ''
+327 < 1     out.push(`- ${safeText(p.part)}: ${p.role ? `draws a ${safeText(p.role)}${names}` : 'draws no role a story can see'}`)
+328 < 1   }
+329 < 1   out.push('', 'A builder added these to this app\'s screen parts. One worth keeping can be copied into the TinyApp template so the next app starts with it.')
 313 < 1   return out
 314 < 1 }
 315 < 1 
 316 < 1 /** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
 317 < 1  *  empty line, the receipt, an empty line, the closes; every line, including
 318 < 1  *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
-319 < 1  *  ends follow that, a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
+320 > 1  *  ends follow that, and a draft's reason follows that. */
+319 < 2  *  ends follow that, a draft's reason follows that, and when any `jev:step` row exists, its table follows that. */
 320 < 1 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
 321 < 1   const planText = readFileSync(planPath, 'utf8')
 322 < 1   const summary = planSummaryLines(planText)
@@ -368,15 +397,18 @@
 337 < 1   const draft = draftReasonLines(events)
 338 < 2   for (const line of draft) out += line + '\n'
 339 < 2   if (draft.length) out += '\n'
-340 < 1   const readings = jevStepLines(events)
+340 < 2   const readings = jevStepLines(events)
 342 > 1   let changes = stepReceiptLines(events)
+344 > 1   const parts = newPartsLines(events)
 343 < 1   const assemble = () => {
 344 < 1     let out = ''
 345 < 1     for (const line of summary) out += line + '\n'
 346 < 1     out += '\n'
 347 < 1     for (const line of rows) out += line + '\n'
 348 < 1     out += '\n'
-349 < 1     for (const section of [provenance, looseEnds, draft, readings, changes]) {
+351 > 1     for (const section of [provenance, looseEnds, draft, parts, changes]) {
+350 > 2     for (const section of [provenance, looseEnds, draft, changes]) {
+349 < 2     for (const section of [provenance, looseEnds, draft, readings, changes]) {
 350 < 1       for (const line of section) out += line + '\n'
 351 < 1       if (section.length) out += '\n'
 352 < 1     }
@@ -511,10 +543,10 @@
 404 < 1 
 405 < 1 if (import.meta.main) { process.exitCode = main(process.argv) }
 406 < 1 
-407 < 1 export default {
-408 < 1   renderStatus,
-409 < 1   renderPrBody,
-410 < 1   projectTasks,
-411 < 1   main
-412 < 1 }
-413 < 1 
+407 < 2 export default {
+408 < 2   renderStatus,
+409 < 2   renderPrBody,
+410 < 2   projectTasks,
+411 < 2   main
+412 < 2 }
+413 < 2 

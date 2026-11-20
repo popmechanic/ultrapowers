@@ -1,0 +1,106 @@
+0 < 2 # catch-counter: runner
+1 < 1 import fcntl
+2 < 1 import glob, os, shutil, subprocess, tempfile, pytest
+3 < 1 
+4 < 1 FLEET = os.path.join(os.path.dirname(__file__), "..", "fleet")
+5 < 1 # The engine's own npm install (the agent SDK and its zod) lives beside the
+6 < 1 # engine, in `factory/`, against `factory/package.json`.
+7 < 1 ENGINE_DEPS_DIR = os.path.join(os.path.dirname(__file__), "..", "factory")
+8 < 1 
+9 < 1 
+10 < 1 def sim_env():
+11 < 1     """The environment one bridged `node <sim>` runs under.
+12 < 1 
+13 < 1     `PATH` carries the directories holding the interpreters and nothing else —
+14 < 1     a laptop's PATH is forty entries of plugin `bin/`s, and CI's puts node and
+15 < 1     python3 under /opt/hostedtoolcache; that is what is being kept out. `HOME`
+16 < 1     and `TMPDIR` name a directory of this call's own, so no sim reads the box's
+17 < 1     `~/.ultrapowers/fleet.json` or `~/.gitconfig`.
+18 < 1 
+19 < 1     No `FLEET_HOME`: the bridge is not a sim's home. Each sim mints its own
+20 < 1     under its own `mkdtemp`, and a `FLEET_` fact planted here is exactly the
+21 < 1     ambient kind the hermetic probe keeps out.
+22 < 1     """
+23 < 1     # The prefixes of this process's environment that never reach a sim. The
+24 < 1     # same contract `fleet/tests/_helpers.mjs`'s `simEnv` holds for the
+25 < 1     # children a sim starts, held here for the sims themselves: what a sim sees
+26 < 1     # is what the bridge handed it, never a fact of the box the bridge runs on.
+27 < 1     dropped_prefixes = ("ULTRA_", "TINYAPP_", "FLEET_", "ANTHROPIC_", "CLAUDE_", "GH_")
+28 < 1     # `sh` is looked up too: a sim's `bash -c`/`sh -c` children resolve on the
+29 < 1     # PATH they inherit from the sim, and the sim inherits this one.
+30 < 1     interpreters = ("node", "python3", "git", "bash", "sh")
+31 < 1     dirs = []
+32 < 1     for tool in interpreters:
+33 < 1         found = shutil.which(tool)
+34 < 1         if not found:
+35 < 1             # Left out silently: the sim that needs it fails where it spawns it.
+36 < 1             continue
+37 < 1         parent = os.path.dirname(found)
+38 < 1         if parent not in dirs:
+39 < 1             dirs.append(parent)
+40 < 1     home = tempfile.mkdtemp(prefix="fleet-bridge-")
+41 < 1     env = {"PATH": os.pathsep.join(dirs), "HOME": home, "TMPDIR": home}
+42 < 1     # Built from nothing rather than filtered from the parent, so this last pass
+43 < 1     # is a guard on what the lines above set: a key added here that carries a
+44 < 1     # swept prefix never reaches a sim.
+45 < 1     return {
+46 < 1         key: value
+47 < 1         for key, value in env.items()
+48 < 1         if not key.startswith(dropped_prefixes)
+49 < 1     }
+50 < 1 
+51 < 1 
+52 < 1 def _sim_id(fleet_dir, path):
+53 < 1     """`path` as the bridge names it: relative to `<fleet_dir>/tests`, /-joined."""
+54 < 1     rel = os.path.relpath(path, os.path.join(fleet_dir, "tests"))
+55 < 1     return rel.replace(os.sep, "/")
+56 < 1 
+57 < 1 
+58 < 1 def collect_sims(fleet_dir):
+59 < 1     """Every `<fleet_dir>/tests/test_*.mjs`, in relative-path order — the paths
+60 < 1     `node` is handed, ordered by the id the parametrize shows."""
+61 < 1     tests_dir = os.path.join(fleet_dir, "tests")
+62 < 1     paths = glob.glob(os.path.join(tests_dir, "test_*.mjs"))
+63 < 1     return sorted(paths, key=lambda p: _sim_id(fleet_dir, p))
+64 < 1 
+65 < 1 
+66 < 1 TESTS = collect_sims(FLEET)
+67 < 1 IDS = [_sim_id(FLEET, path) for path in TESTS]
+68 < 1 
+69 < 1 
+70 < 1 def _ensure_node_modules():
+71 < 1     """Install the engine's deps (in `ENGINE_DEPS_DIR`) at most once even under pytest-xdist (#426): every
+72 < 1     worker process runs this check-then-act, so the check must sit inside an
+73 < 1     exclusive flock — otherwise a second worker sees the node_modules dir npm
+74 < 1     creates first and runs node against a half-written tree. package.json is
+75 < 1     the lock file: always present, never modified by flock (advisory only).
+76 < 1     No unlocked fast path: npm creates node_modules early, so an isdir check
+77 < 1     outside the lock would pass while a peer's install is still writing."""
+78 < 1     with open(os.path.join(ENGINE_DEPS_DIR, "package.json")) as lockf:
+79 < 1         fcntl.flock(lockf, fcntl.LOCK_EX)
+80 < 1         if not os.path.isdir(os.path.join(ENGINE_DEPS_DIR, "node_modules")):
+81 < 1             subprocess.run(["npm", "install", "--no-audit", "--no-fund"],
+82 < 1                            cwd=ENGINE_DEPS_DIR, check=True, capture_output=True)
+83 < 1 
+84 < 1 
+85 < 1 # A hang detector, not a budget: sized for the slowest box the suite runs on
+86 < 1 # under `-n auto`, not for the longest sim here (~12 s).
+87 < 1 MJS_TIMEOUT = 300
+88 < 1 
+89 < 1 
+90 < 1 @pytest.mark.parametrize("path", TESTS, ids=IDS)
+91 < 1 def test_fleet_mjs(path):
+92 < 1     _ensure_node_modules()
+93 < 1     # The sim's environment is bound once, because its `HOME` is the
+94 < 1     # `fleet-bridge-*` directory this call has to remove when the sim is done
+95 < 1     # (#890): a suite of a hundred sims left a hundred of them under the tmpdir
+96 < 1     # for good. `finally`, so a red sim and a timed-out one are reaped too;
+97 < 1     # `ignore_errors`, so a dir a sim already removed is not a second failure.
+98 < 1     env = sim_env()
+99 < 1     try:
+100 < 1         r = subprocess.run(["node", path], capture_output=True, text=True, timeout=MJS_TIMEOUT, env=env)
+101 < 1         assert r.returncode == 0, r.stdout + r.stderr
+102 < 1         assert "ALL TESTS PASSED" in r.stdout
+103 < 1     finally:
+104 < 1         shutil.rmtree(env["HOME"], ignore_errors=True)
+105 < 1 

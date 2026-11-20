@@ -53,7 +53,8 @@
 52 < 1 which Claude Code does not rewrite, write the same directory as `<plugin-root>`.
 53 < 1 
 54 < 1 The doctor answers with one row per piece, and its row ids are `exe-dev`,
-56 > 1 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper`, in that
+57 > 1 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, in that
+56 > 2 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `cloudflare`, `reaper`, in that
 55 < 2 `capacity`, `claude`, `accounts`, `github`, `integrations`, `evidence`, `verb-drift`, `kata`, in that
 56 < 1 order. Each row carries
 57 < 1 a `status` of `ok` or `missing`, a human `detail`, and a `fix` naming the `## `
@@ -190,8 +191,10 @@
 183 < 2    task) with its state — then `== events`, the event feed for the run in
 184 < 2    order.
 185 < 1 
-186 < 1    Its state is also `status.json`, written at every transition: `booting` →
-187 < 1    `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
+187 > 1    Its state is also `status.json`, written at every transition: `running` →
+188 < 1    `publishing` → `done`, or `parked` or `failed`. It lives in the
+186 < 2    Its state is also `status.json`, written at every transition: `booting` →
+187 < 2    `running` → `publishing` → `done`, or `parked` or `failed`. It lives in the
 188 < 1    evidence repository (`"evidence"` in `~/.ultrapowers/fleet.json`), under
 189 < 1    `runs/<owner>-<repo>/<N>/`. A finished run's record is `status.json` by tag:
 190 < 1    `<owner>-<repo>/run-<N>`, the one spelling that keeps working after the VM

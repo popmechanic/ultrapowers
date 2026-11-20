@@ -1,0 +1,34 @@
+0 < 2 import { useEffect, useRef } from 'react'
+1 < 2 import { ContextMenu } from '../menu'
+2 < 2 import { Text } from '../text'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 const items = [
+6 < 2   { label: 'Open', icon: 'expand' as const, onClick: () => {} },
+7 < 2   { label: 'Rename', icon: 'draft' as const, onClick: () => {} },
+8 < 2   'separator' as const,
+9 < 2   { label: 'Delete', icon: 'remove' as const, tone: 'down' as const, onClick: () => {} },
+10 < 2 ]
+11 < 2 
+12 < 2 const surface = (
+13 < 2   <div style={{ display: 'grid', placeItems: 'center', minHeight: 120, borderRadius: 20, background: 'var(--bg)', boxShadow: 'var(--pouf-field)', padding: 24 }}>
+14 < 2     <Text muted>Right-click anywhere in this area</Text>
+15 < 2   </div>
+16 < 2 )
+17 < 2 
+18 < 2 function ContextMenuOpen() {
+19 < 2   const ref = useRef<HTMLDivElement>(null)
+20 < 2   useEffect(() => {
+21 < 2     const el = ref.current?.querySelector('[data-radix-context-menu-trigger]') ?? ref.current?.firstElementChild
+22 < 2     if (!el) return
+23 < 2     const r = el.getBoundingClientRect()
+24 < 2     el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: r.left + 40, clientY: r.top + 40, button: 2 }))
+25 < 2   }, [])
+26 < 2   return <div ref={ref}><ContextMenu items={items}>{surface}</ContextMenu></div>
+27 < 2 }
+28 < 2 
+29 < 2 export const contextMenuDemos: Demo[] = [
+30 < 2   { id: 'trigger', render: () => <ContextMenu items={items}>{surface}</ContextMenu> },
+31 < 2   { id: 'open', render: () => <ContextMenuOpen /> },
+32 < 2 ]
+33 < 2 

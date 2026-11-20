@@ -30,5 +30,6 @@
 24 < 1 
 25 < 1 Readings so far, one run per plan each: `evals/results/wrong-plans-2026-11-13.json` (runs 31–36,
 26 < 1 engine `be789d83`, the baseline) and `evals/results/wrong-plans-2026-11-13-objection.json` (runs
-27 < 1 37–42, engine `cc323aa1`, with `flock.objection.mode = on`).
+28 > 1 37–42, engine `cc323aa1`, with objections on, the engine's only behaviour since 2026-11-14).
+27 < 2 37–42, engine `cc323aa1`, with `flock.objection.mode = on`).
 28 < 1 

@@ -1,0 +1,26 @@
+0 < 2 import { Toast, ToastViewport } from '../Toast'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 // Referentially stable — see Toast.tsx's note on why an inline arrow here
+4 < 2 // would matter for the auto-dismiss timer (moot for `critical`, but kept
+5 < 2 // consistent with real usage).
+6 < 2 const noopDismiss = () => {}
+7 < 2 
+8 < 2 export const toastDemos: Demo[] = [
+9 < 2   { id: 'info', render: () => <Toast id={1} severity="info" onDismiss={noopDismiss}>Maya commented on your post.</Toast> },
+10 < 2   { id: 'critical', render: () => (
+11 < 2       <Toast id={2} severity="critical" onDismiss={noopDismiss}>
+12 < 2         Payment failed — your card was declined.
+13 < 2       </Toast>
+14 < 2     ) },
+15 < 2   { id: 'viewport', render: () => (
+16 < 2       <ToastViewport
+17 < 2         toasts={[
+18 < 2           { id: 1, severity: 'critical', text: 'Payment failed — your card was declined.' },
+19 < 2           { id: 2, severity: 'info', text: 'Maya commented on your post.' },
+20 < 2         ]}
+21 < 2         onDismiss={noopDismiss}
+22 < 2       />
+23 < 2     ) },
+24 < 2 ]
+25 < 2 

@@ -1,0 +1,206 @@
+0 < 1 // Comment mode: a floating bar outside #app with "About this view" and
+1 < 1 // "Comment". While the mode is on (and no story plays), hovering a named
+2 < 1 // element inside #app outlines it and labels it with its target; a click on it
+3 < 1 // or a dragged box over the page opens a note form instead of running the
+5 > 1 // page's own action. A pinned note posts to /feedback and, once the server has
+6 < 1 // kept it, leaves a numbered pin; a refused post keeps the form open with why.
+4 < 2 // page's own action. A pinned note posts to /feedback and leaves a numbered pin.
+5 < 1 import {named, nameOf, roleOf, targetOf} from './names';
+6 < 1 
+7 < 1 type Box = {left: number; top: number; right: number; bottom: number};
+8 < 1 type Note = {kind: 'element' | 'region'; target: string; at: Box} | {kind: 'view'};
+9 < 1 
+10 < 1 const CLICK_SLOP = 6;
+11 < 1 
+12 < 1 const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className: string, attrs: Record<string, string> = {}) => {
+13 < 1   const el = document.createElement(tag);
+14 < 1   el.className = className;
+15 < 1   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+16 < 1   return el;
+17 < 1 };
+18 < 1 
+19 < 1 const targetFor = (el: Element) => targetOf(roleOf(el), nameOf(el));
+20 < 1 
+21 < 1 export function mountComment(): void {
+22 < 1   const app = document.getElementById('app');
+23 < 1   if (!app || document.querySelector('.preview-comment-bar')) return;
+24 < 1 
+25 < 1   let on = false;
+26 < 1   let pins = 0;
+27 < 1   let down: {x: number; y: number} | null = null;
+28 < 1 
+29 < 1   const bar = make('div', 'preview-comment-bar');
+30 < 1   const about = make('button', 'preview-comment-button', {type: 'button'});
+31 < 1   about.textContent = 'About this view';
+32 < 1   const toggle = make('button', 'preview-comment-button', {type: 'button', 'aria-pressed': 'false'});
+33 < 1   toggle.textContent = 'Comment';
+34 < 1   bar.append(about, toggle);
+35 < 1 
+36 < 1   const outline = make('div', 'preview-comment-outline', {hidden: ''});
+37 < 1   const tip = make('div', 'preview-comment-tip', {role: 'tooltip', hidden: ''});
+38 < 1   const drag = make('div', 'preview-comment-drag', {hidden: ''});
+39 < 1   document.body.append(bar, outline, tip, drag);
+40 < 1 
+41 < 1   let form: HTMLFormElement | null = null;
+42 < 1   const closeForm = () => { form?.remove(); form = null; };
+43 < 1 
+44 < 1   const hideHover = () => { outline.hidden = true; tip.hidden = true; };
+45 < 1 
+46 < 1   const place = (el: HTMLElement, b: Box) => {
+47 < 1     el.style.left = `${b.left}px`;
+48 < 1     el.style.top = `${b.top}px`;
+49 < 1     el.style.width = `${b.right - b.left}px`;
+50 < 1     el.style.height = `${b.bottom - b.top}px`;
+51 < 1   };
+52 < 1 
+53 < 1   const openForm = (note: Note) => {
+54 < 1     closeForm();
+55 < 1     hideHover();
+56 < 1     const f = make('form', 'preview-comment-form');
+57 < 1     const label = make('div', 'preview-comment-form-target');
+58 < 1     label.textContent = note.kind === 'view' ? 'About this view' : note.target;
+59 < 1     const text = make('textarea', 'preview-comment-note', {'aria-label': 'Note', rows: '3'});
+60 < 1     const actions = make('div', 'preview-comment-form-actions');
+61 < 1     const cancel = make('button', 'preview-comment-button', {type: 'button'});
+62 < 1     cancel.textContent = 'Cancel';
+63 < 1     const submit = make('button', 'preview-comment-button', {type: 'submit'});
+64 < 1     submit.textContent = 'Pin note';
+66 > 1     const error = make('div', 'preview-comment-error', {role: 'alert', hidden: ''});
+65 < 1     actions.append(cancel, submit);
+67 > 1     f.append(label, text, error, actions);
+66 < 2     f.append(label, text, actions);
+67 < 1     if (note.kind === 'view') {
+68 < 1       f.classList.add('preview-comment-form-view');
+69 < 1     } else {
+70 < 1       f.style.left = `${Math.max(8, Math.min(note.at.left, innerWidth - 300))}px`;
+71 < 1       f.style.top = `${Math.min(note.at.bottom + 8, innerHeight - 160)}px`;
+72 < 1     }
+73 < 1     cancel.addEventListener('click', closeForm);
+75 > 1     f.addEventListener('submit', async (e) => {
+74 < 2     f.addEventListener('submit', (e) => {
+75 < 1       e.preventDefault();
+76 < 1       const body = text.value.trim();
+78 > 1       if (!body || submit.disabled) return;
+77 < 2       if (!body) return;
+78 < 1       const record = note.kind === 'view'
+79 < 1         ? {kind: 'view', note: body}
+80 < 1         : {kind: note.kind, target: note.target, note: body};
+82 > 1       submit.disabled = true;
+83 < 1       error.hidden = true;
+84 < 1       let failed = '';
+85 < 1       try {
+86 < 1         const r = await fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(record)});
+87 < 1         if (!r.ok) failed = `Not saved (${r.status}). Try again.`;
+88 < 1       } catch {
+89 < 1         failed = 'Not saved: the preview server did not answer. Try again.';
+90 < 1       }
+91 < 1       submit.disabled = false;
+92 < 1       if (failed) {
+93 < 1         error.textContent = failed;
+94 < 1         error.hidden = false;
+95 < 1         return;
+96 < 1       }
+81 < 2       void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(record)});
+82 < 1       if (note.kind !== 'view') {
+83 < 1         const n = String(++pins);
+84 < 1         const pin = make('div', 'preview-comment-pin', {'data-pin': n});
+85 < 1         pin.textContent = n;
+86 < 1         pin.style.left = `${note.at.right + scrollX}px`;
+87 < 1         pin.style.top = `${note.at.top + scrollY}px`;
+88 < 1         document.body.append(pin);
+89 < 1       }
+91 > 1       if (form === f) closeForm(); // another form opened while the post was out stays
+90 < 2       closeForm();
+91 < 1     });
+92 < 1     form = f;
+93 < 1     document.body.append(f);
+94 < 1     text.focus();
+95 < 1   };
+96 < 1 
+97 < 1   const active = () => on && !window.__PREVIEW__?.playing;
+98 < 1   const inApp = (t: EventTarget | null) => t instanceof Node && app.contains(t);
+99 < 1 
+100 < 1   const setMode = (next: boolean) => {
+101 < 1     on = next;
+102 < 1     toggle.setAttribute('aria-pressed', String(on));
+103 < 1     document.documentElement.classList.toggle('preview-commenting', on);
+104 < 1     down = null;
+105 < 1     drag.hidden = true;
+106 < 1     hideHover();
+107 < 1     if (!on) closeForm();
+108 < 1   };
+109 < 1 
+110 < 1   toggle.addEventListener('click', () => setMode(!on));
+111 < 1   about.addEventListener('click', () => openForm({kind: 'view'}));
+112 < 1 
+113 < 1   const boxOf = (a: {x: number; y: number}, x: number, y: number): Box => ({
+114 < 1     left: Math.min(a.x, x), top: Math.min(a.y, y), right: Math.max(a.x, x), bottom: Math.max(a.y, y),
+115 < 1   });
+116 < 1 
+117 < 1   const hover = (t: EventTarget | null) => {
+118 < 1     const el = t instanceof Element && inApp(t) ? named(t) : null;
+119 < 1     if (!el || !app.contains(el)) { hideHover(); return; }
+120 < 1     const r = el.getBoundingClientRect();
+121 < 1     place(outline, r);
+122 < 1     tip.textContent = targetFor(el);
+123 < 1     tip.style.left = `${r.left}px`;
+124 < 1     tip.style.top = `${Math.max(0, r.top - 26)}px`;
+125 < 1     outline.hidden = false;
+126 < 1     tip.hidden = false;
+127 < 1   };
+128 < 1 
+129 < 1   window.addEventListener('mousedown', (e) => {
+130 < 1     if (!active() || !inApp(e.target)) return;
+131 < 1     e.stopPropagation();
+132 < 1     e.preventDefault();
+133 < 1     down = {x: e.clientX, y: e.clientY};
+134 < 1   }, true);
+135 < 1 
+136 < 1   window.addEventListener('mousemove', (e) => {
+137 < 1     if (!active()) return;
+138 < 1     if (down) {
+139 < 1       if (Math.hypot(e.clientX - down.x, e.clientY - down.y) > CLICK_SLOP) {
+140 < 1         hideHover();
+141 < 1         place(drag, boxOf(down, e.clientX, e.clientY));
+142 < 1         drag.hidden = false;
+143 < 1       }
+144 < 1       return;
+145 < 1     }
+146 < 1     hover(e.target);
+147 < 1   }, true);
+148 < 1 
+149 < 1   window.addEventListener('mouseup', (e) => {
+150 < 1     if (!active()) return;
+151 < 1     const start = down;
+152 < 1     down = null;
+153 < 1     drag.hidden = true;
+154 < 1     if (!start && !inApp(e.target)) return;
+155 < 1     e.stopPropagation();
+156 < 1     e.preventDefault();
+157 < 1     if (!start) return;
+158 < 1     if (Math.hypot(e.clientX - start.x, e.clientY - start.y) <= CLICK_SLOP) {
+159 < 1       const el = e.target instanceof Element ? named(e.target) : null;
+160 < 1       if (el && app.contains(el)) openForm({kind: 'element', target: targetFor(el), at: el.getBoundingClientRect()});
+161 < 1       return;
+162 < 1     }
+163 < 1     const box = boxOf(start, e.clientX, e.clientY);
+164 < 1     const inside: string[] = [];
+165 < 1     for (const el of app.querySelectorAll('*')) {
+166 < 1       if (named(el) !== el) continue;
+167 < 1       const r = el.getBoundingClientRect();
+168 < 1       if (r.width === 0 && r.height === 0) continue;
+169 < 1       if (r.left < box.left || r.top < box.top || r.right > box.right || r.bottom > box.bottom) continue;
+170 < 1       const t = targetFor(el);
+171 < 1       if (!inside.includes(t)) inside.push(t);
+172 < 1     }
+173 < 1     const target = inside.length ? `area holding ${inside.join(', ')}` : 'empty area';
+174 < 1     openForm({kind: 'region', target, at: box});
+175 < 1   }, true);
+176 < 1 
+177 < 1   window.addEventListener('click', (e) => {
+178 < 1     if (!active() || !inApp(e.target)) return;
+179 < 1     e.stopPropagation();
+180 < 1     e.preventDefault();
+181 < 1   }, true);
+182 < 1 }
+183 < 1 

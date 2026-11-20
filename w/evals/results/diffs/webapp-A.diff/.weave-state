@@ -1,0 +1,664 @@
+0 < 2 diff --git a/package.json b/package.json
+1 < 2 index 025a1b5..54f5edd 100644
+2 < 2 --- a/package.json
+3 < 2 +++ b/package.json
+4 < 2 @@ -2,5 +2,5 @@
+5 < 2    "name": "linkboard",
+6 < 2    "private": true,
+7 < 2    "type": "module",
+8 < 2 -  "scripts": { "test": "node --test tests/" }
+9 < 2 +  "scripts": { "test": "node --test \"tests/**/*.test.js\"" }
+10 < 2  }
+11 < 2 diff --git a/src/api.js b/src/api.js
+12 < 2 new file mode 100644
+13 < 2 index 0000000..9e6b00b
+14 < 2 --- /dev/null
+15 < 2 +++ b/src/api.js
+16 < 2 @@ -0,0 +1,40 @@
+17 < 2 +import { createStore } from './store.js';
+18 < 2 +import { createApp } from './app.js';
+19 < 2 +import { validateLink } from './validate.js';
+20 < 2 +import { renderPage } from './page.js';
+21 < 2 +
+22 < 2 +function sendJson(res, status, payload) {
+23 < 2 +  const body = JSON.stringify(payload);
+24 < 2 +  res.writeHead(status, { 'content-type': 'application/json' });
+25 < 2 +  res.end(body);
+26 < 2 +}
+27 < 2 +
+28 < 2 +/**
+29 < 2 + * Create the linkboard HTTP server, wiring the store, validation, and
+30 < 2 + * routing modules together.
+31 < 2 + *
+32 < 2 + * @returns {import('node:http').Server}
+33 < 2 + */
+34 < 2 +export function createServer() {
+35 < 2 +  const store = createStore();
+36 < 2 +
+37 < 2 +  return createApp({
+38 < 2 +    'GET /links': (req, res) => {
+39 < 2 +      sendJson(res, 200, store.list());
+40 < 2 +    },
+41 < 2 +    'POST /links': (req, res, body) => {
+42 < 2 +      const result = validateLink(body);
+43 < 2 +      if (!result.ok) {
+44 < 2 +        sendJson(res, 422, { error: result.error });
+45 < 2 +        return;
+46 < 2 +      }
+47 < 2 +      const link = store.add(result.value);
+48 < 2 +      sendJson(res, 201, link);
+49 < 2 +    },
+50 < 2 +    'GET /': (req, res) => {
+51 < 2 +      const html = renderPage();
+52 < 2 +      res.writeHead(200, { 'content-type': 'text/html' });
+53 < 2 +      res.end(html);
+54 < 2 +    },
+55 < 2 +  });
+56 < 2 +}
+57 < 2 diff --git a/src/app.js b/src/app.js
+58 < 2 new file mode 100644
+59 < 2 index 0000000..09353a0
+60 < 2 --- /dev/null
+61 < 2 +++ b/src/app.js
+62 < 2 @@ -0,0 +1,51 @@
+63 < 2 +import http from 'node:http';
+64 < 2 +
+65 < 2 +function sendJson(res, status, payload) {
+66 < 2 +  const body = JSON.stringify(payload);
+67 < 2 +  res.writeHead(status, { 'content-type': 'application/json' });
+68 < 2 +  res.end(body);
+69 < 2 +}
+70 < 2 +
+71 < 2 +/**
+72 < 2 + * Create an http.Server that routes exact-match "METHOD /path" keys to
+73 < 2 + * handlers of the shape (req, res, body) => void.
+74 < 2 + *
+75 < 2 + * The request body is read and, when present, parsed as JSON before the
+76 < 2 + * handler is invoked. Invalid JSON yields a 400 response. Unmatched routes
+77 < 2 + * yield a 404 response.
+78 < 2 + *
+79 < 2 + * @param {Record<string, (req, res, body) => void>} handlers
+80 < 2 + * @returns {http.Server}
+81 < 2 + */
+82 < 2 +export function createApp(handlers) {
+83 < 2 +  return http.createServer((req, res) => {
+84 < 2 +    const chunks = [];
+85 < 2 +    req.on('data', (chunk) => chunks.push(chunk));
+86 < 2 +    req.on('end', () => {
+87 < 2 +      const raw = Buffer.concat(chunks).toString('utf8');
+88 < 2 +      let body;
+89 < 2 +      if (raw.length > 0) {
+90 < 2 +        try {
+91 < 2 +          body = JSON.parse(raw);
+92 < 2 +        } catch {
+93 < 2 +          sendJson(res, 400, { error: 'invalid json' });
+94 < 2 +          return;
+95 < 2 +        }
+96 < 2 +      }
+97 < 2 +
+98 < 2 +      const path = (req.url || '/').split('?')[0];
+99 < 2 +      const key = `${req.method} ${path}`;
+100 < 2 +      const handler = handlers[key];
+101 < 2 +
+102 < 2 +      if (!handler) {
+103 < 2 +        sendJson(res, 404, { error: 'not found' });
+104 < 2 +        return;
+105 < 2 +      }
+106 < 2 +
+107 < 2 +      handler(req, res, body);
+108 < 2 +    });
+109 < 2 +    req.on('error', () => {
+110 < 2 +      sendJson(res, 400, { error: 'invalid json' });
+111 < 2 +    });
+112 < 2 +  });
+113 < 2 +}
+114 < 2 diff --git a/src/page.js b/src/page.js
+115 < 2 new file mode 100644
+116 < 2 index 0000000..08d08bb
+117 < 2 --- /dev/null
+118 < 2 +++ b/src/page.js
+119 < 2 @@ -0,0 +1,29 @@
+120 < 2 +export function renderPage() {
+121 < 2 +  return `<!doctype html>
+122 < 2 +<html lang="en">
+123 < 2 +<head>
+124 < 2 +<meta charset="utf-8">
+125 < 2 +<title>linkboard</title>
+126 < 2 +</head>
+127 < 2 +<body>
+128 < 2 +<h1>linkboard</h1>
+129 < 2 +<ul id="links"></ul>
+130 < 2 +<script>
+131 < 2 +fetch('/links')
+132 < 2 +  .then((res) => res.json())
+133 < 2 +  .then((links) => {
+134 < 2 +    const list = document.getElementById('links');
+135 < 2 +    for (const link of links) {
+136 < 2 +      const li = document.createElement('li');
+137 < 2 +      const a = document.createElement('a');
+138 < 2 +      a.href = link.url;
+139 < 2 +      a.textContent = link.title;
+140 < 2 +      li.appendChild(a);
+141 < 2 +      list.appendChild(li);
+142 < 2 +    }
+143 < 2 +  });
+144 < 2 +</script>
+145 < 2 +</body>
+146 < 2 +</html>
+147 < 2 +`;
+148 < 2 +}
+149 < 2 diff --git a/src/store.js b/src/store.js
+150 < 2 new file mode 100644
+151 < 2 index 0000000..b71ed7a
+152 < 2 --- /dev/null
+153 < 2 +++ b/src/store.js
+154 < 2 @@ -0,0 +1,28 @@
+155 < 2 +import { randomUUID } from 'node:crypto';
+156 < 2 +
+157 < 2 +export function createStore() {
+158 < 2 +  const links = [];
+159 < 2 +  const byId = new Map();
+160 < 2 +
+161 < 2 +  function add({ url, title }) {
+162 < 2 +    const link = {
+163 < 2 +      id: randomUUID(),
+164 < 2 +      url,
+165 < 2 +      title,
+166 < 2 +      createdAt: new Date().toISOString(),
+167 < 2 +    };
+168 < 2 +    links.push(link);
+169 < 2 +    byId.set(link.id, link);
+170 < 2 +    return link;
+171 < 2 +  }
+172 < 2 +
+173 < 2 +  function list() {
+174 < 2 +    return links.slice();
+175 < 2 +  }
+176 < 2 +
+177 < 2 +  function get(id) {
+178 < 2 +    return byId.get(id);
+179 < 2 +  }
+180 < 2 +
+181 < 2 +  return { add, list, get };
+182 < 2 +}
+183 < 2 diff --git a/src/validate.js b/src/validate.js
+184 < 2 new file mode 100644
+185 < 2 index 0000000..bc981ee
+186 < 2 --- /dev/null
+187 < 2 +++ b/src/validate.js
+188 < 2 @@ -0,0 +1,35 @@
+189 < 2 +function isValidScheme(url) {
+190 < 2 +  return url.protocol === 'http:' || url.protocol === 'https:';
+191 < 2 +}
+192 < 2 +
+193 < 2 +export function validateLink(input) {
+194 < 2 +  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+195 < 2 +    return { ok: false, error: 'input must be an object' };
+196 < 2 +  }
+197 < 2 +
+198 < 2 +  const { url, title } = input;
+199 < 2 +
+200 < 2 +  if (typeof url !== 'string' || url.trim() === '') {
+201 < 2 +    return { ok: false, error: 'url must be a non-empty string' };
+202 < 2 +  }
+203 < 2 +
+204 < 2 +  if (typeof title !== 'string' || title.trim() === '') {
+205 < 2 +    return { ok: false, error: 'title must be a non-empty string' };
+206 < 2 +  }
+207 < 2 +
+208 < 2 +  const trimmedUrl = url.trim();
+209 < 2 +  const trimmedTitle = title.trim();
+210 < 2 +
+211 < 2 +  let parsedUrl;
+212 < 2 +  try {
+213 < 2 +    parsedUrl = new URL(trimmedUrl);
+214 < 2 +  } catch {
+215 < 2 +    return { ok: false, error: 'url must be a valid URL' };
+216 < 2 +  }
+217 < 2 +
+218 < 2 +  if (!isValidScheme(parsedUrl)) {
+219 < 2 +    return { ok: false, error: 'url must use http or https' };
+220 < 2 +  }
+221 < 2 +
+222 < 2 +  return { ok: true, value: { url: trimmedUrl, title: trimmedTitle } };
+223 < 2 +}
+224 < 2 diff --git a/tests/api.test.js b/tests/api.test.js
+225 < 2 new file mode 100644
+226 < 2 index 0000000..1898e4a
+227 < 2 --- /dev/null
+228 < 2 +++ b/tests/api.test.js
+229 < 2 @@ -0,0 +1,89 @@
+230 < 2 +import { test } from 'node:test';
+231 < 2 +import assert from 'node:assert/strict';
+232 < 2 +import http from 'node:http';
+233 < 2 +import { createServer } from '../src/api.js';
+234 < 2 +
+235 < 2 +function request(server, { method = 'GET', path = '/', body } = {}) {
+236 < 2 +  return new Promise((resolve, reject) => {
+237 < 2 +    const { port } = server.address();
+238 < 2 +    const payload = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
+239 < 2 +    const req = http.request(
+240 < 2 +      { host: '127.0.0.1', port, method, path, headers: payload ? { 'content-type': 'application/json' } : {} },
+241 < 2 +      (res) => {
+242 < 2 +        let data = '';
+243 < 2 +        res.on('data', (chunk) => { data += chunk; });
+244 < 2 +        res.on('end', () => {
+245 < 2 +          resolve({ status: res.statusCode, headers: res.headers, body: data });
+246 < 2 +        });
+247 < 2 +      }
+248 < 2 +    );
+249 < 2 +    req.on('error', reject);
+250 < 2 +    if (payload) req.write(payload);
+251 < 2 +    req.end();
+252 < 2 +  });
+253 < 2 +}
+254 < 2 +
+255 < 2 +async function startServer(t) {
+256 < 2 +  const server = createServer();
+257 < 2 +  server.listen(0);
+258 < 2 +  t.after(() => server.close());
+259 < 2 +  await new Promise((resolve) => server.once('listening', resolve));
+260 < 2 +  return server;
+261 < 2 +}
+262 < 2 +
+263 < 2 +test('GET /links on a fresh server returns 200 and an empty JSON array', async (t) => {
+264 < 2 +  const server = await startServer(t);
+265 < 2 +
+266 < 2 +  const res = await request(server, { method: 'GET', path: '/links' });
+267 < 2 +  assert.equal(res.status, 200);
+268 < 2 +  assert.deepEqual(JSON.parse(res.body), []);
+269 < 2 +});
+270 < 2 +
+271 < 2 +test('POST /links with valid input returns 201 with the created link, and it appears in a following GET', async (t) => {
+272 < 2 +  const server = await startServer(t);
+273 < 2 +
+274 < 2 +  const createRes = await request(server, {
+275 < 2 +    method: 'POST',
+276 < 2 +    path: '/links',
+277 < 2 +    body: { url: 'https://example.com', title: 'Example' },
+278 < 2 +  });
+279 < 2 +  assert.equal(createRes.status, 201);
+280 < 2 +  const created = JSON.parse(createRes.body);
+281 < 2 +  assert.equal(created.url, 'https://example.com');
+282 < 2 +  assert.equal(created.title, 'Example');
+283 < 2 +  assert.ok(created.id);
+284 < 2 +  assert.ok(created.createdAt);
+285 < 2 +
+286 < 2 +  const listRes = await request(server, { method: 'GET', path: '/links' });
+287 < 2 +  assert.equal(listRes.status, 200);
+288 < 2 +  const links = JSON.parse(listRes.body);
+289 < 2 +  assert.equal(links.length, 1);
+290 < 2 +  assert.deepEqual(links[0], created);
+291 < 2 +});
+292 < 2 +
+293 < 2 +test('POST /links with invalid input returns 422 with an error string', async (t) => {
+294 < 2 +  const server = await startServer(t);
+295 < 2 +
+296 < 2 +  const res = await request(server, {
+297 < 2 +    method: 'POST',
+298 < 2 +    path: '/links',
+299 < 2 +    body: { url: 'ftp://x', title: '' },
+300 < 2 +  });
+301 < 2 +  assert.equal(res.status, 422);
+302 < 2 +  const parsed = JSON.parse(res.body);
+303 < 2 +  assert.equal(typeof parsed.error, 'string');
+304 < 2 +  assert.ok(parsed.error.length > 0);
+305 < 2 +
+306 < 2 +  const listRes = await request(server, { method: 'GET', path: '/links' });
+307 < 2 +  assert.deepEqual(JSON.parse(listRes.body), []);
+308 < 2 +});
+309 < 2 +
+310 < 2 +test('GET / returns 200, text/html, and the board UI page', async (t) => {
+311 < 2 +  const server = await startServer(t);
+312 < 2 +
+313 < 2 +  const res = await request(server, { method: 'GET', path: '/' });
+314 < 2 +  assert.equal(res.status, 200);
+315 < 2 +  assert.ok(res.headers['content-type'].includes('text/html'));
+316 < 2 +  assert.ok(res.body.includes('<!doctype html>'));
+317 < 2 +  assert.ok(res.body.includes('linkboard'));
+318 < 2 +});
+319 < 2 diff --git a/tests/app.test.js b/tests/app.test.js
+320 < 2 new file mode 100644
+321 < 2 index 0000000..25c54bd
+322 < 2 --- /dev/null
+323 < 2 +++ b/tests/app.test.js
+324 < 2 @@ -0,0 +1,73 @@
+325 < 2 +import { test } from 'node:test';
+326 < 2 +import assert from 'node:assert/strict';
+327 < 2 +import http from 'node:http';
+328 < 2 +import { createApp } from '../src/app.js';
+329 < 2 +
+330 < 2 +function request(server, { method = 'GET', path = '/', body } = {}) {
+331 < 2 +  return new Promise((resolve, reject) => {
+332 < 2 +    const { port } = server.address();
+333 < 2 +    const payload = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
+334 < 2 +    const req = http.request(
+335 < 2 +      { host: '127.0.0.1', port, method, path, headers: payload ? { 'content-type': 'application/json' } : {} },
+336 < 2 +      (res) => {
+337 < 2 +        let data = '';
+338 < 2 +        res.on('data', (chunk) => { data += chunk; });
+339 < 2 +        res.on('end', () => {
+340 < 2 +          let parsed;
+341 < 2 +          try {
+342 < 2 +            parsed = data ? JSON.parse(data) : undefined;
+343 < 2 +          } catch {
+344 < 2 +            parsed = data;
+345 < 2 +          }
+346 < 2 +          resolve({ status: res.statusCode, body: parsed });
+347 < 2 +        });
+348 < 2 +      }
+349 < 2 +    );
+350 < 2 +    req.on('error', reject);
+351 < 2 +    if (payload) req.write(payload);
+352 < 2 +    req.end();
+353 < 2 +  });
+354 < 2 +}
+355 < 2 +
+356 < 2 +test('registered GET handler is invoked and can respond 200', async (t) => {
+357 < 2 +  const server = createApp({
+358 < 2 +    'GET /ping': (req, res) => {
+359 < 2 +      res.writeHead(200, { 'content-type': 'application/json' });
+360 < 2 +      res.end(JSON.stringify({ pong: true }));
+361 < 2 +    },
+362 < 2 +  });
+363 < 2 +  server.listen(0);
+364 < 2 +  t.after(() => server.close());
+365 < 2 +  await new Promise((resolve) => server.once('listening', resolve));
+366 < 2 +
+367 < 2 +  const res = await request(server, { method: 'GET', path: '/ping' });
+368 < 2 +  assert.equal(res.status, 200);
+369 < 2 +  assert.deepEqual(res.body, { pong: true });
+370 < 2 +});
+371 < 2 +
+372 < 2 +test('unregistered path returns 404 with not found error', async (t) => {
+373 < 2 +  const server = createApp({});
+374 < 2 +  server.listen(0);
+375 < 2 +  t.after(() => server.close());
+376 < 2 +  await new Promise((resolve) => server.once('listening', resolve));
+377 < 2 +
+378 < 2 +  const res = await request(server, { method: 'GET', path: '/nope' });
+379 < 2 +  assert.equal(res.status, 404);
+380 < 2 +  assert.deepEqual(res.body, { error: 'not found' });
+381 < 2 +});
+382 < 2 +
+383 < 2 +test('POST with malformed JSON body returns 400 invalid json', async (t) => {
+384 < 2 +  const server = createApp({
+385 < 2 +    'POST /echo': (req, res, body) => {
+386 < 2 +      res.writeHead(200, { 'content-type': 'application/json' });
+387 < 2 +      res.end(JSON.stringify(body));
+388 < 2 +    },
+389 < 2 +  });
+390 < 2 +  server.listen(0);
+391 < 2 +  t.after(() => server.close());
+392 < 2 +  await new Promise((resolve) => server.once('listening', resolve));
+393 < 2 +
+394 < 2 +  const res = await request(server, { method: 'POST', path: '/echo', body: '{not valid json' });
+395 < 2 +  assert.equal(res.status, 400);
+396 < 2 +  assert.deepEqual(res.body, { error: 'invalid json' });
+397 < 2 +});
+398 < 2 diff --git a/tests/e2e.test.js b/tests/e2e.test.js
+399 < 2 new file mode 100644
+400 < 2 index 0000000..d0b2b1b
+401 < 2 --- /dev/null
+402 < 2 +++ b/tests/e2e.test.js
+403 < 2 @@ -0,0 +1,68 @@
+404 < 2 +import { test } from 'node:test';
+405 < 2 +import assert from 'node:assert/strict';
+406 < 2 +import http from 'node:http';
+407 < 2 +import { createServer } from '../src/api.js';
+408 < 2 +
+409 < 2 +function request(server, { method = 'GET', path = '/', body } = {}) {
+410 < 2 +  return new Promise((resolve, reject) => {
+411 < 2 +    const { port } = server.address();
+412 < 2 +    const payload = body === undefined ? undefined : (typeof body === 'string' ? body : JSON.stringify(body));
+413 < 2 +    const req = http.request(
+414 < 2 +      { host: '127.0.0.1', port, method, path, headers: payload ? { 'content-type': 'application/json' } : {} },
+415 < 2 +      (res) => {
+416 < 2 +        let data = '';
+417 < 2 +        res.on('data', (chunk) => { data += chunk; });
+418 < 2 +        res.on('end', () => {
+419 < 2 +          resolve({ status: res.statusCode, headers: res.headers, body: data });
+420 < 2 +        });
+421 < 2 +      }
+422 < 2 +    );
+423 < 2 +    req.on('error', reject);
+424 < 2 +    if (payload) req.write(payload);
+425 < 2 +    req.end();
+426 < 2 +  });
+427 < 2 +}
+428 < 2 +
+429 < 2 +async function startServer(t) {
+430 < 2 +  const server = createServer();
+431 < 2 +  server.listen(0);
+432 < 2 +  t.after(() => server.close());
+433 < 2 +  await new Promise((resolve) => server.once('listening', resolve));
+434 < 2 +  return server;
+435 < 2 +}
+436 < 2 +
+437 < 2 +test('end-to-end: GET / serves the board page', async (t) => {
+438 < 2 +  const server = await startServer(t);
+439 < 2 +
+440 < 2 +  const res = await request(server, { method: 'GET', path: '/' });
+441 < 2 +  assert.equal(res.status, 200);
+442 < 2 +  assert.ok(res.headers['content-type'].startsWith('text/html'));
+443 < 2 +  assert.ok(res.body.includes('id="links"'));
+444 < 2 +});
+445 < 2 +
+446 < 2 +test('end-to-end: posting two valid links then listing them returns both in insertion order', async (t) => {
+447 < 2 +  const server = await startServer(t);
+448 < 2 +
+449 < 2 +  const first = await request(server, {
+450 < 2 +    method: 'POST',
+451 < 2 +    path: '/links',
+452 < 2 +    body: { url: 'https://example.com', title: 'Example' },
+453 < 2 +  });
+454 < 2 +  assert.equal(first.status, 201);
+455 < 2 +  const firstLink = JSON.parse(first.body);
+456 < 2 +
+457 < 2 +  const second = await request(server, {
+458 < 2 +    method: 'POST',
+459 < 2 +    path: '/links',
+460 < 2 +    body: { url: 'https://example.org', title: 'Example Org' },
+461 < 2 +  });
+462 < 2 +  assert.equal(second.status, 201);
+463 < 2 +  const secondLink = JSON.parse(second.body);
+464 < 2 +
+465 < 2 +  const listRes = await request(server, { method: 'GET', path: '/links' });
+466 < 2 +  assert.equal(listRes.status, 200);
+467 < 2 +  const links = JSON.parse(listRes.body);
+468 < 2 +  assert.equal(links.length, 2);
+469 < 2 +  assert.deepEqual(links[0], firstLink);
+470 < 2 +  assert.deepEqual(links[1], secondLink);
+471 < 2 +});
+472 < 2 diff --git a/tests/page.test.js b/tests/page.test.js
+473 < 2 new file mode 100644
+474 < 2 index 0000000..0b4e036
+475 < 2 --- /dev/null
+476 < 2 +++ b/tests/page.test.js
+477 < 2 @@ -0,0 +1,19 @@
+478 < 2 +import { test } from 'node:test';
+479 < 2 +import assert from 'node:assert/strict';
+480 < 2 +import { renderPage } from '../src/page.js';
+481 < 2 +
+482 < 2 +test('renderPage returns a complete HTML document', () => {
+483 < 2 +  const html = renderPage();
+484 < 2 +  assert.equal(typeof html, 'string');
+485 < 2 +  assert.ok(
+486 < 2 +    /^<!doctype html>/i.test(html),
+487 < 2 +    'output should start with <!doctype html> (case-insensitive)'
+488 < 2 +  );
+489 < 2 +});
+490 < 2 +
+491 < 2 +test('renderPage includes title, links list, and fetch script', () => {
+492 < 2 +  const html = renderPage();
+493 < 2 +  assert.ok(html.includes('<title>linkboard</title>'), 'should contain the title tag');
+494 < 2 +  assert.ok(html.includes('id="links"'), 'should contain a ul with id="links"');
+495 < 2 +  assert.ok(html.includes("fetch('/links')"), "should contain an inline script calling fetch('/links')");
+496 < 2 +});
+497 < 2 diff --git a/tests/store.test.js b/tests/store.test.js
+498 < 2 new file mode 100644
+499 < 2 index 0000000..9969560
+500 < 2 --- /dev/null
+501 < 2 +++ b/tests/store.test.js
+502 < 2 @@ -0,0 +1,37 @@
+503 < 2 +import { test } from 'node:test';
+504 < 2 +import assert from 'node:assert/strict';
+505 < 2 +import { createStore } from '../src/store.js';
+506 < 2 +
+507 < 2 +test('add() returns a link with unique id, given fields, and ISO-8601 createdAt', () => {
+508 < 2 +  const store = createStore();
+509 < 2 +  const link = store.add({ url: 'https://example.com', title: 'Example' });
+510 < 2 +
+511 < 2 +  assert.equal(typeof link.id, 'string');
+512 < 2 +  assert.ok(link.id.length > 0);
+513 < 2 +  assert.equal(link.url, 'https://example.com');
+514 < 2 +  assert.equal(link.title, 'Example');
+515 < 2 +  assert.equal(typeof link.createdAt, 'string');
+516 < 2 +  assert.equal(new Date(link.createdAt).toISOString(), link.createdAt);
+517 < 2 +
+518 < 2 +  const link2 = store.add({ url: 'https://example.org', title: 'Example 2' });
+519 < 2 +  assert.notEqual(link.id, link2.id);
+520 < 2 +});
+521 < 2 +
+522 < 2 +test('list() returns links in insertion order; empty store returns []', () => {
+523 < 2 +  const store = createStore();
+524 < 2 +  assert.deepEqual(store.list(), []);
+525 < 2 +
+526 < 2 +  const a = store.add({ url: 'https://a.example', title: 'A' });
+527 < 2 +  const b = store.add({ url: 'https://b.example', title: 'B' });
+528 < 2 +  const c = store.add({ url: 'https://c.example', title: 'C' });
+529 < 2 +
+530 < 2 +  assert.deepEqual(store.list(), [a, b, c]);
+531 < 2 +});
+532 < 2 +
+533 < 2 +test('get(id) returns the matching link; unknown id returns undefined', () => {
+534 < 2 +  const store = createStore();
+535 < 2 +  const link = store.add({ url: 'https://example.com', title: 'Example' });
+536 < 2 +
+537 < 2 +  assert.deepEqual(store.get(link.id), link);
+538 < 2 +  assert.equal(store.get('nonexistent-id'), undefined);
+539 < 2 +});
+540 < 2 diff --git a/tests/validate.test.js b/tests/validate.test.js
+541 < 2 new file mode 100644
+542 < 2 index 0000000..0fdfc78
+543 < 2 --- /dev/null
+544 < 2 +++ b/tests/validate.test.js
+545 < 2 @@ -0,0 +1,117 @@
+546 < 2 +import { test } from 'node:test';
+547 < 2 +import assert from 'node:assert/strict';
+548 < 2 +import { validateLink } from '../src/validate.js';
+549 < 2 +
+550 < 2 +test('valid http input passes with trimmed fields', () => {
+551 < 2 +  const result = validateLink({ url: '  http://example.com  ', title: '  Example  ' });
+552 < 2 +  assert.deepEqual(result, {
+553 < 2 +    ok: true,
+554 < 2 +    value: { url: 'http://example.com', title: 'Example' },
+555 < 2 +  });
+556 < 2 +});
+557 < 2 +
+558 < 2 +test('valid https input passes with trimmed fields', () => {
+559 < 2 +  const result = validateLink({ url: '  https://example.com/page  ', title: '  Example Page  ' });
+560 < 2 +  assert.deepEqual(result, {
+561 < 2 +    ok: true,
+562 < 2 +    value: { url: 'https://example.com/page', title: 'Example Page' },
+563 < 2 +  });
+564 < 2 +});
+565 < 2 +
+566 < 2 +test('rejects non-object input: null', () => {
+567 < 2 +  const result = validateLink(null);
+568 < 2 +  assert.equal(result.ok, false);
+569 < 2 +  assert.equal(typeof result.error, 'string');
+570 < 2 +  assert.notEqual(result.error.length, 0);
+571 < 2 +});
+572 < 2 +
+573 < 2 +test('rejects non-object input: array', () => {
+574 < 2 +  const result = validateLink([]);
+575 < 2 +  assert.equal(result.ok, false);
+576 < 2 +  assert.equal(typeof result.error, 'string');
+577 < 2 +  assert.notEqual(result.error.length, 0);
+578 < 2 +});
+579 < 2 +
+580 < 2 +test('rejects non-object input: string', () => {
+581 < 2 +  const result = validateLink('not a url');
+582 < 2 +  assert.equal(result.ok, false);
+583 < 2 +  assert.equal(typeof result.error, 'string');
+584 < 2 +  assert.notEqual(result.error.length, 0);
+585 < 2 +});
+586 < 2 +
+587 < 2 +test('rejects non-object input: number', () => {
+588 < 2 +  const result = validateLink(42);
+589 < 2 +  assert.equal(result.ok, false);
+590 < 2 +  assert.equal(typeof result.error, 'string');
+591 < 2 +  assert.notEqual(result.error.length, 0);
+592 < 2 +});
+593 < 2 +
+594 < 2 +test('rejects non-object input: undefined', () => {
+595 < 2 +  const result = validateLink(undefined);
+596 < 2 +  assert.equal(result.ok, false);
+597 < 2 +  assert.equal(typeof result.error, 'string');
+598 < 2 +  assert.notEqual(result.error.length, 0);
+599 < 2 +});
+600 < 2 +
+601 < 2 +test('rejects missing url', () => {
+602 < 2 +  const result = validateLink({ title: 'Example' });
+603 < 2 +  assert.equal(result.ok, false);
+604 < 2 +  assert.equal(typeof result.error, 'string');
+605 < 2 +  assert.notEqual(result.error.length, 0);
+606 < 2 +});
+607 < 2 +
+608 < 2 +test('rejects non-string url', () => {
+609 < 2 +  const result = validateLink({ url: 123, title: 'Example' });
+610 < 2 +  assert.equal(result.ok, false);
+611 < 2 +  assert.equal(typeof result.error, 'string');
+612 < 2 +  assert.notEqual(result.error.length, 0);
+613 < 2 +});
+614 < 2 +
+615 < 2 +test('rejects empty url', () => {
+616 < 2 +  const result = validateLink({ url: '   ', title: 'Example' });
+617 < 2 +  assert.equal(result.ok, false);
+618 < 2 +  assert.equal(typeof result.error, 'string');
+619 < 2 +  assert.notEqual(result.error.length, 0);
+620 < 2 +});
+621 < 2 +
+622 < 2 +test('rejects missing title', () => {
+623 < 2 +  const result = validateLink({ url: 'https://example.com' });
+624 < 2 +  assert.equal(result.ok, false);
+625 < 2 +  assert.equal(typeof result.error, 'string');
+626 < 2 +  assert.notEqual(result.error.length, 0);
+627 < 2 +});
+628 < 2 +
+629 < 2 +test('rejects non-string title', () => {
+630 < 2 +  const result = validateLink({ url: 'https://example.com', title: true });
+631 < 2 +  assert.equal(result.ok, false);
+632 < 2 +  assert.equal(typeof result.error, 'string');
+633 < 2 +  assert.notEqual(result.error.length, 0);
+634 < 2 +});
+635 < 2 +
+636 < 2 +test('rejects empty title', () => {
+637 < 2 +  const result = validateLink({ url: 'https://example.com', title: '   ' });
+638 < 2 +  assert.equal(result.ok, false);
+639 < 2 +  assert.equal(typeof result.error, 'string');
+640 < 2 +  assert.notEqual(result.error.length, 0);
+641 < 2 +});
+642 < 2 +
+643 < 2 +test('rejects url not parseable by new URL()', () => {
+644 < 2 +  const result = validateLink({ url: 'not a url', title: 'Example' });
+645 < 2 +  assert.equal(result.ok, false);
+646 < 2 +  assert.equal(typeof result.error, 'string');
+647 < 2 +  assert.notEqual(result.error.length, 0);
+648 < 2 +});
+649 < 2 +
+650 < 2 +test('rejects ftp scheme', () => {
+651 < 2 +  const result = validateLink({ url: 'ftp://example.com', title: 'Example' });
+652 < 2 +  assert.equal(result.ok, false);
+653 < 2 +  assert.equal(typeof result.error, 'string');
+654 < 2 +  assert.notEqual(result.error.length, 0);
+655 < 2 +});
+656 < 2 +
+657 < 2 +test('rejects other non-http(s) schemes', () => {
+658 < 2 +  const result = validateLink({ url: 'mailto:test@example.com', title: 'Example' });
+659 < 2 +  assert.equal(result.ok, false);
+660 < 2 +  assert.equal(typeof result.error, 'string');
+661 < 2 +  assert.notEqual(result.error.length, 0);
+662 < 2 +});
+663 < 2 

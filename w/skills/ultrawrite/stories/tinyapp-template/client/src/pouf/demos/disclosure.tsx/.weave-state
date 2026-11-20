@@ -1,0 +1,81 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Tabs, Accordion, Collapsible } from '../disclosure'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Field, Input } from '../Input'
+4 < 2 import { Text } from '../text'
+5 < 2 import type { Demo } from './types'
+6 < 2 
+7 < 2 const primaryTabs = [
+8 < 2   { value: 'first', label: 'Projects', content: <Text>Active project content goes here.</Text> },
+9 < 2   { value: 'second', label: 'History', content: <Text>Archived history.</Text> },
+10 < 2   { value: 'third', label: 'Notes', content: <Text size="sm" muted>No notes yet.</Text> },
+11 < 2 ]
+12 < 2 
+13 < 2 function InteractiveTabs({
+14 < 2   initial,
+15 < 2   compact = false,
+16 < 2   subject = false,
+17 < 2 }: {
+18 < 2   initial: string
+19 < 2   compact?: boolean
+20 < 2   subject?: boolean
+21 < 2 }) {
+22 < 2   const [value, setValue] = useState(initial)
+23 < 2   const tabs = compact ? primaryTabs.slice(0, 2) : primaryTabs
+24 < 2   const control = <Tabs value={value} onChange={setValue} tabs={tabs} />
+25 < 2   return subject ? <span data-subject style={{ display: 'block', width: '100%' }}>{control}</span> : control
+26 < 2 }
+27 < 2 
+28 < 2 export const tabsDemos: Demo[] = [
+29 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveTabs initial="first" subject /> },
+30 < 2   { id: 'second-selected', render: () => <InteractiveTabs initial="second" compact /> },
+31 < 2 ]
+32 < 2 
+33 < 2 export const accordionDemos: Demo[] = [
+34 < 2   { id: 'default', render: () => (
+35 < 2       <Accordion
+36 < 2         items={[
+37 < 2           { value: 'risk', title: 'Autosave', children: <Text size="sm">Saves every 30 seconds. Keeps the last 10 versions.</Text> },
+38 < 2           { value: 'sizing', title: 'Layout density', children: <Text size="sm">Comfortable by default. Compact fits more rows.</Text> },
+39 < 2           { value: 'hours', title: 'Support hours', children: <Text size="sm">Mon–Fri, 9–6 CET. Weekend replies are best effort.</Text> },
+40 < 2         ]}
+41 < 2       />
+42 < 2     ) },
+43 < 2   { id: 'expanded', render: () => (
+44 < 2       <Accordion
+45 < 2         defaultValue="risk"
+46 < 2         items={[
+47 < 2           { value: 'risk', title: 'Autosave', children: <Text size="sm">Saves every 30 seconds. Keeps the last 10 versions.</Text> },
+48 < 2           { value: 'sizing', title: 'Layout density', children: <Text size="sm">Comfortable by default.</Text> },
+49 < 2         ]}
+50 < 2       />
+51 < 2     ) },
+52 < 2 ]
+53 < 2 
+54 < 2 const collapsibleTrigger = <Text muted>Show advanced settings</Text>
+55 < 2 const collapsibleBody = (
+56 < 2   <Card variant="tight">
+57 < 2     <Field label="Autosave delay (s)">
+58 < 2       {(id, d) => <Input id={id} describedBy={d} value="0.5" onChange={() => {}} />}
+59 < 2     </Field>
+60 < 2   </Card>
+61 < 2 )
+62 < 2 
+63 < 2 export const collapsibleDemos: Demo[] = [
+64 < 2   { id: 'closed', states: ['hover'], render: () => (
+65 < 2       <span data-subject>
+66 < 2         <Collapsible trigger={collapsibleTrigger}>{collapsibleBody}</Collapsible>
+67 < 2       </span>
+68 < 2     ) },
+69 < 2   { id: 'open', render: () => <InteractiveOpenCollapsible /> },
+70 < 2 ]
+71 < 2 
+72 < 2 function InteractiveOpenCollapsible() {
+73 < 2   const [open, setOpen] = useState(true)
+74 < 2   return (
+75 < 2     <Collapsible open={open} onOpenChange={setOpen} trigger={collapsibleTrigger}>
+76 < 2       {collapsibleBody}
+77 < 2     </Collapsible>
+78 < 2   )
+79 < 2 }
+80 < 2 

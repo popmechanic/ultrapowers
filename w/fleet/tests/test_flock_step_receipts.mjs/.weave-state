@@ -1,0 +1,45 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // factory/flock/step_receipts.mjs's latestResults (#1532): a step's receipt is the edge's own checker
+2 < 1 // result (`<clause>@edge.json`) when the edge wrote one, even when a builder's copy wrote a newer file
+4 > 1 // for the same clause; a clause no edge result names falls back to the newest file by mtime. A result
+5 < 1 // with no diff (the step stopped at `do`, before the store was read) still gets its row (#1491).
+3 < 2 // for the same clause; a clause no edge result names falls back to the newest file by mtime.
+4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+5 < 1 import fs from 'node:fs'
+6 < 1 import os from 'node:os'
+7 < 1 import path from 'node:path'
+8 < 1 import { latestResults, stepReceipts } from '../../factory/flock/step_receipts.mjs'
+9 < 1 
+10 < 1 const fails = []
+11 < 1 const assert = (ok, why) => { if (!ok) fails.push(why) }
+12 < 1 
+13 < 1 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'step-receipts-'))
+14 < 1 const put = (name, r, secondsAgo) => {
+15 < 1   const p = path.join(dir, name)
+16 < 1   fs.writeFileSync(p, JSON.stringify(r))
+17 < 1   const t = new Date(Date.now() - secondsAgo * 1000)
+18 < 1   fs.utimesSync(p, t, t)
+19 < 1 }
+20 < 1 // S1.1: the edge's result is the older file; a builder's copy wrote after it.
+21 < 1 put('S1.1@edge.json', { clause: 'S1.1', exit: 0, diff: [{ cell: 'from-edge' }] }, 60)
+22 < 1 put('S1.1@b1.json', { clause: 'S1.1', exit: 1, diff: [{ cell: 'from-b1' }] }, 5)
+23 < 1 // S1.2: no edge result; two builder copies, the newest wins.
+24 < 1 put('S1.2@b1.json', { clause: 'S1.2', exit: 1, diff: [{ cell: 'older' }] }, 60)
+25 < 1 put('S1.2@b2.json', { clause: 'S1.2', exit: 0, diff: [{ cell: 'newer' }] }, 5)
+27 > 1 // S2.1: the step stopped at `do`, so its result carries no diff.
+28 < 1 put('S2.1@edge.json', { clause: 'S2.1', exit: 1, stage: 'do' }, 30)
+26 < 1 
+27 < 1 const got = latestResults(dir)
+28 < 1 assert(got.get('S1.1')?.diff?.[0]?.cell === 'from-edge', `S1.1 should come from the edge: ${JSON.stringify(got.get('S1.1'))}`)
+29 < 1 assert(got.get('S1.2')?.diff?.[0]?.cell === 'newer', `S1.2 should be the newest copy's: ${JSON.stringify(got.get('S1.2'))}`)
+30 < 1 const rows = stepReceipts([...got.values()])
+32 > 1 assert(rows.length === 3 && rows[0].clause === 'S1.1' && rows[0].exit === 0, `receipts: ${JSON.stringify(rows)}`)
+33 < 1 const stopped = rows.find((r) => r.clause === 'S2.1')
+34 < 1 assert(stopped && stopped.diff === null && stopped.stage === 'do' && stopped.exit === 1 && stopped.truncated === false,
+35 < 1   `a result with no diff keeps its receipt: ${JSON.stringify(stopped)}`)
+31 < 2 assert(rows.length === 2 && rows[0].clause === 'S1.1' && rows[0].exit === 0, `receipts: ${JSON.stringify(rows)}`)
+32 < 1 
+33 < 1 fs.rmSync(dir, { recursive: true, force: true })
+34 < 1 if (fails.length) { for (const f of fails) console.log(`FAIL ${f}`); process.exit(1) }
+35 < 1 console.log('ALL TESTS PASSED')
+36 < 1 

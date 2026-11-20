@@ -1,0 +1,189 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+3 < 2 import { NavLink } from '../NavLink'
+4 < 2 import { Empty } from '../feedback'
+5 < 2 import { Blob, Badge, Dot } from '../media'
+6 < 2 import { Grid, Row, Shell, Sidebar, Stack } from '../layout'
+7 < 2 import { Segmented } from '../Segmented'
+8 < 2 import { Card, RowCard } from '../surface'
+9 < 2 import { Eyebrow, Heading, Text } from '../text'
+10 < 2 
+11 < 2 const NAV: NavItem[] = [
+12 < 2   { href: '/', label: 'Overview', icon: 'overview', tone: 'purple' },
+13 < 2   { href: '/editorial', label: 'Editorial', icon: 'draft', tone: 'orange' },
+14 < 2   { href: '/calendar', label: 'Calendar', icon: 'calendar', tone: 'blue' },
+15 < 2   { href: '/team', label: 'Team', icon: 'users', tone: 'mint' },
+16 < 2   { href: '/settings', label: 'Settings', icon: 'settings', tone: 'yellow' },
+17 < 2 ]
+18 < 2 
+19 < 2 const HERE = '/editorial'
+20 < 2 const DATE = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' })
+21 < 2 const NUMBER = new Intl.NumberFormat('en-US')
+22 < 2 
+23 < 2 type StoryStatus = 'draft' | 'scheduled' | 'published'
+24 < 2 
+25 < 2 interface Story {
+26 < 2   id: string
+27 < 2   title: string
+28 < 2   section: string
+29 < 2   author: string
+30 < 2   due: string
+31 < 2   status: StoryStatus
+32 < 2   words: number
+33 < 2 }
+34 < 2 
+35 < 2 const INITIAL_STORIES: Story[] = [
+36 < 2   { id: 'soft-ui', title: 'Why soft interfaces still need sharp decisions', section: 'Design', author: 'Maya', due: '2026-08-04T09:00:00Z', status: 'draft', words: 1240 },
+37 < 2   { id: 'local-first', title: 'A practical guide to local-first notes', section: 'Engineering', author: 'Noah', due: '2026-08-05T13:00:00Z', status: 'scheduled', words: 1860 },
+38 < 2   { id: 'launch', title: 'Inside a calm product launch', section: 'Company', author: 'Iris', due: '2026-08-07T10:30:00Z', status: 'draft', words: 920 },
+39 < 2   { id: 'motion', title: 'Motion that explains instead of decorates', section: 'Design', author: 'Maya', due: '2026-08-01T08:00:00Z', status: 'published', words: 1580 },
+40 < 2 ]
+41 < 2 
+42 < 2 const STATUS_TONE: Record<StoryStatus, 'orange' | 'blue' | 'up'> = {
+43 < 2   draft: 'orange',
+44 < 2   scheduled: 'blue',
+45 < 2   published: 'up',
+46 < 2 }
+47 < 2 
+48 < 2 /** An editorial workspace that filters the queue, selects stories, and moves a
+49 < 2  * draft through scheduling and publication without leaving the screen. */
+50 < 2 export function EditorialBlock() {
+51 < 2   const [stories, setStories] = useState(INITIAL_STORIES)
+52 < 2   const [status, setStatus] = useState<StoryStatus>('draft')
+53 < 2   const [selectedId, setSelectedId] = useState(INITIAL_STORIES[0]!.id)
+54 < 2 
+55 < 2   const visible = useMemo(
+56 < 2     () => stories.filter((story) => story.status === status),
+57 < 2     [status, stories],
+58 < 2   )
+59 < 2   const selected = visible.find((story) => story.id === selectedId) ?? visible[0] ?? stories[0]!
+60 < 2 
+61 < 2   function updateStatus(next: StoryStatus) {
+62 < 2     setStories((current) =>
+63 < 2       current.map((story) => (story.id === selected.id ? { ...story, status: next } : story)),
+64 < 2     )
+65 < 2     setStatus(next)
+66 < 2   }
+67 < 2 
+68 < 2   return (
+69 < 2     <>
+70 < 2       <Shell>
+71 < 2         <Sidebar mobile="hide">
+72 < 2           <Row gap={2} wrap={false}>
+73 < 2             <Blob icon="draft" tone="orange" size="sm" />
+74 < 2             <Heading level={3}>Field Notes</Heading>
+75 < 2           </Row>
+76 < 2           {NAV.map((item) => (
+77 < 2             <NavLink key={item.href} href={item.href} currentPath={HERE} icon={item.icon} tone={item.tone}>
+78 < 2               {item.label}
+79 < 2             </NavLink>
+80 < 2           ))}
+81 < 2         </Sidebar>
+82 < 2 
+83 < 2         <Stack gap={5}>
+84 < 2           <Row justify="between" align="top">
+85 < 2             <Stack gap={1}>
+86 < 2               <Eyebrow>Publishing</Eyebrow>
+87 < 2               <Heading level={1}>Editorial Desk</Heading>
+88 < 2               <Text muted>Move every story from a good idea to a clean launch.</Text>
+89 < 2             </Stack>
+90 < 2             <Badge tone="yellow">{stories.length} stories</Badge>
+91 < 2           </Row>
+92 < 2 
+93 < 2           <Card variant="tight">
+94 < 2             <Row justify="between">
+95 < 2               <Segmented
+96 < 2                 label="Story status"
+97 < 2                 value={status}
+98 < 2                 onChange={setStatus}
+99 < 2                 options={[
+100 < 2                   { value: 'draft', label: 'Drafts' },
+101 < 2                   { value: 'scheduled', label: 'Scheduled' },
+102 < 2                   { value: 'published', label: 'Published' },
+103 < 2                 ]}
+104 < 2               />
+105 < 2               <Row gap={2} wrap={false}>
+106 < 2                 <Dot tone={STATUS_TONE[status]} />
+107 < 2                 <Text size="sm">{visible.length} in this stage</Text>
+108 < 2               </Row>
+109 < 2             </Row>
+110 < 2           </Card>
+111 < 2 
+112 < 2           <Grid cols="sidebar" gap={4}>
+113 < 2             <Stack gap={3}>
+114 < 2               {visible.length > 0 ? (
+115 < 2                 visible.map((story) => (
+116 < 2                   <RowCard
+117 < 2                     key={story.id}
+118 < 2                     selected={story.id === selected.id}
+119 < 2                     onClick={() => setSelectedId(story.id)}
+120 < 2                   >
+121 < 2                     <Row justify="between" align="top" wrap={false}>
+122 < 2                       <Stack gap={1}>
+123 < 2                         <Text size="sm" muted>{story.section}</Text>
+124 < 2                         <Heading level={3}>{story.title}</Heading>
+125 < 2                         <Text size="sm" muted>
+126 < 2                           {story.author} · {DATE.format(new Date(story.due))}
+127 < 2                         </Text>
+128 < 2                       </Stack>
+129 < 2                       <Badge tone={STATUS_TONE[story.status]}>{story.status}</Badge>
+130 < 2                     </Row>
+131 < 2                   </RowCard>
+132 < 2                 ))
+133 < 2               ) : (
+134 < 2                 <Card>
+135 < 2                   <Empty icon="draft" title={`No ${status} stories`}>
+136 < 2                     Move a story here when it is ready.
+137 < 2                   </Empty>
+138 < 2                 </Card>
+139 < 2               )}
+140 < 2             </Stack>
+141 < 2 
+142 < 2             <Card>
+143 < 2               <Stack gap={4}>
+144 < 2                 <Row justify="between" align="top">
+145 < 2                   <Stack gap={1}>
+146 < 2                     <Text size="sm" muted>{selected.section}</Text>
+147 < 2                     <Heading level={2}>{selected.title}</Heading>
+148 < 2                   </Stack>
+149 < 2                   <Badge tone={STATUS_TONE[selected.status]}>{selected.status}</Badge>
+150 < 2                 </Row>
+151 < 2                 <Row justify="between">
+152 < 2                   <Text muted>Author</Text>
+153 < 2                   <Text>{selected.author}</Text>
+154 < 2                 </Row>
+155 < 2                 <Row justify="between">
+156 < 2                   <Text muted>Target</Text>
+157 < 2                   <Text num>{DATE.format(new Date(selected.due))}</Text>
+158 < 2                 </Row>
+159 < 2                 <Row justify="between">
+160 < 2                   <Text muted>Length</Text>
+161 < 2                   <Text num>{NUMBER.format(selected.words)} words</Text>
+162 < 2                 </Row>
+163 < 2                 {selected.status === 'draft' && (
+164 < 2                   <Button tone="blue" block onClick={() => updateStatus('scheduled')}>
+165 < 2                     Schedule Story
+166 < 2                   </Button>
+167 < 2                 )}
+168 < 2                 {selected.status === 'scheduled' && (
+169 < 2                   <Button tone="mint" block onClick={() => updateStatus('published')}>
+170 < 2                     Publish Story
+171 < 2                   </Button>
+172 < 2                 )}
+173 < 2                 {selected.status === 'published' && (
+174 < 2                   <Button variant="quiet" block onClick={() => updateStatus('draft')}>
+175 < 2                     Return to Drafts
+176 < 2                   </Button>
+177 < 2                 )}
+178 < 2               </Stack>
+179 < 2             </Card>
+180 < 2           </Grid>
+181 < 2         </Stack>
+182 < 2       </Shell>
+183 < 2 
+184 < 2       <BottomNav primary={NAV.slice(0, 3)} groups={[{ title: 'Workspace', items: NAV }]} currentPath={HERE} />
+185 < 2     </>
+186 < 2   )
+187 < 2 }
+188 < 2 

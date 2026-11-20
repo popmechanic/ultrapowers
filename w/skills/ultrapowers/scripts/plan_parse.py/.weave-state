@@ -1,0 +1,906 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """Parse a claims-v1 plan markdown file to its grammar shape.
+2 < 1 
+3 < 1 Usage: python3 plan_parse.py <plan.md>
+4 < 1 
+5 < 1 Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
+7 > 1 `width`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
+6 < 2 `launch_waves`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
+7 < 1 itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
+8 < 1 
+10 > 1 Each task's files is the sorted set of its Create, Modify and Delete paths, and
+11 < 1 its `wave` is its 1-based layer in the dependency order; `width` is the widest
+12 < 1 layer, the most tasks that can be ready at once, which the launcher sizes the VM
+13 < 1 from.
+9 < 2 Each task's files is the sorted set of its Create, Modify and Delete paths.
+10 < 1 
+12 > 1 A grammar parser: it refuses (exit 2, one stderr line) only what it cannot
+13 < 1 parse or must not run -- no `### Task <id>:` heading found, a duplicate task id,
+14 < 1 a cycle in the derived dependency edges, or a `(minor)` Check. Gate verdicts,
+15 < 1 slot shapes and clause citations are `plan_check.py`'s business.
+11 < 2 This is a grammar parser, not the old semantic compiler
+12 < 2 (`compile_plan.py`, deleted at cut B, 2026-09-21): it refuses (exit 2, one
+13 < 2 stderr line) only what it cannot parse -- no `### Task <id>:` heading found,
+14 < 2 a duplicate task id, or a cycle in the derived dependency edges. Everything
+15 < 2 else the old compiler would treat as a semantic violation (missing gate
+16 < 2 verdicts, slot-shape complaints, disjointness, clause citations, ...) is not
+17 < 2 this parser's business.
+18 < 1 """
+19 < 1 
+20 < 1 import json
+21 < 1 import re
+22 < 1 import sys
+23 < 1 
+24 < 1 
+25 < 1 class Refusal(Exception):
+27 > 1     """Raised for a grammar-level refusal."""
+26 < 2     """Raised for the three grammar-level refusals (M5)."""
+27 < 1 
+28 < 1 
+29 < 1 # --------------------------------------------------------------------------- #
+30 < 1 # Fence-aware line scanning: track a stack of open ``` / ~~~ fences so
+31 < 1 # headings and labels inside code blocks are never mistaken for real
+32 < 1 # structure.
+33 < 1 # --------------------------------------------------------------------------- #
+34 < 1 
+35 < 1 _FENCE_RE = re.compile(r'^(`{3,}|~{3,})\s*.*$')
+36 < 1 
+37 < 1 
+38 < 1 def _fence_aware_lines(text):
+39 < 1     """Yield (line, fenced) for each line of text, `fenced` True when the
+40 < 1     line is itself a fence marker or lies inside an open fence."""
+41 < 1     stack = []  # stack of fence marker strings, e.g. "```" or "~~~~"
+42 < 1     out = []
+43 < 1     for line in text.splitlines():
+44 < 1         s = line.strip()
+45 < 1         m = _FENCE_RE.match(s)
+46 < 1         if m:
+47 < 1             run = m.group(1)
+48 < 1             if stack and run[0] == stack[-1][0] and len(run) >= len(stack[-1]):
+49 < 1                 stack.pop()
+50 < 1             else:
+51 < 1                 stack.append(run)
+52 < 1             out.append((line, True))
+53 < 1             continue
+54 < 1         out.append((line, bool(stack)))
+55 < 1     return out
+56 < 1 
+57 < 1 
+58 < 1 def _leading_spaces(line):
+59 < 1     return len(line) - len(line.lstrip(' '))
+60 < 1 
+61 < 1 
+62 < 1 TASK_HEAD = re.compile(r'^### Task ([A-Za-z0-9]+):\s*(.*)$')
+63 < 1 H2_HEAD = re.compile(r'^##\s')
+64 < 1 
+65 < 1 FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete)\s*:\s*(.+)$', re.I)
+66 < 1 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
+67 < 1 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
+68 < 1 
+70 > 1 # A Proof `Run:` bullet's citation tag: the same bracket shape a Legs bullet's own citation
+69 < 2 # A Proof `Run:` bullet's citation tag (the old compiler's
+70 < 2 # RUN_CITE_RE exactly): the same bracket shape a Legs bullet's own citation
+71 < 1 # carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
+72 < 1 # whitespace -- a tag mid-command is part of the command, not a tag.
+73 < 1 RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
+74 < 1 
+75 < 1 
+76 < 1 def _claims_run_cites(value):
+78 > 1     """Split a Proof `Run:` value into (command text, sorted clause ids).
+79 < 1     Untagged, the value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
+77 < 2     """Split a Proof `Run:` value into (command text, sorted clause ids),
+78 < 2     exactly as the old compiler's `_claims_run_cites` did. Untagged, the
+79 < 2     value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
+80 < 1     before any backtick-wrapper stripping -- and its ids are returned
+81 < 1     sorted by number."""
+82 < 1     m = RUN_CITE_RE.search(value)
+83 < 1     if not m:
+84 < 1         return value, []
+85 < 1     cites = sorted({c.strip() for c in m.group(1).split(",")},
+86 < 1                    key=lambda c: int(c[1:]))
+87 < 1     return value[:m.start()], cites
+88 < 1 
+89 < 1 
+90 < 2 TYPE_LINE = re.compile(r'^\*\*Type:\*\*\s*(.+?)\s*$', re.I)
+91 < 1 BOOTSTRAP_LINE = re.compile(r'^\*\*Bootstrap:\*\*\s*(.+?)\s*$', re.I)
+92 < 1 PUBLISH_LINE = re.compile(r'^\*\*Publish:\*\*\s*(.+?)\s*$', re.I)
+93 < 1 VERIFY_LINE = re.compile(r'^\*\*Verify:\*\*\s*(.+?)\s*$', re.I)
+94 < 1 ROLLBACK_LINE = re.compile(r'^\*\*Rollback:\*\*\s*(.+?)\s*$', re.I)
+95 < 1 BACKTICK_PATH_RE = re.compile(r'`([^`]+)`')
+96 < 1 GLOBAL_CONSTRAINTS_H2 = re.compile(r'^##\s*Global Constraints\s*$', re.I)
+97 < 1 CHECK_BULLET = re.compile(r'^-\s*Check\s*:\s*(.+)$', re.I)
+98 < 1 MINOR_SUFFIX_RE = re.compile(r'\s*\(minor\)\s*$', re.I)
+99 < 1 
+100 < 1 SLOT_RE = re.compile(
+101 < 1     r'^\*\*\s*(claim|authorized[-\s]?by|interfaces|context|proof|stale[-\s]?if)'
+102 < 1     r'\s*:?\s*\*\*\s*:?\s*(.*)$',
+103 < 1     re.I,
+104 < 1 )
+105 < 1 
+106 < 1 
+107 < 1 def _slot_name(raw):
+108 < 1     key = re.sub(r'[\s-]+', '-', raw.strip().lower())
+109 < 1     return key
+110 < 1 
+111 < 1 
+112 < 1 # --------------------------------------------------------------------------- #
+113 < 1 # Plan-level split: headings, boundaries, header block.
+114 < 1 # --------------------------------------------------------------------------- #
+115 < 1 
+116 < 1 def _split_plan(text):
+117 < 1     scanned = _fence_aware_lines(text)
+118 < 1     heads = []       # (id, title, line_idx)
+119 < 1     boundaries = []  # line indices of task headings and h2 headings
+120 < 1 
+121 < 1     for i, (line, fenced) in enumerate(scanned):
+122 < 1         if fenced:
+123 < 1             continue
+124 < 1         if _leading_spaces(line) > 3:
+125 < 1             continue
+126 < 1         s = line.strip()
+127 < 1         if s.startswith('### Task') and not TASK_HEAD.match(s):
+128 < 1             raise Refusal(
+129 < 1                 "plan_parse: a '### Task' line is not a task heading -- "
+130 < 1                 "write '### Task <id>: <title>' with the colon right after "
+131 < 1                 "the id: " + s
+132 < 1             )
+133 < 1         m = TASK_HEAD.match(s)
+134 < 1         if m:
+135 < 1             heads.append((m.group(1), m.group(2).strip(), i))
+136 < 1             boundaries.append(i)
+137 < 1             continue
+138 < 1         if H2_HEAD.match(s):
+139 < 1             boundaries.append(i)
+140 < 1 
+141 < 1     if not heads:
+142 < 1         raise Refusal("plan_parse: no '### Task <id>:' heading found")
+143 < 1 
+144 < 1     seen_ids = {}
+145 < 1     for tid, _title, idx in heads:
+146 < 1         seen_ids.setdefault(tid, []).append(idx)
+147 < 1     dups = sorted(t for t, idxs in seen_ids.items() if len(idxs) > 1)
+148 < 1     if dups:
+149 < 1         raise Refusal(
+150 < 1             "plan_parse: duplicate task id(s) on '### Task' headings: "
+151 < 1             + ", ".join(dups)
+152 < 1         )
+153 < 1 
+154 < 1     boundaries_sorted = sorted(set(boundaries))
+155 < 1     header_lines = scanned[: heads[0][2]]
+156 < 1 
+157 < 1     task_bodies = []
+158 < 1     for n, (tid, title, start) in enumerate(heads):
+159 < 1         end = next((b for b in boundaries_sorted if b > start), len(scanned))
+160 < 1         task_bodies.append((tid, title, n, scanned[start:end]))
+161 < 1 
+162 < 1     return header_lines, task_bodies
+163 < 1 
+164 < 1 
+165 < 1 def _strip_whole_backticks(val):
+166 < 1     """A whole-value backtick wrapper stripped, exactly as `Check:` strips
+167 < 1     one."""
+168 < 1     bm = re.match(r'^`([^`]+)`$', val)
+169 < 1     return bm.group(1).strip() if bm else val
+170 < 1 
+171 < 1 
+172 < 1 def _parse_header(header_lines):
+173 < 1     bootstrap_cmd = None
+174 < 1     deploy_cmd = None
+175 < 1     verify_cmd = None
+176 < 1     rollback_cmd = None
+177 < 1     for line, fenced in header_lines:
+178 < 1         if fenced:
+179 < 1             continue
+180 < 1         s = line.strip()
+181 < 1         m = BOOTSTRAP_LINE.match(s)
+182 < 1         if m:
+183 < 1             bootstrap_cmd = m.group(1).strip()
+184 < 1             continue
+185 < 1         m = PUBLISH_LINE.match(s)
+186 < 1         if m:
+187 < 1             deploy_cmd = _strip_whole_backticks(m.group(1).strip())
+188 < 1             continue
+189 < 1         m = VERIFY_LINE.match(s)
+190 < 1         if m:
+191 < 1             verify_cmd = _strip_whole_backticks(m.group(1).strip())
+192 < 1             continue
+193 < 1         m = ROLLBACK_LINE.match(s)
+194 < 1         if m:
+195 < 1             rollback_cmd = _strip_whole_backticks(m.group(1).strip())
+196 < 1             continue
+197 < 1 
+198 < 1     publish = None
+199 < 1     if deploy_cmd is not None or verify_cmd is not None:
+200 < 1         publish = {
+201 < 1             "deploy": deploy_cmd,
+202 < 1             "verify": verify_cmd,
+203 < 1             "rollback": rollback_cmd,
+204 < 1         }
+205 < 1     return bootstrap_cmd, publish
+206 < 1 
+207 < 1 
+208 < 1 def _parse_checks(header_lines):
+209 < 1     """`- Check:` bullets under the `## Global Constraints` heading in the
+211 > 1     plan header, in order, each `{"cmd"}`. A trailing `(minor)` is refused: it
+212 < 1     once marked a Check never run, and a Check is always run now."""
+210 < 2     plan header, in order; a trailing `(minor)` marks `minor` true and is
+211 < 2     stripped from `cmd`."""
+212 < 1     checks = []
+213 < 1     in_section = False
+214 < 1     for line, fenced in header_lines:
+215 < 1         if fenced:
+216 < 1             continue
+217 < 1         s = line.strip()
+218 < 1         if H2_HEAD.match(s):
+219 < 1             in_section = bool(GLOBAL_CONSTRAINTS_H2.match(s))
+220 < 1             continue
+221 < 1         if not in_section:
+222 < 1             continue
+223 < 1         m = CHECK_BULLET.match(s)
+224 < 1         if not m:
+225 < 1             continue
+226 < 1         val = m.group(1).strip()
+228 > 1         if MINOR_SUFFIX_RE.search(val):
+229 < 1             raise Refusal(
+230 < 1                 "grammar: Check `%s` ends `(minor)`, which is never run — every "
+231 < 1                 "Check runs; drop the suffix, or the line" % val)
+227 < 2         minor = False
+228 < 2         mm = MINOR_SUFFIX_RE.search(val)
+229 < 2         if mm:
+230 < 2             minor = True
+231 < 2             val = val[:mm.start()].rstrip()
+232 < 1         bm = re.match(r'^`([^`]+)`$', val)
+233 < 1         if bm:
+234 < 1             val = bm.group(1).strip()
+236 > 1         checks.append({"cmd": val})
+235 < 2         checks.append({"cmd": val, "minor": minor})
+236 < 1     return checks
+237 < 1 
+238 < 1 
+239 < 1 # --------------------------------------------------------------------------- #
+240 < 1 # Task-body parsing.
+241 < 1 # --------------------------------------------------------------------------- #
+242 < 1 
+243 < 1 def _slot_spans(body_lines):
+244 < 1     """`[(start, end, name, inline)]` for each unfenced slot label after the
+245 < 1     heading line, in written order, duplicates kept: the label's line index,
+246 < 1     the next label's (or the body's end), its canonical name, and the label
+247 < 1     line's remainder, stripped."""
+248 < 1     heads = []
+249 < 1     for i, (line, fenced) in enumerate(body_lines):
+250 < 1         if fenced or i == 0:
+251 < 1             continue
+252 < 1         m = SLOT_RE.match(line.strip())
+253 < 1         if m:
+254 < 1             heads.append((i, _slot_name(m.group(1)), m.group(2).strip()))
+255 < 1     ends = [i for i, _, _ in heads[1:]] + [len(body_lines)]
+256 < 1     return [(i, end, name, inline)
+257 < 1             for (i, name, inline), end in zip(heads, ends)]
+258 < 1 
+259 < 1 
+260 < 1 def _span_text(body_lines, span):
+261 < 1     """A slot's raw text, label stripped: the label line's remainder and every
+262 < 1     line to the next label, stripped once as a whole. `plan_check.py`'s gate
+263 < 1     hash is over two of these (`sha256(claim + NUL + proof)`), so the recipe
+264 < 1     is byte-for-byte the one every recorded verdict was signed under."""
+265 < 1     start, end, _name, inline = span
+266 < 1     return "\n".join(([inline] if inline else [])
+267 < 1                      + [l for l, _ in body_lines[start + 1:end]]).strip()
+268 < 1 
+269 < 1 
+270 < 1 def _pre_slot(body_lines):
+271 < 1     """The task body's lines between its heading and its first slot label --
+273 > 1     the region its Files bullets are read from."""
+272 < 2     the region its `**Type:**` line and Files bullets are read from."""
+273 < 1     spans = _slot_spans(body_lines)
+274 < 1     return body_lines[1:spans[0][0] if spans else len(body_lines)]
+275 < 1 
+276 < 1 
+277 < 1 def _file_bullets(lines):
+278 < 1     """`(label, paths)` for each unfenced `Create:`/`Modify:`/`Delete:`
+279 < 1     bullet of `lines`, in written order, label lower-cased."""
+280 < 1     for line, fenced in lines:
+281 < 1         m = None if fenced else FILE_BULLET.match(line.strip())
+282 < 1         if m:
+283 < 1             yield m.group(1).lower(), BACKTICK_PATH_RE.findall(m.group(2))
+284 < 1 
+285 < 1 
+286 < 1 def _parse_task_body(body_lines):
+287 < 1     """body_lines is the fence-aware (line, fenced) list from the task's
+288 < 1     heading line through (but not including) the next boundary."""
+289 < 1     spans = _slot_spans(body_lines)
+290 < 1     pre_slot = _pre_slot(body_lines)
+291 < 1 
+292 < 1     def slot_lines(name):
+293 < 1         out = []
+294 < 1         for start, end, n, _ in spans:
+295 < 1             if n == name:
+296 < 1                 out.extend(body_lines[start:end])
+297 < 1         return out
+298 < 1 
+299 < 1     def slot_text(name):
+300 < 1         """First occurrence wins; "" when the slot is absent."""
+301 < 1         span = next((sp for sp in spans if sp[2] == name), None)
+302 < 1         return "" if span is None else _span_text(body_lines, span)
+303 < 1 
+304 < 1     # Stale-if: one predicate per line, bullet optional.
+305 < 1     stale_if_entries = [e for e in (re.sub(r'^[-*+]\s+', '', l.strip())
+306 < 1                                     for l in slot_text("stale-if").splitlines())
+307 < 1                         if e]
+308 < 1 
+309 < 2     # Type marker.
+310 < 2     ttype = None
+311 < 2     for line, fenced in pre_slot:
+312 < 2         if fenced:
+313 < 2             continue
+314 < 2         m = TYPE_LINE.match(line.strip())
+315 < 2         if m:
+316 < 2             ttype = m.group(1).strip().lower()
+317 < 2             break
+318 < 2 
+319 < 1     # Files block.
+320 < 1     files = {"create": [], "modify": [], "delete": []}
+321 < 1     for label, paths in _file_bullets(pre_slot):
+322 < 1         files[label].extend(paths)
+323 < 1 
+324 < 1     # Interfaces slot.
+325 < 1     interfaces = {"consumes": [], "produces": []}
+326 < 1     for line, fenced in slot_lines("interfaces"):
+327 < 1         m = None if fenced else IFACE_BULLET.match(line.strip())
+328 < 1         if m:
+329 < 1             interfaces[m.group(1).lower()].append(m.group(2).strip())
+330 < 1 
+331 < 1     # Proof slot.
+332 < 1     proof_slot_lines = slot_lines("proof")
+333 < 1     proof_runs = []
+334 < 1     proof_run_clauses = []
+335 < 1     for line, fenced in proof_slot_lines:
+336 < 1         if fenced:
+337 < 1             continue
+338 < 1         s = line.strip()
+339 < 1         m = PROOF_RUN_BULLET.match(s)
+340 < 1         if m:
+341 < 1             val = m.group(1).strip()
+342 < 1             val, clauses = _claims_run_cites(val)
+343 < 1             bm = re.match(r'^`([^`]*)`$', val)
+344 < 1             if bm:
+345 < 1                 val = bm.group(1)
+346 < 1             proof_runs.append(val)
+347 < 1             proof_run_clauses.append(clauses)
+348 < 1 
+349 < 1     return {
+350 < 2         "type": ttype,
+351 < 1         "creates": files["create"],
+352 < 1         "modifies": files["modify"],
+353 < 1         "deletes": files["delete"],
+354 < 1         "interfaces": interfaces,
+355 < 1         "proofRuns": proof_runs,
+356 < 1         "proofRunClauses": proof_run_clauses,
+357 < 1         "claim": slot_text("claim"),
+358 < 1         "authorized_by": slot_text("authorized-by"),
+359 < 1         "proof": slot_text("proof"),
+360 < 1         "stale_if_entries": stale_if_entries,
+361 < 1     }
+362 < 2 
+363 < 2 
+364 < 2 def _is_implementation(ttype):
+365 < 2     return ttype is None or ttype == "implementation"
+366 < 1 
+367 < 1 
+368 < 1 # --------------------------------------------------------------------------- #
+369 < 1 # M3: the Interfaces-bullet token rule.
+370 < 1 # --------------------------------------------------------------------------- #
+371 < 1 
+372 < 1 _DECL_KEYWORDS = {"def", "function", "class", "const", "let", "var", "export", "async"}
+373 < 1 
+374 < 1 
+375 < 1 def _interface_token(text):
+376 < 1     text = text.strip()
+377 < 1     if not text:
+378 < 1         return None
+379 < 1     m = BACKTICK_PATH_RE.search(text)
+380 < 1     if m:
+381 < 1         span = m.group(1)
+382 < 1         words = span.split()
+383 < 1         while words and words[0] in _DECL_KEYWORDS:
+384 < 1             words = words[1:]
+385 < 1         if not words:
+386 < 1             return None
+387 < 1         first = words[0]
+388 < 1         cuts = [i for i in (first.find('('), first.find(':')) if i != -1]
+389 < 1         if cuts:
+390 < 1             first = first[:min(cuts)]
+391 < 1         if first.lower() in ("none", "nothing"):
+392 < 1             return None
+393 < 1         return first or None
+394 < 1     tokens = text.split()
+395 < 1     if len(tokens) != 1:
+396 < 1         return None
+397 < 1     word = tokens[0]
+398 < 1     if word.lower() in ("none", "nothing"):
+399 < 1         return None
+400 < 1     return word
+401 < 1 
+402 < 1 
+403 < 1 # --------------------------------------------------------------------------- #
+404 < 1 # M4: the edge-building algorithm.
+405 < 1 # --------------------------------------------------------------------------- #
+406 < 1 
+407 < 1 _RUN_SPLIT_RE = re.compile(r'&&|\|\||[;()|\s]+')
+408 < 1 
+409 < 1 # Python `from <dotted> import ...` -- captures the dotted module only; the
+410 < 1 # whole match (including the imported names) is later blanked out of the
+411 < 1 # command before the bare-`import` regex runs, so `x` in `from pkg import x`
+412 < 1 # is never mistaken for a module of its own.
+413 < 1 _PY_FROM_IMPORT_RE = re.compile(
+414 < 1     r'\bfrom\s+([\w.]+)\s+import\s+[\w.]+(?:\s*,\s*[\w.]+)*'
+415 < 1 )
+416 < 1 # Python bare `import <dotted>[, <dotted> ...]`.
+417 < 1 _PY_IMPORT_RE = re.compile(r'\bimport\s+([\w.]+(?:\s*,\s*[\w.]+)*)')
+418 < 1 
+419 < 1 # JavaScript/TypeScript import forms: `import ... from '<spec>'`,
+420 < 1 # `import('<spec>')`, `require('<spec>')` -- single or double quotes.
+421 < 1 _JS_SPEC_RE = re.compile(
+422 < 1     r"""\bimport\s+[^'";]*?\bfrom\s+(['"])(?P<spec1>[^'"]+)\1"""
+423 < 1     r"""|\bimport\(\s*(['"])(?P<spec2>[^'"]+)\3\s*\)"""
+424 < 1     r"""|\brequire\(\s*(['"])(?P<spec3>[^'"]+)\5\s*\)"""
+425 < 1 )
+426 < 1 
+427 < 1 _JS_EXTS = ('.ts', '.mjs', '.js', '.tsx')
+428 < 1 _JS_INDEXES = ('/index.ts', '/index.mjs', '/index.js')
+429 < 1 
+430 < 1 
+431 < 1 def _py_module_candidates(dotted):
+432 < 1     path = dotted.replace('.', '/')
+433 < 1     return [path + '.py', path + '/__init__.py']
+434 < 1 
+435 < 1 
+436 < 1 def _js_spec_candidates(spec):
+437 < 1     stripped = spec[2:] if spec.startswith('./') else spec
+438 < 1     candidates = [stripped]
+439 < 1     base = stripped.rsplit('/', 1)[-1]
+440 < 1     if '.' not in base:
+441 < 1         candidates.extend(stripped + ext for ext in _JS_EXTS)
+442 < 1         candidates.extend(stripped + idx for idx in _JS_INDEXES)
+443 < 1     return candidates
+444 < 1 
+445 < 1 
+446 < 1 def _import_paths(cmd):
+447 < 1     """Candidate module/file paths named by any import in `cmd`, Python or
+448 < 1     JavaScript. A candidate that no task's Files carry costs nothing --
+449 < 1     `_build_edges` only fires on an actual intersection."""
+450 < 1     out = []
+451 < 1 
+452 < 1     for m in _PY_FROM_IMPORT_RE.finditer(cmd):
+453 < 1         out.extend(_py_module_candidates(m.group(1)))
+454 < 1 
+455 < 1     stripped_cmd = _PY_FROM_IMPORT_RE.sub(' ', cmd)
+456 < 1     for m in _PY_IMPORT_RE.finditer(stripped_cmd):
+457 < 1         for dotted in m.group(1).split(','):
+458 < 1             out.extend(_py_module_candidates(dotted.strip()))
+459 < 1 
+460 < 1     for m in _JS_SPEC_RE.finditer(cmd):
+461 < 1         spec = m.group('spec1') or m.group('spec2') or m.group('spec3')
+462 < 1         if spec is None:
+463 < 1             continue
+464 < 1         if not (spec.startswith('./') or spec.startswith('../')):
+465 < 1             continue
+466 < 1         out.extend(_js_spec_candidates(spec))
+467 < 1 
+468 < 1     return out
+469 < 1 
+470 < 1 
+471 < 1 def _run_tokens(cmd):
+472 < 1     toks = [t for t in _RUN_SPLIT_RE.split(cmd) if t]
+473 < 1     out = []
+474 < 1     for t in toks:
+475 < 1         if t.startswith("./"):
+476 < 1             t = t[2:]
+477 < 1         out.append(t)
+478 < 1     out.extend(_import_paths(cmd))
+479 < 1     return out
+480 < 1 
+481 < 1 
+482 < 1 def _build_edges(impl):
+483 < 1     edges = []
+484 < 1     seen = set()
+485 < 1     adj = {}
+486 < 1 
+487 < 1     def add(a, b, why):
+488 < 1         if a == b or (a, b) in seen:
+489 < 1             return
+490 < 1         seen.add((a, b))
+491 < 1         edges.append({"from": a, "to": b, "why": why})
+492 < 1         adj.setdefault(a, []).append(b)
+493 < 1 
+494 < 1     def reaches(src, dst):
+495 < 1         stack = [src]
+496 < 1         visited = set()
+497 < 1         while stack:
+498 < 1             n = stack.pop()
+499 < 1             if n == dst:
+500 < 1                 return True
+501 < 1             if n in visited:
+502 < 1                 continue
+503 < 1             visited.add(n)
+504 < 1             stack.extend(adj.get(n, []))
+505 < 1         return False
+506 < 1 
+507 < 1     def would_cycle(a, b):
+508 < 1         return reaches(b, a)
+509 < 1 
+510 < 1     ids = [t["id"] for t in impl]
+511 < 1     by_id = {t["id"]: t for t in impl}
+512 < 1 
+513 < 1     # Tier 1: write-after-create -- always added, no cycle guard.
+514 < 1     for a in ids:
+515 < 1         for b in ids:
+516 < 1             if a == b:
+517 < 1                 continue
+518 < 1             if set(by_id[a]["creates"]) & set(by_id[b]["modifies"]):
+519 < 1                 add(a, b, "write-after-create")
+520 < 1 
+521 < 1     # Tier 2: interface.
+522 < 1     produced_tokens = _produced_tokens_map(impl)
+523 < 1     for b in ids:
+524 < 1         b_consumes = {tok for c in by_id[b]["interfaces"]["consumes"]
+525 < 1                       for tok in [_interface_token(c)] if tok}
+526 < 1         if not b_consumes:
+527 < 1             continue
+528 < 1         for a in ids:
+529 < 1             if a == b:
+530 < 1                 continue
+531 < 1             if not (b_consumes & produced_tokens.get(a, set())):
+532 < 1                 continue
+533 < 1             if would_cycle(a, b):
+534 < 1                 continue
+535 < 1             add(a, b, "interface")
+536 < 1 
+537 < 1     # Tier 3: proof-run -- fully after tier 2 completes.
+538 < 1     files_of = {t["id"]: set(t["files"]) | set(t.get("deletes", [])) for t in impl}
+539 < 1     for b in ids:
+540 < 1         b_files = files_of[b]
+541 < 1         for cmd in by_id[b]["proofRuns"]:
+542 < 1             tokens = set(_run_tokens(cmd))
+543 < 1             if not tokens:
+544 < 1                 continue
+545 < 1             for a in ids:
+546 < 1                 if a == b:
+547 < 1                     continue
+548 < 1                 a_only = files_of[a] - b_files
+549 < 1                 if not (tokens & a_only):
+550 < 1                     continue
+551 < 1                 if would_cycle(a, b):
+552 < 1                     continue
+553 < 1                 add(a, b, "proof-run")
+554 < 1 
+555 < 1     return edges
+556 < 1 
+557 < 1 
+558 < 1 def _produced_tokens_map(impl):
+559 < 1     return {
+560 < 1         t["id"]: {tok for p in t["interfaces"]["produces"]
+561 < 1                   for tok in [_interface_token(p)] if tok}
+562 < 1         for t in impl
+563 < 1     }
+564 < 1 
+565 < 1 
+566 < 1 # --------------------------------------------------------------------------- #
+567 < 1 # M5: Kahn layering and cycle detection.
+568 < 1 # --------------------------------------------------------------------------- #
+569 < 1 
+570 < 1 def _find_a_cycle(ids, edges):
+571 < 1     graph = {i: [] for i in ids}
+572 < 1     idset = set(ids)
+573 < 1     for e in edges:
+574 < 1         if e["from"] in idset and e["to"] in idset:
+575 < 1             graph[e["from"]].append(e["to"])
+576 < 1 
+577 < 1     color = {}
+578 < 1     path = []
+579 < 1 
+580 < 1     def dfs(u):
+581 < 1         color[u] = 1
+582 < 1         path.append(u)
+583 < 1         for v in graph[u]:
+584 < 1             c = color.get(v, 0)
+585 < 1             if c == 0:
+586 < 1                 res = dfs(v)
+587 < 1                 if res is not None:
+588 < 1                     return res
+589 < 1             elif c == 1:
+590 < 1                 idx = path.index(v)
+591 < 1                 return path[idx:]
+592 < 1         color[u] = 2
+593 < 1         path.pop()
+594 < 1         return None
+595 < 1 
+596 < 1     for i in ids:
+597 < 1         if color.get(i, 0) == 0:
+598 < 1             res = dfs(i)
+599 < 1             if res is not None:
+600 < 1                 return res
+601 < 1     return None
+602 < 1 
+603 < 1 
+604 < 1 def _kahn_layers(ids, edges):
+605 < 1     indegree = {i: 0 for i in ids}
+606 < 1     children = {i: [] for i in ids}
+607 < 1     for e in edges:
+608 < 1         if e["from"] in indegree and e["to"] in indegree:
+609 < 1             indegree[e["to"]] += 1
+610 < 1             children[e["from"]].append(e["to"])
+611 < 1 
+612 < 1     remaining = set(ids)
+613 < 1     waves = []
+614 < 1     while remaining:
+615 < 1         wave = [i for i in ids if i in remaining and indegree[i] == 0]
+616 < 1         if not wave:
+617 < 1             cyc = _find_a_cycle(ids, edges) or sorted(remaining)
+618 < 1             raise Refusal(
+619 < 1                 "plan_parse: dependency cycle among tasks: " + ", ".join(cyc)
+620 < 1             )
+621 < 1         waves.append(wave)
+622 < 1         for i in wave:
+623 < 1             remaining.discard(i)
+624 < 1             for c in children[i]:
+625 < 1                 if c in remaining:
+626 < 1                     indegree[c] -= 1
+627 < 1     return waves
+628 < 1 
+629 < 1 
+630 < 1 # --------------------------------------------------------------------------- #
+631 < 1 # Top-level parse.
+632 < 1 def task_sections(text):
+633 < 1     """Each task's own section of the plan text, keyed by task id: its heading
+634 < 1     line without the leading '### ' (so 'Task <id>: <title>'), then everything
+635 < 1     up to the next unfenced task heading, trimmed -- what a builder is shown."""
+636 < 1     scanned = _fence_aware_lines(text)
+637 < 1     heads = [(m.group(1), i) for i, (line, fenced) in enumerate(scanned)
+638 < 1              if not fenced and _leading_spaces(line) <= 3
+639 < 1              for m in [TASK_HEAD.match(line.strip())] if m]
+640 < 1     out = {}
+641 < 1     for n, (tid, start) in enumerate(heads):
+642 < 1         end = heads[n + 1][1] if n + 1 < len(heads) else len(scanned)
+643 < 1         lines = [l for l, _ in scanned[start:end]]
+644 < 1         lines[0] = lines[0].strip()[len('### '):]
+645 < 1         out.setdefault(tid, "\n".join(lines).strip())
+646 < 1     return out
+647 < 1 
+648 < 1 
+649 < 1 # --------------------------------------------------------------------------- #
+650 < 1 
+651 < 1 def parse_plan_text(text):
+652 < 1     return parse_plan_full(text)[0]
+653 < 1 
+654 < 1 
+655 < 1 def parse_plan_full(text):
+656 < 1     """`(result, all_tasks)`: the public object `parse_plan_text` answers,
+658 > 1     and beside it every task of the plan with the fields the laptop's check
+659 < 1     and the authoring scripts read and the sandbox does not: `body`,
+660 < 1     `deletes`, the `claim`, `authorized_by` and `proof` slot texts, and
+661 < 1     `stale_if_entries`."""
+657 < 2     and beside it every task of the plan -- whatever its `**Type:**` -- with
+658 < 2     the fields the laptop's check and the authoring scripts read and the
+659 < 2     sandbox does not: `body`, `type`, `deletes`, the `claim`,
+660 < 2     `authorized_by` and `proof` slot texts, and `stale_if_entries`."""
+661 < 1     header_lines, task_bodies = _split_plan(text)
+662 < 1     bootstrap_cmd, publish = _parse_header(header_lines)
+663 < 1     checks = _parse_checks(header_lines)
+664 < 1     sections = task_sections(text)
+665 < 1 
+666 < 1     all_tasks = []
+668 > 1     for tid, title, _order, body_lines in task_bodies:
+667 < 2     for tid, title, order, body_lines in task_bodies:
+668 < 1         parsed = _parse_task_body(body_lines)
+669 < 1         all_tasks.append({
+670 < 1             "id": tid,
+671 < 1             "title": title,
+672 < 2             "order": order,
+673 < 1             **parsed,
+674 < 1             "files": sorted(set(parsed["creates"]) | set(parsed["modifies"])),
+675 < 2             "depends_on": [],
+676 < 1             "body": "\n".join(l for l, _ in body_lines).strip(),
+677 < 1         })
+678 < 1 
+680 > 1     ids = [t["id"] for t in all_tasks]
+681 < 1     edges = _build_edges(all_tasks)
+682 < 1     layers = _kahn_layers(ids, edges)
+683 < 1     wave_of = {i: n + 1 for n, layer in enumerate(layers) for i in layer}
+679 < 2     # the engine runs only implementation tasks, so any other Type would be
+680 < 2     # dropped without a word: refused instead
+681 < 2     for t in all_tasks:
+682 < 2         if not _is_implementation(t["type"]):
+683 < 2             raise Refusal(
+684 < 2                 "grammar: task %s: Type `%s` is never run — only `implementation` "
+685 < 2                 "tasks run; publishing goes through the plan's `**Publish:**` header."
+686 < 2                 % (t["id"], t["type"]))
+687 < 2     impl = all_tasks
+688 < 2     ids = [t["id"] for t in impl]
+689 < 1 
+691 > 1     tasks_out = [{
+692 < 1         "id": t["id"],
+693 < 1         "title": t["title"],
+694 < 1         # a Delete: path is the task's own too, or the engine's scope rule reads a
+695 < 1         # planned deletion as an amendment (run-263: all 44 amendment rows)
+696 < 1         "files": sorted(set(t["files"]) | set(t["deletes"])),
+697 < 1         "wave": wave_of[t["id"]],
+698 < 1         "proofRuns": t["proofRuns"],
+699 < 1         "proofRunClauses": t["proofRunClauses"],
+700 < 1         "body": sections.get(t["id"], ""),
+701 < 1     } for t in all_tasks]
+690 < 2     edges = _build_edges(impl)
+691 < 2     waves_ids = _kahn_layers(ids, edges)
+692 < 2 
+693 < 2     def public_view(t):
+694 < 2         view = {
+695 < 2             "id": t["id"],
+696 < 2             "title": t["title"],
+697 < 2             # a Delete: path is the task's own too, or the engine's scope rule reads a
+698 < 2             # planned deletion as an amendment (run-263: all 44 amendment rows)
+699 < 2             "files": sorted(set(t["files"]) | set(t["deletes"])),
+700 < 2             "depends_on": t["depends_on"],
+701 < 2             "proofRuns": t["proofRuns"],
+702 < 2             "proofRunClauses": t["proofRunClauses"],
+703 < 2             "interfaces": t["interfaces"],
+704 < 2             "body": sections.get(t["id"], ""),
+705 < 2         }
+706 < 2         return view
+707 < 2 
+708 < 2     by_id = {t["id"]: t for t in impl}
+709 < 2     tasks_out = [public_view(t) for t in impl]
+710 < 2     dag_edges = [{"from": e["from"], "to": e["to"], "why": e["why"]} for e in edges]
+711 < 2     launch_waves = [[public_view(by_id[i]) for i in wave] for wave in waves_ids]
+712 < 1 
+713 < 1     return {
+714 < 1         "tasks": tasks_out,
+716 > 1         "dag_edges": [{"from": e["from"], "to": e["to"], "why": e["why"]} for e in edges],
+717 < 1         "width": max((len(layer) for layer in layers), default=0),
+715 < 2         "dag_edges": dag_edges,
+716 < 2         "launch_waves": launch_waves,
+717 < 1         "checks": checks,
+718 < 1         "bootstrapCmd": bootstrap_cmd,
+719 < 1         "publish": publish,
+720 < 1     }, all_tasks
+721 < 1 
+722 < 1 
+723 < 1 # --------------------------------------------------------------------------- #
+724 < 1 # The Claim's two halves and the plan header -- read by the laptop's check
+725 < 1 # and the authoring scripts, never by the sandbox.
+726 < 1 # --------------------------------------------------------------------------- #
+727 < 1 
+728 < 1 CLAIMS_GRAMMAR = "claims-v1"
+729 < 1 STORIES_GRAMMAR = "stories-v1"
+730 < 1 GRAMMARS = (CLAIMS_GRAMMAR, STORIES_GRAMMAR)
+731 < 1 GRAMMAR_RE = re.compile(r'^\*\*Grammar:\*\*\s*(\S+)\s*$')
+732 < 1 MACHINE_LEAD_RE = re.compile(r'^machine\s*:\s*', re.I)
+733 < 1 CLAIM_PROVENANCE_RE = re.compile(
+734 < 1     r'\((elicited|derived|quoted from #(\d+))\)\s*$', re.I)
+735 < 1 PLAN_CLAIM_PROVENANCE_RE = re.compile(
+736 < 1     r'\((elicited|quoted from #(\d+))\)\s*$', re.I)
+737 < 1 
+738 < 1 
+739 < 1 def _header_lines(text):
+740 < 1     """The unfenced-or-not `(line, fenced)` pairs above the first task."""
+741 < 1     out = []
+742 < 1     for line, fenced in _fence_aware_lines(text):
+743 < 1         if (not fenced and _leading_spaces(line) <= 3
+744 < 1                 and TASK_HEAD.match(line.strip())):
+745 < 1             break
+746 < 1         out.append((line, fenced))
+747 < 1     return out
+748 < 1 
+749 < 1 
+750 < 1 def plan_grammar(text):
+751 < 1     """`claims-v1` or `stories-v1` when the header declares one, else None."""
+752 < 1     for line, fenced in _header_lines(text):
+753 < 1         m = None if fenced else GRAMMAR_RE.match(line.strip())
+754 < 1         if m and m.group(1) in GRAMMARS:
+755 < 1             return m.group(1)
+756 < 1     return None
+757 < 1 
+758 < 1 
+759 < 1 def _plan_claim_raw(text):
+760 < 1     """The header `**Claim:**` sentence, tag attached, wrapped lines joined
+761 < 1     on one space -- it runs to the next blank line, bold marker or fence."""
+762 < 1     value = None
+763 < 1     for line, fenced in _header_lines(text):
+764 < 1         s = line.strip()
+765 < 1         if value is None:
+766 < 1             m = None if fenced else SLOT_RE.match(s)
+767 < 1             if m and _slot_name(m.group(1)) == "claim":
+768 < 1                 value = [m.group(2).strip()]
+769 < 1             continue
+770 < 1         if fenced or not s or s.startswith("**"):
+771 < 1             break
+772 < 1         value.append(s)
+773 < 1     return None if value is None else re.sub(r'\s+', ' ', " ".join(value)).strip()
+774 < 1 
+775 < 1 
+776 < 1 def parse_plan_claim(text):
+777 < 1     """The plan's one operator sentence, tag stripped, or None."""
+778 < 1     raw = _plan_claim_raw(text)
+779 < 1     return None if raw is None else PLAN_CLAIM_PROVENANCE_RE.sub("", raw).strip()
+780 < 1 
+781 < 1 
+782 < 1 def plan_claim_provenance(text):
+783 < 1     """`elicited`, `quoted:#NNN`, or None (no header Claim, or no tag)."""
+784 < 1     m = PLAN_CLAIM_PROVENANCE_RE.search(_plan_claim_raw(text) or "")
+785 < 1     if m is None:
+786 < 1         return None
+787 < 1     return "quoted:#" + m.group(2) if m.group(2) else "elicited"
+788 < 1 
+789 < 1 
+790 < 1 def operator_lines(claim):
+791 < 1     """A Claim slot's lines above its `Machine:` restatement."""
+792 < 1     out = []
+793 < 1     for line in claim.splitlines():
+794 < 1         if MACHINE_LEAD_RE.match(line.strip()):
+795 < 1             break
+796 < 1         out.append(line)
+797 < 1     return out
+798 < 1 
+799 < 1 
+800 < 1 def claim_provenance(claim):
+801 < 1     """A task Claim's tag -- `elicited`, `derived`, `quoted:#NNN` or None --
+802 < 1     read off the whitespace-normalized operator sentence, so a tag an editor
+803 < 1     wrapped across two lines is still a tag."""
+804 < 1     m = CLAIM_PROVENANCE_RE.search(
+805 < 1         re.sub(r'\s+', ' ', " ".join(operator_lines(claim))).strip())
+806 < 1     if m is None:
+807 < 1         return None
+808 < 1     if m.group(2) is not None:
+809 < 1         return "quoted:#" + m.group(2)
+810 < 1     return m.group(1).lower() if m.group(1).lower() == "derived" else "elicited"
+811 < 1 
+812 < 1 
+813 < 1 def machine_restatement(claim):
+814 < 1     """The Machine half of a Claim slot: the text from the `Machine:` lead-in
+815 < 1     to the end of the slot, lead-in stripped, wrapped lines joined."""
+816 < 1     lines = claim.splitlines()
+817 < 1     for i, line in enumerate(lines):
+818 < 1         if MACHINE_LEAD_RE.match(line.strip()):
+819 < 1             first = MACHINE_LEAD_RE.sub("", line.strip(), count=1)
+820 < 1             return " ".join([first] + [l.strip() for l in lines[i + 1:]]).strip()
+821 < 1     return ""
+822 < 1 
+823 < 1 
+824 < 1 USAGE = "plan_parse: usage: plan_parse.py <plan.md>\n"
+825 < 1 
+826 < 1 
+827 < 1 def main(argv):
+828 < 1     args = argv[1:]
+829 < 1 
+830 < 1     if len(args) != 1:
+831 < 1         sys.stderr.write(USAGE)
+832 < 1         return 2
+833 < 1 
+834 < 1     plan_path = args[0]
+835 < 1     try:
+836 < 1         with open(plan_path, "r", encoding="utf-8") as fh:
+837 < 1             text = fh.read()
+838 < 1     except OSError as exc:
+839 < 1         sys.stderr.write("plan_parse: cannot read plan: %s\n" % (exc,))
+840 < 1         return 2
+841 < 1 
+842 < 1     try:
+843 < 1         if plan_grammar(text) == STORIES_GRAMMAR:
+844 < 1             import stories_parse
+845 < 1             try:
+846 < 1                 result = stories_parse.parse_stories_text(text)
+847 < 1             except stories_parse.StoriesRefusal as exc:
+848 < 1                 sys.stderr.write(str(exc) + "\n")
+849 < 1                 return 2
+850 < 1         else:
+851 < 1             result = parse_plan_text(text)
+852 < 1     except Refusal as exc:
+853 < 1         sys.stderr.write(str(exc) + "\n")
+854 < 1         return 2
+855 < 1 
+856 < 1     print(json.dumps(result))
+857 < 1     return 0
+858 < 1 
+859 < 1 
+860 < 1 if __name__ == "__main__":
+861 < 1     sys.exit(main(sys.argv))
+862 < 1 

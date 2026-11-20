@@ -1,0 +1,73 @@
+0 < 2 // fleet/tests/jev_peer_probe.mjs — a live probe, run by hand (see PROBES.md): Jev's peer-rewrite read
+1 < 2 // (factory/questions.json flock_peer_rewrite) on run-296's L:loose rewrite of preview.ts, as the engine
+2 < 2 // sent it before and after the loose-ends side carried its title and reason, beside run-277's shape
+3 < 2 // (two words run together), which must still read `loses`.
+4 < 2 //
+5 < 2 //   node fleet/tests/jev_peer_probe.mjs [reps]     (default 5; key in ~/.ultrapowers/typesafe.env)
+6 < 2 //
+7 < 2 // Prints one line per reading and a verdict per case. Exit 0 when the run-296 case with its reason
+8 < 2 // reads `supersedes` or `keeps` in a majority and the run-277 case reads `loses` in a majority; the
+9 < 2 // bare run-296 case is reported, not judged. Readings 2026-10-01 (n=5 each, jev-1.13.0): bare loses
+10 < 2 // 4/5 (L .54, S .45); with title and reason supersedes 5/5 (L .34, S .65).
+11 < 2 import fs from 'node:fs'
+12 < 2 import os from 'node:os'
+13 < 2 import path from 'node:path'
+14 < 2 import { fileURLToPath } from 'node:url'
+15 < 2 
+16 < 2 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+17 < 2 const reps = Number(process.argv[2] || 5)
+18 < 2 const home = process.env.ULTRAPOWERS_HOME || path.join(os.homedir(), '.ultrapowers')
+19 < 2 const line = fs.readFileSync(path.join(home, 'typesafe.env'), 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='))
+20 < 2 if (!line) { console.error('jev_peer_probe: no TYPESAFE_API_KEY in typesafe.env'); process.exit(2) }
+21 < 2 const KEY = line.slice('TYPESAFE_API_KEY='.length).trim()
+22 < 2 const QUESTION = JSON.parse(fs.readFileSync(path.join(REPO, 'factory', 'questions.json'), 'utf8')).sets.flock_peer_rewrite.questions.kept
+23 < 2 
+24 < 2 const LOOSE = 'Close the loose ends builders reported'
+25 < 2 const C4 = { agent: 'C.4', title: 'The preview server draws the real screen and redraws it in place',
+26 < 2   claim: '**Claim:** While a TinyApp plan is being written, I see its real screen in the Browser pane and pick between versions of it. (derived)' }
+27 < 2 const run296 = (side) => ({
+28 < 2   path: 'skills/ultrawrite/stories/preview.ts', before: [],
+29 < 2   peer: ["  rmSync(join(app, '.preview'), {recursive: true, force: true});"],
+30 < 2   after: ["  // Only this server's own dirs: arrange.ts stages its composer at .preview/json-render.", '  rmSync(pageDir, {recursive: true, force: true});', '  rmSync(dist, {recursive: true, force: true});'],
+31 < 2   tasks: [side, C4],
+32 < 2 })
+33 < 2 const CASES = {
+34 < 2   'run-296 bare': { state: run296({ agent: 'E.L:loose' }), want: null },
+35 < 2   'run-296 with reason': {
+36 < 2     state: run296({ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'arrange.ts stages the composer at <app>/.preview/json-render/ (imported from there). preview.ts rmSyncs all of <app>/.preview at start, so a preview started mid-arrange can delete the staged composer; consider removing only .preview/page and .preview/dist.' }),
+37 < 2     want: ['supersedes', 'keeps'],
+38 < 2   },
+39 < 2   'run-277 run-together with reason': {
+40 < 2     state: { path: 'README.md', before: [], peer: ['Commit the plan, then launch the fleet from this checkout.'],
+41 < 2       after: ['Commit the plan, then launch the fleetfrom this checkout, never the plugin cache.'],
+42 < 2       tasks: [{ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'README.md should say to launch from this checkout, never the plugin cache.' },
+43 < 2         { agent: 'C.4', title: 'README names the launch step', claim: '**Claim:** The README tells the operator how to launch.' }] },
+44 < 2     want: ['loses'],
+45 < 2   },
+46 < 2   'unrelated same-file rewrite': {
+47 < 2     state: { path: 'README.md', before: ['Run the fleet.'], peer: ['Run the fleet from this checkout.'], after: ['Run the fleet.', 'Never from the plugin cache.'],
+48 < 2       tasks: [{ agent: 'E.L:loose', title: LOOSE, asked_to_fix: 'README.md should mention the plugin cache.' },
+49 < 2         { agent: 'C.4', title: 'README names the launch step', claim: '**Claim:** The README says to launch from this checkout.' }] },
+50 < 2     want: ['loses'],
+51 < 2   },
+52 < 2 }
+53 < 2 
+54 < 2 let ok = true
+55 < 2 for (const [name, { state, want }] of Object.entries(CASES)) {
+56 < 2   const picks = []
+57 < 2   for (let i = 0; i < reps; i++) {
+58 < 2     const r = await fetch('https://api.typesafe.ai/v1/systemone', { method: 'POST', headers: { 'content-type': 'application/json', Authorization: `Bearer ${KEY}` },
+59 < 2       body: JSON.stringify({ state, model: 'jev-latest', questions: { kept: QUESTION } }) })
+60 < 2     const j = await r.json().catch(() => ({}))
+61 < 2     const a = j.answers && j.answers.kept
+62 < 2     const p = (a && a.probabilities) || {}
+63 < 2     picks.push(a ? a.choice : null)
+64 < 2     console.log(`${name} ${i}: ${a ? a.choice : `no answer (${r.status})`} K${p.keeps ?? '-'} L${p.loses ?? '-'} S${p.supersedes ?? '-'} ${j.model ?? ''}`)
+65 < 2   }
+66 < 2   const hits = want ? picks.filter((c) => want.includes(c)).length : null
+67 < 2   const pass = want ? hits * 2 > reps : true
+68 < 2   if (!pass) ok = false
+69 < 2   console.log(`== ${name}: ${want ? `${hits}/${reps} ${want.join('|')} — ${pass ? 'ok' : 'NOT OK'}` : `reported: ${picks.join(',')}`}`)
+70 < 2 }
+71 < 2 process.exit(ok ? 0 : 1)
+72 < 2 

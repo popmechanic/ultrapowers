@@ -1,0 +1,180 @@
+0 < 2 import { useMemo, useState } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { Input, Field } from '../Input'
+3 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+4 < 2 import { NavLink } from '../NavLink'
+5 < 2 import { Empty } from '../feedback'
+6 < 2 import { Avatar } from '../avatar'
+7 < 2 import { Blob, Badge, Dot } from '../media'
+8 < 2 import { Grid, Row, Shell, Sidebar, Stack } from '../layout'
+9 < 2 import { Stat } from '../readout'
+10 < 2 import { Segmented } from '../Segmented'
+11 < 2 import { Card } from '../surface'
+12 < 2 import { Eyebrow, Heading, Text } from '../text'
+13 < 2 
+14 < 2 const NAV: NavItem[] = [
+15 < 2   { href: '/', label: 'Overview', icon: 'overview', tone: 'purple' },
+16 < 2   { href: '/check-in', label: 'Check-in', icon: 'ok', tone: 'mint' },
+17 < 2   { href: '/schedule', label: 'Schedule', icon: 'calendar', tone: 'blue' },
+18 < 2   { href: '/attendees', label: 'Attendees', icon: 'users', tone: 'pink' },
+19 < 2   { href: '/settings', label: 'Settings', icon: 'settings', tone: 'orange' },
+20 < 2 ]
+21 < 2 
+22 < 2 const HERE = '/check-in'
+23 < 2 const NUMBER = new Intl.NumberFormat('en-US')
+24 < 2 
+25 < 2 type AttendanceFilter = 'all' | 'waiting' | 'checked'
+26 < 2 
+27 < 2 interface Attendee {
+28 < 2   id: string
+29 < 2   name: string
+30 < 2   company: string
+31 < 2   ticket: 'Standard' | 'Speaker' | 'VIP'
+32 < 2   checkedIn: boolean
+33 < 2 }
+34 < 2 
+35 < 2 const INITIAL_ATTENDEES: Attendee[] = [
+36 < 2   { id: 'maya', name: 'Maya Bloom', company: 'Northstar', ticket: 'Speaker', checkedIn: true },
+37 < 2   { id: 'noah', name: 'Noah Kim', company: 'Pollen', ticket: 'Standard', checkedIn: false },
+38 < 2   { id: 'iris', name: 'Iris Chen', company: 'Fieldwork', ticket: 'VIP', checkedIn: false },
+39 < 2   { id: 'leo', name: 'Leo Martins', company: 'Common Room', ticket: 'Standard', checkedIn: true },
+40 < 2   { id: 'sana', name: 'Sana Ali', company: 'Tandem', ticket: 'Standard', checkedIn: false },
+41 < 2 ]
+42 < 2 
+43 < 2 function initials(name: string): string {
+44 < 2   return name.split(' ').map((part) => part[0]).join('').slice(0, 2)
+45 < 2 }
+46 < 2 
+47 < 2 /** A live event check-in screen with search, attendance filters, real status
+48 < 2  * updates, and a compact arrival summary for the front-desk team. */
+49 < 2 export function EventBlock() {
+50 < 2   const [attendees, setAttendees] = useState(INITIAL_ATTENDEES)
+51 < 2   const [filter, setFilter] = useState<AttendanceFilter>('all')
+52 < 2   const [query, setQuery] = useState('')
+53 < 2 
+54 < 2   const visible = useMemo(() => {
+55 < 2     const normalized = query.trim().toLowerCase()
+56 < 2     return attendees.filter((attendee) => {
+57 < 2       const matchesQuery =
+58 < 2         !normalized ||
+59 < 2         `${attendee.name} ${attendee.company} ${attendee.ticket}`.toLowerCase().includes(normalized)
+60 < 2       const matchesFilter =
+61 < 2         filter === 'all' ||
+62 < 2         (filter === 'waiting' && !attendee.checkedIn) ||
+63 < 2         (filter === 'checked' && attendee.checkedIn)
+64 < 2       return matchesQuery && matchesFilter
+65 < 2     })
+66 < 2   }, [attendees, filter, query])
+67 < 2 
+68 < 2   const checkedCount = attendees.filter((attendee) => attendee.checkedIn).length
+69 < 2   const waitingCount = attendees.length - checkedCount
+70 < 2 
+71 < 2   function toggleCheckIn(id: string) {
+72 < 2     setAttendees((current) =>
+73 < 2       current.map((attendee) =>
+74 < 2         attendee.id === id ? { ...attendee, checkedIn: !attendee.checkedIn } : attendee,
+75 < 2       ),
+76 < 2     )
+77 < 2   }
+78 < 2 
+79 < 2   return (
+80 < 2     <>
+81 < 2       <Shell>
+82 < 2         <Sidebar mobile="hide">
+83 < 2           <Row gap={2} wrap={false}>
+84 < 2             <Blob icon="calendar" tone="pink" size="sm" />
+85 < 2             <Heading level={3}>Gather</Heading>
+86 < 2           </Row>
+87 < 2           {NAV.map((item) => (
+88 < 2             <NavLink key={item.href} href={item.href} currentPath={HERE} icon={item.icon} tone={item.tone}>
+89 < 2               {item.label}
+90 < 2             </NavLink>
+91 < 2           ))}
+92 < 2         </Sidebar>
+93 < 2 
+94 < 2         <Stack gap={5}>
+95 < 2           <Row justify="between" align="top">
+96 < 2             <Stack gap={1}>
+97 < 2               <Eyebrow>Design Systems Day</Eyebrow>
+98 < 2               <Heading level={1}>Guest Check-in</Heading>
+99 < 2               <Row gap={2} wrap={false}>
+100 < 2                 <Dot tone="up" />
+101 < 2                 <Text muted>Doors are open · Hall A</Text>
+102 < 2               </Row>
+103 < 2             </Stack>
+104 < 2             <Badge tone="pink">Live</Badge>
+105 < 2           </Row>
+106 < 2 
+107 < 2           <Grid cols={3} gap={3}>
+108 < 2             <Stat label="Registered" value={NUMBER.format(attendees.length)} icon="users" tone="purple" />
+109 < 2             <Stat label="Checked in" value={NUMBER.format(checkedCount)} icon="ok" tone="mint" />
+110 < 2             <Stat label="Waiting" value={NUMBER.format(waitingCount)} icon="clock" tone="yellow" />
+111 < 2           </Grid>
+112 < 2 
+113 < 2           <Card variant="tight">
+114 < 2             <Stack gap={3}>
+115 < 2               <Field label="Find an Attendee">
+116 < 2                 {(id, describedBy) => (
+117 < 2                   <Input
+118 < 2                     id={id}
+119 < 2                     name="attendee-search"
+120 < 2                     value={query}
+121 < 2                     onChange={setQuery}
+122 < 2                     describedBy={describedBy}
+123 < 2                     placeholder="Search a name, company, or ticket…"
+124 < 2                     autoComplete="off"
+125 < 2                   />
+126 < 2                 )}
+127 < 2               </Field>
+128 < 2               <Segmented
+129 < 2                 label="Attendance status"
+130 < 2                 value={filter}
+131 < 2                 onChange={setFilter}
+132 < 2                 options={[
+133 < 2                   { value: 'all', label: 'All' },
+134 < 2                   { value: 'waiting', label: 'Waiting' },
+135 < 2                   { value: 'checked', label: 'Checked In' },
+136 < 2                 ]}
+137 < 2               />
+138 < 2             </Stack>
+139 < 2           </Card>
+140 < 2 
+141 < 2           <Stack gap={3}>
+142 < 2             {visible.length > 0 ? (
+143 < 2               visible.map((attendee) => (
+144 < 2                 <Card key={attendee.id} variant="tight">
+145 < 2                   <Row justify="between" wrap={false}>
+146 < 2                     <Row gap={3} wrap={false}>
+147 < 2                       <Avatar fallback={initials(attendee.name)} tone={attendee.checkedIn ? 'mint' : 'purple'} size="md" />
+148 < 2                       <Stack gap={1}>
+149 < 2                         <Heading level={3}>{attendee.name}</Heading>
+150 < 2                         <Text size="sm" muted>{attendee.company} · {attendee.ticket}</Text>
+151 < 2                       </Stack>
+152 < 2                     </Row>
+153 < 2                     <Button
+154 < 2                       size="sm"
+155 < 2                       tone={attendee.checkedIn ? 'purple' : 'mint'}
+156 < 2                       variant={attendee.checkedIn ? 'quiet' : 'solid'}
+157 < 2                       onClick={() => toggleCheckIn(attendee.id)}
+158 < 2                     >
+159 < 2                       {attendee.checkedIn ? 'Undo Check-in' : 'Check In'}
+160 < 2                     </Button>
+161 < 2                   </Row>
+162 < 2                 </Card>
+163 < 2               ))
+164 < 2             ) : (
+165 < 2               <Card>
+166 < 2                 <Empty icon="search" title="No attendees found">
+167 < 2                   Check the spelling or show all attendance states.
+168 < 2                 </Empty>
+169 < 2               </Card>
+170 < 2             )}
+171 < 2           </Stack>
+172 < 2         </Stack>
+173 < 2       </Shell>
+174 < 2 
+175 < 2       <BottomNav primary={NAV.slice(0, 3)} groups={[{ title: 'Event', items: NAV }]} currentPath={HERE} />
+176 < 2     </>
+177 < 2   )
+178 < 2 }
+179 < 2 

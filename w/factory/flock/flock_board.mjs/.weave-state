@@ -15,7 +15,8 @@
 12 < 1 // The final atlas race: each task's remaining chain, the longest run of dependent tasks from it to
 13 < 1 // the end, itself included (atlas: 1, 4 and 10 head chains of 3). A task added later (a resolve or
 14 < 1 // check task) has no consumers and counts 1.
-15 < 1 export function chainLengths (tasks) {
+16 > 1 function chainLengths (tasks) {
+15 < 2 export function chainLengths (tasks) {
 16 < 1   const consumers = new Map(tasks.map((t) => [t.id, []]))
 17 < 1   for (const t of tasks) for (const d of t.depends_on) consumers.get(d).push(t.id)
 18 < 1   const cp = new Map()

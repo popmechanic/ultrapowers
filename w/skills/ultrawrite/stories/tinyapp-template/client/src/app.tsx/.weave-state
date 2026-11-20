@@ -1,0 +1,97 @@
+0 < 1 // Given code: builders never edit this file. It makes the one synced store
+1 < 1 // from the signed store module, draws every piece's screen (a json-render spec
+2 < 1 // from client/src/pieces/<piece>.json) in its section of the page,
+3 < 1 // exposes the page hook the checker drives (window.__TINYAPP__), and offers
+4 < 1 // the same tools to an agent over WebMCP when the browser has it. Who is
+5 < 1 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
+6 < 1 // reads Cloudflare Access; every action gets it as run's third argument.
+7 < 1 // The page is public and read-only unless it is /staff: there it draws only
+8 < 1 // the pieces whose spec says "public": true and reads the saved snapshot (/public.json) every 5 s;
+9 < 1 // at /staff it draws every piece, offers WebMCP tools and syncs.
+10 < 1 import {createMergeableStore} from 'tinybase';
+11 < 1 import {createWsSynchronizer} from 'tinybase/synchronizers/synchronizer-ws-client';
+12 < 1 import {TOOLS, makeStore} from './store.js';
+13 < 1 import {isStaff, loadPublic} from './public';
+14 < 1 import {createRoot} from 'react-dom/client';
+15 < 1 import {JSONUIProvider, Renderer} from '@json-render/react';
+16 < 1 import type {Spec} from '@json-render/core';
+17 < 1 import {registry} from './screens/registry';
+19 > 1 import {functions} from './screens/functions';
+18 < 1 import {tinybaseState} from './screens/state';
+19 < 1 import {pieceSpecs} from './screens/pieces' with {type: 'macro'};
+20 < 1 
+21 < 1 type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
+22 < 1 
+23 < 1 declare global {
+24 < 1   interface Window {
+25 < 1     __TINYAPP_SYNC__?: string;
+26 < 1     __TINYAPP_WHO__?: string | null;
+27 < 1     __TINYAPP__?: unknown;
+28 < 1   }
+29 < 1 }
+30 < 1 
+31 < 1 const store = createMergeableStore().setTablesSchema(JSON.parse(makeStore().getTablesSchemaJson()));
+32 < 1 const hook = {store, tools: {} as Record<string, (args: Record<string, unknown>) => boolean>, schemas: {} as Record<string, unknown>, synced: false, who: null as string | null};
+33 < 1 const tools = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, (args: Record<string, unknown>) => t.run(store, args, hook.who)]));
+34 < 1 const schemas = Object.fromEntries((TOOLS as unknown as Tool[]).map((t) => [t.name, t.inputSchema]));
+35 < 1 hook.tools = tools;
+36 < 1 hook.schemas = schemas;
+37 < 1 const staff = isStaff(location.pathname, window.__TINYAPP_SYNC__);
+38 < 1 window.__TINYAPP__ = hook;
+39 < 1 
+41 > 1 const state = tinybaseState(store, () => ({staff, who: hook.who}));
+40 < 1 const pieces = Object.entries(pieceSpecs() as Record<string, Spec & {public?: boolean}>)
+41 < 1   .filter(([, spec]) => staff || spec.public === true);
+42 < 1 createRoot(document.getElementById('app')!).render(
+45 > 1   <JSONUIProvider registry={registry} store={state} handlers={tools} functions={functions}>
+44 > 2   <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools} functions={functions}>
+43 < 2   <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools}>
+44 < 1     {pieces.map(([name, spec]) => (
+45 < 1       <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
+46 < 1     ))}
+47 < 1   </JSONUIProvider>,
+48 < 1 );
+49 < 1 
+50 < 1 // WebMCP: the same TOOLS, offered to an agent in the browser, plus one read
+51 < 1 // so it can find the row ids the tools take. The spec puts modelContext on
+52 < 1 // document; Chrome's early preview put it on navigator. Absent, nothing
+53 < 1 // registers and the page works as before.
+54 < 1 type ModelContext = {registerTool: (tool: Record<string, unknown>) => Promise<unknown> | unknown};
+55 < 1 const modelContext = ((document as unknown as {modelContext?: ModelContext}).modelContext
+56 < 1   ?? (navigator as unknown as {modelContext?: ModelContext}).modelContext);
+57 < 1 if (staff && modelContext) {
+58 < 1   for (const t of TOOLS as unknown as Tool[]) {
+59 < 1     void modelContext.registerTool({
+60 < 1       name: t.name,
+61 < 1       description: t.description,
+62 < 1       inputSchema: t.inputSchema,
+63 < 1       execute: async (args: Record<string, unknown>) => (tools[t.name](args ?? {})
+64 < 1         ? {done: true, tables: store.getTables()}
+65 < 1         : {done: false, refused: `${t.name} refused ${JSON.stringify(args ?? {})}; nothing changed`}),
+66 < 1     });
+67 < 1   }
+68 < 1   void modelContext.registerTool({
+69 < 1     name: 'readTables',
+70 < 1     description: 'Read everything the app holds: each table, its rows by id, and their cells.',
+71 < 1     inputSchema: {type: 'object', properties: {}},
+72 < 1     annotations: {readOnlyHint: true},
+73 < 1     execute: async () => store.getTables(),
+74 < 1   });
+75 < 1 }
+76 < 1 
+77 < 1 if (!staff) {
+78 < 1   hook.synced = await loadPublic(store);
+79 < 1   setInterval(() => { void loadPublic(store); }, 5000);
+80 < 1 } else {
+81 < 1   const origin = window.__TINYAPP_SYNC__ ?? `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`;
+82 < 1   hook.who = window.__TINYAPP_WHO__ !== undefined ? window.__TINYAPP_WHO__
+83 < 1     : await fetch(`${origin.replace(/^ws/, 'http')}/me`, {credentials: 'include', signal: AbortSignal.timeout(3000)})
+84 < 1       .then((r) => (r.ok ? r.json() : {}))
+85 < 1       .then((m: {email?: string | null}) => m.email ?? null)
+86 < 1       .catch(() => null);
+88 > 1   state.refresh();
+87 < 1   const synchronizer = await createWsSynchronizer(store, new WebSocket(`${origin}/sync/app`));
+88 < 1   await synchronizer.startSync();
+89 < 1   hook.synced = true;
+90 < 1 }
+91 < 1 

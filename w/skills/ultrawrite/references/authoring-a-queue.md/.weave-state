@@ -1,0 +1,41 @@
+0 < 1 <!-- Moved out of ultrawrite's SKILL.md to keep it under 500 lines. Commands here name the
+1 < 1      plugin directory as `<plugin-root>`; SKILL.md shows its real path. -->
+2 < 1 
+3 < 1 ## Authoring a queue
+4 < 1 
+5 < 1 A sitting's queue of well-defined issues drains by cutting it into bundles an author
+6 < 1 can hold, one author per bundle. Plans may share files. Same-file edits from two runs
+8 > 1 meet on main's stored weave: a live run takes a moved main
+7 < 2 meet on main's stored weave (`flock.main.mode = peer`): a live run takes a moved main
+8 < 1 in like a builder's work, and a run that finished before main moved catches up to it
+9 < 1 and merges (flock-baseline runs 16–21, n=6 runs, 2026-11-13: five ready, one draft;
+10 < 1 an experiment on one fixture, whose rollback is cutting the queue by files again).
+11 < 1 Two plans that each create a file at one path may launch apart too: the run that meets
+12 < 1 the other's file opens a conflict and a builder makes one file of the two
+14 > 1 (flock-baseline run-24, n=1 run, 2026-11-13, merged
+13 < 2 (`flock.main.created = conflict`; flock-baseline run-24, n=1 run, 2026-11-13, merged
+14 < 1 ready; an experiment, whose rollback is putting two such plans in one bundle again, as
+15 < 1 the 2026-09-17 drain did by hand for #1095 and #1096). A run that had already settled
+16 < 1 when the other file reached main ends a draft. One thing still shapes the cut:
+17 < 1 
+18 < 1 - **Two issues that contradict on the same lines go in one bundle**, so one plan decides.
+19 < 1   A run whose builder must delete a line another plan put on main ends a draft for the
+20 < 1   operator, never a ready pull request (run 17; operator's pick, 2026-11-12).
+21 < 1 
+22 < 1 Dispatch one author subagent per bundle — each loads this
+23 < 1 skill, pins its own launch base, dispatches its own fresh gate readers per task,
+24 < 1 writing each diet to `<issue>-gate-<t>.json` so the filename carries the plan's
+25 < 1 own issue prefix and two authors' readers never collide on the scratchpad (six
+26 < 1 authors once collided on bare `gate-<t>.json` names, and author-1096's round-2
+27 < 1 readers read a sibling's diet for tasks 2–4, discarding three verdicts), and
+28 < 1 compiles to `PLAN OK`. The issue's desired-state sentence is the plan's Claim,
+29 < 1 quoted rather than drafted, exactly as the elicitation path in SKILL.md has it.
+30 < 1 Grill an issue only when its ticket carries the `wayfinder:grilling` label; an undecided
+31 < 1 choice found mid-authoring comes back as a question, not as a guess.
+32 < 1 
+33 < 1 Hold the operator to one Claim confirmation and one execute choice per plan — an explain
+34 < 1 round is part of the same touch, not a third — each asked with AskUserQuestion. Launches stay serial: N plans are N launches back to back, because
+35 < 1 concurrent launches race on the run number (#667). The clock census (n=3 runs, runs
+36 < 1 10–12, 2026-09-05) found authoring throughput, not the sandbox, was the first bound on
+37 < 1 how many runs could be live at once — a queue authored in parallel is what lifts it.
+38 < 1 

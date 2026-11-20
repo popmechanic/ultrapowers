@@ -1,0 +1,41 @@
+0 < 2 import { useEffect, useRef } from 'react'
+1 < 2 import { BottomNav } from '../BottomNav'
+2 < 2 import type { NavGroup, NavItem } from '../BottomNav'
+3 < 2 import { simulateOpen } from './interact'
+4 < 2 import type { Demo } from './types'
+5 < 2 
+6 < 2 const primary: NavItem[] = [
+7 < 2   { href: '#overview', label: 'Overview', icon: 'overview', tone: 'purple' },
+8 < 2   { href: '#projects', label: 'Projects', icon: 'chart', tone: 'blue' },
+9 < 2 ]
+10 < 2 const groups: NavGroup[] = [
+11 < 2   {
+12 < 2     title: 'Main',
+13 < 2     items: [
+14 < 2       { href: '#overview', label: 'Overview', icon: 'overview', tone: 'purple' },
+15 < 2       { href: '#projects', label: 'Projects', icon: 'chart', tone: 'blue' },
+16 < 2       { href: '#settings', label: 'Settings', icon: 'settings', tone: 'mint' },
+17 < 2     ],
+18 < 2   },
+19 < 2 ]
+20 < 2 
+21 < 2 function BottomNavMenuOpen() {
+22 < 2   const ref = useRef<HTMLDivElement>(null)
+23 < 2   // The only <button> among BottomNav's tabs — the rest render as <a>.
+24 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+25 < 2   return (
+26 < 2     <div ref={ref}>
+27 < 2       <BottomNav primary={primary} groups={groups} currentPath="#overview" />
+28 < 2     </div>
+29 < 2   )
+30 < 2 }
+31 < 2 
+32 < 2 export const bottomNavDemos: Demo[] = [
+33 < 2   { id: 'default', viewport: 'mobile', render: () => <BottomNav primary={primary} groups={groups} currentPath="#overview" /> },
+34 < 2   // Menu lights up when the current page isn't one of the primary tabs.
+35 < 2   { id: 'on-secondary-page', viewport: 'mobile', render: () => (
+36 < 2       <BottomNav primary={primary} groups={groups} currentPath="#settings" />
+37 < 2     ) },
+38 < 2   { id: 'menu-open', viewport: 'mobile', render: () => <BottomNavMenuOpen /> },
+39 < 2 ]
+40 < 2 

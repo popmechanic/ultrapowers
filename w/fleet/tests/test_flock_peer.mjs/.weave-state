@@ -1,0 +1,227 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The peer sim (the main-is-a-peer design, stage 3): the target's default branch moves while a
+2 < 1 // scripted Flock run is live, and the run takes the move in. Each case builds a throwaway target
+3 < 1 // with a bare `origin` beside it (_flock_helpers.mjs), runs the engine looking at main every two seconds,
+4 < 1 // and pushes one commit to origin's main from a second clone while task 2 holds the run open.
+5 < 1 //   clean     task 1 wrote a.txt's first line; main changes its last line, changes a file that is
+6 < 1 //             not text and adds a file. The run settles ready on the moved main: `main:moved` names
+7 < 1 //             the tip, the landed commit's one parent is the tip, a.txt carries both lines, the
+8 < 1 //             other two files are main's, `base` and summary.json name the tip, and the stored
+9 < 1 //             entry names both writers of a.txt, the run's task and main's commit.
+10 < 1 //   conflict  task 1 put a line between two lines that main deletes. The conflict opens inside the
+11 < 1 //             run, with a resolve task for it; the scripted builder cannot resolve one, so the
+12 < 1 //             run ends a draft, and its draft commit sits on the moved main.
+13 < 1 //   behind    main moved before the run began. The run takes the move in before its first builder
+14 < 1 //             opens (`main:moved` with why `start`), and settles ready on the moved main.
+15 < 1 //   created   task 1 creates new.txt and main creates new.txt too. The merge can only put one whole
+16 < 1 //             file after the other, so a conflict opens (`created: both`) with a resolve task for
+17 < 1 //             it, where the run once settled ready on the two files stacked; the scripted builder
+18 < 1 //             cannot resolve one, so the run ends a draft.
+19 < 1 //   made in the run  two tasks of one plan each create new.txt, with no main in it. Both tasks'
+20 < 1 //             probes run on the join, so it stays a union: no conflict opens, and the run is ready.
+22 > 1 //   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it. The
+23 < 1 //             edit is recorded as a `peer:rewrite` row naming main's commit, and the run ends
+24 < 1 //             ready: nothing reads the rewrite as lost (the Jev read was cut, 2026-11-14).
+21 < 2 //   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it, and the
+22 < 2 //             stand-in Jev reads that edit as `loses`. Before the draft the engine looks again:
+23 < 2 //             it shows Jev main's lines, the lost one and the whole settled file, with main's
+24 < 2 //             commit subject as what main meant. Answered `carried`, the run ends ready.
+25 < 2 //   dropped   the same, the second look answered `drops`: the run ends a draft.
+26 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+27 < 1 import { spawnSync } from 'node:child_process'
+28 < 2 import http from 'node:http'
+29 < 1 import fs from 'node:fs'
+30 < 1 import path from 'node:path'
+31 < 1 import { simEnv } from './_helpers.mjs'
+32 < 1 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
+33 < 1 
+34 < 1 const fail = (why) => { console.log(`PEER FAILED: ${why}`); process.exit(1) }
+35 < 1 const assert = (ok, why) => { if (!ok) fail(why) }
+36 < 1 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+37 < 1 const BODY = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta']
+38 < 1 const lines = (l) => l.join('\n') + '\n'
+39 < 1 const BIN = Buffer.from([0xff, 0xfe, 0x00, 0x01]), BIN2 = Buffer.from([0xff, 0xfe, 0x00, 0x02, 0x03])
+40 < 1 
+41 < 1 // A target with an origin it follows, and a second clone that moves origin's main.
+42 < 1 // `o.env` reaches the engine; `o.late` is the a.txt task 2 writes once its hold is over
+43 < 1 function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
+44 < 1   const t = flockTarget({ 'a.txt': lines(BODY), 'b.txt': 'none\n', 'logo.bin': BIN }, { env: o.env })
+45 < 1   const env = simEnv({ home: t.tmp, env: t.over })
+46 < 1   const sh = (cwd, ...a) => {
+47 < 1     const r = spawnSync('git', ['-c', 'user.name=sim', '-c', 'user.email=sim@invalid', ...a], { cwd, encoding: 'utf8', env })
+48 < 1     if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`)
+49 < 1     return r.stdout.trim()
+50 < 1   }
+51 < 1   const origin = path.join(t.tmp, 'origin.git'), mover = path.join(t.tmp, 'mover')
+52 < 1   sh(t.tmp, 'clone', '-q', '--bare', t.T, origin)
+53 < 1   t.git('remote', 'add', 'origin', origin); t.git('fetch', '-q', 'origin'); t.git('remote', 'set-head', 'origin', 'main')
+54 < 1   sh(t.tmp, 'clone', '-q', origin, mover)
+55 < 1   // one commit on origin's main, made of `files` ({path: text | Buffer}); its sha
+56 < 1   const move = (files) => {
+57 < 1     for (const [p, body] of Object.entries(files)) fs.writeFileSync(path.join(mover, p), body)
+58 < 1     sh(mover, 'add', '-A'); sh(mover, 'commit', '-qm', 'main moved'); sh(mover, 'push', '-q', 'origin', 'HEAD:main')
+59 < 1     return sh(mover, 'rev-parse', 'HEAD')
+60 < 1   }
+61 < 1   const plan = writePlan(t, {
+62 < 1     claim: 'a.txt carries RUN and b.txt carries B.', check: 'test -f a.txt',
+63 < 1     tasks: [
+64 < 1       task({ id: 1, title: 'Write the first line', files: ['Modify: `a.txt`'], claim: 'a.txt carries RUN.', stale: 'path-absent: `a.txt`', run: 'grep -q RUN a.txt' }),
+65 < 1       task({ id: 2, title: 'Hold the run open', files: ['Modify: `b.txt`', ...(o.late ? ['Modify: `a.txt`'] : [])], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
+66 < 1     ],
+67 < 1   })
+68 < 1   // task 1 lands at once (`first` is the a.txt it writes), before the engine's first look at main;
+69 < 1   // task 2 holds seven seconds, the window main moves in
+70 < 1   // `made`: task 1 also creates new.txt with this text
+71 < 1   const script = { '@hold_ms': { 2: 7000 }, 1: { 'a.txt': first, ...(made ? { 'new.txt': made } : {}) }, 2: { 'b.txt': 'B\n', ...(o.late ? { 'a.txt': o.late } : {}) } }
+72 < 1   return { t, move, run: () => flockRun(t, { plan, script, args: ['--main-poll', '2'] }) }
+73 < 1 }
+74 < 1 
+75 < 1 // ── clean ───────────────────────────────────────────────────────────────────────
+76 < 1 {
+77 < 1   const { t, move, run } = rig()
+78 < 1   const going = run()
+79 < 1   await sleep(2000)
+80 < 1   const tip = move({ 'a.txt': lines([...BODY.slice(0, -1), 'MAIN']), 'logo.bin': BIN2, 'n.txt': 'new\n' })
+81 < 1   const r = await going
+82 < 1   const end = r.of('terminal')[0]
+83 < 1   assert(r.code === 0 && end && end.pr === 'ready', `clean: the run exited ${r.code} with ${JSON.stringify(end)}; main rows ${JSON.stringify([...r.of('main:follow'), ...r.of('main:moved'), ...r.of('main:off')])}: ${r.out.slice(-700)}`)
+84 < 1   assert(r.of('main:follow')[0]?.branch === 'main', `clean: the run follows ${JSON.stringify(r.of('main:follow'))}`)
+85 < 1   const moved = r.of('main:moved')
+86 < 1   assert(moved.length === 1 && moved[0].from === t.base && moved[0].to === tip, `clean: main:moved is ${JSON.stringify(moved)}, the tip ${tip}`)
+87 < 1   assert(JSON.stringify(moved[0].woven) === JSON.stringify(['a.txt', 'n.txt']) && JSON.stringify(moved[0].other) === JSON.stringify(['logo.bin']), `clean: main:moved carried ${JSON.stringify(moved[0].woven)} and ${JSON.stringify(moved[0].other)}`)
+88 < 1   const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
+89 < 1   assert(parents.length === 1 && parents[0] === tip, `clean: the landed commit's parents are ${parents.join(',')}, not the moved main ${tip}`)
+90 < 1   const read = (p) => fs.readFileSync(path.join(t.T, p))
+91 < 1   assert(read('a.txt').toString() === lines(['RUN', ...BODY.slice(1, -1), 'MAIN']), `clean: a.txt is ${JSON.stringify(read('a.txt').toString())}`)
+92 < 1   assert(read('logo.bin').equals(BIN2) && read('n.txt').toString() === 'new\n' && read('b.txt').toString() === 'B\n', 'clean: logo.bin, n.txt or b.txt is not what main and the run made them')
+93 < 1   assert(fs.readFileSync(path.join(t.RUN, 'base'), 'utf8').trim() === tip, 'clean: the run dir\'s `base` does not name the moved main')
+94 < 1   assert(JSON.parse(fs.readFileSync(path.join(t.RUN, 'summary.json'), 'utf8')).base === tip, 'clean: summary.json\'s base is not the moved main')
+95 < 1   const stored = r.of('weave:store')[0]
+96 < 1   assert(stored && stored.stored === true, `clean: weave:store is ${JSON.stringify(stored)}`)
+97 < 1   const writers = [...new Set(Object.values(JSON.parse(t.git('show', `${stored.entry}:w/a.txt/.weave-auth`))).flat())].sort()
+98 < 1   assert(JSON.stringify(writers) === JSON.stringify(['@c:' + tip.slice(0, 12), '@r?:1']), `clean: a.txt's writers are ${JSON.stringify(writers)}`)
+99 < 1   t.done()
+100 < 1 }
+101 < 1 
+102 < 1 // ── conflict ────────────────────────────────────────────────────────────────────
+103 < 1 {
+104 < 1   const { t, move, run } = rig(lines(['alpha', 'beta', 'RUN', ...BODY.slice(2)]))
+105 < 1   const going = run()
+106 < 1   await sleep(2000)
+107 < 1   const tip = move({ 'a.txt': lines(['alpha', ...BODY.slice(3)]) })
+108 < 1   const r = await going
+109 < 1   const end = r.of('terminal')[0]
+110 < 1   assert(r.of('main:moved')[0]?.to === tip, `conflict: main:moved is ${JSON.stringify(r.of('main:moved'))}; off ${JSON.stringify(r.of('main:off'))}: ${r.out.slice(-500)}`)
+111 < 1   assert(r.of('conflict:open').some((c) => c.path === 'a.txt'), `conflict: no conflict opened on a.txt: ${JSON.stringify(r.of('conflict:open'))}`)
+112 < 1   assert(r.of('resolve-task').some((c) => c.path === 'a.txt'), `conflict: no resolve task for a.txt: ${JSON.stringify(r.of('resolve-task'))}`)
+113 < 1   assert(r.code !== 0 && end && end.pr === 'draft', `conflict: the run exited ${r.code} with ${JSON.stringify(end)}`)
+114 < 1   const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
+115 < 1   assert(parents.length === 1 && parents[0] === tip, `conflict: the draft commit's parents are ${parents.join(',')}, not the moved main ${tip}`)
+116 < 1   t.done()
+117 < 1 }
+118 < 1 
+119 < 1 // ── behind ──────────────────────────────────────────────────────────────────────
+120 < 1 {
+121 < 1   const { t, move, run } = rig()
+122 < 1   const tip = move({ 'logo.bin': BIN2, 'n.txt': 'new\n' })
+123 < 1   const r = await run()
+124 < 1   const end = r.of('terminal')[0], moved = r.of('main:moved')
+125 < 1   assert(moved.length === 1 && moved[0].to === tip && moved[0].why === 'start', `behind: main:moved is ${JSON.stringify(moved)}; off ${JSON.stringify(r.of('main:off'))}: ${r.out.slice(-500)}`)
+126 < 1   assert(moved[0].t < r.of('builder:open')[0].t, 'behind: a builder opened before the move was taken in')
+127 < 1   assert(r.code === 0 && end && end.pr === 'ready', `behind: the run exited ${r.code} with ${JSON.stringify(end)}`)
+128 < 1   const parents = t.git('rev-list', '--parents', '-n', '1', 'HEAD').split(' ').slice(1)
+129 < 1   assert(parents.length === 1 && parents[0] === tip, `behind: the landed commit's parents are ${parents.join(',')}, not the moved main ${tip}`)
+130 < 1   assert(fs.readFileSync(path.join(t.T, 'n.txt'), 'utf8') === 'new\n' && fs.readFileSync(path.join(t.T, 'logo.bin')).equals(BIN2), 'behind: n.txt or logo.bin is not main\'s')
+131 < 1   assert(t.git('diff', '--name-only', tip, 'HEAD') === 'a.txt\nb.txt', `behind: the landed commit changes ${JSON.stringify(t.git('diff', '--name-only', tip, 'HEAD'))} over main`)
+132 < 1   t.done()
+133 < 1 }
+134 < 1 
+135 < 1 // ── created ─────────────────────────────────────────────────────────────────────
+136 < 1 {
+137 < 1   const { t, move, run } = rig(undefined, 'def run():\n    return "RUN"\n')
+138 < 1   const going = run()
+139 < 1   await sleep(2000)
+140 < 1   const tip = move({ 'new.txt': 'def main():\n    return "MAIN"\n' })
+141 < 1   const r = await going
+142 < 1   const end = r.of('terminal')[0]
+143 < 1   assert(r.of('main:moved')[0]?.to === tip, `created: main:moved is ${JSON.stringify(r.of('main:moved'))}; off ${JSON.stringify(r.of('main:off'))}: ${r.out.slice(-500)}`)
+144 < 1   const opened = r.of('conflict:open').filter((c) => c.path === 'new.txt')
+145 < 1   assert(opened.length === 1 && opened[0].created === 'both', `created: the conflicts opened on new.txt are ${JSON.stringify(r.of('conflict:open'))}; unions ${JSON.stringify(r.of('conflict:union'))}`)
+146 < 1   assert(!r.of('conflict:union').some((c) => c.path === 'new.txt'), `created: new.txt was joined as a union: ${JSON.stringify(r.of('conflict:union'))}`)
+147 < 1   assert(r.of('resolve-task').some((c) => c.path === 'new.txt'), `created: no resolve task for new.txt: ${JSON.stringify(r.of('resolve-task'))}`)
+148 < 1   const said = JSON.parse(fs.readFileSync(path.join(t.RUN, 'board.json'), 'utf8')).beliefs.map((b) => b.claim)
+149 < 1   assert(said.some((c) => c.includes('open conflict in new.txt: main and a builder each created it')), `created: the board does not say both sides created the file: ${JSON.stringify(said)}`)
+150 < 1   assert(r.code !== 0 && end && end.pr === 'draft', `created: the run exited ${r.code} with ${JSON.stringify(end)}`)
+151 < 1   t.done()
+152 < 1 }
+153 < 1 
+154 < 1 // ── made in the run ─────────────────────────────────────────────────────────────
+155 < 1 {
+156 < 1   const t = flockTarget({ 'a.txt': lines(BODY) })
+157 < 1   const plan = writePlan(t, {
+158 < 1     claim: 'new.txt carries ONE and TWO.', check: 'test -f new.txt',
+159 < 1     tasks: [
+160 < 1       task({ id: 1, title: 'Create the file one way', files: ['Create: `new.txt`'], claim: 'new.txt carries ONE.', stale: 'path-present: `new.txt`', run: 'grep -q ONE new.txt' }),
+161 < 1       task({ id: 2, title: 'Create the file another way', files: ['Create: `new.txt`'], claim: 'new.txt carries TWO.', stale: 'path-present: `new.txt`', run: 'grep -q TWO new.txt' }),
+162 < 1     ],
+163 < 1   })
+164 < 1   const r = await flockRun(t, { plan, script: { 1: { 'new.txt': 'def one():\n    return "ONE"\n' }, 2: { 'new.txt': 'def two():\n    return "TWO"\n' } } })
+165 < 1   const end = r.of('terminal')[0]
+166 < 1   assert(r.of('conflict:open').length === 0 && r.of('conflict:union').some((c) => c.path === 'new.txt'), `made in the run: opened ${JSON.stringify(r.of('conflict:open'))}, unions ${JSON.stringify(r.of('conflict:union'))}`)
+167 < 1   assert(r.code === 0 && end && end.pr === 'ready', `made in the run: the run exited ${r.code} with ${JSON.stringify(end)}`)
+168 < 1   const text = fs.readFileSync(path.join(t.T, 'new.txt'), 'utf8')
+169 < 1   assert(text.includes('ONE') && text.includes('TWO'), `made in the run: new.txt is ${JSON.stringify(text)}`)
+170 < 1   t.done()
+171 < 1 }
+172 < 1 
+174 > 1 // ── folded ──────────────────────────────────────────────────────────────────────
+173 < 2 // ── folded, dropped ─────────────────────────────────────────────────────────────
+174 < 1 {
+176 > 1   const { t, move, run } = rig(undefined, null, { late: lines(['RUN', ...BODY.slice(1, -1), 'FOLDED']) })
+177 < 1   const going = run()
+178 < 1   await sleep(2000)
+179 < 1   const tip = move({ 'a.txt': lines([...BODY.slice(0, -1), 'MAIN']) })
+180 < 1   const r = await going
+181 < 1   const end = r.of('terminal').at(-1), label = '@c:' + tip.slice(0, 12)
+182 < 1   const over = r.of('peer:rewrite').filter((x) => x.path === 'a.txt' && (x.peer || []).includes('MAIN'))
+183 < 1   assert(over.length === 1 && over[0].peers.join() === label, `folded: the rewrite rows over main's line are ${JSON.stringify(r.of('peer:rewrite'))}; moved ${JSON.stringify(r.of('main:moved'))}: ${r.out.slice(-500)}`)
+184 < 1   assert(end && end.pr === 'ready' && r.code === 0, `folded: the run exited ${r.code} with ${JSON.stringify(end)}`)
+185 < 1   t.done()
+175 < 2   // the stand-in Jev: each asked key answered from `answers`, at 0.9; every request body is kept
+176 < 2   let answers = {}
+177 < 2   const bodies = []
+178 < 2   const server = http.createServer((req, res) => {
+179 < 2     let body = ''
+180 < 2     req.on('data', (c) => { body += c })
+181 < 2     req.on('end', () => {
+182 < 2       let keys = []
+183 < 2       try { const j = JSON.parse(body); bodies.push(j); keys = Object.keys(j.questions || {}) } catch {}
+184 < 2       res.writeHead(200, { 'content-type': 'application/json' })
+185 < 2       res.end(JSON.stringify({ answers: Object.fromEntries(keys.map((k) => [k, { choice: answers[k], confidence: 0.9 }])) }))
+186 < 2     })
+187 < 2   })
+188 < 2   await new Promise((r) => server.listen(0, '127.0.0.1', r))
+189 < 2   const env = { TYPESAFE_BASE_URL: `http://127.0.0.1:${server.address().port}` }
+190 < 2   for (const [CASE, second, pr] of [['folded', 'carried', 'ready'], ['dropped', 'drops', 'draft']]) {
+191 < 2     answers = { kept: 'loses', carried: second }; bodies.length = 0
+192 < 2     const { t, move, run } = rig(undefined, null, { env, late: lines(['RUN', ...BODY.slice(1, -1), 'FOLDED']) })
+193 < 2     const going = run()
+194 < 2     await sleep(2000)
+195 < 2     const tip = move({ 'a.txt': lines([...BODY.slice(0, -1), 'MAIN']) })
+196 < 2     const r = await going
+197 < 2     const end = r.of('terminal').at(-1), label = '@c:' + tip.slice(0, 12)
+198 < 2     const first = r.of('jev:peer-rewrite').filter((x) => x.path === 'a.txt' && (x.peer || []).includes('MAIN'))
+199 < 2     assert(first.length === 1 && first[0].answer === 'loses' && first[0].peers.join() === label, `${CASE}: the first read of main's line is ${JSON.stringify(r.of('jev:peer-rewrite'))}; moved ${JSON.stringify(r.of('main:moved'))}: ${r.out.slice(-500)}`)
+200 < 2     const again = r.of('jev:peer-settled')
+201 < 2     assert(again.length === 1 && again[0].answer === second && again[0].excused === (pr === 'ready') && again[0].author === label, `${CASE}: the second look is ${JSON.stringify(again)}`)
+202 < 2     const shown = bodies.find((b) => b.questions && b.questions.carried)?.state
+203 < 2     assert(shown && shown.path === 'a.txt' && JSON.stringify(shown.lost) === '["MAIN"]' && shown.theirs.includes('MAIN') && shown.settled.includes('FOLDED') && !shown.settled.includes('MAIN'), `${CASE}: Jev was shown ${JSON.stringify(shown)}`)
+204 < 2     assert(shown.sides.theirs.claim === 'main moved' && shown.sides.ours.title === 'Hold the run open', `${CASE}: the sides shown are ${JSON.stringify(shown.sides)}`)
+205 < 2     assert(end && end.pr === pr && (r.code === 0) === (pr === 'ready'), `${CASE}: the run exited ${r.code} with ${JSON.stringify(end)}`)
+206 < 2     t.done()
+207 < 2   }
+208 < 2   server.close()
+209 < 1 }
+210 < 1 
+211 < 1 console.log('ALL TESTS PASSED')
+212 < 1 

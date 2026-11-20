@@ -1,0 +1,114 @@
+0 < 2 // Jev reads each green story step, record only: the story sentence the operator
+1 < 2 // signed against the store before and after the step and the text on screen.
+2 < 2 // It never blocks a task or a PR; a missing answer is recorded as null.
+3 < 2 import fs from 'node:fs'
+4 < 2 import path from 'node:path'
+5 < 2 import { answerOf } from '../jev-client.mjs'
+6 < 2 
+7 < 2 export function latestResults (dir) {
+8 < 2   const by = new Map()
+9 < 2   if (!fs.existsSync(dir)) return by
+10 < 2   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+11 < 2     const p = path.join(dir, f)
+12 < 2     let r
+13 < 2     try { r = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { continue }
+14 < 2     if (!r || typeof r.clause !== 'string') continue
+15 < 2     const m = fs.statSync(p).mtimeMs
+16 < 2     const prev = by.get(r.clause)
+17 < 2     if (!prev || prev.m < m) by.set(r.clause, { m, r })
+18 < 2   }
+19 < 2   return new Map([...by].map(([k, v]) => [k, v.r]))
+20 < 2 }
+21 < 2 
+22 < 2 // The story's steps up to and including `result`'s own, in step order: the
+23 < 2 // clauses of `all` sharing its prefix (`p0/S1.`) with a step number at most its own.
+24 < 2 function storySteps (result, all) {
+25 < 2   const clause = String(result.clause)
+26 < 2   const dot = clause.lastIndexOf('.')
+27 < 2   if (!all || dot < 0) return [result]
+28 < 2   const prefix = clause.slice(0, dot + 1)
+29 < 2   const num = (c) => Number(c.slice(prefix.length))
+30 < 2   const own = num(clause)
+31 < 2   const steps = [...all.values()]
+32 < 2     .filter((r) => r && typeof r.clause === 'string' && r.clause !== clause && r.clause.startsWith(prefix) &&
+33 < 2       /^\d+$/.test(r.clause.slice(prefix.length)) && num(r.clause) < own)
+34 < 2     .sort((a, b) => num(a.clause) - num(b.clause))
+35 < 2   return [...steps, result]
+36 < 2 }
+37 < 2 
+38 < 2 // A store is [tables, values], tables `{table: {row: {cell: value}}}`: one
+39 < 2 // `{table, row, before, after}` per row that differs, a missing row `null`.
+41 > 2 function storeChanges (before, after) {
+40 < 2 export function storeChanges (before, after) {
+41 < 2   const tb = (Array.isArray(before) && before[0]) || {}
+42 < 2   const ta = (Array.isArray(after) && after[0]) || {}
+43 < 2   const changes = []
+44 < 2   for (const table of new Set([...Object.keys(tb), ...Object.keys(ta)])) {
+45 < 2     const rb = tb[table] || {}
+46 < 2     const ra = ta[table] || {}
+47 < 2     for (const row of new Set([...Object.keys(rb), ...Object.keys(ra)])) {
+48 < 2       const b = rb[row] ?? null
+49 < 2       const a = ra[row] ?? null
+50 < 2       if (JSON.stringify(b) !== JSON.stringify(a)) changes.push({ table, row, before: b, after: a })
+51 < 2     }
+52 < 2   }
+53 < 2   return changes
+54 < 2 }
+55 < 2 
+56 < 2 // The client drops a state over JEV_STATE_MAX_BYTES (120000) without a call, so
+57 < 2 // past STORE_MAX the whole stores give way to the rows that changed.
+58 < 2 const STATE_MAX = 120000
+59 < 2 const STORE_MAX = 100000
+60 < 2 
+62 > 2 function stepState (result, sentences, all) {
+61 < 2 export function stepState (result, sentences, all) {
+62 < 2   // A guard clause (e.g. `G:p0/S2.3`) proves an earlier plan's setup still
+63 < 2   // holds; its sentence belongs to that earlier plan, not this one, so it
+64 < 2   // gets no story sentence at all rather than a wrong or coincidental one.
+65 < 2   const clause = String(result.clause)
+66 < 2   const isGuard = /^G:/.test(clause)
+67 < 2   const story = isGuard ? '' : (sentences[clause.split('/').pop().split('.')[0]] ?? '')
+68 < 2   // The question is whether the whole story came true: every step's actions,
+69 < 2   // the store before its first step and after its last.
+70 < 2   const steps = isGuard ? [result] : storySteps(result, all)
+71 < 2   const state = {
+72 < 2     story,
+73 < 2     step: result.clause,
+74 < 2     did: steps.flatMap((r) => r.did ?? []),
+75 < 2     before: steps[0].before ?? null,
+76 < 2     after: steps[steps.length - 1].after ?? null,
+77 < 2     screen_text: String(result.screen_text ?? '').slice(0, 4000),
+78 < 2   }
+79 < 2   if (JSON.stringify(state).length <= STORE_MAX) return state
+80 < 2   const { before, after, ...rest } = state
+81 < 2   const out = { ...rest, changes: storeChanges(before, after) }
+82 < 2   // Even the changed rows may not fit: keep the first ones and say how many were cut.
+83 < 2   while (out.changes.length && JSON.stringify(out).length > STATE_MAX) {
+84 < 2     out.changes.pop()
+85 < 2     out.changes_cut = (out.changes_cut ?? 0) + 1
+86 < 2   }
+87 < 2   return out
+88 < 2 }
+89 < 2 
+90 < 2 // The clause Jev reads for each story: its highest-numbered step, the one after
+91 < 2 // which the story's sentence should be true (#1369: a middle step was asked about
+92 < 2 // an outcome that had not happened yet). Guard clauses (`G:`) belong to an
+93 < 2 // earlier plan and are never read.
+94 < 2 export function lastSteps (clauses) {
+95 < 2   const best = new Map()
+96 < 2   for (const c of clauses) {
+97 < 2     if (/^G:/.test(c)) continue
+98 < 2     const [story, step] = String(c).split('.')
+99 < 2     const prev = best.get(story)
+100 < 2     if (!prev || Number(step) > Number(prev.split('.')[1])) best.set(story, c)
+101 < 2   }
+102 < 2   return new Set(best.values())
+103 < 2 }
+104 < 2 
+105 < 2 export async function readSteps ({ ask, results, sentences, question, emit, last, all }) {
+106 < 2   await Promise.all(results.filter((r) => r && r.exit === 0 && last.has(r.clause)).map(async (r) => {
+107 < 2     const answers = await ask({ state: stepState(r, sentences, all), questions: { delivered: question } })
+108 < 2     emit({ clause: r.clause, ...answerOf(answers, 'delivered') })
+109 < 2   }))
+110 < 2 }
+111 < 2 

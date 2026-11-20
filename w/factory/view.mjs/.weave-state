@@ -3,7 +3,8 @@
 2 < 1  *
 3 < 1  * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
 4 < 1  * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
-5 < 1  * re-exports it. `renderView` is what the engine writes as the run's view: that projection plus
+6 > 1  * re-exports it. `renderView` is the run's view, which the boot writes through `record.mjs view`: that projection plus
+5 < 2  * re-exports it. `renderView` is what the engine writes as the run's view: that projection plus
 6 < 1  * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
 7 < 1  * here reads a file; the engine may not import `fleet/`, so nothing here does either.
 8 < 1  */
@@ -33,7 +34,9 @@
 32 < 1   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
 33 < 1   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
 34 < 1   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
-35 < 1   if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
+36 > 1   // `refold` is a past run's name for the catch-up row (before 2026-11-15)
+37 < 1   if (k === 'catchup' || k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
+35 < 2   if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
 36 < 1   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
 37 < 1   if (k === 'merge') return { task: null, what: `merge answered ${e.code}${e.message ? `: ${short(e.message, 80)}` : ''}` }
 38 < 1   return null
@@ -107,16 +110,19 @@
 106 < 1 /**
 107 < 1  * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
 108 < 1  * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
-109 < 1  * last, lastAt }` plus `wave` (its 1-based launch wave, one past the last for a task the plan does
-110 < 1  * not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
+110 > 1  * last, lastAt }` plus `wave` (its 1-based layer in the plan's dependency order, the parse's own
+111 < 1  * `wave`; one past the last for a task the plan does not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
+109 < 2  * last, lastAt }` plus `wave` (its 1-based launch wave, one past the last for a task the plan does
+110 < 2  * not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
 111 < 1  * `proof` row's reading, null without one).
 112 < 1  */
 113 < 1 export function renderView ({ run, target, rows, status = null, plan = null, summary = null }) {
 114 < 1   const p = projectRun({ run, target, rows, status, plan })
 115 < 1   const list = Array.isArray(rows) ? rows : []
-116 < 1   const waves = plan && Array.isArray(plan.launch_waves) ? plan.launch_waves : []
+116 < 2   const waves = plan && Array.isArray(plan.launch_waves) ? plan.launch_waves : []
 117 < 1   const waveOf = new Map()
-118 < 1   waves.forEach((w, i) => { for (const id of ids(w)) if (!waveOf.has(id)) waveOf.set(id, i + 1) })
+119 > 1   for (const t of plan && Array.isArray(plan.tasks) ? plan.tasks : []) if (Number.isInteger(t?.wave)) waveOf.set(String(t.id), t.wave)
+118 < 2   waves.forEach((w, i) => { for (const id of ids(w)) if (!waveOf.has(id)) waveOf.set(id, i + 1) })
 119 < 1   const deps = new Map()
 120 < 1   const dep = (id, on) => { if (!deps.has(id)) deps.set(id, new Set()); deps.get(id).add(on) }
 121 < 1   for (const t of plan && Array.isArray(plan.tasks) ? plan.tasks : []) for (const on of ids(t.depends_on)) dep(String(t.id), on)
@@ -149,7 +155,8 @@
 148 < 1       state: t.state,
 149 < 1       last: t.last,
 150 < 1       lastAt: t.lastAt,
-151 < 1       wave: waveOf.get(t.id) ?? waves.length + 1,
+152 > 1       wave: waveOf.get(t.id) ?? Math.max(0, ...waveOf.values()) + 1,
+151 < 2       wave: waveOf.get(t.id) ?? waves.length + 1,
 152 < 1       deps: [...(deps.get(t.id) ?? [])].sort(),
 153 < 1       agent: agents.get(t.id) ?? null,
 154 < 1       proof: proofs.has(t.id) ? proofs.get(t.id) : null

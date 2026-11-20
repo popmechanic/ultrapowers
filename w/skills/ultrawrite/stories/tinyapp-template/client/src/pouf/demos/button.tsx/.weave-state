@@ -1,0 +1,22 @@
+0 < 2 import { Button, IconButton } from '../Button'
+1 < 2 import { Icon } from '../Icon'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 export const buttonDemos: Demo[] = [
+5 < 2   { id: 'solid-md', states: ['hover', 'active', 'focus'], render: () => <span data-subject><Button>Save</Button></span> },
+6 < 2   { id: 'tones', render: () => (<>
+7 < 2       <Button tone="pink">Pink</Button><Button tone="mint">Mint</Button>
+8 < 2       <Button tone="blue">Blue</Button><Button tone="yellow">Yellow</Button>
+9 < 2     </>) },
+10 < 2   { id: 'sizes', render: () => (<><Button size="sm">Small</Button><Button>Medium</Button><Button size="lg">Large</Button></>) },
+11 < 2   { id: 'quiet', states: ['hover'], render: () => <span data-subject><Button variant="quiet">Cancel</Button></span> },
+12 < 2   { id: 'block', render: () => <Button block>Full width</Button> },
+13 < 2   { id: 'disabled', render: () => <Button disabled>Disabled</Button> },
+14 < 2   { id: 'loading', render: () => <Button loading>Saving…</Button> },
+15 < 2   {
+16 < 2     id: 'icon',
+17 < 2     states: ['hover', 'active', 'focus'],
+18 < 2     render: () => <span data-subject><IconButton icon={<Icon name="settings" size="sm" />} label="Settings" /></span>,
+19 < 2   },
+20 < 2 ]
+21 < 2 

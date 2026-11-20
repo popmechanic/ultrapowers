@@ -1,0 +1,296 @@
+0 < 1 /**
+1 < 1  * fleet/tests/test_factory_record.mjs — the exam for "the run's status page and
+2 < 1  * pull request body are rendered by `factory/record.mjs`, and the publish policy
+3 < 1  * is read fail-closed by `factory/publish.mjs`".
+4 < 1  *
+5 < 1  * `record.mjs`'s CLI is driven as a child process exactly the way `factory/boot.sh`
+6 < 1  * drives `status`; the policy read is called in-process. The rows, payloads and
+7 < 1  * `publish.json` the publish writes are its own JSON since #1441, and their shapes
+8 < 1  * are measured end to end by `test_factory_boot.mjs` (the merge PUT byte-equal,
+9 < 1  * the row kinds in order) and `test_factory_publish.mjs` (every probe case).
+10 < 1  *
+11 < 1  * Legs, each naming the Machine clause it comes from:
+12 < 1  *
+13 < 1  *   (b) [M2] `status key=value ... --events <file>` prints the twelve-cell
+14 < 1  *       page in exactly the pinned key order with `tasks` last; the five
+15 < 1  *       optional cells given empty on the command line come back `null`;
+16 < 1  *       `updatedAt` is a non-empty
+17 < 1  *       string; `tasks` is the two-row projection M2 pins over an events file
+18 < 1  *       holding a `landing` and a `parked` row, and is `{}` over a path that
+19 < 1  *       does not exist.
+20 < 1  *   (c) [M3] `pr-body <plan.md> --events <file>` is byte-equal, over the
+21 < 1  *       fixture plan and one `landing` row, to the paragraph, a blank line,
+22 < 1  *       the one table row, a blank line and `Closes #1222`; and, over a plan
+23 < 1  *       with no `**Closes:**` line and no events file, to the paragraph
+24 < 1  *       followed by two blank lines and nothing else.
+25 < 1  *   (d) [M4] `publishPolicy` over the repo's own `factory/policy.json` reads
+27 > 1  *       the self-merge's bounds and the probe enabled; over a probe cell
+28 < 1  *       carrying no `enabled` key the probe reads disabled and the bounds are
+29 < 1  *       the cell's; over a path that does not exist, the probe reads disabled
+31 > 1  *       with the defaults (3 catch-ups, 120 s, 600 s).
+30 < 2  *       with the defaults (3 refolds, 120 s, 600 s).
+26 < 2  *       both cells enabled with their bounds; over cells carrying no `enabled`
+27 < 2  *       key, and over a path that does not exist, both read disabled with the
+28 < 2  *       defaults (3 refolds, 120 s, 600 s).
+29 < 1  *
+30 < 1  * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
+31 < 1  * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
+32 < 1  * files, the events files, the policy files — is written under a fresh
+33 < 1  * `fs.mkdtempSync` directory, never a string-literal absolute path.
+34 < 1  */
+35 < 1 
+36 < 1 import assert from 'node:assert/strict'
+37 < 1 import fs from 'node:fs'
+38 < 1 import os from 'node:os'
+39 < 1 import path from 'node:path'
+40 < 1 import { fileURLToPath } from 'node:url'
+41 < 1 import { spawnSync } from 'node:child_process'
+42 < 1 
+43 < 1 import { simEnv } from './_helpers.mjs'
+44 < 1 import { publishPolicy } from '../../factory/publish.mjs'
+45 < 1 
+46 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+47 < 1 const RECORD_MJS = path.resolve(HERE, '../../factory/record.mjs')
+48 < 1 const POLICY_JSON = path.resolve(HERE, '../../factory/policy.json')
+49 < 1 
+50 < 1 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-home-'))
+51 < 1 const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-fixtures-'))
+52 < 1 
+53 < 1 /** Runs `node record.mjs <args>`, never throwing on a non-zero exit — every
+54 < 1  *  case in this exam wants to read the exit code itself. */
+55 < 1 function run (args) {
+56 < 1   const res = spawnSync(process.execPath, [RECORD_MJS, ...args], {
+57 < 1     encoding: 'utf8',
+58 < 1     env: simEnv({ home: HOME }),
+59 < 1   })
+60 < 1   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
+61 < 1 }
+62 < 1 
+63 < 1 /** The non-empty, newline-split lines of `text`. */
+64 < 1 function lines (text) {
+65 < 1   return text.split('\n').filter((l) => l !== '')
+66 < 1 }
+67 < 1 
+68 < 1 // ── b. [M2] `status key=value ... --events <file>` ─────────────────────────
+69 < 1 {
+70 < 1   const STATUS_KEYS = [
+71 < 1     'run', 'state', 'phase', 'pr', 'prAuthor', 'merged',
+72 < 1     'branch', 'vm', 'startedAt', 'updatedAt', 'error', 'tasks',
+73 < 1   ]
+74 < 1 
+75 < 1   const eventsFile = path.join(FIXTURES, 'status-events.jsonl')
+76 < 1   fs.writeFileSync(
+77 < 1     eventsFile,
+78 < 1     JSON.stringify({ kind: 'landing', task: 1 }) + '\n' +
+79 < 1     JSON.stringify({ kind: 'parked', task: 2, reason: 'r' }) + '\n'
+80 < 1   )
+81 < 1 
+82 < 1   const r = run([
+83 < 1     'status',
+84 < 1     'run=5', 'state=done', 'phase=p',
+85 < 1     'pr=', 'prAuthor=', 'merged=',
+86 < 1     'branch=b', 'vm=', 'startedAt=s', 'error=',
+87 < 1     '--events', eventsFile,
+88 < 1   ])
+89 < 1   assert.equal(r.status, 0, '(b) [M2] status exits 0')
+90 < 1   const outLines = lines(r.stdout)
+91 < 1   assert.equal(outLines.length, 1, '(b) [M2] status prints exactly one line')
+92 < 1   const status = JSON.parse(outLines[0])
+93 < 1 
+94 < 1   assert.deepEqual(
+95 < 1     Object.keys(status), STATUS_KEYS,
+96 < 1     '(b) [M2] the twelve keys are exactly, and in exactly, the pinned order with tasks last'
+97 < 1   )
+98 < 1 
+99 < 1   for (const key of ['pr', 'prAuthor', 'merged', 'vm', 'error']) {
+100 < 1     assert.equal(status[key], null, `(b) [M2] ${key} is exactly null`)
+101 < 1   }
+102 < 1   assert.equal(typeof status.updatedAt, 'string', '(b) [M2] updatedAt is a string')
+103 < 1   assert.ok(status.updatedAt.length > 0, '(b) [M2] updatedAt is non-empty')
+104 < 1 
+105 < 1   const expectedTasks = {
+106 < 1     '1': { state: 'folded', park: null },
+107 < 1     '2': { state: 'failed', park: 'r' },
+108 < 1   }
+109 < 1   assert.deepEqual(
+110 < 1     status.tasks, expectedTasks,
+111 < 1     '(b) [M2] tasks is exactly the projection: task 1 folded/park null, task 2 failed/park "r"'
+112 < 1   )
+113 < 1 
+114 < 1   assert.equal(status.run, '5', '(b) [M2] run is the given string')
+115 < 1   assert.equal(status.state, 'done', '(b) [M2] state is the given string')
+116 < 1   assert.equal(status.phase, 'p', '(b) [M2] phase is the given string')
+117 < 1   assert.equal(status.branch, 'b', '(b) [M2] branch is the given string')
+118 < 1   assert.equal(status.startedAt, 's', '(b) [M2] startedAt is the given string')
+119 < 1 
+120 < 1   // tasks is {} over an events file that does not exist.
+121 < 1   const missingEvents = path.join(FIXTURES, 'no-such-events.jsonl')
+122 < 1   const r2 = run([
+123 < 1     'status',
+124 < 1     'run=5', 'state=done', 'phase=p',
+125 < 1     'pr=', 'prAuthor=', 'merged=',
+126 < 1     'branch=b', 'vm=', 'startedAt=s', 'error=',
+127 < 1     '--events', missingEvents,
+128 < 1   ])
+129 < 1   assert.equal(r2.status, 0, '(b) [M2] status over a missing --events file still exits 0')
+130 < 1   const status2 = JSON.parse(lines(r2.stdout)[0])
+131 < 1   assert.deepEqual(status2.tasks, {}, '(b) [M2] tasks is exactly {} over a path that does not exist')
+132 < 1 }
+133 < 1 
+134 < 1 // ── c. [M3] `pr-body <plan.md> --events <file>` ─────────────────────────────
+135 < 1 {
+136 < 1   const PARAGRAPH = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.'
+137 < 1 
+138 < 1   const planWithClosesText = [
+139 < 1     '# A widget that answers its size',
+140 < 1     '',
+141 < 1     '**Claim:** After this run a widget answers its size. (elicited)',
+142 < 1     '**Summary:** ' + PARAGRAPH,
+143 < 1     '',
+144 < 1     '**Goal:** the fixture plan a boot exam carries.',
+145 < 1     '**Closes:** #1222',
+146 < 1     '',
+147 < 1     '### Task 1: The widget answers its size',
+148 < 1     '',
+149 < 1   ].join('\n')
+150 < 1   const planWithCloses = path.join(FIXTURES, 'plan-with-closes.md')
+151 < 1   fs.writeFileSync(planWithCloses, planWithClosesText)
+152 < 1 
+153 < 1   const planNoClosesText = [
+154 < 1     '# A widget that answers its size',
+155 < 1     '',
+156 < 1     '**Claim:** After this run a widget answers its size. (elicited)',
+157 < 1     '**Summary:** ' + PARAGRAPH,
+158 < 1     '',
+159 < 1     '**Goal:** the fixture plan a boot exam carries.',
+160 < 1     '',
+161 < 1     '### Task 1: The widget answers its size',
+162 < 1     '',
+163 < 1   ].join('\n')
+164 < 1   const planNoCloses = path.join(FIXTURES, 'plan-no-closes.md')
+165 < 1   fs.writeFileSync(planNoCloses, planNoClosesText)
+166 < 1 
+167 < 1   const landingEvents = path.join(FIXTURES, 'pr-body-events.jsonl')
+168 < 1   fs.writeFileSync(
+169 < 1     landingEvents,
+170 < 1     JSON.stringify({ kind: 'landing', task: 1, candidateSha: 'abc' }) + '\n'
+171 < 1   )
+172 < 1 
+173 < 1   const r1 = run(['pr-body', planWithCloses, '--events', landingEvents])
+174 < 1   assert.equal(r1.status, 0, '(c) [M3] pr-body over the fixture plan exits 0')
+175 < 1   const expected1 = PARAGRAPH + '\n\n\nCloses #1222\n'
+176 < 1   assert.equal(
+177 < 1     r1.stdout, expected1,
+178 < 1     '(c) [M3] with no edge row there is no receipt: pr-body is byte-equal to the paragraph, two blank lines, and Closes #1222'
+179 < 1   )
+180 < 1 
+181 < 1   const missingEvents = path.join(FIXTURES, 'no-such-pr-body-events.jsonl')
+182 < 1   const r2 = run(['pr-body', planNoCloses, '--events', missingEvents])
+183 < 1   assert.equal(r2.status, 0, '(c) [M3] pr-body over a plan with no Closes line and no events file exits 0')
+184 < 1   const expected2 = PARAGRAPH + '\n\n\n'
+185 < 1   assert.equal(
+186 < 1     r2.stdout, expected2,
+187 < 1     '(c) [M3] with no Closes line and no events file, pr-body is byte-equal to the paragraph plus two blank lines and nothing else'
+188 < 1   )
+189 < 1 }
+190 < 1 
+191 < 1 // ── e. the screens check shows on a stories-v1 task's Receipt rows (#1523) ───
+192 < 1 {
+193 < 1   const F = '```'
+194 < 1   const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
+195 < 1   const storiesPlan = path.join(FIXTURES, 'stories-plan.md')
+196 < 1   fs.writeFileSync(storiesPlan, `# Sim plan
+197 < 1 
+198 < 1 **Grammar:** stories-v1
+199 < 1 **Stack:** tinyapp
+200 < 1 **Plan-id:** p1
+201 < 1 **Kind:** behaviour
+202 < 1 **Summary:** One. Two. Three.
+203 < 1 **Store:** \`store.js\` sha256:${'0'.repeat(64)}
+204 < 1 
+205 < 1 ## Stories
+206 < 1 
+207 < 1 - S1: You add a note; it shows.
+208 < 1 
+209 < 1 ### Task 1: The note piece
+210 < 1 
+211 < 1 **Piece:** note
+212 < 1 **Depends-on-pieces:** none
+213 < 1 
+214 < 1 **Files:**
+215 < 1 - Create: \`client/src/pieces/note.json\`
+216 < 1 
+217 < 1 **Purpose:** Keep notes.
+218 < 1 
+219 < 1 **Stories:**
+220 < 1 - S1: You add a note; it shows.
+221 < 1 
+222 < 1 **Proof:**
+223 < 1 ${F}probe
+224 < 1 ${PROBE}
+225 < 1 ${F}
+226 < 1 `)
+227 < 1   const edgeEvents = path.join(FIXTURES, 'edge-events.jsonl')
+228 < 1   fs.writeFileSync(edgeEvents, JSON.stringify({ kind: 'edge', snap: 1, perTask: { 1: [0, 1] }, check: 0 }) + '\n')
+229 < 1   const r = run(['pr-body', storiesPlan, '--events', edgeEvents])
+230 < 1   assert.equal(r.status, 0, '(e) pr-body over a stories-v1 plan with an edge row exits 0')
+231 < 1   assert.deepEqual(
+232 < 1     lines(r.stdout).filter((l) => l.startsWith('| 1 |')),
+233 < 1     ['| 1 | `story checker` | S1.1 | 0 |', '| 1 | `screens check` | — | 1 |'],
+234 < 1     '(e) the exit after the task probes is the screens check, a Receipt row of its own'
+235 < 1   )
+236 < 1 }
+237 < 1 
+239 > 1 // ── f. a `loose:fallback` row with no `terminal` row (a killed engine, #1532) ─
+240 < 1 {
+241 < 1   const plan = path.join(FIXTURES, 'plan-fallback.md')
+242 < 1   fs.writeFileSync(plan, '# A widget\n\n**Summary:** One. Two. Three.\n\n### Task 1: The widget\n')
+243 < 1   const fb = { kind: 'loose:fallback', snap: 3, why: 'the cleanup went red' }
+244 < 1   const killed = path.join(FIXTURES, 'fallback-no-terminal.jsonl')
+245 < 1   fs.writeFileSync(killed, JSON.stringify(fb) + '\n')
+246 < 1   const r1 = run(['pr-body', plan, '--events', killed])
+247 < 1   assert.equal(r1.status, 0, '(f) pr-body over a fallback row with no terminal row exits 0')
+248 < 1   assert.ok(lines(r1.stdout).includes('The run ended before its outcome was recorded.'),
+249 < 1     `(f) with no terminal row the body says the run ended before its outcome was recorded: ${r1.stdout}`)
+250 < 1   assert.ok(!r1.stdout.includes('itself drafted'), '(f) with no terminal row the body does not say the fallback was drafted')
+251 < 1   const drafted = path.join(FIXTURES, 'fallback-drafted.jsonl')
+252 < 1   fs.writeFileSync(drafted, [fb, { kind: 'terminal', pr: 'draft', snap: 3, why: 'check red' }].map((x) => JSON.stringify(x)).join('\n') + '\n')
+253 < 1   const r2 = run(['pr-body', plan, '--events', drafted])
+254 < 1   assert.ok(lines(r2.stdout).includes("The cleanup's fallback was itself drafted: check red."),
+255 < 1     `(f) with a draft terminal row the body names its reason: ${r2.stdout}`)
+256 < 1 }
+257 < 1 
+238 < 1 // ── d. [M4] the publish policy, read by `factory/publish.mjs` (#1441) ────────
+239 < 1 {
+240 < 1   assert.deepEqual(
+241 < 1     publishPolicy(POLICY_JSON),
+244 > 1     { selfMerge: { maxCatchups: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+245 < 1     "(d) [M4] the repo's own factory/policy.json: 3 catch-ups, 120 s; probe enabled, 600 s"
+243 > 2     { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+244 < 2     "(d) [M4] the repo's own factory/policy.json: 3 refolds, 120 s; probe enabled, 600 s"
+242 < 2     { memory: true, selfMerge: { enabled: true, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: true, timeoutSeconds: 600 } },
+243 < 2     "(d) [M4] the repo's own factory/policy.json: main's memory on, self_merge enabled, 3 refolds, 120 s; probe enabled, 600 s"
+244 < 1   )
+245 < 1   const noEnabledPath = path.join(FIXTURES, 'policy-no-enabled.json')
+246 < 1   fs.writeFileSync(noEnabledPath, JSON.stringify({
+248 > 1     publish: { self_merge: { max_catchups: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
+247 < 2     publish: { self_merge: { max_refolds: 9, mergeable_wait_seconds: 9 }, probe: { timeout_seconds: 30 } },
+248 < 1   }))
+249 < 2   const disabled = { memory: false, selfMerge: { enabled: false, maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } }
+250 < 1   assert.deepEqual(
+253 > 1     publishPolicy(noEnabledPath), { selfMerge: { maxCatchups: 9, waitSeconds: 9 }, probe: { enabled: false, timeoutSeconds: 600 } },
+252 > 2     publishPolicy(noEnabledPath), { selfMerge: { maxRefolds: 9, waitSeconds: 9 }, probe: { enabled: false, timeoutSeconds: 600 } },
+253 < 1     '(d) [M4] a probe cell with no "enabled" key reads as disabled with the default budget; the self-merge bounds are the cell\'s'
+251 < 2     publishPolicy(noEnabledPath), disabled,
+252 < 2     '(d) [M4] cells with no "enabled" key read as disabled with the defaults — the whole read falls back, not just the missing key'
+253 < 1   )
+254 < 1   assert.deepEqual(
+257 > 1     publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), { selfMerge: { maxCatchups: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } },
+256 > 2     publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), { selfMerge: { maxRefolds: 3, waitSeconds: 120 }, probe: { enabled: false, timeoutSeconds: 600 } },
+255 < 2     publishPolicy(path.join(FIXTURES, 'no-such-policy.json')), disabled,
+256 < 1     '(d) [M4] a policy path that does not exist reads as disabled with the defaults'
+257 < 1   )
+258 < 1 }
+259 < 1 
+260 < 1 console.log('ALL TESTS PASSED')
+261 < 1 

@@ -1,0 +1,181 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Shell, Sidebar, Stack, Row, Grid, Spacer } from '../layout'
+2 < 2 import { Card } from '../surface'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Stat } from '../readout'
+5 < 2 import { Badge, Blob } from '../media'
+6 < 2 import { NavLink } from '../NavLink'
+7 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+8 < 2 import { Segmented } from '../Segmented'
+9 < 2 import { AreaChart } from '../charts'
+10 < 2 import { Table } from '../table'
+11 < 2 import { Status } from '../status'
+12 < 2 
+13 < 2 /* The five screens of this example app. Every template block ships the same
+14 < 2  * list and differs only in `currentPath` — so installing two of them gives you
+15 < 2  * two routes of one product rather than two unrelated demos. Swap in your own
+16 < 2  * routes; `NavLink`/`BottomNav` take whatever paths you give them. */
+17 < 2 const NAV: NavItem[] = [
+18 < 2   { href: '/', label: 'Overview', icon: 'overview', tone: 'purple' },
+19 < 2   { href: '/inbox', label: 'Inbox', icon: 'mail', tone: 'blue' },
+20 < 2   { href: '/board', label: 'Board', icon: 'log', tone: 'mint' },
+21 < 2   { href: '/messages', label: 'Messages', icon: 'comment', tone: 'pink' },
+22 < 2   { href: '/settings', label: 'Settings', icon: 'settings', tone: 'orange' },
+23 < 2 ]
+24 < 2 
+25 < 2 const HERE = '/'
+26 < 2 
+27 < 2 interface Order {
+28 < 2   id: string
+29 < 2   customer: string
+30 < 2   /** A number, not a display string: the Amount column sorts on it, and
+31 < 2    *  "$1,204.00" < "$860.50" is true under string comparison. */
+32 < 2   amount: number
+33 < 2   state: 'paid' | 'pending' | 'failed'
+34 < 2 }
+35 < 2 
+36 < 2 const ORDERS: Order[] = [
+37 < 2   { id: '1', customer: 'Apple Inc.', amount: 1204, state: 'paid' },
+38 < 2   { id: '2', customer: 'Banana Co.', amount: 860.5, state: 'pending' },
+39 < 2   { id: '3', customer: 'Cherry LLC', amount: 432, state: 'paid' },
+40 < 2   { id: '4', customer: 'Date & Sons', amount: 98.25, state: 'failed' },
+41 < 2 ]
+42 < 2 
+43 < 2 const STATE_TONE = { paid: 'mint', pending: 'yellow', failed: 'pink' } as const
+44 < 2 /* Sort order for Status is severity, not alphabetical — "failed, pending, paid"
+45 < 2  * is what you actually want to see when you sort a payments column. */
+46 < 2 const STATE_RANK = { failed: 0, pending: 1, paid: 2 } as const
+47 < 2 
+48 < 2 const money = (n: number) =>
+49 < 2   n.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+50 < 2 
+51 < 2 /* One dataset per range, so the Segmented picker has something to switch. */
+52 < 2 const REVENUE = {
+53 < 2   day: [
+54 < 2     { label: '9a', total: 4 }, { label: '11a', total: 9 }, { label: '1p', total: 7 },
+55 < 2     { label: '3p', total: 14 }, { label: '5p', total: 11 }, { label: '7p', total: 18 },
+56 < 2   ],
+57 < 2   week: [
+58 < 2     { label: 'Mon', total: 40 }, { label: 'Tue', total: 55 }, { label: 'Wed', total: 70 },
+59 < 2     { label: 'Thu', total: 52 }, { label: 'Fri', total: 85 }, { label: 'Sat', total: 60 },
+60 < 2     { label: 'Sun', total: 92 },
+61 < 2   ],
+62 < 2   month: [
+63 < 2     { label: 'W1', total: 210 }, { label: 'W2', total: 288 }, { label: 'W3', total: 245 },
+64 < 2     { label: 'W4', total: 331 },
+65 < 2   ],
+66 < 2 } as const
+67 < 2 
+68 < 2 type Range = keyof typeof REVENUE
+69 < 2 
+70 < 2 const TOTALS: Record<Range, string> = { day: '$2.4k', week: '$48.2k', month: '$186k' }
+71 < 2 
+72 < 2 /** An example dashboard: sidebar nav, a KPI row, a chart the range picker
+73 < 2  * actually redraws, and a sortable orders table — all 1st-Pouf primitives. Swap the
+74 < 2  * data for yours; edit the source to reshape. */
+75 < 2 export function DashboardBlock() {
+76 < 2   const [range, setRange] = useState<Range>('week')
+77 < 2 
+78 < 2   return (
+79 < 2     <>
+80 < 2       <Shell>
+81 < 2         <Sidebar mobile="hide">
+82 < 2           <Row gap={2} wrap={false}>
+83 < 2             <Blob icon="target" tone="purple" size="sm" />
+84 < 2             <Heading level={3}>Acme</Heading>
+85 < 2           </Row>
+86 < 2           {NAV.map((item) => (
+87 < 2             <NavLink
+88 < 2               key={item.href}
+89 < 2               href={item.href}
+90 < 2               currentPath={HERE}
+91 < 2               icon={item.icon}
+92 < 2               tone={item.tone}
+93 < 2             >
+94 < 2               {item.label}
+95 < 2             </NavLink>
+96 < 2           ))}
+97 < 2         </Sidebar>
+98 < 2 
+99 < 2         <Stack gap={5}>
+100 < 2           <Row justify="between">
+101 < 2             <Stack gap={1}>
+102 < 2               <Eyebrow>Dashboard</Eyebrow>
+103 < 2               <Heading level={1}>Good morning</Heading>
+104 < 2             </Stack>
+105 < 2             <Status label="All systems go" tone="up" at={Date.now()} />
+106 < 2           </Row>
+107 < 2 
+108 < 2           <Grid cols={3}>
+109 < 2             <Stat label="Revenue" value={TOTALS[range]} icon="ok" tone="mint" />
+110 < 2             <Stat label="Orders" value="1,204" icon="add" tone="blue" />
+111 < 2             <Stat label="Refunds" value="12" icon="down" tone="pink" />
+112 < 2           </Grid>
+113 < 2 
+114 < 2           <Card>
+115 < 2             <Stack gap={4}>
+116 < 2               <Row justify="between">
+117 < 2                 <Heading level={3}>Revenue</Heading>
+118 < 2                 <Segmented
+119 < 2                   label="Range"
+120 < 2                   value={range}
+121 < 2                   onChange={(v) => setRange(v as Range)}
+122 < 2                   options={[
+123 < 2                     { value: 'day', label: 'Day' },
+124 < 2                     { value: 'week', label: 'Week' },
+125 < 2                     { value: 'month', label: 'Month' },
+126 < 2                   ]}
+127 < 2                 />
+128 < 2               </Row>
+129 < 2               <AreaChart
+130 < 2                 data={[...REVENUE[range]]}
+131 < 2                 dataKey="label"
+132 < 2                 height={220}
+133 < 2                 series={[{ key: 'total', label: 'Revenue', tone: 'purple' }]}
+134 < 2               />
+135 < 2             </Stack>
+136 < 2           </Card>
+137 < 2 
+138 < 2           <Card>
+139 < 2             <Stack gap={4}>
+140 < 2               <Row justify="between">
+141 < 2                 <Heading level={3}>Recent orders</Heading>
+142 < 2                 <Badge tone="blue">{ORDERS.length} new</Badge>
+143 < 2               </Row>
+144 < 2               <Table
+145 < 2                 rows={ORDERS}
+146 < 2                 getKey={(o) => o.id}
+147 < 2                 columns={[
+148 < 2                   {
+149 < 2                     key: 'customer',
+150 < 2                     header: 'Customer',
+151 < 2                     render: (o) => <Text>{o.customer}</Text>,
+152 < 2                     sort: (a, b) => a.customer.localeCompare(b.customer),
+153 < 2                   },
+154 < 2                   {
+155 < 2                     key: 'amount',
+156 < 2                     header: 'Amount',
+157 < 2                     align: 'right',
+158 < 2                     mono: true,
+159 < 2                     render: (o) => <Text num>{money(o.amount)}</Text>,
+160 < 2                     sort: (a, b) => a.amount - b.amount,
+161 < 2                   },
+162 < 2                   {
+163 < 2                     key: 'state',
+164 < 2                     header: 'Status',
+165 < 2                     align: 'right',
+166 < 2                     render: (o) => <Badge tone={STATE_TONE[o.state]}>{o.state}</Badge>,
+167 < 2                     sort: (a, b) => STATE_RANK[a.state] - STATE_RANK[b.state],
+168 < 2                   },
+169 < 2                 ]}
+170 < 2               />
+171 < 2             </Stack>
+172 < 2           </Card>
+173 < 2           <Spacer />
+174 < 2         </Stack>
+175 < 2       </Shell>
+176 < 2       <BottomNav primary={NAV.slice(0, 4)} groups={[{ title: 'App', items: NAV }]} currentPath={HERE} />
+177 < 2     </>
+178 < 2   )
+179 < 2 }
+180 < 2 

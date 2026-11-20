@@ -1,0 +1,44 @@
+0 < 2 import { Heading, Highlight, Eyebrow, Text } from '../text'
+1 < 2 import type { Demo } from './types'
+2 < 2 
+3 < 2 export const headingDemos: Demo[] = [
+4 < 2   { id: 'levels', render: () => (
+5 < 2       <>
+6 < 2         <Heading level={1}>Level one</Heading>
+7 < 2         <Heading level={2}>Level two</Heading>
+8 < 2         <Heading level={3}>Level three</Heading>
+9 < 2       </>
+10 < 2     ) },
+11 < 2   // Highlight folded in here — meaningless as its own demo.
+12 < 2   { id: 'highlight', render: () => (
+13 < 2       <Heading level={1}>
+14 < 2         soft &amp; <Highlight>puffy</Highlight>
+15 < 2       </Heading>
+16 < 2     ) },
+17 < 2   // Eyebrow folded in here — meaningless as its own demo.
+18 < 2   { id: 'eyebrow', render: () => (
+19 < 2       <>
+20 < 2         <Eyebrow>Section label</Eyebrow>
+21 < 2         <Heading level={2}>Section title</Heading>
+22 < 2       </>
+23 < 2     ) },
+24 < 2 ]
+25 < 2 
+26 < 2 export const textDemos: Demo[] = [
+27 < 2   { id: 'default', render: () => <Text>Regular body copy.</Text> },
+28 < 2   { id: 'sizes', render: () => (
+29 < 2       <>
+30 < 2         <Text>Medium text</Text>
+31 < 2         <Text size="sm">Small text</Text>
+32 < 2       </>
+33 < 2     ) },
+34 < 2   { id: 'muted', render: () => <Text muted>Muted supporting copy.</Text> },
+35 < 2   { id: 'numeric', render: () => <Text num>+2.41%</Text> },
+36 < 2   { id: 'mono', render: () => <Text mono>const value = 42</Text> },
+37 < 2   { id: 'truncate', render: () => (
+38 < 2       <div style={{ maxWidth: 120 }}>
+39 < 2         <Text truncate>A long line of text that should truncate with an ellipsis</Text>
+40 < 2       </div>
+41 < 2     ) },
+42 < 2 ]
+43 < 2 

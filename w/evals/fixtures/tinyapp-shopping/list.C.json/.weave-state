@@ -1,0 +1,190 @@
+0 < 2 {
+1 < 2   "root": "node_0",
+2 < 2   "elements": {
+3 < 2     "node_0": {
+4 < 2       "type": "Stack",
+5 < 2       "props": {
+6 < 2         "gap": 3
+7 < 2       },
+8 < 2       "children": [
+9 < 2         "node_4",
+10 < 2         "node_1",
+11 < 2         "node_10",
+12 < 2         "node_2",
+13 < 2         "node_5",
+14 < 2         "node_3"
+15 < 2       ]
+16 < 2     },
+17 < 2     "node_1": {
+18 < 2       "type": "Row",
+19 < 2       "props": {
+20 < 2         "gap": 2,
+21 < 2         "align": "center"
+22 < 2       },
+23 < 2       "children": [
+24 < 2         "node_6"
+25 < 2       ]
+26 < 2     },
+27 < 2     "node_2": {
+28 < 2       "type": "Row",
+29 < 2       "props": {
+30 < 2         "gap": 2,
+31 < 2         "align": "center"
+32 < 2       },
+33 < 2       "children": [
+34 < 2         "node_7",
+35 < 2         "node_8"
+36 < 2       ]
+37 < 2     },
+38 < 2     "node_3": {
+39 < 2       "type": "Row",
+40 < 2       "props": {
+41 < 2         "gap": 2,
+42 < 2         "align": "center"
+43 < 2       },
+44 < 2       "children": [
+45 < 2         "node_9"
+46 < 2       ]
+47 < 2     },
+48 < 2     "node_4": {
+49 < 2       "type": "Heading",
+50 < 2       "props": {
+51 < 2         "text": "Shopping list",
+52 < 2         "level": 1
+53 < 2       },
+54 < 2       "children": []
+55 < 2     },
+56 < 2     "node_5": {
+57 < 2       "type": "Text",
+58 < 2       "props": {
+59 < 2         "text": "Keep one shopping list the household shares, so whoever shops buys what is needed.",
+60 < 2         "muted": true
+61 < 2       },
+62 < 2       "children": []
+63 < 2     },
+64 < 2     "node_6": {
+65 < 2       "type": "DraftInput",
+66 < 2       "props": {
+67 < 2         "label": "Item",
+68 < 2         "placeholder": "eggs",
+69 < 2         "value": {
+70 < 2           "$bindState": "/draft/name"
+71 < 2         }
+72 < 2       },
+73 < 2       "children": []
+74 < 2     },
+75 < 2     "node_7": {
+76 < 2       "type": "DraftInput",
+77 < 2       "props": {
+78 < 2         "label": "How many",
+79 < 2         "placeholder": "6",
+80 < 2         "value": {
+81 < 2           "$bindState": "/draft/qty"
+82 < 2         }
+83 < 2       },
+84 < 2       "children": []
+85 < 2     },
+86 < 2     "node_8": {
+87 < 2       "type": "ActionButton",
+88 < 2       "props": {
+89 < 2         "label": "Add",
+90 < 2         "action": "addItem",
+91 < 2         "args": {
+92 < 2           "name": {
+93 < 2             "$state": "/draft/name"
+94 < 2           },
+95 < 2           "qty": {
+96 < 2             "$state": "/draft/qty"
+97 < 2           }
+98 < 2         }
+99 < 2       },
+100 < 2       "children": [],
+101 < 2       "on": {
+102 < 2         "press": [
+103 < 2           {
+104 < 2             "action": "setState",
+105 < 2             "params": {
+106 < 2               "statePath": "/draft/name",
+107 < 2               "value": ""
+108 < 2             }
+109 < 2           },
+110 < 2           {
+111 < 2             "action": "setState",
+112 < 2             "params": {
+113 < 2               "statePath": "/draft/qty",
+114 < 2               "value": ""
+115 < 2             }
+116 < 2           }
+117 < 2         ]
+118 < 2       }
+119 < 2     },
+120 < 2     "node_9": {
+121 < 2       "type": "ActionButton",
+122 < 2       "props": {
+123 < 2         "label": "Clear ticked",
+124 < 2         "action": "clearTicked"
+125 < 2       },
+126 < 2       "children": []
+127 < 2     },
+128 < 2     "node_10": {
+129 < 2       "type": "Stack",
+130 < 2       "props": {
+131 < 2         "gap": 2
+132 < 2       },
+133 < 2       "repeat": {
+134 < 2         "statePath": "/tables/items",
+135 < 2         "key": "id"
+136 < 2       },
+137 < 2       "children": [
+138 < 2         "node_10_row"
+139 < 2       ]
+140 < 2     },
+141 < 2     "node_10_row": {
+142 < 2       "type": "Row",
+143 < 2       "props": {
+144 < 2         "justify": "between",
+145 < 2         "align": "center"
+146 < 2       },
+147 < 2       "children": [
+148 < 2         "node_10_0",
+149 < 2         "node_10_1"
+150 < 2       ]
+151 < 2     },
+152 < 2     "node_10_0": {
+153 < 2       "type": "ActionCheckbox",
+154 < 2       "props": {
+155 < 2         "label": {
+156 < 2           "$item": "line"
+157 < 2         },
+158 < 2         "checked": {
+159 < 2           "$item": "bought"
+160 < 2         },
+161 < 2         "action": "tickItem",
+162 < 2         "args": {
+163 < 2           "id": {
+164 < 2             "$item": "id"
+165 < 2           }
+166 < 2         }
+167 < 2       },
+168 < 2       "children": []
+169 < 2     },
+170 < 2     "node_10_1": {
+171 < 2       "type": "ActionButton",
+172 < 2       "props": {
+173 < 2         "label": {
+174 < 2           "$template": "Remove ${line}"
+175 < 2         },
+176 < 2         "action": "removeItem",
+177 < 2         "args": {
+178 < 2           "id": {
+179 < 2             "$item": "id"
+180 < 2           }
+181 < 2         },
+182 < 2         "variant": "quiet",
+183 < 2         "size": "sm"
+184 < 2       },
+185 < 2       "children": []
+186 < 2     }
+187 < 2   }
+188 < 2 }
+189 < 2 

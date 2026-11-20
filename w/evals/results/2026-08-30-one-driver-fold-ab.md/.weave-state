@@ -1,0 +1,70 @@
+0 < 2 # Fold vs serialize on the One Driver — 2026-08-30
+1 < 2 
+2 < 2 The registered A/B protocol, re-run on the 0.3.0 engine with the rebuilt rig
+3 < 2 (#402 item 6). Twelve cells across six fixtures, both arms, serial, local
+4 < 2 (`evals/ab_runner.py`, laptop subscription). Engine ref `eca7dd9`.
+5 < 2 Rows are appended to `evals/results/runs.jsonl`; the `wide` pair comes from the
+6 < 2 same day's operator smoke.
+7 < 2 
+8 < 2 ## Result
+9 < 2 
+10 < 2 | fixture | fold | serialize | ratio | fold waves | ser. waves | fold tok | ser. tok | tok ratio |
+11 < 2 |---|---|---|---|---|---|---|---|---|
+12 < 2 | wide | 201.5s | 207.7s | 0.970 | 1 | 1 | 32,287 | 32,610 | 0.990 |
+13 < 2 | chained | 512.7s | 537.3s | 0.954 | 5 | 5 | 37,942 | 39,230 | 0.967 |
+14 < 2 | mixed | 457.5s | 453.7s | 1.008 | 4 | 4 | 43,446 | 42,537 | 1.021 |
+15 < 2 | contend | 215.8s | 277.3s | 0.778 | 1 | 3 | 27,659 | 22,334 | 1.238 |
+16 < 2 | contend-prod | 979.5s | 1468.7s | 0.667 | 1 | 4 | 186,275 | 132,597 | 1.405 |
+17 < 2 | contend-big | 934.0s | 2611.3s | **0.358** | 1 | 4 | 212,310 | 227,456 | 0.933 |
+18 < 2 
+19 < 2 - **Aggregate wall: 0.594×** (3301s fold vs 5556s serialize) — the registered
+20 < 2   2026-08-14 baseline was 0.640× on the pre-cutover engine. Fold's advantage
+21 < 2   survives the One Driver cutover intact.
+22 < 2 - **Contention-only wall: 0.489×** — over the three fixtures whose wave shape
+23 < 2   actually differs between arms, fold runs in half the time.
+24 < 2 - **Aggregate output tokens: 1.087×** — fold costs ~9% more tokens for that
+25 < 2   wall-clock win. Per-fixture the token penalty concentrates where contention
+26 < 2   is resolved (`contend-prod` 1.41×, `contend` 1.24×), and `contend-big`
+27 < 2   inverts (0.93×) — a long serialize chain re-reads more context than a
+28 < 2   resolved fold does.
+29 < 2 
+30 < 2 ## What the shape column proves
+31 < 2 
+32 < 2 The three non-contention fixtures compile to **identical wave shapes in both
+33 < 2 arms** (wide 1/1, chained 5/5, mixed 4/4). With the same shape the two cells
+34 < 2 run the same work in the same order, so their ratios — 0.970, 0.954, 1.008 —
+35 < 2 measure nothing but run-to-run LLM latency variance. That is the noise floor:
+36 < 2 **±5%**. Every contention ratio (0.778, 0.667, 0.358) clears it by a wide
+37 < 2 margin.
+38 < 2 
+39 < 2 This doubles as the arm-identity check the old rig enforced explicitly: the
+40 < 2 serialize arm really does serialize (3–4 waves where fold takes 1), so the
+41 < 2 protocol is comparing two genuinely different execution geometries rather than
+42 < 2 running the same thing twice.
+43 < 2 
+44 < 2 ## Caveat on comparability
+45 < 2 
+46 < 2 0.640× (2026-08-14) was measured on the deleted engine with a different worker
+47 < 2 mix; 0.594× here is a *different measurement*, not a regression or improvement
+48 < 2 of that number. What this run establishes cleanly is fold-vs-serialize **on
+49 < 2 today's engine**, which is the decision-relevant comparison — the default is
+50 < 2 already fold, and it stays justified.
+51 < 2 
+52 < 2 ## Excluded fixtures
+53 < 2 
+54 < 2 - `flawed`, `flawed-routing`, `degrade` — deliberate-defect fixtures that
+55 < 2   exercise the compiler's diagnostics; their historical arm rows came back
+56 < 2   `invalid` on arm identity.
+57 < 2 - `webapp` — greenfield fixture: its project tree is `package.json` + README,
+58 < 2   and the plan creates the tests, so no baseline suite can be green at BASE.
+59 < 2   Knob validation refuses (correctly, in 0.3s for $0.00) under both
+60 < 2   `python3 -m pytest` and `npm test`. It was never in the registered A/B set
+61 < 2   (historical rows carry `arm=None`).
+62 < 2 
+63 < 2 ## Run conditions
+64 < 2 
+65 < 2 All fourteen cells ended `gate-blocked` on the same `deferred:manual` ack — the
+66 < 2 TDD red-then-green ordering, which is process-order and not observable in a
+67 < 2 diff. That is the honest verdict for an unattended cell and does not affect the
+68 < 2 timing or token measurement. Total spend $69.85.
+69 < 2 

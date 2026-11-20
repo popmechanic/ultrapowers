@@ -1,0 +1,180 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """Parse a stories-v1 plan to the fields the engine and the laptop's check
+3 > 1 read. The Flock's field names (tasks, dag_edges, width, checks,
+4 < 1 bootstrapCmd, publish) are kept, and each task carries its `wave`. proofRuns stays empty: each task's facts are
+2 < 2 read. The Flock's field names (tasks, dag_edges, launch_waves, checks,
+3 < 2 bootstrapCmd, publish) are kept. proofRuns stays empty: each task's facts are
+4 < 1 its probes, which factory/flock/plan.mjs turns into check.ts calls itself."""
+5 < 1 import re
+6 < 1 
+7 < 1 from plan_parse import task_sections
+8 < 1 from probe_block import parse_probe_text
+9 < 1 
+10 < 1 
+11 < 1 class StoriesRefusal(Exception):
+12 < 1     pass
+13 < 1 
+14 < 1 
+15 < 1 # preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
+16 < 1 KINDS = ("behaviour", "preserve")
+17 < 1 STACKS = ("tinyapp",)
+18 < 1 HEADER_RE = re.compile(r'^\*\*([A-Za-z-]+):\*\*\s*(.*)$')
+19 < 1 TASK_RE = re.compile(r'^### Task (\d+):\s*(.+)$')
+20 < 1 ID_BULLET_RE = re.compile(r'^- ([SLN]\d+):\s*(.+)$')
+21 < 1 STORE_RE = re.compile(r'^`([^`]+)`\s+sha256:([0-9a-f]{64})$')
+22 < 1 ACTION_RE = re.compile(r'^- `([^`]+)`')
+23 < 1 FILE_RE = re.compile(r'^- Create:\s*`([^`]+)`$')
+24 < 1 
+25 < 1 
+26 < 1 def _blocks(lines):
+27 < 1     out, i = [], 0
+28 < 1     while i < len(lines):
+29 < 1         if lines[i].strip() == "```probe":
+30 < 1             j, body = i + 1, []
+31 < 1             while j < len(lines) and lines[j].strip() != "```":
+32 < 1                 body.append(lines[j]); j += 1
+33 < 1             if j == len(lines):
+34 < 1                 raise StoriesRefusal("grammar: a ```probe fence is never closed")
+35 < 1             out.append(("probe", "\n".join(body)))
+36 < 1             i = j + 1
+37 < 1             continue
+38 < 1         out.append(("line", lines[i].rstrip()))
+39 < 1         i += 1
+40 < 1     return out
+41 < 1 
+42 < 1 
+43 < 1 def _probe(body):
+44 < 1     p, errs = parse_probe_text(body)
+45 < 1     if errs:
+46 < 1         raise StoriesRefusal("grammar: " + "; ".join(errs))
+47 < 1     return p
+48 < 1 
+49 < 1 
+50 < 1 def _layers(ids, edges):
+51 < 1     left, done, waves = list(ids), set(), []
+52 < 1     while left:
+53 < 1         wave = [i for i in left if all(e["from"] in done for e in edges if e["to"] == i)]
+54 < 1         if not wave:
+55 < 1             raise StoriesRefusal("grammar: the pieces depend on each other in a circle")
+56 < 1         waves.append(wave)
+57 < 1         done |= set(wave)
+58 < 1         left = [i for i in left if i not in done]
+59 < 1     return waves
+60 < 1 
+61 < 1 
+62 < 1 def parse_stories_text(text):
+63 < 1     head, section, task, field = {}, None, None, None
+64 < 1     stories, links, numbers, guards, tasks = [], [], [], [], []
+65 < 1     for kind, val in _blocks(text.splitlines()):
+66 < 1         if kind == "probe":
+67 < 1             if task is not None and field == "proof":
+68 < 1                 task["probes"].append(_probe(val))
+69 < 1             elif task is None and section == "guards":
+70 < 1                 guards.append(_probe(val))
+71 < 1             else:
+72 < 1                 raise StoriesRefusal("grammar: a probe fence outside a task's Proof or the Guards section")
+73 < 1             continue
+74 < 1         s = val.strip()
+75 < 1         m = TASK_RE.match(s)
+76 < 1         if m:
+77 < 1             task = {"id": m.group(1), "title": m.group(2).strip(), "piece": None,
+78 < 1                     "depends_pieces": [], "files": [], "purpose": "", "actions": [],
+79 < 1                     "stories": [], "probes": []}
+80 < 1             tasks.append(task)
+81 < 1             field = None
+82 < 1             continue
+83 < 1         if s.startswith("## "):
+84 < 1             section, task, field = s[3:].strip().lower(), None, None
+85 < 1             continue
+86 < 1         hm = HEADER_RE.match(s)
+87 < 1         if hm:
+88 < 1             key, value = hm.group(1).lower(), hm.group(2).strip()
+89 < 1             if task is None:
+90 < 1                 head[key] = value
+91 < 1                 continue
+92 < 1             field = key
+93 < 1             if key == "piece":
+94 < 1                 task["piece"] = value
+95 < 1             elif key == "depends-on-pieces":
+96 < 1                 task["depends_pieces"] = [] if value in ("", "none") else [x.strip() for x in value.split(",")]
+97 < 1             elif key == "purpose":
+98 < 1                 task["purpose"] = value
+99 < 1             continue
+100 < 1         if task is not None:
+101 < 1             fm, am, bm = FILE_RE.match(s), ACTION_RE.match(s), ID_BULLET_RE.match(s)
+102 < 1             if field == "files" and fm:
+103 < 1                 task["files"].append(fm.group(1))
+104 < 1             elif field == "actions" and am:
+105 < 1                 task["actions"].append(am.group(1))
+106 < 1             elif field == "stories" and bm:
+107 < 1                 task["stories"].append(bm.group(1))
+108 < 1             continue
+109 < 1         bm = ID_BULLET_RE.match(s)
+110 < 1         if bm and section == "stories":
+111 < 1             stories.append({"id": bm.group(1), "sentence": bm.group(2)})
+112 < 1         elif bm and section == "links":
+113 < 1             links.append({"id": bm.group(1), "sentence": bm.group(2)})
+114 < 1         # numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
+115 < 1         elif bm and section == "numbers":
+116 < 1             parts = [x.strip() for x in bm.group(2).split(" | ")]
+117 < 1             fields = dict(x.split(": ", 1) for x in parts[1:] if ": " in x)
+118 < 1             numbers.append({"id": bm.group(1), "sentence": parts[0],
+119 < 1                             "measure": fields.get("measure", ""), "target": fields.get("target", "")})
+120 < 1 
+121 < 1     if head.get("grammar") != "stories-v1":
+122 < 1         raise StoriesRefusal("grammar: **Grammar:** stories-v1 is missing")
+123 < 1     if head.get("stack") not in STACKS:
+124 < 1         raise StoriesRefusal("grammar: Stack %s is not one this plugin knows" % head.get("stack"))
+125 < 1     if head.get("kind") not in KINDS:
+126 < 1         raise StoriesRefusal("grammar: Kind must be behaviour or preserve")
+127 < 1     if not head.get("plan-id"):
+128 < 1         raise StoriesRefusal("grammar: **Plan-id:** is missing")
+129 < 1     sm = STORE_RE.match(head.get("store", ""))
+130 < 1     if sm is None:
+131 < 1         raise StoriesRefusal("grammar: **Store:** must be `path` sha256:<64 hex>")
+132 < 1     by_piece = {}
+133 < 1     for t in tasks:
+134 < 1         if not t["piece"]:
+135 < 1             raise StoriesRefusal("grammar: task %s names no **Piece:**" % t["id"])
+136 < 1         if t["piece"] in by_piece:
+137 < 1             raise StoriesRefusal("grammar: piece %s has two tasks" % t["piece"])
+138 < 1         by_piece[t["piece"]] = t
+139 < 1     edges = []
+140 < 1     for t in tasks:
+141 < 1         for dep in t["depends_pieces"]:
+142 < 1             if dep not in by_piece:
+143 < 1                 raise StoriesRefusal("grammar: task %s depends on piece %s, which has no task" % (t["id"], dep))
+144 < 1             edges.append({"from": by_piece[dep]["id"], "to": t["id"],
+145 < 1                           "why": "piece %s depends on %s" % (t["piece"], dep)})
+146 < 1     for t in tasks:
+147 < 1         t["files"] = sorted(t["files"])
+148 < 1         t["depends_on"] = [e["from"] for e in edges if e["to"] == t["id"]]
+149 < 1         t["proofRuns"], t["proofRunClauses"] = [], []
+150 < 2         t["interfaces"] = {"consumes": [], "produces": []}
+151 < 1     sections = task_sections(text)
+152 < 1     for t in tasks:
+153 < 1         t["body"] = sections.get(t["id"], "")
+155 > 1     layers = _layers([t["id"] for t in tasks], edges)
+156 < 1     for n, layer in enumerate(layers):
+157 < 1         for t in tasks:
+158 < 1             if t["id"] in layer:
+159 < 1                 t["wave"] = n + 1
+154 < 2     by_id = {t["id"]: t for t in tasks}
+155 < 1     # A TinyApp plan that publishes carries the same three header lines a claims plan does;
+156 < 1     # the boot deploys after the self-merge and verifies with ULTRA_PUBLISH_URL set.
+157 < 1     unwrap = lambda v: v[1:-1] if v and len(v) > 1 and v[0] == v[-1] == "`" else v
+158 < 1     publish = None
+159 < 1     if head.get("publish") or head.get("verify"):
+160 < 1         publish = {"deploy": unwrap(head.get("publish")) or None, "verify": unwrap(head.get("verify")) or None,
+161 < 1                    "rollback": unwrap(head.get("rollback")) or None}
+162 < 1     return {
+163 < 1         "grammar": "stories-v1", "stack": head["stack"], "plan_id": head["plan-id"],
+164 < 1         "kind": head["kind"], "summary": head.get("summary", ""),
+165 < 1         "store": {"path": sm.group(1), "sha256": sm.group(2)},
+166 < 1         "stories": stories, "links": links, "numbers": numbers, "guards": guards,
+167 < 1         "tasks": tasks, "dag_edges": edges,
+169 > 1         "width": max((len(layer) for layer in layers), default=0),
+168 < 2         "launch_waves": [[by_id[i] for i in w] for w in _layers([t["id"] for t in tasks], edges)],
+169 < 1         "checks": [], "bootstrapCmd": "bun install", "publish": publish,
+170 < 1     }
+171 < 1 

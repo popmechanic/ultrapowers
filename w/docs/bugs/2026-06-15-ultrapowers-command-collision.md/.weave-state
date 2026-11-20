@@ -1,0 +1,112 @@
+0 < 2 # Fix prompt: `/ultrapowers <plan>` launches the raw engine and dies on `args` JSON parse
+1 < 2 
+2 < 2 ## Hand this to a fresh coding agent
+3 < 2 
+4 < 2 > **Bug.** In the `ultrapowers` plugin, invoking `/ultrapowers <plan-path>` does **not** run the
+5 < 2 > `ultrapowers:ultrapowers` skill (the documented entry point that compiles the plan into waves).
+6 < 2 > Instead it launches the engine workflow directly and fails:
+7 < 2 >
+8 < 2 > ```
+9 < 2 > Error: ultrapowers: args was a string but not valid JSON:
+10 < 2 > JSON Parse error: Unexpected identifier "docs"   (waves.js / workflow.js)
+11 < 2 > ```
+12 < 2 >
+13 < 2 > **Root cause — slash-command name collision.** The engine workflow
+14 < 2 > `skills/ultrapowers/harnesses/waves.js` declares `meta.name: 'ultrapowers'`. The SessionStart hook
+15 < 2 > (`hooks/session_start.sh`) copies it into `.claude/workflows/` every session, where the Workflow
+16 < 2 > engine auto-registers it as a `/ultrapowers` slash command. That auto-command shadows the
+17 < 2 > `ultrapowers:ultrapowers` skill that owns the same `/ultrapowers` name. So `/ultrapowers <plan>`
+18 < 2 > resolves to the workflow stub `Workflow({ name: "ultrapowers", args: "<plan-path>" })`, which feeds
+19 < 2 > the bare plan-path string into the engine; `waves.js` expects a compiled `args.waves` object and
+20 < 2 > `JSON.parse("docs/...")` throws. The skill — which is what turns the plan path into
+21 < 2 > `{ waves, wavesPath, edges, acceptance, ... }` via `compile_plan.py` — never runs.
+22 < 2 >
+23 < 2 > The probe workflow (`meta.name: 'ultrapowers-probe'`) never collides because its name is distinct.
+24 < 2 > The engine workflow must follow the same convention.
+25 < 2 >
+26 < 2 > **Fix (primary): rename the engine workflow so it cannot occupy the `/ultrapowers` command.**
+27 < 2 > Rename the WORKFLOW name only (`ultrapowers` → `ultrapowers-run`). Do **not** touch the plugin
+28 < 2 > name, the skill name, the `ultra/` branch prefix, directory names, or any other use of the word
+29 < 2 > "ultrapowers" — only the saved-workflow `meta.name` and every place that launches/resolves the
+30 < 2 > workflow *by that name*. Update these in lockstep:
+31 < 2 >
+32 < 2 > 1. `skills/ultrapowers/harnesses/waves.js` — `meta.name: 'ultrapowers'` → `'ultrapowers-run'`.
+33 < 2 > 2. `skills/ultrapowers/harnesses/waves.harness.json` — `"name": "ultrapowers"` → `"ultrapowers-run"`.
+34 < 2 > 3. `skills/ultrapowers/SKILL.md` — every instruction that launches the workflow by name:
+35 < 2 >    - Step 4b: "Launch the saved workflow by name `ultrapowers`" and "`meta.name` (`ultrapowers`)";
+36 < 2 >      update the literal `Workflow({ name: 'ultrapowers', ... })` the orchestrator is told to call.
+37 < 2 >    - Salvage / Redirect (Step 5): "relaunch ... by `meta.name` `ultrapowers`".
+38 < 2 >    - Any other "launch ... `ultrapowers`" referring to the workflow (NOT the skill/plugin).
+39 < 2 > 4. `skills/ultrapowers/references/workflow-template.md` — "launches by `meta.name` `ultrapowers`".
+40 < 2 > 5. Tests (these currently PIN the colliding name and will fail until updated — that is expected):
+41 < 2 >    - `tests/test_harness_registry.py`: `{"ultrapowers", "ultrapowers-probe"} <= names` →
+42 < 2 >      `{"ultrapowers-run", "ultrapowers-probe"}`.
+43 < 2 >    - `tests/test_orchestrator_markers.py` `test_orchestrator_launches_by_meta_name`:
+44 < 2 >      `assert "name: 'ultrapowers'" in workflow` → `"name: 'ultrapowers-run'"`; fix its comment
+45 < 2 >      (it claims launching as `ultrapowers-run` fails — that was only because meta.name didn't match;
+46 < 2 >      with this rename, `ultrapowers-run` is now the correct, working name).
+47 < 2 >    - `tests/test_session_hook.py`: derives the name from the manifest, so it should pass once (1)+(2)
+48 < 2 >      agree — verify, don't assume.
+49 < 2 >
+50 < 2 > **Fix (regression guard): add a test that forbids the collision from coming back.** Assert that no
+51 < 2 > registered write-side harness (`*.harness.json` with `writeSide: true`) has `meta.name == "ultrapowers"`,
+52 < 2 > because that exact name shadows the `/ultrapowers` skill command. Put it in
+53 < 2 > `tests/test_harness_registry.py`.
+54 < 2 >
+55 < 2 > **Fix (defense in depth, optional): make the engine fail loudly with a redirect.** In `waves.js`,
+56 < 2 > where `args` is a string that fails `JSON.parse`, detect a plain plan path (contains `/` or ends in
+57 < 2 > `.md`) and throw: *"ultrapowers: launched with a raw plan path. Run the `/ultrapowers` skill
+58 < 2 > (ultrapowers:ultrapowers), which compiles the plan into waves; do not launch the engine workflow
+59 < 2 > directly."* If you change `waves.js` prompt/body content, re-bake per
+60 < 2 > `references/workflow-template.md` and keep `tests/test_no_prompt_drift.py` green. (A header-only
+61 < 2 > `meta.name` change does not require a re-bake.)
+62 < 2 >
+63 < 2 > **Verify.**
+64 < 2 > 1. `python3 -m pytest -q` — full suite green.
+65 < 2 > 2. `python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers` → `skill ok`.
+66 < 2 > 3. Confirm the SessionStart hook installs the renamed file:
+67 < 2 >    `bash hooks/session_start.sh` with `CLAUDE_PROJECT_DIR=$(mktemp -d)`, then check the copied
+68 < 2 >    `.claude/workflows/waves.js` has `name: 'ultrapowers-run'`.
+69 < 2 > 4. **Manual, in a NEW session** (the command registry is snapshotted at session start, so the old
+70 < 2 >    `/ultrapowers` workflow command persists until you restart): type `/ultrapowers <plan-path>` and
+71 < 2 >    confirm it now loads the `ultrapowers:ultrapowers` SKILL (compile → render wave plan → launch),
+72 < 2 >    NOT the `Run the "ultrapowers" workflow. ... Invoke: Workflow({...})` stub. If bare `/ultrapowers`
+73 < 2 >    no longer resolves to the skill at all, the skill's command exposure needs a separate look —
+74 < 2 >    report that rather than re-adding the colliding workflow name.
+75 < 2 >
+76 < 2 > **Do not** "fix" this by making `waves.js` parse a plan path itself — the workflow has no
+77 < 2 > filesystem/shell access and cannot run `compile_plan.py`; plan compilation belongs to the skill.
+78 < 2 
+79 < 2 ## Resolution (2026-06-15)
+80 < 2 
+81 < 2 Fixed by renaming the engine workflow `ultrapowers` → `ultrapowers-run` (the workflow name only;
+82 < 2 the plugin name, skill name, and `ultra/` branch prefix are untouched). Lockstep changes:
+83 < 2 
+84 < 2 1. `skills/ultrapowers/harnesses/waves.js` — `meta.name: 'ultrapowers-run'` (+ a comment naming the
+85 < 2    collision), and a defense-in-depth redirect: when `args` is a bare string that is not JSON (a raw
+86 < 2    plan path), the workflow now throws *"run the /ultrapowers skill … do NOT launch the engine
+87 < 2    directly"* instead of the cryptic `Unexpected identifier` parse error.
+88 < 2 2. `skills/ultrapowers/harnesses/waves.harness.json` — `"name": "ultrapowers-run"`, version `0.0.9` → `0.0.10`.
+89 < 2 3. `skills/ultrapowers/SKILL.md` — Step 4b launch name and Step 5 Redirect relaunch now say `ultrapowers-run`.
+90 < 2 4. `skills/ultrapowers/references/workflow-template.md` — install-path line updated.
+91 < 2 5. `tests/test_harness_registry.py` — core set updated, **plus** a regression guard
+92 < 2    (`test_no_writeside_harness_shadows_the_ultrapowers_command`) forbidding any write-side harness
+93 < 2    from claiming `meta.name == "ultrapowers"`.
+94 < 2 6. `tests/test_orchestrator_markers.py` — `test_orchestrator_launches_by_meta_name` pins
+95 < 2    `name: 'ultrapowers-run'`; stale comment corrected.
+96 < 2 
+97 < 2 Verified: `python3 -m pytest -q` → 326 passed; `validate_skill.py skills/ultrapowers` → `skill ok`;
+98 < 2 `session_start.sh` into a temp `CLAUDE_PROJECT_DIR` installs `.claude/workflows/waves.js` with
+99 < 2 `name: 'ultrapowers-run'`. `test_session_hook.py` (derives the expected name from the manifest) passes
+100 < 2 because (1) and (2) agree. **Step 4 (manual) still pending:** the command registry is snapshotted at
+101 < 2 session start, so the old `/ultrapowers` workflow command persists until a NEW session — restart and
+102 < 2 confirm `/ultrapowers <plan>` loads the SKILL, not the `Invoke: Workflow({...})` stub.
+103 < 2 
+104 < 2 ## Evidence (observed this session)
+105 < 2 
+106 < 2 - `/ultrapowers <plan>` emitted: `Invoke: Workflow({ name: "ultrapowers", args: "docs/.../viewer-offer-dx.md" })`
+107 < 2   whose second line was `meta.description` verbatim — i.e. the auto-generated saved-workflow command.
+108 < 2 - Direct launch failed at `workflow.js:14`: `args was a string but not valid JSON ... Unexpected identifier "docs"`.
+109 < 2 - Recovery via the skill (`compile_plan.py --emit-launch` → assemble `args.waves` object → launch by name) succeeded.
+110 < 2 - `harnesses/probe.js` uses `meta.name: 'ultrapowers-probe'` and never collides — the pattern to copy.
+111 < 2 

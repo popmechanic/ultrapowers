@@ -72,7 +72,8 @@
 70 > 1         'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')), 'objected': len(of('objection')),
 69 < 2         'reopened': len(of('reopen')), 'given_back': sum(1 for e in sessions if e.get('released')),
 70 < 1         'parked_tasks': len(of('task:parked')), 'conflicts': len(of('conflict:open')), 'engine_tasks': added,
-71 < 1         'outside_plan': sorted({e.get('path') for e in of('driver:amendment') if e.get('path')}),
+72 > 1         'outside_plan': sorted({e.get('path') for e in of('amendment') + of('driver:amendment') if e.get('path')}),
+71 < 2         'outside_plan': sorted({e.get('path') for e in of('driver:amendment') if e.get('path')}),
 72 < 1         'beliefs': len([e for e in of('belief') if e.get('by') != 'host']), 'cost_usd': cost, 'said': said,
 73 < 1     }
 74 < 1 

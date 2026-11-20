@@ -92,11 +92,18 @@
 91 < 1     '(b) [M2] no duplicate in the toolchain')
 92 < 1 
 93 < 1   const fixture = {
-94 < 1     waves: [
-95 < 1       [{ id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] }],
-96 < 1       [{ id: '2', proofRuns: ['go test ./...'] }]
-97 < 1     ],
-98 < 1     payload: { checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }] }
+95 > 1     payload: {
+96 < 1       tasks: [
+97 < 1         { id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] },
+98 < 1         { id: '2', proofRuns: ['go test ./...'] }
+99 < 1       ],
+100 < 1       checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }]
+101 < 1     }
+94 < 2     waves: [
+95 < 2       [{ id: '1', proofRuns: ['cargo test', 'node a.mjs && bun test'] }],
+96 < 2       [{ id: '2', proofRuns: ['go test ./...'] }]
+97 < 2     ],
+98 < 2     payload: { checks: [{ cmd: '! grep -rn foo src | grep .' }, { cmd: 'make lint' }] }
 99 < 1   }
 100 < 1   const v = toolchainViolations(fixture)
 101 < 1   assert.deepEqual(
@@ -107,13 +114,18 @@
 106 < 1     '(b) [M2] a violation carries task, word and the offending line')
 107 < 1   assert.deepEqual(
 108 < 1     toolchainViolations({
-109 < 1       waves: [[{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }]],
-110 < 1       payload: { checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }] }
+110 > 1       payload: {
+111 < 1         tasks: [{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }],
+112 < 1         checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }]
+113 < 1       }
+109 < 2       waves: [[{ id: '1', proofRuns: ['node --check a.mjs', 'python3 -m pytest -q tests/x.py'] }]],
+110 < 2       payload: { checks: [{ cmd: 'git diff --quiet $ULTRA_BASE -- fleet' }] }
 111 < 1     }),
 112 < 1     [],
 113 < 1     '(b) [M2] a plan whose probes and checks use only toolchain words answers []'
 114 < 1   )
-115 < 1   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no waves, no checks: []')
+116 > 1   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no tasks, no checks: []')
+115 < 2   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no waves, no checks: []')
 116 < 1 }
 117 < 1 
 118 < 1 // ══════════════════════════════════════════════════════════════════════════
@@ -133,11 +145,13 @@
 132 < 1   // The compiled plan the stubbed parser answers: one task, one probe the
 133 < 1   // sandbox cannot run.
 134 < 1   const COMPILED = {
-135 < 1     launch_waves: [[{
-136 < 1       id: '1', title: 'task 1', files: ['src/a.rs'], depends_on: [],
-137 < 1       proofRuns: ['cargo test'], proofRunClauses: [['M1']], interfaces: { consumes: [], produces: [] }
-138 < 1     }]],
-139 < 1     dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
+136 > 1     tasks: [{ id: '1', title: 'task 1', files: ['src/a.rs'], wave: 1, proofRuns: ['cargo test'], proofRunClauses: [['M1']] }],
+137 < 1     dag_edges: [], width: 1, checks: [], bootstrapCmd: null
+135 < 2     launch_waves: [[{
+136 < 2       id: '1', title: 'task 1', files: ['src/a.rs'], depends_on: [],
+137 < 2       proofRuns: ['cargo test'], proofRunClauses: [['M1']], interfaces: { consumes: [], produces: [] }
+138 < 2     }]],
+139 < 2     dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
 140 < 1   }
 141 < 1 
 142 < 1   // The evidence repository's URL goes to its own bare; every other github.com

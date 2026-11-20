@@ -1,0 +1,88 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Grid } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Avatar } from '../avatar'
+5 < 2 import { Badge, Dot } from '../media'
+6 < 2 import { Metric } from '../readout'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Tabs } from '../disclosure'
+9 < 2 import { Icon } from '../Icon'
+10 < 2 
+11 < 2 /** An example profile page: header with avatar and stats, a follow button
+12 < 2  * that moves the follower count, and tabbed content. */
+13 < 2 export function ProfileBlock() {
+14 < 2   const [tab, setTab] = useState('posts')
+15 < 2   const [following, setFollowing] = useState(false)
+16 < 2   // Derived, not separate state: following IS the +1 follower, so there's
+17 < 2   // nothing to keep in sync — unfollowing can't leave the count stale.
+18 < 2   const followers = 4201 + (following ? 1 : 0)
+19 < 2 
+20 < 2   const posts = (
+21 < 2     <Stack gap={3}>
+22 < 2       {['Shipped the new cushion buttons', 'Optical centering is a rabbit hole', 'Pastel that passes WCAG — a thread'].map((p, i) => (
+23 < 2         <Card variant="tight" key={i}>
+24 < 2           <Stack gap={2}>
+25 < 2             <Text>{p}</Text>
+26 < 2             <Row gap={4}>
+27 < 2               <Row gap={1} wrap={false}><Icon name="heart" size="sm" /><Text size="sm" muted>{12 * (i + 1)}</Text></Row>
+28 < 2               <Row gap={1} wrap={false}><Icon name="comment" size="sm" /><Text size="sm" muted>{i + 1}</Text></Row>
+29 < 2             </Row>
+30 < 2           </Stack>
+31 < 2         </Card>
+32 < 2       ))}
+33 < 2     </Stack>
+34 < 2   )
+35 < 2 
+36 < 2   const about = (
+37 < 2     <Stack gap={3}>
+38 < 2       <Text>Designer & engineer. Making software that feels like it wants to be touched. Currently building 1st-Pouf.</Text>
+39 < 2       <Row gap={2}>
+40 < 2         <Badge tone="mint">Design systems</Badge>
+41 < 2         <Badge tone="blue">React</Badge>
+42 < 2         <Badge tone="pink">Motion</Badge>
+43 < 2       </Row>
+44 < 2     </Stack>
+45 < 2   )
+46 < 2 
+47 < 2   return (
+48 < 2     <div style={{ maxWidth: 640, margin: '0 auto', padding: 24 }}>
+49 < 2       <Card>
+50 < 2         <Stack gap={5}>
+51 < 2           <Row justify="between" align="top">
+52 < 2             <Row gap={3} wrap={false} align="top">
+53 < 2               <Avatar fallback="AL" size="lg" tone="purple" />
+54 < 2               <Stack gap={1}>
+55 < 2                 <Heading level={2}>Ada Lovelace</Heading>
+56 < 2                 <Eyebrow>@ada</Eyebrow>
+57 < 2                 <Row gap={2} wrap={false}>
+58 < 2                   <Dot tone="mint" />
+59 < 2                   <Text size="sm" muted>Active now</Text>
+60 < 2                 </Row>
+61 < 2               </Stack>
+62 < 2             </Row>
+63 < 2             <Button tone={following ? 'mint' : 'purple'} variant={following ? 'quiet' : 'solid'} onClick={() => setFollowing((f) => !f)}>
+64 < 2               {following ? 'Following' : 'Follow'}
+65 < 2             </Button>
+66 < 2           </Row>
+67 < 2 
+68 < 2           <Grid cols={3}>
+69 < 2             <Metric label="Posts" value="128" />
+70 < 2             <Metric label="Followers" value={followers.toLocaleString()} />
+71 < 2             <Metric label="Following" value="312" />
+72 < 2           </Grid>
+73 < 2 
+74 < 2           <Tabs
+75 < 2             value={tab}
+76 < 2             onChange={setTab}
+77 < 2             tabs={[
+78 < 2               { value: 'posts', label: 'Posts', content: posts },
+79 < 2               { value: 'about', label: 'About', content: about },
+80 < 2             ]}
+81 < 2           />
+82 < 2         </Stack>
+83 < 2       </Card>
+84 < 2     </div>
+85 < 2   )
+86 < 2 }
+87 < 2 

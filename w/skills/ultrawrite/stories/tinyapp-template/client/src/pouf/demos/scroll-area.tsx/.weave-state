@@ -1,0 +1,19 @@
+0 < 2 import { ScrollArea } from '../scrollarea'
+1 < 2 import { Stack } from '../layout'
+2 < 2 import { Text } from '../text'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 const LINES = ['Line 1', 'Line 2', 'Line 3', 'Line 4', 'Line 5', 'Line 6', 'Line 7', 'Line 8']
+6 < 2 
+7 < 2 export const scrollAreaDemos: Demo[] = [
+8 < 2   { id: 'default', render: () => (
+9 < 2       <ScrollArea maxHeight="120px">
+10 < 2         <Stack gap={2}>
+11 < 2           {LINES.map((line) => (
+12 < 2             <Text key={line} size="sm" muted>{line}: some scrollable content inside the ScrollArea primitive.</Text>
+13 < 2           ))}
+14 < 2         </Stack>
+15 < 2       </ScrollArea>
+16 < 2     ) },
+17 < 2 ]
+18 < 2 

@@ -1,0 +1,16 @@
+0 < 2 import type { ReactNode } from 'react'
+1 < 2 
+2 < 2 /** A captured interaction state. 'hover'/'active' target [data-subject];
+3 < 2  *  'focus' tabs to the first focusable element. */
+4 < 2 export type DemoState = 'hover' | 'focus' | 'active'
+5 < 2 
+6 < 2 export interface Demo {
+7 < 2   /** Unique within the component, kebab-case: 'solid-md', 'quiet', 'disabled'. */
+8 < 2   id: string
+9 < 2   /** States the harness must additionally capture (default state always is). */
+10 < 2   states?: DemoState[]
+11 < 2   /** 'mobile' renders/captures at 390×844 instead of 1280×800. */
+12 < 2   viewport?: 'mobile'
+13 < 2   render: () => ReactNode
+14 < 2 }
+15 < 2 

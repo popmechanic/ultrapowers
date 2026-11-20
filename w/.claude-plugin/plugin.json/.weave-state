@@ -1,0 +1,22 @@
+0 < 1 {
+1 < 1   "name": "ultrapowers",
+4 > 1   "version": "0.3.49",
+3 > 2   "version": "0.3.48",
+2 < 2   "version": "0.3.47",
+3 < 1   "description": "The client for ultrapowers: /ultrapowers <plan-path> commits an approved plan and runs on an exe.dev fleet you provision — a disposable sandbox runs the plan as a pool of tasks, a pool of builders, the plan's own probes and checks as the proof, and opens its own PR. No local engine.",
+4 < 1   "author": {
+5 < 1     "name": "Marcus Estes",
+6 < 1     "email": "marcus@vibes.diy"
+7 < 1   },
+8 < 1   "homepage": "https://github.com/popmechanic/ultrapowers",
+9 < 1   "repository": "https://github.com/popmechanic/ultrapowers",
+10 < 1   "license": "MIT",
+11 < 1   "keywords": [
+12 < 1     "skills",
+13 < 1     "fleet",
+14 < 1     "superpowers",
+15 < 1     "parallel",
+16 < 1     "claims-v1"
+17 < 1   ]
+18 < 1 }
+19 < 1 

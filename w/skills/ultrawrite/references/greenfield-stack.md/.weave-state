@@ -1,0 +1,241 @@
+0 < 1 # Greenfield stack — Bun + TypeScript + TinyBase authoring defaults
+1 < 1 
+3 > 1 Load this when a plan **creates a new codebase** (#425). It fixes the setup and
+4 < 1 check lines a greenfield plan hands the engine, the one tsconfig detail that costs an
+2 < 2 Load this when a plan **creates a new codebase** (#425). It fixes the two knobs
+3 < 2 a greenfield plan hands the engine, the one tsconfig detail that costs an
+4 < 1 author an hour when it is guessed wrong, and the store the app keeps its state in.
+5 < 1 
+6 < 1 ## When it applies
+7 < 1 
+8 < 1 Greenfield **target apps** only — a codebase the plan itself brings into
+9 < 1 existence. It is never a restriction on an existing repo (whose stack is
+10 < 1 already chosen and whose suite already runs), never on ultrapowers' own suite
+11 < 1 (pytest), and never on the fleet driver (Node — its spawn/SIGTERM semantics are
+12 < 1 what the driver measures, so it stays where it is).
+13 < 1 
+15 > 1 ## The header lines, verbatim
+14 < 2 ## The two knobs, verbatim
+15 < 1 
+17 > 1 - `**Bootstrap:** bun install` — the setup the engine runs before any builder opens
+18 < 1 - `- Check: bunx tsc --noEmit && bun test` — under `## Global Constraints`, run on every tested snapshot
+19 < 1 - `**Dependencies:** tinybase react react-dom dev: @types/bun typescript`
+16 < 2 - **testCmd:** bunx tsc --noEmit && bun test
+17 < 2 - **bootstrapCmd:** bun install
+18 < 2 - **Dependencies:** tinybase react react-dom dev: @types/bun typescript
+19 < 1 
+20 < 1 Write the first two exactly as above. Bare `tsc` requires a global TypeScript
+21 < 1 install; `bunx tsc` resolves the project's own devDependency — which is what
+22 < 1 keeps a fresh clone's bootstrap to a single `bun install` with nothing but Bun
+23 < 1 present.
+24 < 1 
+25 < 1 The third row is the plan's own: a TinyApp plan names every package it needs on
+26 < 1 that one header line, the specs before the single `dev:` word installed for the
+27 < 1 app and the ones after it installed as development-only. A package is declared
+28 < 1 there and nowhere else — no task adds one by editing `package.json`,
+29 < 1 `bunfig.toml` or `bun.lock`, and a manifest on a task's Files list is edited for
+30 < 1 a script or a config field, never for a dependency.
+31 < 1 
+32 < 1 ## Why it earns the restriction
+33 < 1 
+35 > 1 `Consumes:`/`Produces:` stop being prose a person has to eyeball. Running
+34 < 2 `Consumes:`/`Produces:` stop being prose a reviewer has to eyeball. Running
+35 < 1 `tsc --noEmit` over the integrated tree catches cross-task interface drift
+36 < 1 deterministically, and interface drift is *the* characteristic failure of
+37 < 1 parallel implementation: each task is green alone and the seam between them is
+39 > 1 not. `bun test` is fast enough that a builder can afford the whole suite
+38 < 2 not. `bun test` is fast enough that an implementer can afford the whole suite
+39 < 1 on every iteration, so a task never trades coverage for turnaround.
+40 < 1 
+41 < 1 ## The tsconfig gotcha
+42 < 1 
+43 < 1 Take the Bun types from the `@types/bun` devDependency and name them in
+44 < 1 tsconfig:
+45 < 1 
+46 < 1 ```json
+47 < 1 { "compilerOptions": { "types": ["bun"] } }
+48 < 1 ```
+49 < 1 
+50 < 1 The older `bun-types` package name fails with
+51 < 1 `TS2688: Cannot find type definition file for 'bun-types'`.
+52 < 1 
+53 < 1 ## The store, and the TinyApp shape
+54 < 1 
+55 < 1 The app's state is **one TinyBase store** (operator, 2026-09-08). Every `do:` in a
+56 < 1 Claim is a store mutation through the app's own callbacks and every `see:` is a
+57 < 1 store read plus a render against it, so an exam can probe the store directly,
+58 < 1 in-process, in milliseconds — no network or DOM event loop in the loop. That
+59 < 1 holds exactly when the app reads from nowhere but the store; a plan that has
+60 < 1 the app fetch or read outside its persister has left the shape and says so.
+61 < 1 
+62 < 1 A **TinyApp** is the synced shape of that stack, and only that shape: a TinyBase
+63 < 1 `MergeableStore` in the client, a `WsSynchronizer` to a Durable Object with a
+64 < 1 SQLite persister, scaffolded by the official generator as a typed project —
+65 < 1 
+66 < 1 ```sh
+67 < 1 npm create tinybase@latest -- --non-interactive --projectName <name> \
+68 < 1   --language typescript --framework react --schemas true \
+69 < 1   --syncType durable-objects --persistenceType sqlite --installAndRun false
+70 < 1 ```
+71 < 1 
+72 < 1 — so the store's schema drives TypeScript inference and `bunx tsc --noEmit`
+73 < 1 checks every data access (operator, 2026-09-09, chosen over a single-file
+74 < 1 `index.html` + `app.jsx` that no compiler can see). Read
+75 < 1 https://tinybase.org/skills/build-with-tinybase/SKILL.md before scaffolding; the
+76 < 1 generator's `--list-options` is the authority for current values. An app whose
+77 < 1 store is local-only is a Bun + TypeScript + TinyBase target, not a TinyApp. Write the
+78 < 1 word `TinyApp` for that shape and nothing else; the borrowed term "vibes app"
+79 < 1 is not this project's vocabulary.
+80 < 1 
+81 < 1 A TinyApp's server is **one root Durable Object per app instance** — `AppRoot`,
+82 < 1 reached as `env.APP.getByName('<instance>')` — and it is the only object the
+83 < 1 outside world addresses. Each store is a **module object** of its own: a
+84 < 1 `WsServerDurableObject` whose `createPersister()` is
+85 < 1 `createDurableObjectSqlStoragePersister(store, this.ctx.storage.sql, { mode: 'fragmented' })`,
+86 < 1 named `<instance>/<module>[@label]` — the optional `@label` names a fork of that
+87 < 1 module — and reached only through the root, which maps `/sync/<module>` to
+88 < 1 `env.MODULES.getByName('<instance>/<module>')` and serves the exam surface beside
+89 < 1 it. The parcelling follows the plan's: one task owns one module, so two tasks
+90 < 1 never write one store, and the client's `WsSynchronizer` dials `/sync/<module>`
+91 < 1 for the module it reads.
+92 < 1 
+93 < 1 A Durable Object **Facet** is not that shape while celld cannot carry a facet's
+94 < 1 WebSocket. celld runs facets (`ctx.facets`, on 0.5.0 and later; each with its own
+95 < 1 SQLite file since 0.6.0), and a facet answers a plain request. But on celld 0.6.1 the
+96 < 1 `101` a facet returns still reaches the client without its upgrade (`Missing
+97 < 1 upgrade header`), both for a facet started from a loaded Worker and for one
+98 < 1 started from the app's own class through `ctx.exports`, while a named Durable
+99 < 1 Object's socket echoes and closes cleanly on the same build (macOS arm64,
+100 < 1 2026-10-01, n=1 run each; denoland/celld#210 was closed as not planned on
+101 < 1 2026-09-17). A plan that wants facets keeps them behind a flag, and only for
+102 < 1 verbs that are not sockets.
+103 < 1 
+104 < 1 A **stories-v1** plan does not scaffold with the generator: its launch base is
+105 < 1 `skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.ts`
+106 < 1 (a React 19 page, one `AppStore` Durable Object with the SQLite persister). It
+107 < 1 is still a TinyApp; builders write each piece's screen as a json-render spec and
+108 < 1 no page code, as `## Screens` says (operator, 2026-10-01).
+109 < 1 
+110 < 1 **Who is signed in** comes from Cloudflare Access, never from the app: the
+111 < 1 template's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
+112 < 1 for (null when Access did not run), the page keeps it as the hook's `who`, and
+113 < 1 every store tool gets it as `run`'s third argument, so a role rule lives in the
+114 < 1 signed store module. A story step's `"as": "<email>" | null` sets who is signed
+115 < 1 in from that step on; the checker sets the hook's `who` the same way. The rule
+116 < 1 runs in the page, so it stops the screens and the page's tools, not a client
+117 < 1 that writes the store directly; a server-side lock is its own piece (radio rs4,
+118 < 1 2026-09-28).
+119 < 1 
+120 < 1 ## Going online
+121 < 1 
+122 < 1 A TinyApp goes online as **one Cloudflare Worker** that serves both the page and
+123 < 1 the store (operator, 2026-09-29). The template's `scripts/pack-client.ts`
+124 < 1 (`bun run pack`) builds `client/index.html` and writes every output file into
+125 < 1 `server/client-files.ts`, and `bun run deploy` runs `pack-client` before
+126 < 1 `wrangler deploy`, so there is no second host for the page. The Worker answers
+127 < 1 these routes and no others:
+128 < 1 
+129 < 1 - `/` — the page, public and read-only: it mounts only the pieces whose spec
+130 < 1   says `"public": true` and re-reads `/public.json` every 5 s instead of syncing.
+131 < 1 - `/public.json` — the saved snapshot of the store, read-only.
+132 < 1 - `/health` — `200` when the Worker is up; what a plan's Verify line reads.
+133 < 1 - `/staff` — the same page with every piece, its WebMCP tools and the sync.
+134 < 1 - `/sync` — the store's `WsSynchronizer` socket.
+135 < 1 - `/me` — who is signed in, as `## The store, and the TinyApp shape` says.
+136 < 1 
+137 < 1 **Cloudflare Access** guards `/staff`, `/sync` and `/me`, and leaves `/`,
+138 < 1 `/public.json` and `/health` public. The operator sets that Access application
+139 < 1 in the Cloudflare dashboard; no plan does, and no task writes Access config.
+140 < 1 
+141 < 1 A plan marks a piece a visitor may see with `"public": true` in its spec,
+142 < 1 `client/src/pieces/<piece>.json`; a piece without it is mounted only under
+143 < 1 `/staff`. A public piece renders on both, and hides its staff controls with
+144 < 1 `visible` on `/session/staff` — so the public page is the same screens with the
+145 < 1 write controls gone, not a second app.
+146 < 1 
+147 < 1 A plan that publishes carries two header lines, verbatim:
+148 < 1 
+149 < 1 - **Publish:** bun install && bun run deploy
+150 < 1 - **Verify:** curl -fsS "$ULTRA_PUBLISH_URL/health"
+151 < 1 
+152 < 1 and sets the Worker's `name` in `server/wrangler.jsonc`. The Cloudflare account
+153 < 1 goes in the app's `deploy` script, never in the config: `"deploy": "bun
+154 < 1 scripts/pack-client.ts && CLOUDFLARE_ACCOUNT_ID=<id> bunx wrangler deploy --config
+155 < 1 server/wrangler.jsonc"`. celld refuses `account_id` and `workers_dev` in the config
+156 < 1 it starts from, and the story checker runs every step under celld (radio-station,
+157 < 1 2026-09-29: `celld deploy does not support these config keys: account_id,
+158 < 1 workers_dev`). The Publish line runs once the plan's tasks have merged; the Verify
+159 < 1 line exits 0 only when the deployed Worker answers `/health`.
+160 < 1 
+161 < 1 ## Screens
+162 < 1 
+163 < 1 A TinyApp's screens are built from **1st-Pouf**, not hand-written page code
+164 < 1 (operator, 2026-10-01; this replaces the 2026-09-16 Tailwind + shadcn styling
+165 < 1 experiment).
+166 < 1 
+167 < 1 - **The spec.** Each piece's screen is `client/src/pieces/<piece>.json`, a
+168 < 1   json-render spec — `{root, elements}`, plus `"public": true` for a piece a
+169 < 1   signed-out visitor sees on `/` — over the catalog in
+170 < 1   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
+171 < 1   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
+173 > 1   React 19; a builder writes specs, and a part only when a story needs one.
+174 < 1 - **The parts list grows in the open (operator, 2026-11-20, #1491).** Each part has a
+175 < 1   line in `client/src/screens/draws.json` naming the accessibility role it draws and
+176 < 1   the props that name it (`ActionButton`: a button, by `name` then `label`). A story
+177 < 1   that expects to see a role no part draws is a `PARTS fact:` while planning, and
+178 < 1   compile tells that piece's task to add the part; any builder whose screen needs one
+179 < 1   adds it: its props in `catalog.ts`, a wrapper over a 1st-Pouf component in
+180 < 1   `registry.tsx`, its `draws.json` line, and any label function in `functions.ts`. The
+181 < 1   PR lists the run's new parts under `### New screen parts`; one worth keeping is copied
+182 < 1   into the template by hand, so the next app starts with it. Before this, the parts were
+183 < 1   closed to a run, and potluck-2 run-1 (2026-11-20) ended a draft on a status label no
+184 < 1   part could draw.
+172 < 2   React 19; a builder writes specs, not components.
+173 < 1 - **Where a spec starts.** A piece's spec starts as the screen the operator
+174 < 1   approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
+175 < 1   in), else the scaffold's empty column; the builder edits it from there.
+177 > 1 - **The reads.** A row shows its own cells; a row naming another table's row (a tag's
+178 < 1   `todoId`) reads that row's text through the `$computed` functions `lookup` and `format` in
+179 < 1   `client/src/screens/functions.ts`, which every renderer is given (#1524).
+176 < 1 - **The writes.** Saved data changes only through card actions, run from an
+177 < 1   element's `action` prop. `$bindState` and json-render's built-in state
+179 > 1   actions write only under `/draft/` (a built-in with no `statePath` writes its own
+180 < 1   default, so it names one), and no screen binds `$bindItem`, which writes the row.
+178 < 2   actions write only under `/draft/`.
+179 < 1 - **The look.** 1st-Pouf (moji2002/1st-pouf, MIT, Copyright (c) 2026 Mojtaba
+180 < 1   Beheshti) is vendored byte-identical at `client/src/pouf/` from commit
+181 < 1   `1993b1ec9f2d93b6753929d1f70c89f8ef89b13e`, pinned by
+183 > 1   `client/src/pouf.vendor.json`, and never patched; its `blocks/` and `demos/`
+184 < 1   folders, which nothing imports, are left out (the manifest's `omitted`). Tailwind v4 compiles its
+182 < 2   `client/src/pouf.vendor.json`, and never patched. Tailwind v4 compiles its
+183 < 1   theme at build through `bun-plugin-tailwind` in `scripts/build-client.ts`,
+184 < 1   which `bun run pack` and the story checker both run. The font is
+185 < 1   `@fontsource-variable/nunito`, bundled, so no font host is dialled.
+186 < 1 - **The check.** `bun factory/stack/tinyapp/screens.ts (--plan <plan.md> |
+187 < 1   --bundle <dir>) [--copy <app>] [--piece <piece>]` checks every spec without a
+188 < 1   browser (exit 0 pass, 1 finding, 2 could not run); the engine runs it as one
+189 < 1   more fact of each piece's task, so a missing or miswired button is caught
+191 > 1   there. It also checks the parts: every part has its `draws.json` line, and
+192 < 1   `client/src/pouf/` is byte-for-byte its pin.
+190 < 2   there.
+191 < 1 
+192 < 1 ## The engine boundary
+193 < 1 
+195 > 1 The ultrapowers engine runs whatever `**Bootstrap:**` and `Check:` lines the plan
+196 < 1 names and knows nothing about Bun. This page is **authoring guidance**: it changes what a plan writes
+194 < 2 The ultrapowers engine runs whatever `testCmd` it is handed and knows nothing
+195 < 2 about Bun. This page is **authoring guidance**: it changes what a plan writes
+196 < 1 down, never how a run executes.
+197 < 1 
+198 < 1 ## The baseline rule
+199 < 1 
+201 > 1 Any greenfield plan run on the fleet must start from a tree whose run-wide
+202 < 1 `Check:` is **green at BASE**: a Check already red before any work is a red no
+203 < 1 task owns (authoring-gotchas.md). So a greenfield plan driven through
+204 < 1 `/ultrapowers` starts from a seeded, passing skeleton — for a TinyApp,
+205 < 1 `skills/ultrawrite/stories/scaffold.ts`.
+200 < 2 Any Bun fixture or greenfield plan run on the fleet must start from a tree that
+201 < 2 is **green at BASE**. A tree whose tests do not exist yet cannot pass knob
+202 < 2 validation, so a greenfield plan driven through `/ultrapowers` starts from a
+203 < 2 seeded, passing skeleton — see the Bun eval fixture for the shape.
+204 < 1 

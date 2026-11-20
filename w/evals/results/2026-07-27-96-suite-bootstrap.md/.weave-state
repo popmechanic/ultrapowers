@@ -1,0 +1,14 @@
+0 < 2 # #96 suite-bootstrap cell — false_block 1→0
+1 < 2 
+2 < 2 Deterministic (no-LLM) cell per docs/superpowers/specs/2026-07-27-gate-derives-inputs.md.
+3 < 2 
+4 < 2 | arm | engine-ref | falseBlock | status |
+5 < 2 |-----|-----------|------------|--------|
+6 < 2 | baseline (0.1.12) | f2efcd3 | 1 | OK |
+7 < 2 | fixed (this branch) | HEAD | 0 | OK |
+8 < 2 
+9 < 2 Counter contract met: the cell's false-block counter went 1→0; no other cell's
+10 < 2 counters regress (no other cells were re-run — the deterministic cell shares no
+11 < 2 state with the A/B protocol rows); pytest suite and harness sims green on this
+12 < 2 branch (see the plan's gate task).
+13 < 2 

@@ -1,0 +1,49 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // Write the starting app a stories-v1 launch builds on: the template (given
+2 < 1 // code), the bundle's store module at client/src/store.js, and one
+3 < 1 // json-render spec per piece at client/src/pieces/<piece>.json: an empty
+4 < 1 // column that runs no action, so the screens check stays red on it until a
+6 > 1 // builder writes the screen. The page finds the specs itself at build time and
+7 < 1 // draws them in the build order client/src/screens/order.json gives.
+5 < 2 // builder writes the screen. The page finds the specs itself at build time.
+6 < 1 // Refuses a directory that holds anything but .git.
+7 < 1 //
+8 < 1 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
+9 < 1 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
+10 < 1 import {join, resolve} from 'node:path';
+12 > 1 import {loadBundle, writePageOrder} from './bundle';
+11 < 2 import {loadBundle} from './bundle';
+12 < 1 
+13 < 1 const TEMPLATE = join(import.meta.dir, 'tinyapp-template');
+14 < 1 const STORE = 'client/src/store.js';
+15 < 1 function main(argv: string[]): number {
+16 < 1   if (argv.length !== 2) {
+17 < 1     console.log('usage: scaffold.ts <bundle> <dir>');
+18 < 1     return 2;
+19 < 1   }
+20 < 1   const b = loadBundle(argv[0]);
+21 < 1   const dst = resolve(argv[1]);
+22 < 1   if (b.page.store !== STORE) {
+23 < 1     console.log(`scaffold: the page's store must be ${STORE}, not ${b.page.store}`);
+24 < 1     return 2;
+25 < 1   }
+26 < 1   if (existsSync(dst) && readdirSync(dst).some((n) => n !== '.git')) {
+27 < 1     console.log(`scaffold: ${dst} is not empty`);
+28 < 1     return 2;
+29 < 1   }
+30 < 1   cpSync(TEMPLATE, dst, {recursive: true});
+31 < 1   copyFileSync(join(b.dir, 'store.js'), join(dst, STORE));
+32 < 1   const pieces = b.cards.map((c) => c.piece);
+33 < 1   const pdir = join(dst, 'client', 'src', 'pieces');
+34 < 1   mkdirSync(pdir, {recursive: true});
+35 < 1   for (const p of pieces) {
+36 < 1     const spec = {root: p, elements: {[p]: {type: 'Stack', props: {}, children: []}}};
+37 < 1     writeFileSync(join(pdir, `${p}.json`), JSON.stringify(spec, null, 2) + '\n');
+38 < 1   }
+40 > 1   writePageOrder(b, dst);
+39 < 1   console.log(`SCAFFOLDED ${dst}: pieces ${pieces.join(', ')}`);
+40 < 1   return 0;
+41 < 1 }
+42 < 1 
+43 < 1 if (import.meta.main) process.exit(main(process.argv.slice(2)));
+44 < 1 

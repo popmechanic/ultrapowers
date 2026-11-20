@@ -1,0 +1,30 @@
+0 < 1 /** Every piece's screen, read at build time.
+1 < 1  *
+2 < 1  * Imported as a Bun macro (`with {type: 'macro'}`): the bundler runs
+3 < 1  * pieceSpecs() and inlines what it answers, so the page carries each
+4 < 1  * client/src/pieces/<piece>.json as a json-render spec and no pieces index
+6 > 1  * is generated. In the order client/src/screens/order.json names (the build order,
+7 < 1  * written by scaffold and compile), then any other piece by file name; `{}` when
+8 < 1  * there is no pieces directory.
+5 < 2  * is generated. Sorted by file name; `{}` when there is no pieces directory.
+6 < 1  * A spec is `{root, elements, state?}` plus an optional `"public": true`.
+7 < 1  */
+8 < 1 import { existsSync, readdirSync, readFileSync } from 'node:fs'
+9 < 1 import { join } from 'node:path'
+10 < 1 
+11 < 1 export function pieceSpecs(): Record<string, unknown> {
+12 < 1   const dir = join(import.meta.dir, '..', 'pieces')
+13 < 1   if (!existsSync(dir)) return {}
+15 > 1   const names = readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length)).sort()
+16 < 1   const orderFile = join(import.meta.dir, 'order.json')
+17 < 1   const order: unknown = existsSync(orderFile) ? JSON.parse(readFileSync(orderFile, 'utf8')).pieces : []
+18 < 1   const first = Array.isArray(order) ? order.map(String).filter((n) => names.includes(n)) : []
+14 < 1   const specs: Record<string, unknown> = {}
+16 > 1   for (const name of [...first, ...names.filter((n) => !first.includes(n))]) {
+17 < 1     specs[name] = JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8'))
+15 < 2   for (const file of readdirSync(dir).filter((f) => f.endsWith('.json')).sort()) {
+16 < 2     specs[file.slice(0, -'.json'.length)] = JSON.parse(readFileSync(join(dir, file), 'utf8'))
+17 < 1   }
+18 < 1   return specs
+19 < 1 }
+20 < 1 

@@ -1,0 +1,177 @@
+0 < 2 import { useRef, useState, type FormEvent } from 'react'
+1 < 2 import { Button } from '../Button'
+2 < 2 import { Select } from '../controls'
+3 < 2 import { Empty } from '../feedback'
+4 < 2 import { Field, Input, Textarea } from '../Input'
+5 < 2 import { Grid, Row, Stack } from '../layout'
+6 < 2 import { Badge, Blob } from '../media'
+7 < 2 import { Card } from '../surface'
+8 < 2 import { Eyebrow, Heading, Text } from '../text'
+9 < 2 
+10 < 2 const TOPICS = [
+11 < 2   { value: 'project', label: 'Start a project' },
+12 < 2   { value: 'support', label: 'Product support' },
+13 < 2   { value: 'press', label: 'Press & partnerships' },
+14 < 2 ]
+15 < 2 
+16 < 2 interface FormState {
+17 < 2   name: string
+18 < 2   email: string
+19 < 2   topic: string
+20 < 2   message: string
+21 < 2 }
+22 < 2 
+23 < 2 const EMPTY_FORM: FormState = { name: '', email: '', topic: 'project', message: '' }
+24 < 2 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+25 < 2 
+26 < 2 /** A drop-in contact section with inline validation and a submitted state. */
+27 < 2 export function ContactBlock() {
+28 < 2   const [form, setForm] = useState<FormState>(EMPTY_FORM)
+29 < 2   const [submitted, setSubmitted] = useState(false)
+30 < 2   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
+31 < 2   const nameRef = useRef<HTMLInputElement>(null)
+32 < 2   const emailRef = useRef<HTMLInputElement>(null)
+33 < 2   const messageRef = useRef<HTMLTextAreaElement>(null)
+34 < 2 
+35 < 2   const update = (key: keyof FormState, value: string) => {
+36 < 2     setForm((current) => ({ ...current, [key]: value }))
+37 < 2     setErrors((current) => ({ ...current, [key]: undefined }))
+38 < 2   }
+39 < 2 
+40 < 2   const submit = (event: FormEvent) => {
+41 < 2     event.preventDefault()
+42 < 2     const next: typeof errors = {}
+43 < 2     if (!form.name.trim()) next.name = 'Add your name so the reply has somewhere to land.'
+44 < 2     if (!EMAIL_PATTERN.test(form.email)) next.email = 'Enter a complete email, like you@example.com.'
+45 < 2     if (form.message.trim().length < 20) next.message = 'Share at least 20 characters so the team can help.'
+46 < 2     setErrors(next)
+47 < 2     if (Object.keys(next).length === 0) {
+48 < 2       setSubmitted(true)
+49 < 2       return
+50 < 2     }
+51 < 2     if (next.name) nameRef.current?.focus()
+52 < 2     else if (next.email) emailRef.current?.focus()
+53 < 2     else messageRef.current?.focus()
+54 < 2   }
+55 < 2 
+56 < 2   return (
+57 < 2     <div style={{ maxWidth: 1040, margin: '0 auto', padding: 24 }}>
+58 < 2       <Grid cols="sidebar" gap={6}>
+59 < 2         <Stack gap={5}>
+60 < 2           <Stack gap={3}>
+61 < 2             <Badge tone="mint">Usually replies in 1 day</Badge>
+62 < 2             <Eyebrow>Contact the studio</Eyebrow>
+63 < 2             <Heading level={1}>Tell us what you’re making.</Heading>
+64 < 2             <Text muted>
+65 < 2               A useful first note is enough. Share the goal, the tricky part, and when you want to ship.
+66 < 2             </Text>
+67 < 2           </Stack>
+68 < 2           <Card variant="tight" motion="tilt-left">
+69 < 2             <Row gap={3} wrap={false} align="top">
+70 < 2               <Blob icon="mail" tone="blue" size="sm" />
+71 < 2               <Stack gap={1}>
+72 < 2                 <Text>Prefer email?</Text>
+73 < 2                 <Text size="sm" muted>hello@example.com</Text>
+74 < 2               </Stack>
+75 < 2             </Row>
+76 < 2           </Card>
+77 < 2           <Card variant="tight" motion="tilt-right">
+78 < 2             <Row gap={3} wrap={false} align="top">
+79 < 2               <Blob icon="clock" tone="yellow" size="sm" />
+80 < 2               <Stack gap={1}>
+81 < 2                 <Text>Thoughtful, not instant</Text>
+82 < 2                 <Text size="sm" muted>Every message is read by a person, Monday–Friday.</Text>
+83 < 2               </Stack>
+84 < 2             </Row>
+85 < 2           </Card>
+86 < 2         </Stack>
+87 < 2 
+88 < 2         <Card>
+89 < 2           {submitted ? (
+90 < 2             <Stack gap={4}>
+91 < 2               <Empty icon="send" title="Message sent">
+92 < 2                 Thanks, {form.name.trim()}. A reply will go to {form.email}.
+93 < 2               </Empty>
+94 < 2               <Button
+95 < 2                 block
+96 < 2                 variant="quiet"
+97 < 2                 onClick={() => {
+98 < 2                   setForm(EMPTY_FORM)
+99 < 2                   setSubmitted(false)
+100 < 2                 }}
+101 < 2               >
+102 < 2                 Send another message
+103 < 2               </Button>
+104 < 2             </Stack>
+105 < 2           ) : (
+106 < 2             <form onSubmit={submit} noValidate>
+107 < 2               <Stack gap={4}>
+108 < 2                 <Field label="Name" error={errors.name}>
+109 < 2                   {(id, describedBy) => (
+110 < 2                     <Input
+111 < 2                       ref={nameRef}
+112 < 2                       id={id}
+113 < 2                       name="name"
+114 < 2                       value={form.name}
+115 < 2                       onChange={(value) => update('name', value)}
+116 < 2                       describedBy={describedBy}
+117 < 2                       invalid={!!errors.name}
+118 < 2                       autoComplete="name"
+119 < 2                       placeholder="Ada Lovelace…"
+120 < 2                     />
+121 < 2                   )}
+122 < 2                 </Field>
+123 < 2                 <Field label="Email" error={errors.email}>
+124 < 2                   {(id, describedBy) => (
+125 < 2                     <Input
+126 < 2                       ref={emailRef}
+127 < 2                       id={id}
+128 < 2                       name="email"
+129 < 2                       type="email"
+130 < 2                       value={form.email}
+131 < 2                       onChange={(value) => update('email', value)}
+132 < 2                       describedBy={describedBy}
+133 < 2                       invalid={!!errors.email}
+134 < 2                       autoComplete="email"
+135 < 2                       spellCheck={false}
+136 < 2                       placeholder="ada@example.com…"
+137 < 2                     />
+138 < 2                   )}
+139 < 2                 </Field>
+140 < 2                 <Field label="What can we help with?">
+141 < 2                   {(id, describedBy) => (
+142 < 2                     <Select
+143 < 2                       id={id}
+144 < 2                       value={form.topic}
+145 < 2                       onChange={(value) => update('topic', value)}
+146 < 2                       options={TOPICS}
+147 < 2                       describedBy={describedBy}
+148 < 2                     />
+149 < 2                   )}
+150 < 2                 </Field>
+151 < 2                 <Field label="Message" error={errors.message} hint="A few sentences is plenty.">
+152 < 2                   {(id, describedBy) => (
+153 < 2                     <Textarea
+154 < 2                       ref={messageRef}
+155 < 2                       id={id}
+156 < 2                       name="message"
+157 < 2                       value={form.message}
+158 < 2                       onChange={(value) => update('message', value)}
+159 < 2                       describedBy={describedBy}
+160 < 2                       invalid={!!errors.message}
+161 < 2                       autoComplete="off"
+162 < 2                       placeholder="We’re building…"
+163 < 2                       rows={6}
+164 < 2                     />
+165 < 2                   )}
+166 < 2                 </Field>
+167 < 2                 <Button block type="submit">Send message</Button>
+168 < 2               </Stack>
+169 < 2             </form>
+170 < 2           )}
+171 < 2         </Card>
+172 < 2       </Grid>
+173 < 2     </div>
+174 < 2   )
+175 < 2 }
+176 < 2 

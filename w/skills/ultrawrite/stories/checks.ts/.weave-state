@@ -1,0 +1,184 @@
+0 < 1 // The code checks a bundle meets before compile. A refusal stops compile; a
+1 < 1 // fact is printed for the author to act on and stops nothing.
+3 > 1 import {KINDS, conceptsOf, type Bundle, type Card} from './bundle';
+4 < 1 import {TEMPLATE_DRAWS, readDraws, undrawn, type Draws} from './parts';
+2 < 2 import {KINDS, conceptsOf, type Bundle} from './bundle';
+3 < 1 import {checkProduct} from './product';
+4 < 1 
+5 < 1 const GESTURES = new Set(['click', 'type', 'key']);
+6 < 1 const isGesture = (g: unknown) =>
+7 < 1   !!g && typeof g === 'object' && Object.keys(g).length === 1 && GESTURES.has(Object.keys(g)[0]);
+8 < 1 const named = (text: string, word: string) => text.split(word).length - 1;
+10 > 1 
+11 < 1 // Every piece `piece` depends on, directly or through others; a circle ends the walk.
+12 < 1 export function below(cards: Card[], piece: string): Set<string> {
+13 < 1   const seen = new Set<string>();
+14 < 1   const walk = (p: string) => {
+15 < 1     for (const d of cards.find((c) => c.piece === p)?.depends_on ?? []) {
+16 < 1       if (!seen.has(d)) {
+17 < 1         seen.add(d);
+18 < 1         walk(d);
+19 < 1       }
+20 < 1     }
+21 < 1   };
+22 < 1   walk(piece);
+23 < 1   return seen;
+24 < 1 }
+9 < 1 
+11 > 1 /** `draws`: what the screen parts draw, the template's by default (#1491). */
+12 < 1 export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DRAWS)): {refusals: string[]; facts: string[]} {
+10 < 2 export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
+11 < 1   const {page, cards} = b;
+12 < 1   const refusals: string[] = [];
+13 < 1   const facts: string[] = [];
+14 < 1   if (!KINDS.includes(page.kind)) refusals.push('page: kind must be behaviour or preserve');
+15 < 1   if (!(Array.isArray(page.summary) && page.summary.length === 3
+16 < 1         && page.summary.every((s) => typeof s === 'string' && s.trim() !== ''))) {
+17 < 1     refusals.push('page: summary must be three sentences');
+18 < 1   }
+19 < 1   if (page.store !== 'client/src/store.js') {
+20 < 1     refusals.push(`page: store must be client/src/store.js, not ${page.store}`);
+21 < 1   }
+22 < 1   if (page.publish !== undefined && !(typeof page.publish?.deploy === 'string' && page.publish.deploy.trim()
+23 < 1       && typeof page.publish?.verify === 'string' && page.publish.verify.trim())) {
+24 < 1     refusals.push('page: publish needs a deploy command and a verify command');
+25 < 1   }
+26 < 1   const stories = page.stories ?? [];
+27 < 1   const storyIds = stories.map((s) => s.id);
+28 < 1   const linkIds = (page.links ?? []).map((l) => l.id);
+29 < 1   // The sandbox's parser reads an id only as S, L or N followed by digits;
+30 < 1   // any other id would compile and then be dropped without a word.
+31 < 1   const idKinds = [['story', 'S', storyIds], ['link', 'L', linkIds],
+32 < 1     ['number', 'N', (page.numbers ?? []).map((n) => n.id)]] as const;
+33 < 1   for (const [what, letter, ids] of idKinds) {
+34 < 1     const seen = new Set<string>();
+35 < 1     for (const id of ids) {
+36 < 1       if (!(typeof id === 'string' && new RegExp(`^${letter}\\d+$`).test(id))) {
+37 < 1         refusals.push(`${what} ${id}: its id must be ${letter} followed by digits, like ${letter}1`);
+38 < 1       } else if (seen.has(id)) {
+39 < 1         refusals.push(`${what} ${id}: its id is used twice`);
+40 < 1       }
+41 < 1       seen.add(id);
+42 < 1     }
+43 < 1   }
+44 < 1   if (page.kind === 'behaviour' && !stories.length) refusals.push('page: a behaviour plan needs at least one story');
+45 < 1   if (page.kind === 'preserve' && !(page.numbers ?? []).length) refusals.push('page: a preserve plan needs at least one number');
+46 < 1 
+47 < 1   const owner = new Map(cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
+48 < 1   const pieces = new Set(cards.map((c) => c.piece));
+49 < 1   const linked = new Set<string>();
+50 < 1   for (const s of stories) {
+51 < 1     const steps = s.steps ?? [];
+52 < 1     if (!steps.length) {
+53 < 1       refusals.push(`story ${s.id} has no steps`);
+54 < 1       continue;
+55 < 1     }
+56 < 1     if (!steps.some((st) => st.layer === 'ui' || st.layer === 'saved')) {
+57 < 1       refusals.push(`story ${s.id}: no step is done on the screen or after a reload; mark one ui or saved`);
+58 < 1     }
+59 < 1     steps.forEach((st, i) => {
+60 < 1       const where = `step ${s.id}.${i + 1}`;
+61 < 1       if (!owner.has(st.tool)) refusals.push(`${where}: tool ${st.tool} is no piece's action`);
+62 < 1       if (!['store', 'ui', 'saved'].includes(st.layer)) refusals.push(`${where}: layer must be store, ui or saved`);
+63 < 1       if (st.layer === 'ui' && !(Array.isArray(st.ui) && st.ui.length && st.ui.every(isGesture))) {
+64 < 1         refusals.push(`${where}: a ui step needs ui = a list of click/type/key gestures`);
+65 < 1       }
+66 < 1       if (st.layer !== 'ui' && st.ui !== undefined) refusals.push(`${where}: only a ui step carries ui`);
+67 < 1       if (st.as !== undefined && !(st.as === null || (typeof st.as === 'string' && st.as !== ''))) {
+68 < 1         refusals.push(`${where}: as must be an email, or null for nobody signed in`);
+69 < 1       }
+70 < 1       if (st.refused && (i !== steps.length - 1 || st.layer !== 'ui')) {
+71 < 1         refusals.push(`${where}: a refused step must be the story's last, and done on the screen (ui)`);
+72 < 1       }
+73 < 1       if (st.link !== undefined) {
+74 < 1         if (linkIds.includes(st.link)) linked.add(st.link);
+75 < 1         else refusals.push(`${where}: link ${st.link} is not on the page`);
+77 > 1         // compile hands the step's check to the one link piece (the tool's owner counted) built after all the others
+78 < 1         const ps = [...new Set([...((page.links ?? []).find((l) => l.id === st.link)?.pieces ?? []), owner.get(st.tool) ?? ''])].filter((p) => pieces.has(p));
+79 < 1         if (linkIds.includes(st.link) && ps.length > 1 && !ps.some((p) => ps.every((q) => q === p || below(cards, p).has(q)))) {
+80 < 1           facts.push(`CODE fact: ${where}: link ${st.link} joins ${ps.join(', ')}, but none of them depends on all the others, so its check goes to ${owner.get(st.tool)}, the tool's owner, and may run before the others are built; make one depend on the rest`);
+81 < 1         }
+76 < 1       }
+77 < 1     });
+78 < 1   }
+79 < 1   for (const l of linkIds) if (!linked.has(l)) refusals.push(`link ${l} has no step`);
+80 < 1   for (const l of page.links ?? []) for (const p of l.pieces ?? []) if (!pieces.has(p)) refusals.push(`link ${l.id}: names piece ${p}, which is no piece`);
+81 < 1 
+83 > 1   const badConcepts = new Set<string>();
+82 < 1   for (const c of cards) {
+84 > 1     if (c.concepts !== undefined && !(Array.isArray(c.concepts) && c.concepts.every((x) => typeof x === 'string'))) {
+85 < 1       refusals.push(`piece ${c.piece}: concepts must be a list of concept ids, not ${JSON.stringify(c.concepts)}`);
+86 < 1       badConcepts.add(c.piece);
+87 < 1     }
+83 < 1     if (!storyIds.includes(c.main_story ?? '')) {
+84 < 1       refusals.push(`piece ${c.piece}: its main story ${c.main_story} is not on the page`);
+85 < 1     }
+86 < 1     for (const d of c.depends_on ?? []) {
+87 < 1       if (!pieces.has(d)) refusals.push(`piece ${c.piece}: depends on ${d}, which is no piece`);
+88 < 1     }
+89 < 1     for (const [t, cells] of Object.entries(c.state?.tables ?? {})) {
+90 < 1       for (const cell of cells) {
+91 < 1         if (named(b.storeText, cell) < 2) {
+92 < 1           facts.push(`CODE fact: piece ${c.piece}: ${t}.${cell} is named fewer than twice in the store module; no action may use it`);
+93 < 1         }
+94 < 1       }
+95 < 1     }
+96 < 1     for (const a of c.actions) {
+97 < 1       for (const r of a.refuses ?? []) {
+98 < 1         const shown = stories.some((s) => (s.steps ?? []).some((st) => st.tool === a.name && st.refused === r));
+99 < 1         const waiver = (page.waivers ?? []).find((w) => w.action === a.name && w.refuses === r);
+100 < 1         if (shown) continue;
+101 < 1         if (!waiver) {
+102 < 1           refusals.push(`piece ${c.piece}: ${a.name} refuses "${r}" but no story shows it; add a story ending in a step with "refused": "${r}", or a waiver if it cannot happen from the screen`);
+103 < 1           continue;
+104 < 1         }
+105 < 1         const prop = (a.inputSchema as {properties?: Record<string, Record<string, unknown>>})?.properties?.[waiver.arg];
+106 < 1         if (waiver.reason !== 'unreachable-from-screen') {
+107 < 1           refusals.push(`waiver ${a.name} "${r}": reason must be unreachable-from-screen`);
+108 < 1         } else if (!prop || typeof prop['x-row-of'] !== 'string') {
+109 < 1           refusals.push(`waiver ${a.name} "${r}": ${waiver.arg} is not a row id, so the screen can pass it; show it with a story instead`);
+110 < 1         }
+111 < 1       }
+112 < 1     }
+113 < 1   }
+114 < 1   const actionsByName = new Map(cards.flatMap((c) => c.actions.map((a) => [a.name, a] as const)));
+115 < 1   for (const w of page.waivers ?? []) {
+116 < 1     const a = actionsByName.get(w.action);
+117 < 1     if (!a || !(a.refuses ?? []).includes(w.refuses)) {
+118 < 1       refusals.push(`waiver ${w.action} "${w.refuses}": no action refuses that`);
+119 < 1     }
+120 < 1   }
+121 < 1   const productErrs = b.product ? checkProduct(b.product) : [];
+122 < 1   for (const e of productErrs) refusals.push(`product.json: ${e}`);
+123 < 1   if (b.product && page.subproject && !productErrs.length) {
+124 < 1     const sp = b.product.subprojects.find((s) => s.id === page.subproject);
+125 < 1     if (!sp) {
+126 < 1       refusals.push(`page: subproject ${page.subproject} is not in product.json`);
+127 < 1     } else {
+128 < 1       for (const c of cards) {
+130 > 1         if (badConcepts.has(c.piece)) continue;
+129 < 1         const named = conceptsOf(c);
+130 < 1         if (!named.length) refusals.push(`piece ${c.piece}: its concept (none) is not one this plan builds`);
+131 < 1         for (const id of named) {
+132 < 1           if (!sp.concepts.includes(id)) refusals.push(`piece ${c.piece}: its concept ${id} is not one this plan builds`);
+133 < 1         }
+134 < 1       }
+135 < 1       // A change to a built plan carries cards only for what it changes.
+136 < 1       if (sp.status !== 'built') {
+137 < 1         for (const id of sp.concepts) {
+138 < 1           if (!cards.some((c) => conceptsOf(c).includes(id))) refusals.push(`concept ${id}: this plan builds it, but no card has it`);
+139 < 1         }
+140 < 1       }
+141 < 1     }
+142 < 1   } else if (b.product && !page.subproject) {
+143 < 1     refusals.push('page: product.json is present, so page.json must name its subproject');
+144 < 1   }
+146 > 1   // A story that expects to see something no screen part draws (#1491): the run adds the part, so
+147 < 1   // the compiler writes it into the task that needs it; the author hears of it here, before launch.
+148 < 1   for (const u of draws ? undrawn(b, draws) : []) {
+149 < 1     const who = u.stories.length > 1 ? `stories ${u.stories.join(', ')} expect` : `story ${u.stories[0]} expects`;
+150 < 1     facts.push(`PARTS fact: ${who} a ${u.role} (such as "${u.name}"), and no screen part draws one yet; the tasks that need it are told to add one`);
+151 < 1   }
+145 < 1   return {refusals, facts};
+146 < 1 }
+147 < 1 

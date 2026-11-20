@@ -1,0 +1,31 @@
+0 < 2 /** Helpers for "-open"/open-by-default demos of overlays that expose no
+1 < 2  * controlled `open` prop (Confirm, Select, Combobox, DropdownMenu, AlertBell,
+2 < 2  * BottomNav's Menu sheet). Where a component DOES expose `open`, use that
+3 < 2  * directly instead — these are a fallback for when it doesn't. */
+4 < 2 
+5 < 2 /** Fires the DOM event sequence Radix's various open triggers listen for.
+6 < 2  * `.click()` alone is not enough: Select opens on pointerdown, not click. */
+7 < 2 export function simulateOpen(el: Element | null | undefined) {
+8 < 2   if (!el || !(el instanceof HTMLElement)) return
+9 < 2   const base = { bubbles: true, cancelable: true, view: window }
+10 < 2   el.dispatchEvent(new PointerEvent('pointerdown', { ...base, pointerId: 1, button: 0, pointerType: 'mouse' }))
+11 < 2   el.dispatchEvent(new MouseEvent('mousedown', base))
+12 < 2   el.dispatchEvent(new PointerEvent('pointerup', { ...base, pointerId: 1, button: 0, pointerType: 'mouse' }))
+13 < 2   el.dispatchEvent(new MouseEvent('mouseup', base))
+14 < 2   el.click()
+15 < 2 }
+16 < 2 
+17 < 2 /** Fires the pointer-enter sequence Tooltip/HoverCard listen for to arm their
+18 < 2  * open-delay timer. Real time still has to elapse afterwards for Radix's own
+19 < 2  * setTimeout to fire — these have no controlled `open` prop, so a demo can
+20 < 2  * only kick off the same interaction a real hover would. */
+21 < 2 export function simulateHover(el: Element | null | undefined) {
+22 < 2   if (!el || !(el instanceof HTMLElement)) return
+23 < 2   const pointerBase = { bubbles: true, cancelable: true, view: window, pointerId: 1, pointerType: 'mouse' as const }
+24 < 2   const mouseBase = { bubbles: true, cancelable: true, view: window }
+25 < 2   el.dispatchEvent(new PointerEvent('pointerover', pointerBase))
+26 < 2   el.dispatchEvent(new PointerEvent('pointermove', pointerBase))
+27 < 2   el.dispatchEvent(new MouseEvent('mouseover', mouseBase))
+28 < 2   el.dispatchEvent(new MouseEvent('mousemove', mouseBase))
+29 < 2 }
+30 < 2 

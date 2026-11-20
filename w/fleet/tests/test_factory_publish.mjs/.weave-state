@@ -249,9 +249,12 @@
 246 < 1       `runs/o-r/${runN}/publish-deploy.log`,
 247 < 1       `runs/o-r/${runN}/publish-verify.log`,
 248 < 1       `runs/o-r/${runN}/publish.json`,
-249 < 1       `runs/o-r/${runN}/status.json`
+250 > 1       `runs/o-r/${runN}/status.json`,
+251 < 1       `runs/o-r/${runN}/view.json`
+249 < 2       `runs/o-r/${runN}/status.json`
 250 < 1     ],
-251 < 1     `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three and the boot log — got ${JSON.stringify(runDirEntries)}`
+252 > 1     `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three, the boot log and the run's view (#1562) — got ${JSON.stringify(runDirEntries)}`
+251 < 2     `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three and the boot log — got ${JSON.stringify(runDirEntries)}`
 252 < 1   )
 253 < 1 
 254 < 1   // [M6] both probe commands ran in the target checkout under the

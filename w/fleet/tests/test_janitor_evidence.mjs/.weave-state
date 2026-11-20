@@ -329,7 +329,7 @@
 308 > 1   const result = await janitor({ argv: ['--json'], exec, now, configPath: NO_CONFIG })
 307 < 2   const result = await janitor({ argv: ['--json'], exec, kata: null, now, configPath: NO_CONFIG })
 308 < 1   assert.deepEqual(onTarget(calls).map((c) => c.args), DELETE_3)
-309 < 1   assert.ok(!calls.some((c) => c.args.some((a) => /plan-run-3|evidence-run-3/.test(String(a)))))
+309 < 2   assert.ok(!calls.some((c) => c.args.some((a) => /plan-run-3|evidence-run-3/.test(String(a)))))
 310 < 1   assert.deepEqual(result.branches, [{ target: TARGET, run: 3, branch: 'ultra/integration-run-3', pr: 12, deleted: true }])
 311 < 1 })
 312 < 1 
@@ -428,9 +428,10 @@
 396 < 1     }
 397 < 1   })
 399 > 1   const result = await janitor({ argv: ['--json'], exec, now, evidence: EV, configPath: NO_CONFIG })
-400 < 1   assert.ok(!('hub' in result) && !('record' in result), 'the result names no hub and no source')
+400 < 2   assert.ok(!('hub' in result) && !('record' in result), 'the result names no hub and no source')
 401 < 1   const hosts = calls.filter((c) => c.cmd === 'ssh').map((c) => c.args.find((a) => !a.startsWith('-') && !/^(BatchMode|ConnectTimeout)=/.test(a)))
-402 < 1   assert.deepEqual([...new Set(hosts)].sort(), ['exe.dev', `${vmOf(3)}.exe.xyz`], 'ssh reaches the lobby and the one running VM, and no hub')
+403 > 1   assert.deepEqual([...new Set(hosts)].sort(), ['exe.dev', `${vmOf(3)}.exe.xyz`], 'ssh reaches the lobby and the one running VM')
+402 < 2   assert.deepEqual([...new Set(hosts)].sort(), ['exe.dev', `${vmOf(3)}.exe.xyz`], 'ssh reaches the lobby and the one running VM, and no hub')
 398 < 2   const result = await janitor({ argv: ['--json'], exec, kata: hub.client, now, evidence: EV, configPath: NO_CONFIG })
 399 < 2   assert.equal(result.record, 'evidence', 'the default source')
 400 < 2   assert.equal(hub.requests.length, 0, 'the hub is not asked')

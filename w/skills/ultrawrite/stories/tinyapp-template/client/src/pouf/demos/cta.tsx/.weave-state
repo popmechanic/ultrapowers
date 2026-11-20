@@ -1,0 +1,13 @@
+0 < 2 import { CTA } from '../cta'
+1 < 2 import { Button } from '../Button'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 export const ctaDemos: Demo[] = [
+5 < 2   { id: 'default', render: () => (
+6 < 2       <CTA title="Ready to get puffy?" description="One command drops a component into your project." action={<Button size="lg">Get started</Button>} />
+7 < 2     ) },
+8 < 2   { id: 'tones', render: () => (
+9 < 2       <CTA tone="mint" title="Start your free trial" action={<><Button size="lg" tone="mint">Start free</Button><Button size="lg" variant="quiet">Talk to sales</Button></>} />
+10 < 2     ) },
+11 < 2 ]
+12 < 2 

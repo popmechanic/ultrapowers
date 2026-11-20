@@ -1,0 +1,58 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Field } from '../Input'
+2 < 2 import { NumberInput } from '../NumberInput'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 function InteractiveNumberInput({
+6 < 2   label,
+7 < 2   initial,
+8 < 2   step = 1,
+9 < 2   min,
+10 < 2   max,
+11 < 2   invalid = false,
+12 < 2   subject = false,
+13 < 2 }: {
+14 < 2   label: string
+15 < 2   initial: string
+16 < 2   step?: number
+17 < 2   min?: number
+18 < 2   max?: number
+19 < 2   invalid?: boolean
+20 < 2   subject?: boolean
+21 < 2 }) {
+22 < 2   const [value, setValue] = useState(initial)
+23 < 2   const field = (
+24 < 2     <Field
+25 < 2       label={label}
+26 < 2       hint={label === 'Stepper' ? 'Steps by 0.1; floor at 0.' : undefined}
+27 < 2       error={invalid ? 'Must be a number' : undefined}
+28 < 2     >
+29 < 2       {(id, d) => (
+30 < 2         <NumberInput
+31 < 2           id={id}
+32 < 2           describedBy={d}
+33 < 2           value={value}
+34 < 2           onChange={setValue}
+35 < 2           step={step}
+36 < 2           min={min}
+37 < 2           max={max}
+38 < 2           invalid={invalid}
+39 < 2         />
+40 < 2       )}
+41 < 2     </Field>
+42 < 2   )
+43 < 2   return subject ? <span data-subject style={{ display: 'block', width: '100%' }}>{field}</span> : field
+44 < 2 }
+45 < 2 
+46 < 2 export const numberInputDemos: Demo[] = [
+47 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveNumberInput label="Stepper" initial="1.5" step={0.1} min={0} subject /> },
+48 < 2   { id: 'at-min', render: () => <InteractiveNumberInput label="At minimum" initial="0" min={0} max={10} /> },
+49 < 2   { id: 'at-max', render: () => <InteractiveNumberInput label="At maximum" initial="10" min={0} max={10} /> },
+50 < 2   { id: 'invalid', render: () => <InteractiveNumberInput label="Invalid" initial="abc" invalid /> },
+51 < 2   { id: 'disabled', render: () => (
+52 < 2       <Field label="Disabled">
+53 < 2         {(id, d) => <NumberInput id={id} describedBy={d} value="5" onChange={() => {}} disabled />}
+54 < 2       </Field>
+55 < 2     ) },
+56 < 2 ]
+57 < 2 

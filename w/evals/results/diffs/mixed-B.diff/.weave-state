@@ -1,0 +1,492 @@
+0 < 2 diff --git a/apistub/app.py b/apistub/app.py
+1 < 2 new file mode 100644
+2 < 2 index 0000000..3600ced
+3 < 2 --- /dev/null
+4 < 2 +++ b/apistub/app.py
+5 < 2 @@ -0,0 +1,27 @@
+6 < 2 +"""Minimal router dispatching HTTP-shaped requests to handlers."""
+7 < 2 +
+8 < 2 +import json
+9 < 2 +import re
+10 < 2 +
+11 < 2 +from apistub.handlers import create_user, get_user
+12 < 2 +
+13 < 2 +_USER_ID_RE = re.compile(r"^/users/(\d+)$")
+14 < 2 +
+15 < 2 +
+16 < 2 +def route(store, method, path, payload=None):
+17 < 2 +    """Dispatch `(method, path)` to the matching handler.
+18 < 2 +
+19 < 2 +    Returns a `(status, body)` tuple:
+20 < 2 +    - `("POST", "/users")` -> `create_user(store, payload)`.
+21 < 2 +    - `("GET", "/users/<digits>")` -> `get_user(store, int(<digits>))`.
+22 < 2 +    - Anything else -> `(404, json.dumps({"errors": ["no route"]}))`.
+23 < 2 +    """
+24 < 2 +    if method == "POST" and path == "/users":
+25 < 2 +        return create_user(store, payload)
+26 < 2 +
+27 < 2 +    if method == "GET":
+28 < 2 +        match = _USER_ID_RE.match(path)
+29 < 2 +        if match:
+30 < 2 +            return get_user(store, int(match.group(1)))
+31 < 2 +
+32 < 2 +    return 404, json.dumps({"errors": ["no route"]})
+33 < 2 diff --git a/apistub/handlers.py b/apistub/handlers.py
+34 < 2 new file mode 100644
+35 < 2 index 0000000..be5732f
+36 < 2 --- /dev/null
+37 < 2 +++ b/apistub/handlers.py
+38 < 2 @@ -0,0 +1,35 @@
+39 < 2 +"""HTTP-shaped handler functions for the users API, no network."""
+40 < 2 +
+41 < 2 +import json
+42 < 2 +
+43 < 2 +from apistub.serialize import to_json
+44 < 2 +from apistub.validate import validate_payload
+45 < 2 +
+46 < 2 +
+47 < 2 +def create_user(store, payload):
+48 < 2 +    """Validate `payload` and, if valid, add a new user to `store`.
+49 < 2 +
+50 < 2 +    Returns a `(status, body)` tuple: `(400, ...)` with a JSON list of
+51 < 2 +    errors when the payload is invalid, otherwise `(201, ...)` with the
+52 < 2 +    newly created user serialized to JSON.
+53 < 2 +    """
+54 < 2 +    errors = validate_payload(payload)
+55 < 2 +    if errors:
+56 < 2 +        return 400, json.dumps({"errors": errors})
+57 < 2 +
+58 < 2 +    user = store.add(payload["name"], payload["email"])
+59 < 2 +    return 201, to_json(user)
+60 < 2 +
+61 < 2 +
+62 < 2 +def get_user(store, user_id):
+63 < 2 +    """Look up `user_id` in `store`.
+64 < 2 +
+65 < 2 +    Returns a `(status, body)` tuple: `(200, ...)` with the user
+66 < 2 +    serialized to JSON when found, otherwise `(404, ...)` with a JSON
+67 < 2 +    error list.
+68 < 2 +    """
+69 < 2 +    user = store.get(user_id)
+70 < 2 +    if user is None:
+71 < 2 +        return 404, json.dumps({"errors": ["not found"]})
+72 < 2 +
+73 < 2 +    return 200, to_json(user)
+74 < 2 diff --git a/apistub/schema.py b/apistub/schema.py
+75 < 2 new file mode 100644
+76 < 2 index 0000000..129fba2
+77 < 2 --- /dev/null
+78 < 2 +++ b/apistub/schema.py
+79 < 2 @@ -0,0 +1,14 @@
+80 < 2 +"""User schema: the dataclass and the creation-payload field contract."""
+81 < 2 +
+82 < 2 +from dataclasses import dataclass
+83 < 2 +
+84 < 2 +
+85 < 2 +@dataclass
+86 < 2 +class User:
+87 < 2 +    id: int
+88 < 2 +    name: str
+89 < 2 +    email: str
+90 < 2 +
+91 < 2 +
+92 < 2 +# The creation-payload contract. Insertion order matters: name first.
+93 < 2 +FIELDS = {"name": str, "email": str}
+94 < 2 diff --git a/apistub/serialize.py b/apistub/serialize.py
+95 < 2 new file mode 100644
+96 < 2 index 0000000..12abb30
+97 < 2 --- /dev/null
+98 < 2 +++ b/apistub/serialize.py
+99 < 2 @@ -0,0 +1,18 @@
+100 < 2 +"""Serialization helpers for apistub schema objects."""
+101 < 2 +
+102 < 2 +import json
+103 < 2 +from collections import OrderedDict
+104 < 2 +
+105 < 2 +from apistub.schema import User
+106 < 2 +
+107 < 2 +
+108 < 2 +def to_json(user: User) -> str:
+109 < 2 +    """Serialize a ``User`` to a JSON string with keys in id, name, email order."""
+110 < 2 +    payload = OrderedDict(
+111 < 2 +        (
+112 < 2 +            ("id", user.id),
+113 < 2 +            ("name", user.name),
+114 < 2 +            ("email", user.email),
+115 < 2 +        )
+116 < 2 +    )
+117 < 2 +    return json.dumps(payload)
+118 < 2 diff --git a/apistub/store.py b/apistub/store.py
+119 < 2 new file mode 100644
+120 < 2 index 0000000..8fdd7f1
+121 < 2 --- /dev/null
+122 < 2 +++ b/apistub/store.py
+123 < 2 @@ -0,0 +1,28 @@
+124 < 2 +"""In-memory storage for User records."""
+125 < 2 +
+126 < 2 +from typing import Dict, List, Optional
+127 < 2 +
+128 < 2 +from apistub.schema import User
+129 < 2 +
+130 < 2 +
+131 < 2 +class MemoryStore:
+132 < 2 +    """A simple in-memory store for `User` records."""
+133 < 2 +
+134 < 2 +    def __init__(self) -> None:
+135 < 2 +        self._users: Dict[int, User] = {}
+136 < 2 +        self._next_id: int = 1
+137 < 2 +
+138 < 2 +    def add(self, name: str, email: str) -> User:
+139 < 2 +        """Create a new `User` with an auto-incrementing id and store it."""
+140 < 2 +        user = User(self._next_id, name, email)
+141 < 2 +        self._users[user.id] = user
+142 < 2 +        self._next_id += 1
+143 < 2 +        return user
+144 < 2 +
+145 < 2 +    def get(self, user_id: int) -> Optional[User]:
+146 < 2 +        """Return the `User` with the given id, or `None` if not found."""
+147 < 2 +        return self._users.get(user_id)
+148 < 2 +
+149 < 2 +    def list(self) -> List[User]:
+150 < 2 +        """Return all users in insertion order."""
+151 < 2 +        return list(self._users.values())
+152 < 2 diff --git a/apistub/validate.py b/apistub/validate.py
+153 < 2 new file mode 100644
+154 < 2 index 0000000..e06ac24
+155 < 2 --- /dev/null
+156 < 2 +++ b/apistub/validate.py
+157 < 2 @@ -0,0 +1,24 @@
+158 < 2 +"""Payload validation against the User creation-payload field contract."""
+159 < 2 +
+160 < 2 +from apistub.schema import FIELDS
+161 < 2 +
+162 < 2 +
+163 < 2 +def validate_payload(payload):
+164 < 2 +    """Validate a creation payload against `schema.FIELDS`.
+165 < 2 +
+166 < 2 +    Returns a list of error strings, empty when the payload is valid.
+167 < 2 +    Unknown keys in the payload are ignored.
+168 < 2 +    """
+169 < 2 +    errors = []
+170 < 2 +
+171 < 2 +    for key, declared_type in FIELDS.items():
+172 < 2 +        if key not in payload:
+173 < 2 +            errors.append(f"missing: {key}")
+174 < 2 +        elif not isinstance(payload[key], declared_type):
+175 < 2 +            errors.append(f"wrong type: {key}")
+176 < 2 +
+177 < 2 +    email = payload.get("email")
+178 < 2 +    if isinstance(email, str) and "@" not in email:
+179 < 2 +        errors.append("invalid: email")
+180 < 2 +
+181 < 2 +    return errors
+182 < 2 diff --git a/tests/test_app.py b/tests/test_app.py
+183 < 2 new file mode 100644
+184 < 2 index 0000000..1f4a1f0
+185 < 2 --- /dev/null
+186 < 2 +++ b/tests/test_app.py
+187 < 2 @@ -0,0 +1,58 @@
+188 < 2 +import json
+189 < 2 +
+190 < 2 +from apistub.app import route
+191 < 2 +from apistub.store import MemoryStore
+192 < 2 +
+193 < 2 +
+194 < 2 +def test_route_post_users_creates_user():
+195 < 2 +    store = MemoryStore()
+196 < 2 +    status, body = route(
+197 < 2 +        store, "POST", "/users", {"name": "Ada", "email": "ada@ex.com"}
+198 < 2 +    )
+199 < 2 +    assert status == 201
+200 < 2 +    assert json.loads(body) == {"id": 1, "name": "Ada", "email": "ada@ex.com"}
+201 < 2 +
+202 < 2 +
+203 < 2 +def test_route_post_users_returns_400_on_invalid_payload():
+204 < 2 +    store = MemoryStore()
+205 < 2 +    status, body = route(store, "POST", "/users", {"email": "ada-ex.com"})
+206 < 2 +    assert status == 400
+207 < 2 +    assert json.loads(body) == {
+208 < 2 +        "errors": ["missing: name", "invalid: email"]
+209 < 2 +    }
+210 < 2 +
+211 < 2 +
+212 < 2 +def test_route_get_users_id_returns_existing_user():
+213 < 2 +    store = MemoryStore()
+214 < 2 +    user = store.add("Ada", "ada@ex.com")
+215 < 2 +    status, body = route(store, "GET", f"/users/{user.id}")
+216 < 2 +    assert status == 200
+217 < 2 +    assert json.loads(body) == {"id": 1, "name": "Ada", "email": "ada@ex.com"}
+218 < 2 +
+219 < 2 +
+220 < 2 +def test_route_get_users_id_returns_404_when_missing():
+221 < 2 +    store = MemoryStore()
+222 < 2 +    status, body = route(store, "GET", "/users/999")
+223 < 2 +    assert status == 404
+224 < 2 +    assert json.loads(body) == {"errors": ["not found"]}
+225 < 2 +
+226 < 2 +
+227 < 2 +def test_route_returns_404_for_unknown_route():
+228 < 2 +    store = MemoryStore()
+229 < 2 +    status, body = route(store, "DELETE", "/users/1")
+230 < 2 +    assert status == 404
+231 < 2 +    assert json.loads(body) == {"errors": ["no route"]}
+232 < 2 +
+233 < 2 +
+234 < 2 +def test_route_returns_404_for_non_digit_user_id():
+235 < 2 +    store = MemoryStore()
+236 < 2 +    status, body = route(store, "GET", "/users/abc")
+237 < 2 +    assert status == 404
+238 < 2 +    assert json.loads(body) == {"errors": ["no route"]}
+239 < 2 +
+240 < 2 +
+241 < 2 +def test_route_returns_404_for_unknown_path():
+242 < 2 +    store = MemoryStore()
+243 < 2 +    status, body = route(store, "GET", "/unknown")
+244 < 2 +    assert status == 404
+245 < 2 +    assert json.loads(body) == {"errors": ["no route"]}
+246 < 2 diff --git a/tests/test_handlers.py b/tests/test_handlers.py
+247 < 2 new file mode 100644
+248 < 2 index 0000000..c81276f
+249 < 2 --- /dev/null
+250 < 2 +++ b/tests/test_handlers.py
+251 < 2 @@ -0,0 +1,59 @@
+252 < 2 +import json
+253 < 2 +
+254 < 2 +from apistub.handlers import create_user, get_user
+255 < 2 +from apistub.store import MemoryStore
+256 < 2 +
+257 < 2 +
+258 < 2 +def test_create_user_returns_400_with_errors_when_payload_invalid():
+259 < 2 +    store = MemoryStore()
+260 < 2 +    status, body = create_user(store, {"email": "ada-ex.com"})
+261 < 2 +    assert status == 400
+262 < 2 +    assert json.loads(body) == {
+263 < 2 +        "errors": ["missing: name", "invalid: email"]
+264 < 2 +    }
+265 < 2 +
+266 < 2 +
+267 < 2 +def test_create_user_does_not_add_to_store_when_invalid():
+268 < 2 +    store = MemoryStore()
+269 < 2 +    create_user(store, {})
+270 < 2 +    assert store.list() == []
+271 < 2 +
+272 < 2 +
+273 < 2 +def test_create_user_returns_201_with_serialized_user_when_valid():
+274 < 2 +    store = MemoryStore()
+275 < 2 +    status, body = create_user(store, {"name": "Ada", "email": "ada@ex.com"})
+276 < 2 +    assert status == 201
+277 < 2 +    assert body == '{"id": 1, "name": "Ada", "email": "ada@ex.com"}'
+278 < 2 +
+279 < 2 +
+280 < 2 +def test_create_user_adds_to_store_when_valid():
+281 < 2 +    store = MemoryStore()
+282 < 2 +    create_user(store, {"name": "Ada", "email": "ada@ex.com"})
+283 < 2 +    users = store.list()
+284 < 2 +    assert len(users) == 1
+285 < 2 +    assert users[0].name == "Ada"
+286 < 2 +    assert users[0].email == "ada@ex.com"
+287 < 2 +
+288 < 2 +
+289 < 2 +def test_create_user_ignores_unknown_keys():
+290 < 2 +    store = MemoryStore()
+291 < 2 +    status, body = create_user(
+292 < 2 +        store, {"name": "Ada", "email": "ada@ex.com", "extra": "ignored"}
+293 < 2 +    )
+294 < 2 +    assert status == 201
+295 < 2 +    assert json.loads(body) == {"id": 1, "name": "Ada", "email": "ada@ex.com"}
+296 < 2 +
+297 < 2 +
+298 < 2 +def test_get_user_returns_200_with_serialized_user_when_found():
+299 < 2 +    store = MemoryStore()
+300 < 2 +    user = store.add("Ada", "ada@ex.com")
+301 < 2 +    status, body = get_user(store, user.id)
+302 < 2 +    assert status == 200
+303 < 2 +    assert body == '{"id": 1, "name": "Ada", "email": "ada@ex.com"}'
+304 < 2 +
+305 < 2 +
+306 < 2 +def test_get_user_returns_404_when_missing():
+307 < 2 +    store = MemoryStore()
+308 < 2 +    status, body = get_user(store, 999)
+309 < 2 +    assert status == 404
+310 < 2 +    assert json.loads(body) == {"errors": ["not found"]}
+311 < 2 diff --git a/tests/test_schema.py b/tests/test_schema.py
+312 < 2 new file mode 100644
+313 < 2 index 0000000..accf1e8
+314 < 2 --- /dev/null
+315 < 2 +++ b/tests/test_schema.py
+316 < 2 @@ -0,0 +1,25 @@
+317 < 2 +import dataclasses
+318 < 2 +
+319 < 2 +from apistub import schema
+320 < 2 +from apistub.schema import FIELDS, User
+321 < 2 +
+322 < 2 +
+323 < 2 +def test_user_is_dataclass_with_expected_fields():
+324 < 2 +    assert dataclasses.is_dataclass(User)
+325 < 2 +    field_types = {f.name: f.type for f in dataclasses.fields(User)}
+326 < 2 +    assert field_types == {"id": int, "name": str, "email": str}
+327 < 2 +
+328 < 2 +
+329 < 2 +def test_user_construction_and_field_values():
+330 < 2 +    user = User(1, "Ada", "ada@ex.com")
+331 < 2 +    assert user.id == 1
+332 < 2 +    assert user.name == "Ada"
+333 < 2 +    assert user.email == "ada@ex.com"
+334 < 2 +
+335 < 2 +
+336 < 2 +def test_fields_constant_contents():
+337 < 2 +    assert FIELDS == {"name": str, "email": str}
+338 < 2 +
+339 < 2 +
+340 < 2 +def test_fields_constant_insertion_order_name_first():
+341 < 2 +    assert list(FIELDS.keys()) == ["name", "email"]
+342 < 2 diff --git a/tests/test_serialize.py b/tests/test_serialize.py
+343 < 2 new file mode 100644
+344 < 2 index 0000000..660cee3
+345 < 2 --- /dev/null
+346 < 2 +++ b/tests/test_serialize.py
+347 < 2 @@ -0,0 +1,12 @@
+348 < 2 +from apistub.schema import User
+349 < 2 +from apistub.serialize import to_json
+350 < 2 +
+351 < 2 +
+352 < 2 +def test_to_json_key_order_and_format():
+353 < 2 +    user = User(1, "Ada", "ada@ex.com")
+354 < 2 +    assert to_json(user) == '{"id": 1, "name": "Ada", "email": "ada@ex.com"}'
+355 < 2 +
+356 < 2 +
+357 < 2 +def test_to_json_different_values():
+358 < 2 +    user = User(42, "Grace", "grace@example.com")
+359 < 2 +    assert to_json(user) == '{"id": 42, "name": "Grace", "email": "grace@example.com"}'
+360 < 2 diff --git a/tests/test_store.py b/tests/test_store.py
+361 < 2 new file mode 100644
+362 < 2 index 0000000..cc29cc1
+363 < 2 --- /dev/null
+364 < 2 +++ b/tests/test_store.py
+365 < 2 @@ -0,0 +1,44 @@
+366 < 2 +from apistub.schema import User
+367 < 2 +from apistub.store import MemoryStore
+368 < 2 +
+369 < 2 +
+370 < 2 +def test_add_returns_user_with_auto_incrementing_id_starting_at_1():
+371 < 2 +    store = MemoryStore()
+372 < 2 +    user = store.add("Ada", "ada@ex.com")
+373 < 2 +    assert isinstance(user, User)
+374 < 2 +    assert user.id == 1
+375 < 2 +    assert user.name == "Ada"
+376 < 2 +    assert user.email == "ada@ex.com"
+377 < 2 +
+378 < 2 +
+379 < 2 +def test_add_increments_id_for_each_new_user():
+380 < 2 +    store = MemoryStore()
+381 < 2 +    first = store.add("Ada", "ada@ex.com")
+382 < 2 +    second = store.add("Bob", "bob@ex.com")
+383 < 2 +    third = store.add("Cy", "cy@ex.com")
+384 < 2 +    assert (first.id, second.id, third.id) == (1, 2, 3)
+385 < 2 +
+386 < 2 +
+387 < 2 +def test_get_returns_the_user_by_id():
+388 < 2 +    store = MemoryStore()
+389 < 2 +    user = store.add("Ada", "ada@ex.com")
+390 < 2 +    assert store.get(user.id) == user
+391 < 2 +
+392 < 2 +
+393 < 2 +def test_get_returns_none_for_unknown_id():
+394 < 2 +    store = MemoryStore()
+395 < 2 +    store.add("Ada", "ada@ex.com")
+396 < 2 +    assert store.get(999) is None
+397 < 2 +
+398 < 2 +
+399 < 2 +def test_list_returns_all_users_in_insertion_order():
+400 < 2 +    store = MemoryStore()
+401 < 2 +    first = store.add("Ada", "ada@ex.com")
+402 < 2 +    second = store.add("Bob", "bob@ex.com")
+403 < 2 +    third = store.add("Cy", "cy@ex.com")
+404 < 2 +    assert store.list() == [first, second, third]
+405 < 2 +
+406 < 2 +
+407 < 2 +def test_list_returns_empty_list_when_no_users_added():
+408 < 2 +    store = MemoryStore()
+409 < 2 +    assert store.list() == []
+410 < 2 diff --git a/tests/test_validate.py b/tests/test_validate.py
+411 < 2 new file mode 100644
+412 < 2 index 0000000..7a93fcf
+413 < 2 --- /dev/null
+414 < 2 +++ b/tests/test_validate.py
+415 < 2 @@ -0,0 +1,75 @@
+416 < 2 +from apistub.validate import validate_payload
+417 < 2 +
+418 < 2 +
+419 < 2 +def test_valid_payload_returns_empty_list():
+420 < 2 +    assert validate_payload({"name": "Ada", "email": "ada@ex.com"}) == []
+421 < 2 +
+422 < 2 +
+423 < 2 +def test_missing_name_reported():
+424 < 2 +    assert validate_payload({"email": "ada@ex.com"}) == ["missing: name"]
+425 < 2 +
+426 < 2 +
+427 < 2 +def test_missing_email_reported():
+428 < 2 +    assert validate_payload({"name": "Ada"}) == ["missing: email"]
+429 < 2 +
+430 < 2 +
+431 < 2 +def test_missing_both_reported_in_fields_order():
+432 < 2 +    assert validate_payload({}) == ["missing: name", "missing: email"]
+433 < 2 +
+434 < 2 +
+435 < 2 +def test_wrong_type_name_reported():
+436 < 2 +    assert validate_payload({"name": 123, "email": "ada@ex.com"}) == [
+437 < 2 +        "wrong type: name"
+438 < 2 +    ]
+439 < 2 +
+440 < 2 +
+441 < 2 +def test_wrong_type_email_reported():
+442 < 2 +    assert validate_payload({"name": "Ada", "email": 123}) == [
+443 < 2 +        "wrong type: email"
+444 < 2 +    ]
+445 < 2 +
+446 < 2 +
+447 < 2 +def test_bool_is_not_valid_str_type():
+448 < 2 +    # bool is a subclass of int in Python, but not of str; ensure the
+449 < 2 +    # declared-type check still rejects it for a str-typed field.
+450 < 2 +    assert validate_payload({"name": True, "email": "ada@ex.com"}) == [
+451 < 2 +        "wrong type: name"
+452 < 2 +    ]
+453 < 2 +
+454 < 2 +
+455 < 2 +def test_missing_and_wrong_type_combined_in_fields_order():
+456 < 2 +    assert validate_payload({"email": 123}) == [
+457 < 2 +        "missing: name",
+458 < 2 +        "wrong type: email",
+459 < 2 +    ]
+460 < 2 +
+461 < 2 +
+462 < 2 +def test_invalid_email_missing_at_sign():
+463 < 2 +    assert validate_payload({"name": "Ada", "email": "ada-ex.com"}) == [
+464 < 2 +        "invalid: email"
+465 < 2 +    ]
+466 < 2 +
+467 < 2 +
+468 < 2 +def test_invalid_email_appended_after_field_errors():
+469 < 2 +    assert validate_payload({"email": "ada-ex.com"}) == [
+470 < 2 +        "missing: name",
+471 < 2 +        "invalid: email",
+472 < 2 +    ]
+473 < 2 +
+474 < 2 +
+475 < 2 +def test_email_wrong_type_does_not_also_trigger_invalid_email():
+476 < 2 +    # email must be a str to be checked for "@"; if it's the wrong type
+477 < 2 +    # only "wrong type: email" should be reported, not "invalid: email".
+478 < 2 +    assert validate_payload({"name": "Ada", "email": 123}) == [
+479 < 2 +        "wrong type: email"
+480 < 2 +    ]
+481 < 2 +
+482 < 2 +
+483 < 2 +def test_unknown_keys_are_ignored():
+484 < 2 +    payload = {"name": "Ada", "email": "ada@ex.com", "extra": "ignored"}
+485 < 2 +    assert validate_payload(payload) == []
+486 < 2 +
+487 < 2 +
+488 < 2 +def test_unknown_keys_ignored_with_other_errors_present():
+489 < 2 +    payload = {"email": "ada@ex.com", "extra": "ignored"}
+490 < 2 +    assert validate_payload(payload) == ["missing: name"]
+491 < 2 

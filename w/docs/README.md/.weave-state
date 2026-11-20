@@ -1,0 +1,21 @@
+0 < 1 # docs/
+1 < 1 
+3 > 1 `docs/superpowers/` — specs, plans and release notes — is **untracked on purpose** (#544,
+4 < 1 operator decision 2026-09-02): it is listed in `.git/info/exclude`, so a fresh clone and a
+5 < 1 fleet sandbox find only this file and `docs/assets/` here.
+2 < 2 `docs/superpowers/` — the specs, plans, gate-verdict records, intents, the docket and the
+3 < 2 catch ledger — is **untracked on purpose** (#544, operator decision
+4 < 2 2026-09-02): the design record stays out of the GitHub project until the ledger work
+5 < 2 (#485, #484, #417) replicates it through a hosted store. It exists on two devices — the
+6 < 2 laptop checkout and the orchestrator's `/home/exedev/repo` — each with `docs/superpowers/`
+7 < 2 in `.git/info/exclude`, and `rsync` between them is the interim replication
+8 < 2 (`fleet/RUNBOOK.md` §Live W1 run). A fresh clone, a fleet sandbox and CI correctly find
+9 < 2 nothing here but this file and the tracked media.
+10 < 1 
+12 > 1 A plan reaches the fleet only as the one commit the launcher pushes to the evidence
+13 < 1 repository, never by a path under `docs/`. Tests that need a plan read frozen copies under
+14 < 1 `tests/fixtures/plans/`.
+11 < 2 A plan does not need to be in git to run: `drive-one.mjs --plan-from-assignment` ships the
+12 < 2 plan and its verdict record in the run assignment and the sandbox compiles from that copy.
+13 < 2 The tests that used to read the live plans read frozen copies under `tests/fixtures/plans/`.
+14 < 1 

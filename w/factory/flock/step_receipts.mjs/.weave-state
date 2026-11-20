@@ -1,0 +1,49 @@
+0 < 1 // Every story step's receipt: what the step changed in the store, kept for
+2 > 1 // green and red steps alike. Pure: one small row per checker result, in clause
+3 < 1 // order, the diff cut to its first 50 entries. A result with no `diff` (the step
+4 < 1 // stopped before the checker read the store, as at its `do` stage) keeps its row
+5 < 1 // with `diff: null`, so a checked step never goes missing from the PR (#1491).
+1 < 2 // green and red steps alike. Pure: one small row per checker result that
+2 < 2 // carries a `diff`, in clause order, the diff cut to its first 50 entries.
+4 > 1 import fs from 'node:fs'
+5 < 1 import path from 'node:path'
+6 < 1 
+3 < 1 const MAX_DIFF = 50
+5 > 1 
+7 > 1 // One checker result per clause in a checks/ folder, keyed by clause: the edge's own
+8 < 1 // (`<clause>@edge.json`) when it wrote one, else the newest by mtime across every copy.
+6 < 2 // The newest checker result per clause in a checks/ folder (by mtime), keyed by clause.
+7 < 1 export function latestResults (dir) {
+8 < 1   const by = new Map()
+9 < 1   if (!fs.existsSync(dir)) return by
+10 < 1   for (const f of fs.readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+11 < 1     const p = path.join(dir, f)
+12 < 1     let r
+13 < 1     try { r = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { continue }
+14 < 1     if (!r || typeof r.clause !== 'string') continue
+15 < 1     const m = fs.statSync(p).mtimeMs
+17 > 1     const edge = f.endsWith('@edge.json')
+16 < 1     const prev = by.get(r.clause)
+18 > 1     if (!prev || (edge && !prev.edge) || (edge === prev.edge && prev.m < m)) by.set(r.clause, { m, r, edge })
+17 < 2     if (!prev || prev.m < m) by.set(r.clause, { m, r })
+18 < 1   }
+19 < 1   return new Map([...by].map(([k, v]) => [k, v.r]))
+20 < 1 }
+21 < 1 
+4 < 1 
+5 < 1 export function stepReceipts (results) {
+6 < 1   return [...(results || [])]
+8 > 1     .filter((r) => r && typeof r.clause === 'string')
+7 < 2     .filter((r) => r && typeof r.clause === 'string' && Array.isArray(r.diff))
+8 < 1     .map((r) => ({
+9 < 1       clause: r.clause,
+10 < 1       exit: r.exit,
+11 < 1       stage: r.stage,
+13 > 1       diff: Array.isArray(r.diff) ? r.diff.slice(0, MAX_DIFF) : null,
+14 < 1       truncated: Array.isArray(r.diff) && r.diff.length > MAX_DIFF
+12 < 2       diff: r.diff.slice(0, MAX_DIFF),
+13 < 2       truncated: r.diff.length > MAX_DIFF
+14 < 1     }))
+15 < 1     .sort((a, b) => (a.clause < b.clause ? -1 : a.clause > b.clause ? 1 : 0))
+16 < 1 }
+17 < 1 

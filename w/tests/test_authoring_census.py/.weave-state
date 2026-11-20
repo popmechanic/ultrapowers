@@ -1,0 +1,1100 @@
+1 > 1 """The authoring census: one table per release, the register, and the fetch.
+0 < 2 """The authoring census: two exams in one file.
+1 < 2 
+2 < 2 Part one — one table per release, the register, and the fetch.
+3 < 1 
+4 < 1 The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
+5 < 1 
+6 < 1   * (a)/[M1] three run directories under one root — `run-131` carrying the
+7 < 1     Context's example record, `run-133` carrying a record whose `tally` lacks
+8 < 1     `rejected` and whose first question has no `recommended`, and `run-9`
+9 < 1     carrying a record from before this plan, with no `authoring` key at all —
+10 < 1     print the header line exactly, one row per directory in ascending numeric
+11 < 1     N, and the `totals:` line.
+12 < 1   * (b)/[M1] a `run-<N>` directory that holds no `gate-verdicts.json` earns no
+13 < 1     row and is not counted in `plans` — asserted as: the same root plus such a
+14 < 1     directory prints byte-for-byte what (a) printed.
+15 < 1   * (c)/[M2] `--register` prints one line per option of every question of every
+16 < 1     row, in row order then question order then option order, and no header.
+17 < 1   * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
+19 > 1     record and the status from the run's folder in the evidence
+18 < 2     record, the status and the report from the run's folder in the evidence
+19 < 1     repository (#1395), skips the run with no record with one stderr line
+20 < 1     naming it,
+21 < 1     invokes the binary `--gh` names and no other, and then prints the M1 table
+22 < 1     over `<dir>`.
+23 < 1 
+24 < 1 The script is driven as a subprocess over directories built under `tmp_path`,
+25 < 1 with a fake `gh` written there that answers from a table keyed on the `ref=`
+26 < 1 and path of its argv — the shape the task's Context asks for.
+27 < 1 
+28 < 1 Two readings this file pins, both from the task's own words:
+29 < 1 
+30 < 1   * `run-131`'s `status.json` spans 16m30s, not a whole 16 — M1 pins `run_min`
+31 < 1     as "the whole minutes, rounded down", so the floor is live, and leg (a)'s
+32 < 1     `16` is the value either way.
+33 < 1   * `run-9` carries `rejected` 0, which prints `0` and not `-`: `-` is "the
+34 < 1     run's files do not carry it", which zero is not.
+35 < 2 
+36 < 2 Part two — the census counts amendments: the new column, the new totals
+37 < 2 suffix, the new fetch.
+38 < 2 
+39 < 2 The census counts amendments: the new column, the new totals suffix, the
+40 < 2 new fetch.
+41 < 2 
+42 < 2 The exam for task 4 — `skills/ultrawrite/scripts/authoring_census.py` gaining
+43 < 2 an `amendments` column, a ` amendments=<n>` totals suffix and a third `--fetch`
+44 < 2 read. Leg by leg, in the Proof's own order:
+45 < 2 
+46 < 2   * (a)/[M2] over one root of three runs — `run-9` carrying a `report.json`
+47 < 2     whose `amendments` has three rows, `run-131` carrying a report with no
+48 < 2     `amendments` key, `run-133` carrying no report at all — the header carries
+49 < 2     an `amendments` column directly after `run_min`, and the three rows'
+50 < 2     `amendments` cells are `3`, `-` and `-` in that order (rows sort by
+51 < 2     ascending N, so `run-9` is the first of them).
+52 < 2   * (b)/[M3] that table's last line carries ` amendments=3`, and a root whose
+53 < 2     reports carry no lists carries ` amendments=0`.
+54 < 2   * (c)/[M1] `--fetch o/r --runs 131..132` against a fake `gh` that answers the
+55 < 2     plan and status reads for both and a report for 131 only: `run-131/
+56 < 2     report.json` is the decoded bytes of the answer, no `run-132/report.json`
+57 < 2     is written, both report contents paths are requested as `api` calls, and
+58 < 2     the printed table gives 131 the report's list length and 132 a `-`.
+59 < 2   * (d)/[M1] a run whose plan tag has no record still yields no row and no
+60 < 2     directory, report or not — its report answering changes nothing.
+61 < 2   * (f)/[M1] the Proof's third `Run:` line: `--help` names `--fetch`.
+62 < 2 
+63 < 2 The script is driven as a subprocess over directories built under `tmp_path`,
+64 < 2 with the fake `gh` the task's Context describes written there beside it. The
+65 < 2 helpers are the ones the first part defines.
+66 < 2 
+67 < 2 Three readings this file pins, each from the task's own words:
+68 < 2 
+69 < 2   * A report that parses but carries no `amendments` key reads `-`, never `0`
+70 < 2     (M2: the length "when that file parses as an object carrying a list under
+71 < 2     that key, `None` otherwise"; the Context: "every run before this plan —
+72 < 2     reads `-`, never `0`"). A report carrying `[]` reads `0`, not `-`: zero
+73 < 2     amendments is a value the file carries.
+74 < 2   * The totals sum is "over the rows that carry a value", so a root where no
+75 < 2     row carries one still reads ` amendments=0` — the empty sum, not a `-`.
+76 < 2   * M3 quotes the totals format string without the ` runs=<lo>..<hi>` field
+77 < 2     the line carries at BASE, and the Context's line numbers match the tree at
+78 < 2     `5a8f1ebd` rather than at this BASE (`5aa9af93`, "a release's census line
+79 < 2     says which runs it read", landed in between and added that field). The
+80 < 2     quoted string is therefore a stale snapshot, not an instruction to drop
+81 < 2     the window. This exam encodes M3's operative words — "the totals line ends
+82 < 2     ` amendments=<n>`" — as that field's value, and checks the rest of the line
+83 < 2     by equality after stripping a single optional ` runs=<window>` field, which
+84 < 2     reproduces M3's quoted format string exactly. It pins neither the window's
+85 < 2     presence nor its absence, because the task's own text says both. For the
+86 < 2     same reason it reads the field rather than the line's tail: a later plan
+87 < 2     appends its own fields after ` amendments=<n>`, and the sum is what this
+88 < 2     exam is about.
+89 < 2 
+90 < 2 Each part keeps its own fixture roots (`build_root`, `amendments_root`) and
+91 < 2 its own expected rows; the seam helpers are shared.
+92 < 1 """
+93 < 1 import importlib.util
+94 < 1 import json
+95 < 1 import os
+96 < 1 import pathlib
+97 < 1 import re
+98 < 1 import subprocess
+99 < 1 import sys
+100 < 1 
+101 < 1 ROOT = pathlib.Path(__file__).resolve().parents[1]
+102 < 1 CENSUS = ROOT / "skills/ultrawrite/scripts/authoring_census.py"
+103 < 1 
+104 < 1 
+105 < 1 def tsv(*cells):
+106 < 1     return "\t".join(cells)
+107 < 1 
+108 < 1 
+109 < 1 # ---------------------------------------------------------------- the records
+110 < 1 
+111 < 1 # The record shape is the one literal every task in this plan shares: the
+112 < 1 # `authoring` object sits at the top level beside `tasks` and `tally`.
+113 < 1 RECORD_131 = {
+114 < 1     "tasks": [{"id": "1", "verdict": "pass"}],
+115 < 1     "tally": {"dispatched": 4, "rejected": 1},
+116 < 1     "authoring": {
+117 < 1         "minutes": 118,
+118 < 2         "probes": 12,
+119 < 1         "routing": {"branch": "risk", "lane": "ultrapowers"},
+120 < 1         "questions": [
+121 < 1             {"question": "Claim and summary", "options": ["A", "B"],
+122 < 1              "recommended": "A", "picked": "A", "explain_rounds": 2},
+123 < 1         ],
+124 < 1     },
+125 < 1 }
+126 < 1 
+127 < 1 # A `tally` that lacks `rejected`, a `width` routing, and two questions: one
+128 < 1 # whose `recommended` is null (the question carried no recommended option) and
+129 < 1 # one whose `picked` equals its `recommended`.
+130 < 1 RECORD_133 = {
+131 < 1     "tasks": [{"id": "1", "verdict": "pass"}],
+132 < 1     "tally": {"dispatched": 2},
+133 < 1     "authoring": {
+134 < 1         "minutes": 47,
+135 < 2         "probes": 5,
+136 < 1         "routing": {"branch": "width", "lane": "ultrapowers"},
+137 < 1         "questions": [
+138 < 1             {"question": "Lane and shape",
+139 < 1              "options": ["ultrapowers", "subagent", "inline"],
+140 < 1              "recommended": None, "picked": "subagent"},
+141 < 1             {"question": "Probe budget", "options": ["8", "12"],
+142 < 1              "recommended": "12", "picked": "12"},
+143 < 1         ],
+144 < 1     },
+145 < 1 }
+146 < 1 
+147 < 1 # A record older than this plan: no `authoring` key. Its row is `-` everywhere
+148 < 1 # except `dispatched`/`rejected`, which it does carry — `rejected` as 0.
+149 < 1 RECORD_9 = {
+150 < 1     "tasks": [{"id": "1", "verdict": "pass"}],
+151 < 1     "tally": {"dispatched": 3, "rejected": 0},
+152 < 1 }
+153 < 1 
+154 < 1 # `fleet/CONTRACT.md`'s shape: ISO-8601 with a `Z` suffix. 22:40:00 to
+155 < 1 # 22:56:30 is 16 whole minutes once the half is floored away.
+156 < 1 STATUS_131 = {
+157 < 1     "run": "131",
+158 < 1     "state": "done",
+159 < 1     "phase": "merged",
+160 < 1     "pr": "https://github.com/o/r/pull/1",
+161 < 1     "prAuthor": "o",
+162 < 1     "merged": "a" * 40,
+163 < 1     "branch": "ultra/integration-run-131",
+164 < 1     "vm": "fleet-r131-x",
+165 < 1     "startedAt": "2026-08-30T22:40:00Z",
+166 < 1     "updatedAt": "2026-08-30T22:56:30Z",
+167 < 1     "error": None,
+168 < 1 }
+169 < 1 
+170 < 1 
+171 < 1 def blob(obj):
+172 < 1     """One record, as the bytes that land on disk — the fetch leg compares the
+173 < 1     file it wrote against exactly this."""
+174 < 1     return (json.dumps(obj, indent=2) + "\n").encode("utf-8")
+175 < 1 
+176 < 1 
+177 < 1 # ------------------------------------------------------------ the M1 expected
+178 < 1 
+180 > 1 #: `COLUMNS`, in order, `explain_rounds` (#526) last.
+181 < 1 COLUMN_NAMES = ("run", "authoring_min", "dispatched", "rejected",
+179 < 2 #: `COLUMNS`, in the clause's order: the ten BASE names, `amendments`, and
+180 < 2 #: `explain_rounds` (#526) last.
+181 < 2 COLUMN_NAMES = ("run", "authoring_min", "probes", "dispatched", "rejected",
+182 < 1                 "routing", "lane", "questions", "recommended_picked",
+184 > 1                 "run_min", "explain_rounds")
+183 < 2                 "run_min", "amendments", "explain_rounds")
+184 < 1 
+185 < 1 HEADER = tsv(*COLUMN_NAMES)
+186 < 1 
+187 < 1 # (a): the no-`authoring` record — `-` in every authoring column, its tally
+189 > 1 # read, and `-` for `run_min` (it carries no `status.json`).
+190 < 1 ROW_9 = tsv("9", "-", "3", "0", "-", "-", "-", "-", "-", "-")
+188 < 2 # read, and `-` for `run_min` (it carries no `status.json`). `amendments` is
+189 < 2 # `-` on every row here: `build_root` writes no `report.json`, and a run that
+190 < 2 # left no report reads `-`, never `0`.
+191 < 2 ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "-", "-")
+192 < 1 # (a): the leg's row, verbatim. Its question carries `explain_rounds: 2`.
+194 > 1 ROW_131 = tsv("131", "118", "4", "1", "risk", "ultrapowers", "1",
+195 < 1               "1/1", "16", "2")
+193 < 2 ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
+194 < 2               "1/1", "16", "-", "2")
+195 < 1 # (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
+196 < 1 # null-recommended question counts in neither p nor q. Neither of its
+197 < 1 # questions carries `explain_rounds`, so the cell is `0`, not `-`.
+199 > 1 ROW_133 = tsv("133", "47", "2", "-", "width", "ultrapowers", "2",
+200 < 1               "1/1", "-", "0")
+198 < 2 ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
+199 < 2               "1/1", "-", "-", "0")
+200 < 1 # (a): m = the rows with a routing record (131, 133), k = those whose branch
+201 < 1 # is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
+203 > 1 # row carrying a `run_min`.
+202 < 2 # row carrying a `run_min`; no row carries an amendment count, so the sum over
+203 < 2 # the rows that do is 0.
+204 < 1 TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
+205 < 1           "recommended_picked=2/2 authoring_min=165 run_min=16 "
+207 > 1           "explain_rounds=2")
+206 < 2           "amendments=0 explain_rounds=2")
+207 < 1 
+208 < 1 TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
+209 < 1 
+210 < 1 # ------------------------------------------------------------ the M2 expected
+211 < 1 
+212 < 1 REGISTER = [
+213 < 1     tsv("run-131", "q1", "Claim and summary", "A", "rec", "picked"),
+214 < 1     tsv("run-131", "q1", "Claim and summary", "B", "-", "-"),
+215 < 1     tsv("run-133", "q1", "Lane and shape", "ultrapowers", "-", "-"),
+216 < 1     tsv("run-133", "q1", "Lane and shape", "subagent", "-", "picked"),
+217 < 1     tsv("run-133", "q1", "Lane and shape", "inline", "-", "-"),
+218 < 1     tsv("run-133", "q2", "Probe budget", "8", "-", "-"),
+219 < 1     tsv("run-133", "q2", "Probe budget", "12", "rec", "picked"),
+220 < 1 ]
+221 < 1 
+222 < 1 
+223 < 1 # ------------------------------------------------------------------- the seam
+224 < 1 
+225 < 1 def census(*args, env=None):
+226 < 1     """The script, as a subprocess. Nothing here reaches into its internals."""
+227 < 1     assert CENSUS.is_file(), (
+228 < 1         "the census script does not exist yet: %s" % CENSUS)
+229 < 1     return subprocess.run([sys.executable, str(CENSUS), *args],
+230 < 1                           capture_output=True, text=True, env=env)
+231 < 1 
+232 < 1 
+234 > 1 def write_run(root, number, record, status=None):
+233 < 2 def write_run(root, number, record, status=None, report=None):
+234 < 1     """One `run-<N>` directory: the record, and beside it the `status.json`
+236 > 1     when given."""
+235 < 2     and the `report.json` when given."""
+236 < 1     d = root / ("run-%s" % number)
+237 < 1     d.mkdir(parents=True)
+238 < 1     if record is not None:
+239 < 1         (d / "gate-verdicts.json").write_bytes(blob(record))
+240 < 1     if status is not None:
+241 < 1         (d / "status.json").write_bytes(blob(status))
+242 < 2     if report is not None:
+243 < 2         (d / "report.json").write_bytes(blob(report))
+244 < 1     return d
+245 < 1 
+246 < 1 
+247 < 1 def build_root(tmp_path, name="census", runs=None):
+248 < 1     """Run directories under one root. `runs` is a list of
+250 > 1     `(number, record, status)`; it defaults to leg (a)'s three run
+251 < 1     directories, which carry no status but 131's."""
+249 < 2     `(number, record, status, report)`; it defaults to part one's leg (a)
+250 < 2     three run directories, which carry no status but 131's and no report."""
+251 < 1     if runs is None:
+253 > 1         runs = [(131, RECORD_131, STATUS_131),
+254 < 1                 (133, RECORD_133, None),
+255 < 1                 (9, RECORD_9, None)]
+252 < 2         runs = [(131, RECORD_131, STATUS_131, None),
+253 < 2                 (133, RECORD_133, None, None),
+254 < 2                 (9, RECORD_9, None, None)]
+255 < 1     root = tmp_path / name
+256 < 1     root.mkdir()
+258 > 1     for number, record, status in runs:
+259 < 1         write_run(root, number, record, status)
+257 < 2     for number, record, status, report in runs:
+258 < 2         write_run(root, number, record, status, report)
+259 < 1     return root
+260 < 1 
+261 < 1 
+262 < 1 DECOY = """#!/bin/sh
+263 < 1 printf '%s\\n' "$*" >> '{log}'
+264 < 1 exit 1
+265 < 1 """
+266 < 1 
+267 < 1 
+268 < 1 def decoy_env(tmp_path, name="decoy"):
+269 < 1     """A `gh` first on PATH that logs and fails. `--gh` names a binary, so the
+270 < 1     real one is never resolved by bare name — the seam `check_provenance.py`
+271 < 1     gives its own `--gh`. Returns (env, the log that must never appear)."""
+272 < 1     bindir = tmp_path / name
+273 < 1     bindir.mkdir()
+274 < 1     log = bindir / "bare-gh.log"
+275 < 1     gh = bindir / "gh"
+276 < 1     gh.write_text(DECOY.format(log=log))
+277 < 1     gh.chmod(0o755)
+278 < 1     env = dict(os.environ)
+279 < 1     env["PATH"] = str(bindir) + os.pathsep + env["PATH"]
+280 < 1     return env, log
+281 < 1 
+282 < 1 
+283 < 1 FAKE_GH = '''#!/usr/bin/env python3
+284 < 1 """A `gh` that answers a contents read from a table keyed on argv[1]."""
+285 < 1 import base64
+286 < 1 import json
+287 < 1 import sys
+288 < 1 from pathlib import Path
+289 < 1 
+290 < 1 HERE = Path(__file__).resolve().parent
+291 < 1 argv = sys.argv[1:]
+292 < 1 with (HERE / "calls.jsonl").open("a") as fh:
+293 < 1     fh.write(json.dumps(argv) + "\\n")
+294 < 1 table = json.loads((HERE / "answers.json").read_text())
+295 < 1 body = table.get(argv[1]) if len(argv) > 1 else None
+296 < 1 if body is None:
+297 < 1     # No digits of its own: the one stderr line naming the skipped run can
+298 < 1     # then only be the script's.
+299 < 1     sys.stderr.write("gh: that ref carries no such file\\n")
+300 < 1     sys.exit(1)
+301 < 1 payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
+302 < 1 wrapped = "\\n".join(payload[i:i + 60] for i in range(0, len(payload), 60))
+303 < 1 sys.stdout.write(json.dumps({
+304 < 1     "name": Path(argv[1].split("?")[0]).name,
+305 < 1     "encoding": "base64",
+306 < 1     "content": wrapped + "\\n",
+307 < 1 }) + "\\n")
+308 < 1 '''
+309 < 1 
+310 < 1 
+311 < 1 def fake_gh(tmp_path, answers, name="fakebin"):
+312 < 1     """The fake, plus the table it answers from. Returns (its path, its call
+313 < 1     log)."""
+314 < 1     bindir = tmp_path / name
+315 < 1     bindir.mkdir()
+316 < 1     (bindir / "answers.json").write_text(json.dumps(answers))
+317 < 1     gh = bindir / "gh-fake"
+318 < 1     gh.write_text(FAKE_GH)
+319 < 1     gh.chmod(0o755)
+320 < 1     return gh, bindir / "calls.jsonl"
+321 < 1 
+322 < 1 
+323 < 1 #: The operator's evidence repository the fetch tests read from (#1395): the
+324 < 1 #: run folders live there, never in the target `o/r`.
+325 < 1 EVIDENCE = "ops/evidence"
+326 < 1 
+327 < 1 
+328 < 1 def run_file_path(number, name, evidence=EVIDENCE):
+329 < 1     return ("repos/%s/contents/runs/o-r/%d/%s?ref=o-r/run-%d"
+330 < 1             % (evidence, number, name, number))
+331 < 1 
+332 < 1 
+333 < 1 def plan_path(number, evidence=EVIDENCE):
+334 < 1     return run_file_path(number, "gate-verdicts.json", evidence)
+335 < 1 
+336 < 1 
+337 < 1 def status_path(number, evidence=EVIDENCE):
+338 < 1     return run_file_path(number, "status.json", evidence)
+339 < 1 
+340 < 1 
+342 > 1 def call_log(calls):
+343 < 1     return [json.loads(line) for line in lines(calls.read_text())
+344 < 1             if line.strip()]
+341 < 2 def report_path(number, evidence=EVIDENCE):
+342 < 2     return run_file_path(number, "report.json", evidence)
+343 < 1 
+344 < 1 
+345 < 1 def lines(text):
+346 < 1     return text.splitlines()
+347 < 1 
+348 < 1 
+349 < 1 # ------------------------------------------------------------------- leg (a)
+350 < 1 
+351 < 1 def test_a_the_table_over_three_runs(tmp_path):
+352 < 1     """(a)/[M1]: the header exactly, rows for 9, 131 and 133 in that order,
+353 < 1     and the `totals:` line — the whole of stdout, nothing beside it."""
+354 < 1     root = build_root(tmp_path)
+355 < 1     p = census("--from", str(root))
+356 < 1     assert p.returncode == 0, p.stdout + p.stderr
+357 < 1     assert lines(p.stdout) == TABLE, p.stdout
+358 < 1 
+359 < 1 
+360 < 1 def test_a_the_header_line_is_exact(tmp_path):
+361 < 1     """(a)/[M1]: the first line is the tab-separated column names, in the
+363 > 1     clause's order, `explain_rounds` last — read on its own so a drift there
+364 < 1     reads as a drift there."""
+362 < 2     clause's order, `amendments` and `explain_rounds` last — read on its own so a drift there reads as a drift there."""
+363 < 1     root = build_root(tmp_path)
+364 < 1     p = census("--from", str(root))
+365 < 1     assert lines(p.stdout)[0] == HEADER, p.stdout
+366 < 1 
+367 < 1 
+368 < 1 def test_a_a_record_without_an_authoring_key_is_dashes_but_for_its_tally(
+369 < 1         tmp_path):
+370 < 1     """(a)/[M1]: `run-9`'s record predates this plan. Every authoring column is
+371 < 1     `-`; `dispatched` and `rejected` are its tally's, and `rejected` 0 prints
+372 < 1     as `0` — `-` is "the run's files do not carry it", which zero is not."""
+373 < 1     root = build_root(tmp_path)
+374 < 1     p = census("--from", str(root))
+375 < 1     assert ROW_9 in lines(p.stdout), p.stdout
+376 < 1     # The row for 9 comes first: ascending numeric N, not lexical.
+377 < 1     assert lines(p.stdout)[1] == ROW_9, p.stdout
+378 < 1 
+379 < 1 
+380 < 1 def test_a_a_tally_without_rejected_and_a_run_without_status_are_dashes(
+381 < 1         tmp_path):
+382 < 1     """(a)/[M1]: `run-133` carries no `rejected` and no `status.json`, so both
+383 < 1     columns are `-`, and its `recommended_picked` is 1/1 — the question whose
+384 < 1     `recommended` is null counts in neither p nor q."""
+385 < 1     root = build_root(tmp_path)
+386 < 1     p = census("--from", str(root))
+387 < 1     assert ROW_133 in lines(p.stdout), p.stdout
+388 < 1 
+389 < 1 
+390 < 1 def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
+391 < 1     """(a)/[M1]: 2026-08-30T22:40:00Z to 2026-08-30T22:56:30Z is 16.5 minutes,
+392 < 1     and the column carries "the whole minutes, rounded down" — 16."""
+393 < 1     root = build_root(tmp_path)
+394 < 1     p = census("--from", str(root))
+395 < 1     assert ROW_131 in lines(p.stdout), p.stdout
+397 > 1     # `run_min` is the cell before `explain_rounds`, which closes the row.
+398 < 1     assert lines(p.stdout)[2].split("\t")[-2] == "16", p.stdout
+396 < 2     # `run_min` is the third cell from the end now that `amendments` and
+397 < 2     # `explain_rounds` close the row.
+398 < 2     assert lines(p.stdout)[2].split("\t")[-3] == "16", p.stdout
+399 < 1 
+400 < 1 
+401 < 1 def test_a_the_totals_line_is_exact(tmp_path):
+402 < 1     """(a)/[M1]: `plans` counts the rows, `risk_override` is the `risk` rows
+403 < 1     over the rows with a routing record, `recommended_picked` sums p and q over
+404 < 1     every row, and each minute sum is over the rows carrying that value."""
+405 < 1     root = build_root(tmp_path)
+406 < 1     p = census("--from", str(root))
+407 < 1     assert lines(p.stdout)[-1] == TOTALS, p.stdout
+408 < 1 
+409 < 1 
+410 < 1 # ------------------------------------------------------------------- leg (b)
+411 < 1 
+412 < 1 def test_b_a_run_directory_without_a_record_earns_no_row(tmp_path):
+413 < 1     """(b)/[M1]: `run-150` holds a `status.json` and no `gate-verdicts.json`.
+414 < 1     It yields no row and is not counted in `plans` — so the output is what
+415 < 1     (a) printed, line for line, `plans=3` included."""
+416 < 1     root = build_root(tmp_path)
+417 < 1     write_run(root, 150, None, STATUS_131)
+418 < 1     p = census("--from", str(root))
+419 < 1     assert p.returncode == 0, p.stdout + p.stderr
+420 < 1     assert lines(p.stdout) == TABLE, p.stdout
+421 < 1     assert "150" not in p.stdout, p.stdout
+422 < 1 
+423 < 1 
+424 < 1 # ------------------------------------------------------------------- leg (c)
+425 < 1 
+426 < 1 def test_c_register_prints_one_line_per_option(tmp_path):
+427 < 1     """(c)/[M2]: one line per option of every question of every row, in row
+428 < 1     order then question order then option order, and no table header."""
+429 < 1     root = build_root(tmp_path)
+430 < 1     p = census("--register", "--from", str(root))
+431 < 1     assert p.returncode == 0, p.stdout + p.stderr
+432 < 1     assert lines(p.stdout) == REGISTER, p.stdout
+433 < 1     assert HEADER not in p.stdout, p.stdout
+434 < 1     assert "totals:" not in p.stdout, p.stdout
+435 < 1 
+436 < 1 
+437 < 1 def test_c_register_marks_the_recommended_and_the_picked_option(tmp_path):
+438 < 1     """(c)/[M2]: `run-131`'s two lines, verbatim — `rec` on the option equal to
+439 < 1     the question's `recommended` and `-` on the others, `picked` on the option
+440 < 1     equal to `picked` and `-` on the others."""
+441 < 1     root = build_root(tmp_path)
+442 < 1     p = census("--register", "--from", str(root))
+443 < 1     got = [line for line in lines(p.stdout) if line.startswith("run-131\t")]
+444 < 1     assert got == [
+445 < 1         tsv("run-131", "q1", "Claim and summary", "A", "rec", "picked"),
+446 < 1         tsv("run-131", "q1", "Claim and summary", "B", "-", "-"),
+447 < 1     ], p.stdout
+448 < 1 
+449 < 1 
+450 < 1 def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
+451 < 1         tmp_path):
+452 < 1     """(c)/[M2]: `run-133`'s first question carried no recommended option, so
+453 < 1     every one of its three lines is `-` in the `rec` column and exactly one
+454 < 1     is `picked`; `<i>` counts from 1, so its second question is `q2`."""
+455 < 1     root = build_root(tmp_path)
+456 < 1     p = census("--register", "--from", str(root))
+457 < 1     q1 = [line.split("\t") for line in lines(p.stdout)
+458 < 1           if line.startswith("run-133\tq1\t")]
+459 < 1     assert len(q1) == 3, p.stdout
+460 < 1     assert [cells[4] for cells in q1] == ["-", "-", "-"], p.stdout
+461 < 1     assert [cells[5] for cells in q1] == ["-", "picked", "-"], p.stdout
+462 < 1     q2 = [line for line in lines(p.stdout) if line.startswith("run-133\tq2\t")]
+463 < 1     assert q2 == [
+464 < 1         tsv("run-133", "q2", "Probe budget", "8", "-", "-"),
+465 < 1         tsv("run-133", "q2", "Probe budget", "12", "rec", "picked"),
+466 < 1     ], p.stdout
+467 < 1 
+468 < 1 
+469 < 1 # ------------------------------------------------------------------- leg (d)
+470 < 1 
+471 < 1 def fetch_answers():
+472 < 1     """The fake's table: the plan record for 131 and 133, a `status.json` for
+474 > 1     131 only. Run 132's plan tag and run 133's status are absent, so the fake
+475 < 1     exits 1 for them."""
+473 < 2     131 only. Run 132's plan tag and run 133's evidence tag are absent, so the
+474 < 2     fake exits 1 for them — and no `report.json` is answered at all, so every
+475 < 2     row's `amendments` is `-`."""
+476 < 1     return {
+477 < 1         plan_path(131): blob(RECORD_131).decode("utf-8"),
+478 < 1         plan_path(133): blob(RECORD_133).decode("utf-8"),
+479 < 1         status_path(131): blob(STATUS_131).decode("utf-8"),
+480 < 1     }
+481 < 1 
+482 < 1 
+483 < 1 def run_fetch(tmp_path, answers=None, runs="131..133",
+484 < 1               repo_args=("--evidence-repo", EVIDENCE)):
+485 < 1     """`--fetch` over the fake: `answers` defaults to part one's table, and
+486 < 1     `repo_args` name the evidence repository (the flag, by default)."""
+487 < 1     into = tmp_path / "fetched"
+488 < 1     into.mkdir()
+489 < 1     gh, calls = fake_gh(tmp_path, fetch_answers() if answers is None
+490 < 1                         else answers)
+491 < 1     env, bare_log = decoy_env(tmp_path)
+492 < 1     # The laptop's own `~/.ultrapowers/fleet.json` is never read: HOME is
+493 < 1     # the test's.
+494 < 1     env["HOME"] = str(tmp_path / "home")
+495 < 1     p = census("--fetch", "o/r", "--runs", runs, "--into", str(into),
+496 < 1                "--gh", str(gh), *repo_args, env=env)
+497 < 1     return p, into, calls, bare_log
+498 < 1 
+499 < 1 
+500 < 1 def test_d_fetch_writes_the_decoded_files(tmp_path):
+501 < 1     """(d)/[M3]: both files for 131 and the record for 133, each the decoded
+502 < 1     bytes of the answer's base64 `content`."""
+503 < 1     p, into, _calls, _bare = run_fetch(tmp_path)
+504 < 1     assert (into / "run-131/gate-verdicts.json").read_bytes() == \
+505 < 1         blob(RECORD_131), p.stdout + p.stderr
+506 < 1     assert (into / "run-131/status.json").read_bytes() == blob(STATUS_131), \
+507 < 1         p.stdout + p.stderr
+508 < 1     assert (into / "run-133/gate-verdicts.json").read_bytes() == \
+509 < 1         blob(RECORD_133), p.stdout + p.stderr
+510 < 1 
+511 < 1 
+512 < 1 def test_d_a_plan_tag_without_a_record_is_skipped_with_one_stderr_line(
+513 < 1         tmp_path):
+514 < 1     """(d)/[M3]: run 132's plan tag answers non-zero — nothing is written for
+515 < 1     it, and exactly one stderr line names it."""
+516 < 1     p, into, _calls, _bare = run_fetch(tmp_path)
+517 < 1     assert not (into / "run-132").exists(), sorted(
+518 < 1         q.name for q in into.iterdir())
+519 < 1     named = [line for line in lines(p.stderr) if "132" in line]
+520 < 1     assert len(named) == 1, p.stderr
+521 < 1 
+522 < 1 
+523 < 1 def test_d_a_missing_status_leaves_the_file_unwritten(tmp_path):
+524 < 1     """(d)/[M3]: run 133's evidence tag answers non-zero for `status.json`
+525 < 1     alone — that file is unwritten, and the row's `run_min` is `-`."""
+526 < 1     p, into, _calls, _bare = run_fetch(tmp_path)
+527 < 1     assert not (into / "run-133/status.json").exists(), p.stdout + p.stderr
+528 < 1     assert ROW_133 in lines(p.stdout), p.stdout
+529 < 1 
+530 < 1 
+531 < 1 def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
+532 < 1     """(d)/[M3]: the M1 table over `<dir>`, with rows for 131 and 133 only."""
+533 < 1     p, _into, _calls, _bare = run_fetch(tmp_path)
+534 < 1     assert lines(p.stdout) == [
+535 < 1         HEADER, ROW_131, ROW_133,
+536 < 1         ("totals: plans=2 runs=131..133 risk_override=1/2 "
+537 < 1          "recommended_picked=2/2 authoring_min=165 run_min=16 "
+539 > 1          "explain_rounds=2"),
+538 < 2          "amendments=0 explain_rounds=2"),
+539 < 1     ], p.stdout + p.stderr
+540 < 1 
+541 < 1 
+542 < 1 def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
+543 < 1     """(d)/[M3]: each call's first two arguments are `api` and a
+544 < 1     `repos/ops/evidence/contents/runs/o-r/<N>/` path at the run's tag
+546 > 1     `o-r/run-<N>` — the record and the status in the one folder — and no argv
+547 < 1     names any other repository. The three record reads and the two status
+548 < 1     reads the leg asks for are all made."""
+545 < 2     `o-r/run-<N>` — the record, the status and the report all in the one
+546 < 2     folder — and no argv names any other repository. The three record reads,
+547 < 2     the two status reads and the two report reads the leg asks for are all
+548 < 2     made."""
+549 < 1     p, _into, calls, _bare = run_fetch(tmp_path)
+550 < 1     argvs = [json.loads(line) for line in lines(calls.read_text())
+551 < 1              if line.strip()]
+552 < 1     assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
+553 < 1     expected = {plan_path(n) for n in (131, 132, 133)}
+554 < 1     expected |= {status_path(n) for n in (131, 132, 133)}
+555 < 2     expected |= {report_path(n) for n in (131, 132, 133)}
+556 < 1     for argv in argvs:
+557 < 1         assert argv[0] == "api", argv
+558 < 1         assert argv[1].startswith("repos/ops/evidence/contents/runs/o-r/"), \
+559 < 1             argv
+560 < 1         assert argv[1] in expected, argv
+561 < 1         for token in argv:
+562 < 1             for owner_repo in re.findall(r"repos/([^/]+/[^/?]+)", token):
+563 < 1                 assert owner_repo == EVIDENCE, argv
+564 < 1     made = {argv[1] for argv in argvs}
+565 < 1     for required in (plan_path(131), plan_path(132), plan_path(133),
+567 > 1                      status_path(131), status_path(133)):
+566 < 2                      status_path(131), status_path(133),
+567 < 2                      report_path(131), report_path(133)):
+568 < 1         assert required in made, sorted(made)
+570 > 1     # 132's plan tag carries no record, so the run is skipped whole: its
+571 < 1     # status is never read.
+572 < 1     assert status_path(132) not in made, sorted(made)
+569 < 2     # 132's plan tag carries no record, so the run is skipped whole: neither
+570 < 2     # its status nor its report is ever read.
+571 < 2     assert report_path(132) not in made, sorted(made)
+572 < 1 
+573 < 1 
+574 < 1 def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):
+575 < 1     """(d)/[M3]: the script invokes the binary `--gh` names and no other — the
+576 < 1     decoy first on PATH is never run."""
+577 < 1     p, _into, _calls, bare_log = run_fetch(tmp_path)
+578 < 1     assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
+579 < 1 
+580 < 1 
+581 < 1 # ------------------------------------------- the evidence repository (#1395)
+582 < 1 
+583 < 1 def test_the_contents_path_is_byte_exact():
+584 < 1     """[M1]: one run file's `gh api` path, in the evidence repository's run
+585 < 1     folder at the run's tag."""
+586 < 1     module = load_module()
+587 < 1     assert module.evidence_contents_path(
+588 < 1         "ops/evidence", "o/r", 5, "status.json") == \
+589 < 1         "repos/ops/evidence/contents/runs/o-r/5/status.json?ref=o-r/run-5"
+590 < 1 
+591 < 1 
+593 > 1 def test_the_flag_asks_for_exactly_the_two_run_folder_paths(tmp_path):
+592 < 2 def test_the_flag_asks_for_exactly_the_three_run_folder_paths(tmp_path):
+593 < 1     """[M2]: `--runs 5..5 --evidence-repo ops/evidence` asks `gh api` for the
+595 > 1     record and the status of run 5 — those two, no other."""
+594 < 2     record, the status and the report of run 5 — those three, no other."""
+595 < 1     answers = {
+596 < 1         plan_path(5): blob(RECORD_131).decode("utf-8"),
+597 < 1         status_path(5): blob(STATUS_131).decode("utf-8"),
+598 < 2         report_path(5): blob(REPORT_FETCHED).decode("utf-8"),
+599 < 1     }
+600 < 1     p, into, calls, _bare = run_fetch(tmp_path, answers=answers, runs="5..5")
+601 < 1     assert p.returncode == 0, p.stdout + p.stderr
+602 < 1     assert sorted(argv[1] for argv in call_log(calls)) == sorted(answers), \
+603 < 1         call_log(calls)
+605 > 1     for name in ("gate-verdicts.json", "status.json"):
+604 < 2     for name in ("gate-verdicts.json", "status.json", "report.json"):
+605 < 1         assert (into / "run-5" / name).is_file(), name
+606 < 1 
+607 < 1 
+608 < 1 def test_the_config_key_steers_the_reads(tmp_path):
+609 < 1     """[M3]: with no `--evidence-repo`, `--fetch` reads from the repository
+610 < 1     the `evidence` key of `--config` names."""
+611 < 1     config = tmp_path / "fleet.json"
+612 < 1     config.write_text(json.dumps({"evidence": "cfg/ev"}))
+613 < 1     answers = {plan_path(5, "cfg/ev"): blob(RECORD_131).decode("utf-8")}
+614 < 1     p, into, calls, _bare = run_fetch(
+615 < 1         tmp_path, answers=answers, runs="5..5",
+616 < 1         repo_args=("--config", str(config)))
+617 < 1     assert p.returncode == 0, p.stdout + p.stderr
+618 < 1     assert sorted(argv[1] for argv in call_log(calls)) == sorted([
+620 > 1         plan_path(5, "cfg/ev"), status_path(5, "cfg/ev")]), call_log(calls)
+619 < 2         plan_path(5, "cfg/ev"), status_path(5, "cfg/ev"),
+620 < 2         report_path(5, "cfg/ev")]), call_log(calls)
+621 < 1     assert (into / "run-5/gate-verdicts.json").read_bytes() == \
+622 < 1         blob(RECORD_131)
+623 < 1 
+624 < 1 
+625 < 1 def test_the_flag_wins_over_the_config(tmp_path):
+626 < 1     """[M3]: `--evidence-repo` overrides the config's `evidence`."""
+627 < 1     config = tmp_path / "fleet.json"
+628 < 1     config.write_text(json.dumps({"evidence": "cfg/ev"}))
+629 < 1     p, _into, calls, _bare = run_fetch(
+630 < 1         tmp_path, answers={}, runs="5..5",
+631 < 1         repo_args=("--evidence-repo", EVIDENCE, "--config", str(config)))
+632 < 1     assert [argv[1] for argv in call_log(calls)] == [plan_path(5)], \
+633 < 1         call_log(calls)
+634 < 1 
+635 < 1 
+636 < 1 def test_a_config_without_the_key_exits_2_naming_it_and_calls_no_gh(tmp_path):
+637 < 1     """[M3]: a config that lacks `evidence` and no flag — exit 2, a stderr
+638 < 1     line naming `evidence`, and the fake `gh` never invoked."""
+639 < 1     config = tmp_path / "fleet.json"
+640 < 1     config.write_text(json.dumps({"other": "x"}))
+641 < 1     p, _into, calls, bare_log = run_fetch(
+642 < 1         tmp_path, runs="5..5", repo_args=("--config", str(config)))
+643 < 1     assert p.returncode == 2, p.stdout + p.stderr
+644 < 1     assert any("evidence" in line for line in lines(p.stderr)), p.stderr
+645 < 1     assert not calls.exists(), calls.read_text()
+646 < 1     assert not bare_log.exists(), bare_log.read_text()
+647 < 1 
+648 < 1 
+649 < 1 def test_a_missing_default_config_exits_2_and_calls_no_gh(tmp_path):
+650 < 1     """[M3]: no flag, no `--config`, and no `~/.ultrapowers/fleet.json` under
+651 < 1     the test's HOME — exit 2 naming `evidence`, no `gh` call."""
+652 < 1     p, _into, calls, bare_log = run_fetch(tmp_path, runs="5..5", repo_args=())
+653 < 1     assert p.returncode == 2, p.stdout + p.stderr
+654 < 1     assert "evidence" in p.stderr, p.stderr
+655 < 1     assert not calls.exists(), calls.read_text()
+656 < 1     assert not bare_log.exists(), bare_log.read_text()
+657 < 1 
+658 < 1 
+659 < 1 # ------------------------------------------------------------- the Interfaces
+660 < 1 
+661 < 1 def load_module():
+662 < 1     """The script as a module, for the clauses read at its own seam."""
+663 < 1     assert CENSUS.is_file(), (
+664 < 1         "the census script does not exist yet: %s" % CENSUS)
+665 < 1     spec = importlib.util.spec_from_file_location("authoring_census", CENSUS)
+666 < 1     module = importlib.util.module_from_spec(spec)
+667 < 1     spec.loader.exec_module(module)
+668 < 1     return module
+669 < 1 
+670 < 2 
+671 < 2 # ============================================================================
+672 < 2 # Part two: the census counts amendments.
+673 < 2 # ============================================================================
+674 < 2 
+675 < 2 # The records are part one's, but for `run-131`'s question, which carries no
+676 < 2 # `explain_rounds` here — this part's rows read that cell as `0`.
+677 < 2 RECORD_131_PLAIN = {
+678 < 2     "tasks": [{"id": "1", "verdict": "pass"}],
+679 < 2     "tally": {"dispatched": 4, "rejected": 1},
+680 < 2     "authoring": {
+681 < 2         "minutes": 118,
+682 < 2         "probes": 12,
+683 < 2         "routing": {"branch": "risk", "lane": "ultrapowers"},
+684 < 2         "questions": [
+685 < 2             {"question": "Claim and summary", "options": ["A", "B"],
+686 < 2              "recommended": "A", "picked": "A"},
+687 < 2         ],
+688 < 2     },
+689 < 2 }
+690 < 2 
+691 < 2 
+692 < 2 # The shared literal the Context spells: `report.amendments` is a list of
+693 < 2 # `{task, amends, what, why}` rows.
+694 < 2 def amendment(task, amends):
+695 < 2     return {
+696 < 2         "task": task,
+697 < 2         "amends": amends,
+698 < 2         "what": "the clause moved",
+699 < 2         "why": "the tree said otherwise",
+700 < 2     }
+701 < 2 
+702 < 2 
+703 < 2 #: A report carrying the empty list: `0` amendments. Zero is a value the file
+704 < 2 #: carries, so the cell is `0` and the totals sum is still 0.
+705 < 2 REPORT_EMPTY = {"run": "12", "amendments": []}
+706 < 2 
+707 < 2 
+708 < 2 #: Leg (a)'s first run: three amendment rows, so its cell is `3`.
+709 < 2 REPORT_THREE = {
+710 < 2     "run": "9",
+711 < 2     "amendments": [amendment("1", "M1"), amendment("2", "M2"),
+712 < 2                    amendment("2", "M3")],
+713 < 2 }
+714 < 2 
+715 < 2 #: Leg (a)'s second run: a report that parses and carries no `amendments`
+716 < 2 #: key — every run before this plan. Its cell is `-`, never `0`.
+717 < 2 REPORT_NO_KEY = {
+718 < 2     "run": "131",
+719 < 2     "tasks": [{"id": "1", "verdict": "pass"}],
+720 < 2 }
+721 < 2 
+722 < 2 
+723 < 2 #: Leg (c)'s fetched report: two rows, so the fetched row's cell is `2` and no
+724 < 2 #: leg's expected number is the same as another's by accident.
+725 < 2 REPORT_FETCHED = {
+726 < 2     "run": "131",
+727 < 2     "amendments": [amendment("1", "M2"), amendment("3", "M1")],
+728 < 2 }
+729 < 2 
+730 < 2 
+731 < 2 # ------------------------------------------------------------- the M2 expected
+732 < 2 
+733 < 2 
+734 < 2 #: Where the `amendments` cell sits in a row, counted from the end — the
+735 < 2 #: `explain_rounds` column a later plan added closes the row after it.
+736 < 2 AMENDMENTS_FROM_END = len(COLUMN_NAMES) - COLUMN_NAMES.index("amendments")
+737 < 2 
+738 < 2 # (a): `run-9`'s record predates the plan — `-` in every authoring column, its
+739 < 2 # tally read — and its report carries three amendment rows.
+740 < 2 AM_ROW_9 = tsv("9", "-", "-", "3", "0", "-", "-", "-", "-", "-", "3", "-")
+741 < 2 # (a): the full row, its report carrying no `amendments` key. Its question
+742 < 2 # carries no `explain_rounds`, so that cell is `0`, not `-` — the record has
+743 < 2 # an `authoring` key.
+744 < 2 AM_ROW_131 = tsv("131", "118", "12", "4", "1", "risk", "ultrapowers", "1",
+745 < 2                  "1/1", "16", "-", "0")
+746 < 2 # (a): no report at all beside the record.
+747 < 2 AM_ROW_133 = tsv("133", "47", "5", "2", "-", "width", "ultrapowers", "2",
+748 < 2                  "1/1", "-", "-", "0")
+749 < 2 
+750 < 2 # ------------------------------------------------------------- the M3 expected
+751 < 2 
+752 < 2 #: [M3] the totals line with its ` runs=<window>` field stripped: exactly the
+753 < 2 #: format string M3 quotes, filled in for leg (a)'s root. 118 + 47 = 165; 16 is
+754 < 2 #: the one row carrying a `run_min`; 3 is the one row carrying an `amendments`.
+755 < 2 TOTALS_WITHOUT_WINDOW = ("totals: plans=3 risk_override=1/2 "
+756 < 2                          "recommended_picked=2/2 authoring_min=165 "
+757 < 2                          "run_min=16 amendments=3 explain_rounds=0")
+758 < 2 
+759 < 2 WINDOW_RE = re.compile(r" runs=\S+")
+760 < 2 
+761 < 2 
+762 < 2 def without_window(line):
+763 < 2     """`line` with one ` runs=<window>` field removed — see this module's
+764 < 2     docstring: M3's quoted format string predates that field, so the exam reads
+765 < 2     the line either way rather than pinning a question the task answers twice."""
+766 < 2     return WINDOW_RE.sub("", line, count=1)
+767 < 2 
+768 < 2 
+769 < 2 # ------------------------------------------------------------------- the seam
+770 < 2 
+771 < 2 def amendments_root(tmp_path, name="census",
+772 < 2                     reports=("three", "no_key", None)):
+773 < 2     """Leg (a)'s three run directories under one root.
+774 < 2 
+775 < 2     `reports` says what each of `run-9`, `run-131`, `run-133` carries beside
+776 < 2     its record, in that order: the leg's root is a three-row report, a report
+777 < 2     with no `amendments` key, and no report at all."""
+778 < 2     which = {
+779 < 2         "three": REPORT_THREE,
+780 < 2         "no_key": REPORT_NO_KEY,
+781 < 2         "empty": REPORT_EMPTY,
+782 < 2         None: None,
+783 < 2     }
+784 < 2     return build_root(tmp_path, name, runs=[
+785 < 2         (131, RECORD_131_PLAIN, STATUS_131, which[reports[1]]),
+786 < 2         (133, RECORD_133, None, which[reports[2]]),
+787 < 2         (9, RECORD_9, None, which[reports[0]]),
+788 < 2     ])
+789 < 2 
+790 < 2 
+791 < 2 
+792 < 2 def call_log(calls):
+793 < 2     return [json.loads(line) for line in lines(calls.read_text())
+794 < 2             if line.strip()]
+795 < 2 
+796 < 2 
+797 < 2 def row_for(stdout, number):
+798 < 2     """The one printed row whose first cell is `<number>`, or None."""
+799 < 2     found = [line for line in lines(stdout)
+800 < 2              if line.split("\t")[0] == str(number)]
+801 < 2     assert len(found) <= 1, found
+802 < 2     return found[0] if found else None
+803 < 2 
+804 < 2 
+805 < 2 def last_cells(stdout):
+806 < 2     """The `amendments` cell of every row between the header and the totals
+807 < 2     line — the last one this exam is about, whatever columns close the row
+808 < 2     after it."""
+809 < 2     body = lines(stdout)[1:-1]
+810 < 2     return [line.split("\t")[-AMENDMENTS_FROM_END] for line in body]
+811 < 2 
+812 < 2 
+813 < 2 def amendments_cell(row):
+814 < 2     """One row's `amendments` cell, read the same way."""
+815 < 2     return row.split("\t")[-AMENDMENTS_FROM_END]
+816 < 2 
+817 < 2 
+818 < 2 def totals_field(line, name):
+819 < 2     """The value of one ` <name>=<value>` field of the totals line.
+820 < 2 
+821 < 2     M3's operative words are that the line ends ` amendments=<n>`; a later
+822 < 2     plan appends its own fields after it, so what this exam pins is the
+823 < 2     field's value, not its position."""
+824 < 2     match = re.search(r" %s=(\S+)" % re.escape(name), line)
+825 < 2     assert match is not None, line
+826 < 2     return match.group(1)
+827 < 2 
+828 < 2 
+829 < 2 # ------------------------------------------------------------------- leg (a)
+830 < 2 
+831 < 2 def test_a_the_header_ends_with_an_amendments_column_after_run_min(tmp_path):
+832 < 2     """(a)/[M2]: `COLUMNS` gains `amendments` as its last name, after
+833 < 2     `run_min` — the header line is those names, tab-separated, in that order
+834 < 2     and no other."""
+835 < 2     root = amendments_root(tmp_path)
+836 < 2     p = census("--from", str(root))
+837 < 2     assert p.returncode == 0, p.stdout + p.stderr
+838 < 2     header = lines(p.stdout)[0]
+839 < 2     assert header == HEADER, p.stdout
+840 < 2     names = header.split("\t")
+841 < 2     assert "amendments" in names, header
+842 < 2     assert names[names.index("amendments") - 1] == "run_min", header
+843 < 2 
+844 < 2 
+845 < 2 def test_a_the_three_rows_last_cells_are_three_dash_dash(tmp_path):
+846 < 2     """(a)/[M2]: the three runs' last cells are `3` (a report whose
+847 < 2     `amendments` has three rows), `-` (a report carrying no `amendments` key)
+848 < 2     and `-` (no report), in that order — rows sort by ascending N, so `run-9`
+849 < 2     is first."""
+850 < 2     root = amendments_root(tmp_path)
+851 < 2     p = census("--from", str(root))
+852 < 2     assert p.returncode == 0, p.stdout + p.stderr
+853 < 2     assert last_cells(p.stdout) == ["3", "-", "-"], p.stdout
+854 < 2 
+855 < 2 
+856 < 2 def test_a_each_whole_row_gains_its_eleventh_cell_and_keeps_the_ten(tmp_path):
+857 < 2     """(a)/[M2]: the rows verbatim — the ten cells this task does not touch,
+858 < 2     then the new one, then whatever closes the row after it. `run-9`'s
+859 < 2     `rejected` is still `0` and not `-`, and `run-133` still carries neither
+860 < 2     `rejected` nor a `run_min`."""
+861 < 2     root = amendments_root(tmp_path)
+862 < 2     p = census("--from", str(root))
+863 < 2     assert lines(p.stdout)[1:4] == [AM_ROW_9, AM_ROW_131, AM_ROW_133], p.stdout
+864 < 2 
+865 < 2 
+866 < 2 def test_a_a_report_without_the_key_reads_a_dash_and_an_empty_list_a_zero(
+867 < 2         tmp_path):
+868 < 2     """(a)/[M2]: the length of the list "when that file parses as an object
+869 < 2     carrying a list under that key, `None` otherwise". A report with no such
+870 < 2     key carries no value and prints `-`; a report carrying `[]` carries the
+871 < 2     value zero and prints `0`."""
+872 < 2     no_key = amendments_root(tmp_path, name="nokey",
+873 < 2                         reports=("no_key", "no_key", "no_key"))
+874 < 2     empty = amendments_root(tmp_path, name="empty",
+875 < 2                        reports=("empty", "empty", "empty"))
+876 < 2     assert last_cells(census("--from", str(no_key)).stdout) == \
+877 < 2         ["-", "-", "-"], "a report with no `amendments` key must read `-`"
+878 < 2     assert last_cells(census("--from", str(empty)).stdout) == \
+879 < 2         ["0", "0", "0"], "a report carrying `[]` must read `0`, not `-`"
+880 < 2 
+881 < 2 
+882 < 2 def test_a_census_rows_carries_an_amendments_value_per_row(tmp_path):
+883 < 2     """(a)/[M2]: read at the seam the clause names — `census_rows` gives each
+884 < 2     row an `amendments` value: the list's length, or None."""
+885 < 2     module = load_module()
+886 < 2     rows = module.census_rows(amendments_root(tmp_path))
+887 < 2     got = [row.get("amendments", "<no such key>") for row in rows]
+888 < 2     assert got == [3, None, None], got
+889 < 2 
+890 < 2 
+891 < 2 # ------------------------------------------------------------------- leg (b)
+892 < 2 
+893 < 2 def test_b_the_totals_line_ends_with_the_amendments_sum(tmp_path):
+894 < 2     """(b)/[M3]: the table's last line carries ` amendments=3` — the sum over
+895 < 2     the rows that carry a value, which here is `run-9`'s three alone."""
+896 < 2     root = amendments_root(tmp_path)
+897 < 2     p = census("--from", str(root))
+898 < 2     assert p.returncode == 0, p.stdout + p.stderr
+899 < 2     totals = lines(p.stdout)[-1]
+900 < 2     assert totals.startswith("totals: "), p.stdout
+901 < 2     assert totals_field(totals, "amendments") == "3", totals
+902 < 2 
+903 < 2 
+904 < 2 def test_b_the_totals_line_keeps_every_field_it_had_before_the_suffix(
+905 < 2         tmp_path):
+906 < 2     """(b)/[M3]: the whole line — M3's quoted format string, filled in for this
+907 < 2     root, once the ` runs=<window>` field that string predates is set aside
+908 < 2     (see this module's docstring). `plans`, `risk_override`,
+909 < 2     `recommended_picked`, `authoring_min` and `run_min` are what they were at
+910 < 2     BASE; the suffix is the only new field."""
+911 < 2     root = amendments_root(tmp_path)
+912 < 2     p = census("--from", str(root))
+913 < 2     totals = lines(p.stdout)[-1]
+914 < 2     assert without_window(totals) == TOTALS_WITHOUT_WINDOW, totals
+915 < 2     assert totals.count("amendments=") == 1, totals
+916 < 2 
+917 < 2 
+918 < 2 def test_b_a_root_whose_reports_carry_no_lists_ends_with_zero(tmp_path):
+919 < 2     """(b)/[M3]: no row carries a value, so the sum over the rows that carry
+920 < 2     one is the empty sum — the line carries ` amendments=0`, not
+921 < 2     ` amendments=-` and not a missing field."""
+922 < 2     root = amendments_root(tmp_path, name="nokey",
+923 < 2                       reports=("no_key", "no_key", "no_key"))
+924 < 2     p = census("--from", str(root))
+925 < 2     assert p.returncode == 0, p.stdout + p.stderr
+926 < 2     totals = lines(p.stdout)[-1]
+927 < 2     assert totals_field(totals, "amendments") == "0", totals
+928 < 2     assert without_window(totals) == (
+929 < 2         "totals: plans=3 risk_override=1/2 recommended_picked=2/2 "
+930 < 2         "authoring_min=165 run_min=16 amendments=0 explain_rounds=0"), totals
+931 < 2 
+932 < 2 
+933 < 2 def test_b_a_root_whose_reports_carry_empty_lists_also_ends_with_zero(
+934 < 2         tmp_path):
+935 < 2     """(b)/[M3]: three rows each carrying the value zero sum to zero too — the
+936 < 2     same field by the other route."""
+937 < 2     root = amendments_root(tmp_path, name="empty",
+938 < 2                       reports=("empty", "empty", "empty"))
+939 < 2     p = census("--from", str(root))
+940 < 2     assert totals_field(lines(p.stdout)[-1], "amendments") == "0", p.stdout
+941 < 2 
+942 < 2 
+943 < 2 # ------------------------------------------------------------------- leg (c)
+944 < 2 
+945 < 2 def report_fetch_answers():
+946 < 2     """[M1]'s leg (c) table: the plan and status reads answer for 131 and 132,
+947 < 2     the report read answers for 131 only."""
+948 < 2     return {
+949 < 2         plan_path(131): blob(RECORD_131_PLAIN).decode("utf-8"),
+950 < 2         plan_path(132): blob(RECORD_133).decode("utf-8"),
+951 < 2         status_path(131): blob(STATUS_131).decode("utf-8"),
+952 < 2         status_path(132): blob(STATUS_131).decode("utf-8"),
+953 < 2         report_path(131): blob(REPORT_FETCHED).decode("utf-8"),
+954 < 2     }
+955 < 2 
+956 < 2 
+957 < 2 def test_c_fetch_writes_the_report_as_the_decoded_bytes_of_the_answer(
+958 < 2         tmp_path):
+959 < 2     """(c)/[M1]: `run-131/report.json` is written into `run-<N>/report.json`,
+960 < 2     and it is exactly the decoded bytes of the answer's base64 `content` — not
+961 < 2     a re-serialisation of it."""
+962 < 2     p, into, _calls, _bare = run_fetch(
+963 < 2         tmp_path, answers=report_fetch_answers(), runs="131..132")
+964 < 2     assert p.returncode == 0, p.stdout + p.stderr
+965 < 2     written = into / "run-131/report.json"
+966 < 2     assert written.is_file(), "no report was written: " + repr(sorted(
+967 < 2         str(q.relative_to(into)) for q in into.rglob("*")))
+968 < 2     assert written.read_bytes() == blob(REPORT_FETCHED), p.stdout + p.stderr
+969 < 2 
+970 < 2 
+971 < 2 def test_c_a_report_that_does_not_answer_leaves_the_file_unwritten(tmp_path):
+972 < 2     """(c)/[M1]: run 132's report read exits non-zero, so that file is
+973 < 2     unwritten — and the run is still a row, its record and status having
+974 < 2     answered."""
+975 < 2     p, into, _calls, _bare = run_fetch(
+976 < 2         tmp_path, answers=report_fetch_answers(), runs="131..132")
+977 < 2     assert not (into / "run-132/report.json").exists(), sorted(
+978 < 2         q.name for q in (into / "run-132").iterdir())
+979 < 2     assert (into / "run-132/gate-verdicts.json").is_file(), p.stderr
+980 < 2 
+981 < 2 
+982 < 2 def test_c_both_report_paths_are_requested_as_api_reads_of_the_evidence_tag(
+983 < 2         tmp_path):
+984 < 2     """(c)/[M1]: exactly `repos/ops/evidence/contents/runs/o-r/131/report.json
+985 < 2     ?ref=o-r/run-131` and its 132 twin, each once, each an `api`
+986 < 2     call naming exactly two arguments — the shape the two existing fetches
+987 < 2     already use."""
+988 < 2     p, _into, calls, _bare = run_fetch(
+989 < 2         tmp_path, answers=report_fetch_answers(), runs="131..132")
+990 < 2     argvs = call_log(calls)
+991 < 2     assert argvs, "the fake `gh` was never invoked: " + p.stdout + p.stderr
+992 < 2     reports = [argv for argv in argvs
+993 < 2                if "report.json" in (argv[1] if len(argv) > 1 else "")]
+994 < 2     assert [argv[1] for argv in reports] == [
+995 < 2         report_path(131), report_path(132)], reports
+996 < 2     for argv in reports:
+997 < 2         assert argv == ["api", argv[1]], argv
+998 < 2     expected = {plan_path(n) for n in (131, 132)}
+999 < 2     expected |= {status_path(n) for n in (131, 132)}
+1000 < 2     expected |= {report_path(n) for n in (131, 132)}
+1001 < 2     for argv in argvs:
+1002 < 2         assert len(argv) == 2, argv
+1003 < 2         assert argv[0] == "api", argv
+1004 < 2         assert argv[1].startswith("repos/ops/evidence/contents/runs/o-r/"), \
+1005 < 2             argv
+1006 < 2         assert "?ref=" in argv[1], argv
+1007 < 2         assert argv[1] in expected, argv
+1008 < 2 
+1009 < 2 
+1010 < 2 def test_c_the_printed_rows_carry_the_list_length_and_the_dash(tmp_path):
+1011 < 2     """(c)/[M1]: the table printed over `<dir>` gives 131 the fetched report's
+1012 < 2     list length in its `amendments` cell, and 132 — whose report did not
+1013 < 2     answer — a `-`."""
+1014 < 2     p, _into, _calls, _bare = run_fetch(
+1015 < 2         tmp_path, answers=report_fetch_answers(), runs="131..132")
+1016 < 2     row_131, row_132 = row_for(p.stdout, 131), row_for(p.stdout, 132)
+1017 < 2     assert row_131 is not None and row_132 is not None, p.stdout + p.stderr
+1018 < 2     assert amendments_cell(row_131) == \
+1019 < 2         str(len(REPORT_FETCHED["amendments"])), row_131
+1020 < 2     assert amendments_cell(row_131) == "2", row_131
+1021 < 2     assert amendments_cell(row_132) == "-", row_132
+1022 < 2     assert totals_field(lines(p.stdout)[-1], "amendments") == "2", p.stdout
+1023 < 2 
+1024 < 2 
+1025 < 2 # ------------------------------------------------------------------- leg (d)
+1026 < 2 
+1027 < 2 def skipped_run_answers():
+1028 < 2     """Run 200's plan tag carries a record; run 201's does not, though its
+1029 < 2     status and its report both answer."""
+1030 < 2     return {
+1031 < 2         plan_path(200): blob(RECORD_131_PLAIN).decode("utf-8"),
+1032 < 2         status_path(200): blob(STATUS_131).decode("utf-8"),
+1033 < 2         report_path(200): blob(REPORT_FETCHED).decode("utf-8"),
+1034 < 2         status_path(201): blob(STATUS_131).decode("utf-8"),
+1035 < 2         report_path(201): blob(REPORT_THREE).decode("utf-8"),
+1036 < 2     }
+1037 < 2 
+1038 < 2 
+1039 < 2 def test_d_a_plan_tag_without_a_record_yields_no_row_and_no_directory(
+1040 < 2         tmp_path):
+1041 < 2     """(d)/[M1]: run 201's plan tag has no record, so it is skipped whole —
+1042 < 2     nothing written for it, no directory left behind, no row — and its report
+1043 < 2     answering does not change that. Run 200, whose record was written, does
+1044 < 2     get its report."""
+1045 < 2     p, into, _calls, _bare = run_fetch(
+1046 < 2         tmp_path, answers=skipped_run_answers(), runs="200..201")
+1047 < 2     assert p.returncode == 0, p.stdout + p.stderr
+1048 < 2     assert not (into / "run-201").exists(), sorted(
+1049 < 2         q.name for q in into.iterdir())
+1050 < 2     assert row_for(p.stdout, 201) is None, p.stdout
+1051 < 2     assert (into / "run-200/report.json").is_file(), sorted(
+1052 < 2         str(q.relative_to(into)) for q in into.rglob("*"))
+1053 < 2     assert (into / "run-200/report.json").read_bytes() == \
+1054 < 2         blob(REPORT_FETCHED), p.stdout + p.stderr
+1055 < 2     assert amendments_cell(row_for(p.stdout, 200)) == "2", p.stdout
+1056 < 2 

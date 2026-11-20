@@ -1,0 +1,82 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // The memory sim (the main-is-a-peer design, stage 2): a Flock run starts its weaves from main's
+2 < 1 // memory and lands into it, and the catch-up joins on it. One throwaway target, three steps:
+3 < 1 //   run 1     a first run on a target with no store: `weave:memory` begins one (via genesis),
+4 < 1 //             `weave:store` stores the landed commit's entry, and the target's weave ref holds it;
+5 < 1 //   catch-up  main moves beside the run (a commit made by hand) and catchup.mjs joins the run onto
+6 < 1 //             it from the store: both sides' lines, catchup.json says joined and stored, and the
+7 < 1 //             moved main's own entry was replayed from the commit, never from the run;
+8 < 1 //   run 2     a second run from the caught-up commit starts from that entry (via run, one path
+9 < 1 //             installed), and the entry it stores names every writer of a.txt's lines: both runs'
+10 < 1 //             tasks and the hand commit.
+11 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+12 < 1 import { spawnSync } from 'node:child_process'
+13 < 1 import fs from 'node:fs'
+14 < 1 import path from 'node:path'
+15 < 1 import { simEnv } from './_helpers.mjs'
+16 < 1 import { REPO, flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
+17 < 1 
+18 < 1 const fail = (why) => { console.log(`MEMORY FAILED: ${why}`); process.exit(1) }
+19 < 1 const assert = (ok, why) => { if (!ok) fail(why) }
+20 < 1 const REF = 'refs/ultrapowers/weave/v1'
+21 < 1 const BODY = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta']
+22 < 1 const lines = (l) => l.join('\n') + '\n'
+23 < 1 
+24 < 1 const t = flockTarget({ 'a.txt': lines(BODY) })
+25 < 1 const entryOf = (rev) => {
+26 < 1   const tree = t.git('rev-parse', `${rev}^{tree}`)
+27 < 1   const hit = t.git('log', '--format=%H %s', REF).split('\n').find((l) => l.endsWith(`weave ${tree}`))
+28 < 1   return hit ? hit.split(' ')[0] : null
+29 < 1 }
+30 < 1 const meta = (entry) => JSON.parse(t.git('show', `${entry}:meta.json`))
+31 < 1 const planFor = (word) => writePlan(t, {
+32 < 1   claim: `a.txt carries ${word}.`, check: 'test -f a.txt',
+33 < 1   tasks: [task({ id: 1, title: `Write ${word}`, files: ['Modify: `a.txt`'], claim: `a.txt carries ${word}.`, stale: 'path-absent: `a.txt`', run: `grep -q ${word} a.txt` })],
+34 < 1 })
+35 < 1 
+36 < 1 // ── run 1: no store yet ─────────────────────────────────────────────────────────
+37 < 1 t.over.ULTRAPOWERS_FLEET_RUN = 'run-1'
+38 < 1 const r1 = await flockRun(t, { plan: planFor('RUN1'), script: { 1: { 'a.txt': lines(['RUN1', ...BODY.slice(1)]) } } })
+39 < 1 assert(r1.code === 0, `run 1 exited ${r1.code}: ${r1.out.slice(-600)}`)
+40 < 1 const began = r1.of('weave:memory')[0]
+41 < 1 assert(began && began.memory === true && began.via === 'genesis', `run 1's weave:memory row is ${JSON.stringify(began)}`)
+42 < 1 const stored = r1.of('weave:store')[0]
+43 < 1 assert(stored && stored.stored === true && stored.paths === 1, `run 1's weave:store row is ${JSON.stringify(stored)}`)
+44 < 1 const run1 = t.git('rev-parse', 'HEAD')
+45 < 1 assert(stored.commit === run1 && entryOf(run1) === stored.entry, `the ref holds no entry for run 1's commit (row ${JSON.stringify(stored)})`)
+46 < 1 assert(meta(stored.entry).via === 'run', `run 1's entry is via ${meta(stored.entry).via}`)
+47 < 1 
+48 < 1 // ── the catch-up: main moved by hand, joined from the store ─────────────────────
+49 < 1 t.git('checkout', '-qb', 'moved', t.base)
+50 < 1 fs.writeFileSync(path.join(t.T, 'a.txt'), lines([...BODY.slice(0, -1), 'MAIN']))
+51 < 1 t.git('commit', '-qam', 'main moved')
+52 < 1 const onto = t.git('rev-parse', 'HEAD')
+53 < 1 t.git('checkout', '-q', '--detach', run1)
+54 < 1 const c = spawnSync('node', [path.join(REPO, 'factory', 'flock', 'catchup.mjs'), '--plan', planFor('RUN1'), '--target', t.T,
+55 < 1   '--base', t.base, '--onto', onto, '--run-dir', t.RUN], { encoding: 'utf8', timeout: 120000, env: simEnv({ home: t.tmp, env: t.over }) })
+56 < 1 const last = (c.stdout || '').trim().split('\n').pop() || ''
+58 > 1 assert(c.status === 0 && JSON.parse(last).caughtUp === true, `the catch-up exited ${c.status}: ${last} ${(c.stderr || '').slice(-600)}`)
+57 < 2 assert(c.status === 0 && JSON.parse(last).refolded === true, `the catch-up exited ${c.status}: ${last} ${(c.stderr || '').slice(-600)}`)
+58 < 1 const caught = t.git('rev-parse', 'HEAD')
+59 < 1 assert(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8') === lines(['RUN1', ...BODY.slice(1, -1), 'MAIN']), `a.txt after the catch-up is ${JSON.stringify(fs.readFileSync(path.join(t.T, 'a.txt'), 'utf8'))}`)
+60 < 2 const note = JSON.parse(fs.readFileSync(path.join(t.RUN, 'catchup.json'), 'utf8'))
+61 < 2 assert(note.memory && note.memory.joined === true && note.memory.stored === true, `catchup.json's memory is ${JSON.stringify(note.memory)}`)
+62 < 1 assert(entryOf(onto) && meta(entryOf(onto)).via === 'replay', 'the moved main has no replayed entry')
+63 < 1 assert(entryOf(caught) && meta(entryOf(caught)).via === 'run', 'the caught-up commit has no entry')
+64 < 1 
+65 < 1 // ── run 2: from the caught-up commit ────────────────────────────────────────────
+66 < 1 t.over.ULTRAPOWERS_FLEET_RUN = 'run-2'
+67 < 1 const t2 = { ...t, base: caught, RUN: path.join(t.tmp, 'run2') }
+68 < 1 const r2 = await flockRun(t2, { plan: planFor('RUN2'), script: { 1: { 'a.txt': lines(['RUN1', 'beta', 'gamma', 'RUN2', ...BODY.slice(4, -1), 'MAIN']) } } })
+69 < 1 assert(r2.code === 0, `run 2 exited ${r2.code}: ${r2.out.slice(-600)}`)
+70 < 1 const began2 = r2.of('weave:memory')[0]
+71 < 1 assert(began2 && began2.memory === true && began2.via === 'run' && began2.installed === 1, `run 2's weave:memory row is ${JSON.stringify(began2)}`)
+72 < 1 const stored2 = r2.of('weave:store')[0]
+73 < 1 assert(stored2 && stored2.stored === true, `run 2's weave:store row is ${JSON.stringify(stored2)}`)
+74 < 1 const writers = new Set(Object.values(JSON.parse(t.git('show', `${stored2.entry}:w/a.txt/.weave-auth`))).flat())
+75 < 1 const want = ['@c:' + onto.slice(0, 12), '@r1:1', '@r2:1']
+76 < 1 assert(JSON.stringify([...writers].sort()) === JSON.stringify(want), `a.txt's writers are ${JSON.stringify([...writers].sort())}, not ${JSON.stringify(want)}`)
+77 < 1 
+78 < 1 t.done()
+79 < 1 console.log('ALL TESTS PASSED')
+80 < 1 

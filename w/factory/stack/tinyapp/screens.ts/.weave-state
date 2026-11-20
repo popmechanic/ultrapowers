@@ -1,0 +1,227 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // The screens checker: does every screen of this copy read as a json-render
+2 < 1 // spec over its catalog, and does it run each of its piece's card actions?
+3 < 1 // Browser-free: it imports the copy's catalog and store modules in Bun and
+4 < 1 // reads client/src/pieces/<piece>.json. Exit 0 pass, 1 findings about the app,
+5 < 1 // 2 could not run. It writes nothing.
+7 > 1 import {createHash} from 'node:crypto';
+8 < 1 import {existsSync, readFileSync, readdirSync} from 'node:fs';
+6 < 2 import {existsSync, readFileSync} from 'node:fs';
+7 < 1 import {spawnSync} from 'node:child_process';
+9 > 1 import {join, resolve} from 'node:path';
+8 < 2 import {dirname, join, resolve} from 'node:path';
+9 < 1 
+11 > 1 const REPO = join(import.meta.dir, '..', '..', '..');
+10 < 2 const REPO = join(dirname(new URL(import.meta.url).pathname), '..', '..', '..');
+11 < 1 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
+12 < 1 const EXPRESSIONS = ['$state', '$item', '$index', '$bindState', '$bindItem', '$template', '$cond', '$computed'];
+13 < 1 
+14 < 1 const arg = (name: string, fallback?: string) => {
+15 < 1   const i = process.argv.indexOf('--' + name);
+16 < 1   return i > 0 ? process.argv[i + 1] : fallback;
+17 < 1 };
+18 < 1 
+19 < 1 class CouldNotRun extends Error {}
+20 < 1 
+21 < 1 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+22 < 1 const isExpression = (v: unknown) => isObj(v) && EXPRESSIONS.some((k) => k in v);
+23 < 1 const underDraft = (p: unknown) => typeof p === 'string' && p.startsWith('/draft/');
+25 > 1 // Where a built-in action writes when it names no statePath (json-render's ActionProvider).
+26 < 1 const DEFAULT_PATH: Record<string, string> = {validateForm: '/formValidation'};
+24 < 1 
+25 < 1 /** The card actions per piece, in plan or bundle order. */
+26 < 1 function piecesFrom(plan?: string, bundle?: string): Map<string, string[]> {
+27 < 1   const out = new Map<string, string[]>();
+28 < 1   const add = (piece: string, actions: string[]) => out.set(piece, [...(out.get(piece) ?? []), ...actions.filter((a) => !(out.get(piece) ?? []).includes(a))]);
+29 < 1   if (plan) {
+30 < 1     if (!existsSync(plan)) throw new CouldNotRun(`no plan at ${plan}`);
+31 < 1     const r = spawnSync('python3', [PARSER, plan], {encoding: 'utf8', maxBuffer: 64 * 1024 * 1024});
+32 < 1     if (r.error || r.status !== 0) throw new CouldNotRun(`plan_parse.py could not read ${plan}: ${(r.stderr || String(r.error)).trim().split('\n').pop()}`);
+33 < 1     const parsed = JSON.parse(r.stdout);
+34 < 1     if (parsed.grammar !== 'stories-v1') throw new CouldNotRun(`${plan} is not a stories-v1 plan`);
+35 < 1     for (const t of parsed.tasks ?? []) if (t.piece) add(t.piece, (t.actions ?? []).map((a: unknown) => (isObj(a) ? String(a.name) : String(a))));
+36 < 1   } else if (bundle) {
+37 < 1     let cards: unknown;
+38 < 1     try { cards = JSON.parse(readFileSync(join(bundle, 'cards.json'), 'utf8')); } catch (e) {
+39 < 1       throw new CouldNotRun(`could not read ${join(bundle, 'cards.json')}: ${(e as Error).message}`);
+40 < 1     }
+41 < 1     if (!Array.isArray(cards)) throw new CouldNotRun(`${join(bundle, 'cards.json')} is not a list of cards`);
+42 < 1     for (const c of cards) add(String(c.piece), (c.actions ?? []).map((a: {name: string}) => a.name));
+43 < 1   } else {
+44 < 1     throw new CouldNotRun('neither --plan nor --bundle was given');
+45 < 1   }
+46 < 1   return out;
+47 < 1 }
+48 < 1 
+49 < 1 async function load(copy: string) {
+50 < 1   const catPath = join(copy, 'client', 'src', 'screens', 'catalog.ts');
+51 < 1   const storePath = join(copy, 'client', 'src', 'store.js');
+52 < 1   if (!existsSync(catPath)) throw new CouldNotRun(`no catalog module at ${catPath}`);
+53 < 1   if (!existsSync(storePath)) throw new CouldNotRun(`no store module at ${storePath}`);
+54 < 1   let cat: any, store: any;
+55 < 1   try { cat = await import(catPath); } catch (e) { throw new CouldNotRun(`could not load ${catPath}: ${(e as Error).message}`); }
+56 < 1   try { store = await import(storePath); } catch (e) { throw new CouldNotRun(`could not load ${storePath}: ${(e as Error).message}`); }
+57 < 1   if (!cat.components || !cat.BUILT_IN || typeof cat.catalogFor !== 'function') throw new CouldNotRun(`${catPath} does not export components, BUILT_IN and catalogFor`);
+58 < 1   if (!Array.isArray(store.TOOLS)) throw new CouldNotRun(`${storePath} does not export TOOLS`);
+59 < 1   const tools = store.TOOLS.map((t: {name: string; description?: string}) => ({name: t.name, description: t.description ?? ''}));
+60 < 1   return {components: cat.components as Record<string, {props: any}>, builtIn: cat.BUILT_IN as string[], catalog: cat.catalogFor(tools), actionNames: tools.map((t: {name: string}) => t.name) as string[]};
+61 < 1 }
+62 < 1 
+64 > 1 /** Every two-way binding anywhere under v: a $bindState path, or a $bindItem field
+65 < 1  *  (which writes the repeated row itself, so never a draft). */
+66 < 1 function bindings(v: unknown, out: string[] = []): string[] {
+67 < 1   if (Array.isArray(v)) for (const x of v) bindings(x, out);
+63 < 2 /** Every $bindState path anywhere under v. */
+64 < 2 function bindStates(v: unknown, out: string[] = []): string[] {
+65 < 2   if (Array.isArray(v)) for (const x of v) bindStates(x, out);
+66 < 1   else if (isObj(v)) {
+68 > 1     if ('$bindState' in v && !underDraft(v.$bindState)) out.push(`$bindState ${String(v.$bindState)}`);
+69 < 1     if ('$bindItem' in v) out.push(`$bindItem ${String(v.$bindItem)}`);
+70 < 1     for (const x of Object.values(v)) bindings(x, out);
+67 < 2     if ('$bindState' in v) out.push(String(v.$bindState));
+68 < 2     for (const x of Object.values(v)) bindStates(x, out);
+69 < 1   }
+70 < 1   return out;
+71 < 1 }
+72 < 1 
+73 < 1 type Loaded = Awaited<ReturnType<typeof load>>;
+74 < 1 
+75 < 1 function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): string[] {
+76 < 1   const file = join(copy, 'client', 'src', 'pieces', `${piece}.json`);
+77 < 1   if (!existsSync(file)) return [`no screen at client/src/pieces/${piece}.json`];
+78 < 1   let spec: any;
+79 < 1   try { spec = JSON.parse(readFileSync(file, 'utf8')); } catch (e) {
+80 < 1     return [`client/src/pieces/${piece}.json is not JSON: ${(e as Error).message}`];
+81 < 1   }
+82 < 1   const found: string[] = [];
+83 < 1   const v = c.catalog.validate(spec);
+84 < 1   if (!v.success) {
+85 < 1     for (const i of v.error?.issues ?? []) found.push(`${(i.path ?? []).join('.') || '(spec)'}: ${i.message}`);
+86 < 1   }
+87 < 1   if (isObj(spec) && 'public' in spec && typeof spec.public !== 'boolean') found.push(`public cannot be ${JSON.stringify(spec.public)}`);
+88 < 1   const run = new Set<string>();
+89 < 1   const elements = isObj(spec) && isObj(spec.elements) ? spec.elements : {};
+90 < 1   const kids = (el: Record<string, unknown>): unknown[] =>
+91 < 1     [...(Array.isArray(el.children) ? el.children : []), ...Object.values(isObj(el.slots) ? el.slots : {}).flat()];
+92 < 1   const reached = new Set<string>();
+93 < 1   const root = isObj(spec) ? spec.root : undefined;
+94 < 1   if (typeof root !== 'string' || !isObj(elements[root])) found.push(`root ${JSON.stringify(root)} is no element`);
+95 < 1   else {
+96 < 1     const stack = [root];
+97 < 1     while (stack.length) {
+98 < 1       const key = stack.pop()!;
+99 < 1       const el = elements[key];
+100 < 1       if (reached.has(key) || !isObj(el) || el.visible === false) continue;
+101 < 1       reached.add(key);
+102 < 1       for (const ch of kids(el)) if (typeof ch === 'string') stack.push(ch);
+103 < 1     }
+104 < 1   }
+105 < 1   for (const [key, el] of Object.entries(elements)) {
+106 < 1     if (!isObj(el)) continue;
+107 < 1     for (const ch of kids(el)) if (typeof ch !== 'string' || !isObj(elements[ch])) found.push(`${key}: child ${JSON.stringify(ch)} is no element`);
+108 < 1     const type = String(el.type);
+109 < 1     const props = isObj(el.props) ? el.props : {};
+110 < 1     const schema = c.components[type]?.props;
+111 < 1     const shape = schema?.shape as Record<string, any> | undefined;
+112 < 1     if (shape) {
+113 < 1       for (const prop of Object.keys(props)) if (!(prop in shape)) found.push(`${key}: ${type} has no prop ${prop}`);
+114 < 1       const seen = new Set<string>();
+115 < 1       for (const i of schema.safeParse(props).error?.issues ?? []) {
+117 > 1         if (!i.path?.length) {
+118 < 1           if (!seen.has('')) found.push(`${key}: ${type} props: ${i.message}`);
+119 < 1           seen.add('');
+120 < 1           continue;
+121 < 1         }
+116 < 1         const prop = String(i.path[0]);
+117 < 1         if (seen.has(prop) || isExpression(props[prop])) continue;
+118 < 1         seen.add(prop);
+119 < 1         found.push(prop in props ? `${key}: ${type}.${prop} cannot be ${JSON.stringify(props[prop])}` : `${key}: ${type} needs prop ${prop}`);
+120 < 1       }
+121 < 1     }
+122 < 1     if (typeof props.action === 'string') {
+123 < 1       if (reached.has(key)) run.add(props.action);
+124 < 1       if (!c.actionNames.includes(props.action)) found.push(`${key}: ${props.action} is no action of the store`);
+125 < 1     }
+126 < 1     for (const binding of Object.values(isObj(el.on) ? el.on : {})) {
+127 < 1       for (const b of Array.isArray(binding) ? binding : [binding]) {
+128 < 1         if (!isObj(b)) continue;
+129 < 1         const action = String(b.action);
+130 < 1         if (!c.builtIn.includes(action)) found.push(`${key}: on runs ${action}, which is no built-in action (a card action runs from an action prop)`);
+132 > 1         if (!c.builtIn.includes(action)) continue;
+131 < 1         const params = isObj(b.params) ? b.params : {};
+133 > 1         const path = 'statePath' in params ? params.statePath : DEFAULT_PATH[action];
+134 < 1         if (path === undefined) found.push(`${key}: on ${action} names no statePath, so it writes outside /draft/`);
+135 < 1         else if (!underDraft(path)) found.push(`${key}: on ${action} writes ${String(path)}, which is outside /draft/`);
+132 < 2         if ('statePath' in params && !underDraft(params.statePath)) found.push(`${key}: on ${action} writes ${String(params.statePath)}, which is outside /draft/`);
+133 < 1       }
+134 < 1     }
+136 > 1     for (const b of bindings(props)) found.push(`${key}: ${b} is outside /draft/`);
+135 < 2     for (const path of bindStates(props)) if (!underDraft(path)) found.push(`${key}: $bindState ${path} is outside /draft/`);
+136 < 1   }
+137 < 1   for (const a of actions) if (!run.has(a)) found.push(`no element runs ${a}`);
+138 < 1   return found;
+139 < 1 }
+140 < 1 
+142 > 1 /** The app's parts, not its screens (#1491): every catalog part has its line in draws.json (the
+143 < 1  *  role it draws and the props that name it) and every line a part, and 1st-Pouf under
+144 < 1  *  client/src/pouf/ is byte-for-byte its pin, so a part added during a run wraps it rather than
+145 < 1  *  patching it. An app with no draws.json (scaffolded before it) is checked for the pin only. */
+146 < 1 export function checkParts(copy: string, components: Record<string, {props: any}>): string[] {
+147 < 1   const found: string[] = [];
+148 < 1   const drawsFile = join(copy, 'client', 'src', 'screens', 'draws.json');
+149 < 1   if (existsSync(drawsFile)) {
+150 < 1     let parts: Record<string, unknown> = {};
+151 < 1     try { parts = JSON.parse(readFileSync(drawsFile, 'utf8')).parts ?? {}; } catch (e) { found.push(`draws.json is not JSON: ${(e as Error).message}`); }
+152 < 1     for (const name of Object.keys(components)) {
+153 < 1       const line = parts[name];
+154 < 1       if (!isObj(line)) { found.push(`part ${name} has no line in client/src/screens/draws.json saying what it draws`); continue; }
+155 < 1       if (line.role !== null && typeof line.role !== 'string') found.push(`part ${name}: its draws.json role is neither a role nor null`);
+156 < 1       if (typeof line.role === 'string') {
+157 < 1         const props = Object.keys(components[name]?.props?.shape ?? {});
+158 < 1         const by = Array.isArray(line.name) ? line.name : [];
+159 < 1         if (!by.length) found.push(`part ${name} draws a ${line.role} but its draws.json line names no prop that names it`);
+160 < 1         for (const n of by) if (!props.includes(String(n))) found.push(`part ${name}: draws.json says ${n} names it, but it has no prop ${n}`);
+161 < 1       }
+162 < 1     }
+163 < 1     for (const name of Object.keys(parts)) if (!(name in components)) found.push(`draws.json has a line for ${name}, which is no part in catalog.ts`);
+164 < 1   }
+165 < 1   const pinFile = join(copy, 'client', 'src', 'pouf.vendor.json');
+166 < 1   const pouf = join(copy, 'client', 'src', 'pouf');
+167 < 1   if (existsSync(pinFile) && existsSync(pouf)) {
+168 < 1     const pins: Record<string, string> = JSON.parse(readFileSync(pinFile, 'utf8')).files ?? {};
+169 < 1     for (const [f, sha] of Object.entries(pins)) {
+170 < 1       const at = join(pouf, f);
+171 < 1       if (!existsSync(at)) { found.push(`client/src/pouf/${f} is gone; 1st-Pouf is vendored and never patched`); continue; }
+172 < 1       if (createHash('sha256').update(readFileSync(at)).digest('hex') !== sha) found.push(`client/src/pouf/${f} changed; 1st-Pouf is never patched, so wrap it in client/src/screens/registry.tsx instead`);
+173 < 1     }
+174 < 1     const walk = (dir: string, rel = ''): string[] => readdirSync(join(dir, rel), {withFileTypes: true})
+175 < 1       .flatMap((e) => (e.isDirectory() ? walk(dir, join(rel, e.name)) : [join(rel, e.name)]));
+176 < 1     for (const f of walk(pouf)) if (!(f in pins)) found.push(`client/src/pouf/${f} is not 1st-Pouf's; a new part goes in client/src/screens/`);
+177 < 1   }
+178 < 1   return found;
+179 < 1 }
+180 < 1 
+141 < 1 async function main(): Promise<number> {
+142 < 1   const plan = arg('plan');
+143 < 1   const bundle = arg('bundle');
+144 < 1   const only = arg('piece');
+145 < 1   const copy = resolve(arg('copy', '.')!);
+146 < 1   const pieces = piecesFrom(plan ? resolve(plan) : undefined, bundle ? resolve(bundle) : undefined);
+147 < 1   if (only && !pieces.has(only)) throw new CouldNotRun(`the ${plan ? 'plan' : 'bundle'} has no task for piece ${only}`);
+148 < 1   const c = await load(copy);
+149 < 1   const names = only ? [only] : [...pieces.keys()];
+150 < 1   let n = 0;
+152 > 1   for (const f of checkParts(copy, c.components)) { console.log(`SCREENS parts: ${f}`); n++; }
+151 < 1   for (const piece of names) {
+152 < 1     for (const f of checkPiece(copy, piece, pieces.get(piece)!, c)) { console.log(`SCREENS ${piece}: ${f}`); n++; }
+153 < 1   }
+154 < 1   if (n) { console.log(`SCREENS exit 1: ${n} finding(s)`); return 1; }
+155 < 1   console.log(`SCREENS ok: ${names.join(', ')}`);
+156 < 1   return 0;
+157 < 1 }
+158 < 1 
+159 < 1 main().then((code) => process.exit(code), (e) => {
+160 < 1   console.log(`SCREENS could not run: ${e instanceof CouldNotRun ? e.message : (e as Error)?.stack?.split('\n')[0] ?? String(e)}`);
+161 < 1   process.exit(2);
+162 < 1 });
+163 < 1 

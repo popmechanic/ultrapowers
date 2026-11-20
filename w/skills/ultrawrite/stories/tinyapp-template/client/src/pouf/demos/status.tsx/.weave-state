@@ -1,0 +1,40 @@
+0 < 2 import { Status, Freshness, ModeBanner } from '../status'
+1 < 2 import { Stack } from '../layout'
+2 < 2 import { Text } from '../text'
+3 < 2 import type { Demo } from './types'
+4 < 2 
+5 < 2 // Status/Freshness derive their state from `now - at`, computed internally
+6 < 2 // with their own Date.now(). A fresh timestamp is pinned to 2100 — clamped
+7 < 2 // to "just happened" forever. A stale one CANNOT be a fixed epoch constant:
+8 < 2 // the rendered age string ("3h ago") keeps aging against wall-clock, so a
+9 < 2 // snapshot taken today diffs against one taken tomorrow. Instead the stale
+10 < 2 // offset is computed from render-time Date.now(): always exactly "3h ago",
+11 < 2 // stable within any single capture run — which is the determinism the
+12 < 2 // snapshot gate actually needs.
+13 < 2 const FUTURE_MS = 4_102_444_800_000 // 2100-01-01T00:00:00Z
+14 < 2 const STALE_3H = () => Date.now() - 3 * 60 * 60 * 1000
+15 < 2 
+16 < 2 export const statusDemos: Demo[] = [
+17 < 2   { id: 'no-timestamp', render: () => <Status label="Service offline" tone="idle" /> },
+18 < 2   { id: 'fresh', render: () => <Status label="Sync enabled" tone="up" at={FUTURE_MS} /> },
+19 < 2   { id: 'stale', render: () => <Status label="Sync connected" tone="up" at={STALE_3H()} /> },
+20 < 2 ]
+21 < 2 
+22 < 2 export const freshnessDemos: Demo[] = [
+23 < 2   // Renders nothing when healthy — that's the contract, not a bug. Wrapped
+24 < 2   // with a caption so the demo root isn't literally empty.
+25 < 2   { id: 'healthy', render: () => (
+26 < 2       <Stack gap={2}>
+27 < 2         <Text size="sm" muted>Renders nothing while the data is fresh:</Text>
+28 < 2         <Freshness at={FUTURE_MS} />
+29 < 2       </Stack>
+30 < 2     ) },
+31 < 2   { id: 'stale', render: () => <Freshness at={STALE_3H()} /> },
+32 < 2   { id: 'error', render: () => <Freshness at={FUTURE_MS} isError /> },
+33 < 2 ]
+34 < 2 
+35 < 2 export const modeBannerDemos: Demo[] = [
+36 < 2   { id: 'draft', render: () => <ModeBanner live={false} /> },
+37 < 2   { id: 'live', render: () => <ModeBanner live /> },
+38 < 2 ]
+39 < 2 

@@ -1,0 +1,166 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card, RowCard } from '../surface'
+2 < 2 import { Stack, Row, Grid } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Stat } from '../readout'
+5 < 2 import { Badge, Blob } from '../media'
+6 < 2 import { Progress } from '../progress'
+7 < 2 import { Button } from '../Button'
+8 < 2 import { Table } from '../table'
+9 < 2 import { Icon } from '../Icon'
+10 < 2 
+11 < 2 const OTHER_LEADERS = [
+12 < 2   { id: '1', name: 'PixelWizard', score: 48210 },
+13 < 2   { id: '3', name: 'Bouncer', score: 38455 },
+14 < 2   { id: '4', name: 'ClayFace', score: 30102 },
+15 < 2 ]
+16 < 2 
+17 < 2 // One uniform shape across every slot (unused numbers default to 0) so an
+18 < 2 // item's stats read directly off `ITEMS.find(...)` with no per-slot narrowing.
+19 < 2 const ITEMS = [
+20 < 2   { id: 'sword', name: 'Iron Sword', desc: '+15 dmg · costs 12 HP', icon: 'sword', tone: 'orange' as const, slot: 'weapon' as const, atk: 15, hpCost: 12, block: 0, heal: 0, xpBoost: 0 },
+21 < 2   { id: 'wand', name: 'Clay Wand', desc: '+24 dmg · costs 20 HP', icon: 'wand', tone: 'purple' as const, slot: 'weapon' as const, atk: 24, hpCost: 20, block: 0, heal: 0, xpBoost: 0 },
+22 < 2   { id: 'shield', name: 'Oak Shield', desc: 'Blocks 10 HP of recoil', icon: 'shield', tone: 'blue' as const, slot: 'armor' as const, atk: 0, hpCost: 0, block: 10, heal: 0, xpBoost: 0 },
+23 < 2   { id: 'potion', name: 'Health Potion', desc: 'Restores 30 HP · single use', icon: 'drop', tone: 'pink' as const, slot: 'consumable' as const, atk: 0, hpCost: 0, block: 0, heal: 30, xpBoost: 0 },
+24 < 2   { id: 'charm', name: 'XP Charm', desc: '+10 XP per spell cast', icon: 'sparkle', tone: 'yellow' as const, slot: 'accessory' as const, atk: 0, hpCost: 0, block: 0, heal: 0, xpBoost: 10 },
+25 < 2 ]
+26 < 2 
+27 < 2 /** An example game HUD: score, health and XP bars, an inventory, and a
+28 < 2  * leaderboard. Equipping a weapon or armor changes what Attack costs and
+29 < 2  * deals, the potion and charm act directly on the bars, and the score you
+30 < 2  * earn updates your own live rank in the leaderboard below. */
+31 < 2 export function GameBlock() {
+32 < 2   const [hp, setHp] = useState(72)
+33 < 2   const [xp, setXp] = useState(40)
+34 < 2   const [score, setScore] = useState(41980)
+35 < 2   const [weapon, setWeapon] = useState<string | null>('sword')
+36 < 2   const [armor, setArmor] = useState<string | null>(null)
+37 < 2   const [accessory, setAccessory] = useState<string | null>(null)
+38 < 2   const [potionUsed, setPotionUsed] = useState(false)
+39 < 2 
+40 < 2   const equippedWeapon = ITEMS.find((i) => i.id === weapon)
+41 < 2   const equippedArmor = ITEMS.find((i) => i.id === armor)
+42 < 2   const equippedAccessory = ITEMS.find((i) => i.id === accessory)
+43 < 2 
+44 < 2   function attack() {
+45 < 2     const cost = Math.max(4, (equippedWeapon?.hpCost ?? 10) - (equippedArmor?.block ?? 0))
+46 < 2     setHp((h) => Math.max(0, h - cost))
+47 < 2     setScore((s) => s + (equippedWeapon?.atk ?? 8) * 10)
+48 < 2   }
+49 < 2 
+50 < 2   function cast() {
+51 < 2     setXp((x) => Math.min(100, x + 20 + (equippedAccessory?.xpBoost ?? 0)))
+52 < 2   }
+53 < 2 
+54 < 2   function heal() {
+55 < 2     setHp((h) => Math.min(100, h + 25))
+56 < 2   }
+57 < 2 
+58 < 2   function toggleItem(item: (typeof ITEMS)[number]) {
+59 < 2     if (item.slot === 'weapon') setWeapon((w) => (w === item.id ? null : item.id))
+60 < 2     else if (item.slot === 'armor') setArmor((a) => (a === item.id ? null : item.id))
+61 < 2     else if (item.slot === 'accessory') setAccessory((a) => (a === item.id ? null : item.id))
+62 < 2     else if (!potionUsed) {
+63 < 2       setHp((h) => Math.min(100, h + item.heal))
+64 < 2       setPotionUsed(true)
+65 < 2     }
+66 < 2   }
+67 < 2 
+68 < 2   // "You" carries the live score, so a good Attack visibly moves your rank.
+69 < 2   const leaders = [...OTHER_LEADERS, { id: '2', name: 'You', score }]
+70 < 2     .sort((a, b) => b.score - a.score)
+71 < 2     .map((l, i) => ({ ...l, rank: String(i + 1) }))
+72 < 2 
+73 < 2   return (
+74 < 2     <div style={{ maxWidth: 720, margin: '0 auto', padding: 24 }}>
+75 < 2       <Stack gap={5}>
+76 < 2         <Row justify="between">
+77 < 2           <Stack gap={1}>
+78 < 2             <Eyebrow>Level 7 · Cushion Caverns</Eyebrow>
+79 < 2             <Heading level={1}>Boss fight</Heading>
+80 < 2           </Stack>
+81 < 2           <Badge tone="yellow"><Icon name="star" size="sm" /> 1,240</Badge>
+82 < 2         </Row>
+83 < 2 
+84 < 2         <Grid cols={2}>
+85 < 2           <Stat label="Score" value={score.toLocaleString()} icon="target" tone="purple" />
+86 < 2           <Stat label="Combo" value="×12" icon="up" tone="mint" />
+87 < 2         </Grid>
+88 < 2 
+89 < 2         <Card>
+90 < 2           <Stack gap={4}>
+91 < 2             <Stack gap={2}>
+92 < 2               <Row justify="between">
+93 < 2                 <Text>Health</Text>
+94 < 2                 <Text num muted>{hp} / 100</Text>
+95 < 2               </Row>
+96 < 2               <Progress value={hp} tone="pink" label="Health" />
+97 < 2             </Stack>
+98 < 2             <Stack gap={2}>
+99 < 2               <Row justify="between">
+100 < 2                 <Text>XP to next level</Text>
+101 < 2                 <Text num muted>{xp} / 100</Text>
+102 < 2               </Row>
+103 < 2               <Progress value={xp} tone="blue" label="Experience" />
+104 < 2             </Stack>
+105 < 2             <Row gap={2}>
+106 < 2               <Button tone="pink" onClick={attack}>Attack</Button>
+107 < 2               <Button tone="blue" onClick={cast}>Cast spell</Button>
+108 < 2               <Button tone="mint" variant="quiet" onClick={heal}>Heal</Button>
+109 < 2             </Row>
+110 < 2           </Stack>
+111 < 2         </Card>
+112 < 2 
+113 < 2         <Card>
+114 < 2           <Stack gap={4}>
+115 < 2             <Heading level={3}>Inventory</Heading>
+116 < 2             <Stack gap={2}>
+117 < 2               {ITEMS.map((item) => {
+118 < 2                 const equipped = item.slot === 'weapon'
+119 < 2                   ? weapon === item.id
+120 < 2                   : item.slot === 'armor'
+121 < 2                   ? armor === item.id
+122 < 2                   : item.slot === 'accessory'
+123 < 2                   ? accessory === item.id
+124 < 2                   : potionUsed
+125 < 2                 const disabled = item.slot === 'consumable' && potionUsed
+126 < 2                 return (
+127 < 2                   <RowCard key={item.id} selected={equipped} onClick={disabled ? undefined : () => toggleItem(item)}>
+128 < 2                     <Row justify="between" wrap={false}>
+129 < 2                       <Row gap={3} wrap={false}>
+130 < 2                         <Blob icon={item.icon as never} tone={item.tone} size="sm" />
+131 < 2                         <Stack gap={1}>
+132 < 2                           <Text>{item.name}</Text>
+133 < 2                           <Text size="sm" muted>{item.desc}</Text>
+134 < 2                         </Stack>
+135 < 2                       </Row>
+136 < 2                       <Badge tone={equipped ? 'mint' : 'purple'}>
+137 < 2                         {item.slot === 'consumable' ? (potionUsed ? 'Used' : 'Use') : equipped ? 'Equipped' : 'Equip'}
+138 < 2                       </Badge>
+139 < 2                     </Row>
+140 < 2                   </RowCard>
+141 < 2                 )
+142 < 2               })}
+143 < 2             </Stack>
+144 < 2           </Stack>
+145 < 2         </Card>
+146 < 2 
+147 < 2         <Card>
+148 < 2           <Stack gap={4}>
+149 < 2             <Heading level={3}>Leaderboard</Heading>
+150 < 2             <Table
+151 < 2               rows={leaders}
+152 < 2               getKey={(r) => r.id}
+153 < 2               columns={[
+154 < 2                 { key: 'rank', header: '#', render: (r) => <Badge tone={r.name === 'You' ? 'mint' : 'purple'}>{r.rank}</Badge> },
+155 < 2                 { key: 'name', header: 'Player', render: (r) => <Text>{r.name}</Text> },
+156 < 2                 { key: 'score', header: 'Score', align: 'right', mono: true, render: (r) => <Text num>{r.score.toLocaleString()}</Text> },
+157 < 2               ]}
+158 < 2             />
+159 < 2           </Stack>
+160 < 2         </Card>
+161 < 2       </Stack>
+162 < 2     </div>
+163 < 2   )
+164 < 2 }
+165 < 2 

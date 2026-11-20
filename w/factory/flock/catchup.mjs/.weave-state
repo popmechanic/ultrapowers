@@ -1,0 +1,169 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 // factory/flock/catchup.mjs — the Flock's catch-up of a finished run onto a moved main.
+2 < 1 // `node factory/flock/catchup.mjs --plan <p> [--plan-json <parse>] --target <dir> --base <run base> --onto <moved tip> --run-dir <dir>`
+3 < 1 // The target sits on the run's branch, the run's own commit at HEAD, the tree clean. The paths
+4 < 1 // changed on both sides are joined on main's memory (weave_store.py `join`: the run's stored entry
+5 < 1 // merged with the moved main's, every line's identity kept) when the run has one, else by the weave
+6 < 1 // keeper rebuilt from the three texts (weave.py); a clean join becomes one commit
+7 < 1 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
+9 > 1 // Last stdout line: {"caughtUp": true, "head", "onto"} (exit 0) or {"caughtUp": false, "reason":
+8 < 2 // Last stdout line: {"refolded": true, "head", "onto"} (exit 0) or {"refolded": false, "reason":
+9 < 1 // "conflict" | "red", "onto"} (exit 1). A conflict or a red leaves the run's own commit at HEAD.
+10 < 1 import { spawnSync } from 'node:child_process'
+11 < 1 import fs from 'node:fs'
+12 < 1 import os from 'node:os'
+13 < 1 import path from 'node:path'
+14 < 1 import { workloadFromPlan } from './plan.mjs'
+15 < 1 import { remapProvenance } from './provenance.mjs'
+16 < 1 import { fileURLToPath } from 'node:url'
+17 < 1 import { gitIn, utf8, writeFiles, startWeave, EXAM_MS, POLICY_FLOCK } from './io.mjs'
+18 < 1 
+19 < 1 const STORE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'weave_store.py')
+20 < 1 // one weave_store.py verb; its last stdout line as JSON, or null
+21 < 1 const store = (...args) => {
+22 < 1   const r = spawnSync('python3', [STORE, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 256 * 1024 * 1024 })
+23 < 1   try { return JSON.parse((r.stdout || '').trimEnd().split('\n').pop()) } catch { return null }
+24 < 1 }
+25 < 1 
+26 < 1 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : undefined }
+27 < 1 const PLAN = arg('--plan'), T = arg('--target'), BASE = arg('--base'), ONTO = arg('--onto'), RUN_DIR = arg('--run-dir')
+29 > 1 if (!PLAN || !T || !BASE || !ONTO) { console.log(JSON.stringify({ caughtUp: false, reason: 'usage', onto: ONTO ?? null })); process.exit(2) }
+28 < 2 if (!PLAN || !T || !BASE || !ONTO) { console.log(JSON.stringify({ refolded: false, reason: 'usage', onto: ONTO ?? null })); process.exit(2) }
+29 < 1 
+30 < 1 const git = (args, opts) => gitIn(T, args, { identity: true, ...opts })
+31 < 1 const out = (args) => git(args).stdout.trim()
+32 < 1 // A path's bytes at a rev, or null when the path is absent there.
+33 < 1 const blob = (rev, p) => { const r = git(['cat-file', 'blob', `${rev}:${p}`], { ok: true, encoding: 'buffer' }); return r.status === 0 ? r.stdout : null }
+34 < 1 const finish = (o, code) => { console.log(JSON.stringify({ ...o, onto: ONTO })); process.exit(code) }
+35 < 1 
+36 < 1 const runSha = out(['rev-parse', 'HEAD'])
+37 < 1 const changed = (a, b) => new Set(out(['diff', '--name-only', '--no-renames', a, b]).split('\n').filter(Boolean))
+38 < 1 const ours = changed(BASE, runSha), theirs = changed(BASE, ONTO)
+39 < 1 
+40 < 1 // path -> Buffer (the result) or null (deleted); only paths the run changed need writing over --onto.
+41 < 1 const result = new Map()
+42 < 1 const both = []
+43 < 1 for (const p of ours) {
+44 < 1   if (!theirs.has(p)) { result.set(p, blob(runSha, p)); continue }
+45 < 1   const r = blob(runSha, p), m = blob(ONTO, p)
+46 < 1   if ((r === null && m === null) || (r && m && r.equals(m))) continue
+47 < 1   both.push(p)
+48 < 1 }
+49 < 1 
+51 > 1 // main's memory: the paths the store decides are joined there, on the weaves the run and main really
+52 < 1 // wrote; a path it does not hold (never text, or a run whose store could not be read) falls to the
+53 < 1 // three-text join below.
+50 < 2 // main's memory (policy flock.main.mode `memory` or `peer`): the paths the store decides are joined there, on
+51 < 2 // the weaves the run and main really wrote; a path it does not hold (never text, or a run that began
+52 < 2 // frozen) falls to the three-text join below, which is also the rollback (`frozen`).
+53 < 1 let memory = null   // { file, stored }: the joined Memory, kept for the commit this catch-up makes
+55 > 1 if (both.length) {
+54 < 2 if (both.length && ['memory', 'peer'].includes(POLICY_FLOCK?.main?.mode)) {
+55 < 1   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'catchup-memory-')), 'memory.json')
+56 < 1   const j = store('join', '--repo', T, '--run', runSha, '--onto', ONTO, '--remote', 'origin', '--out', file)
+57 < 1   if (j && j.joined) {
+58 < 1     const decided = new Set(j.paths)
+60 > 1     if (j.conflicts.some((p) => both.includes(p))) finish({ caughtUp: false, reason: 'conflict' }, 1)
+59 < 2     if (j.conflicts.some((p) => both.includes(p))) finish({ refolded: false, reason: 'conflict' }, 1)
+60 < 1     for (const p of both.filter((x) => decided.has(x))) {
+61 < 1       // absent from `files`: the join's text is the moved main's own, so nothing is written over it
+62 < 1       if (p in j.files) result.set(p, j.files[p] === null ? null : Buffer.from(j.files[p], 'utf8'))
+63 < 1     }
+64 < 1     both.splice(0, both.length, ...both.filter((x) => !decided.has(x)))
+65 < 1     memory = { file, stored: false }
+66 < 1   } else process.stderr.write(`catchup: no join on main's memory (${j ? j.reason : 'no answer'}), joining the three texts\n`)
+67 < 1 }
+68 < 1 
+69 < 1 if (both.length) {
+70 < 1   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'catchup-base-'))
+71 < 1   const texts = []
+72 < 1   for (const p of both) {
+73 < 1     const b = utf8(blob(BASE, p)), r = utf8(blob(runSha, p)), m = utf8(blob(ONTO, p))
+75 > 1     if (b === undefined || r === undefined || m === undefined) finish({ caughtUp: false, reason: 'conflict' }, 1)
+74 < 2     if (b === undefined || r === undefined || m === undefined) finish({ refolded: false, reason: 'conflict' }, 1)
+75 < 1     texts.push({ p, b, r, m })
+76 < 1   }
+77 < 1   const keeper = startWeave()
+78 < 1   const ask = async (req) => {
+79 < 1     const res = await keeper.send(req)
+80 < 1     if (!res.ok) throw new Error(`weave ${req.op}: ${res.error}`)
+81 < 1     return res
+82 < 1   }
+83 < 1   writeFiles(tmp, texts.filter((t) => t.b !== null).map((t) => [t.p, t.b]))
+84 < 1   await ask({ op: 'base', root: tmp, paths: texts.filter((t) => t.b !== null).map((t) => t.p) })
+85 < 1   for (const t of texts) {
+86 < 1     await ask({ op: 'rewrite', agent: 'run', path: t.p, content: t.r })
+87 < 1     await ask({ op: 'rewrite', agent: 'main', path: t.p, content: t.m })
+88 < 1   }
+89 < 1   await ask({ op: 'publish', agent: 'run' })
+90 < 1   await ask({ op: 'publish', agent: 'main' })
+91 < 1   const j = await ask({ op: 'merged', order: ['main', 'run'] })
+92 < 1   keeper.end()
+93 < 1   fs.rmSync(tmp, { recursive: true, force: true })
+95 > 1   if ((j.conflicts || []).length) finish({ caughtUp: false, reason: 'conflict' }, 1)
+94 < 2   if ((j.conflicts || []).length) finish({ refolded: false, reason: 'conflict' }, 1)
+95 < 1   for (const t of texts) {
+96 < 1     const gone = j.exists[t.p] === false || !(t.p in j.files)
+97 < 1     result.set(t.p, gone ? null : Buffer.from(j.files[t.p], 'utf8'))
+98 < 1   }
+99 < 1 }
+100 < 1 
+101 < 1 // The join is clean: one commit on --onto, then every exam of the plan with ULTRA_BASE = --onto.
+102 < 1 git(['reset', '-q', '--hard', ONTO])
+103 < 1 writeFiles(T, result)
+104 < 1 git(['add', '-A'])
+105 < 1 git(['commit', '-q', '--allow-empty', '-m', `catch up onto ${ONTO.slice(0, 12)}`])
+106 < 1 const head = out(['rev-parse', 'HEAD'])
+107 < 1 
+108 < 1 const back = (why) => {
+109 < 1   process.stderr.write(`catchup: red — ${why}\n`)
+110 < 1   git(['reset', '-q', '--hard', runSha])
+111 < 1   git(['clean', '-qfd'], { ok: true })
+113 > 1   finish({ caughtUp: false, reason: 'red' }, 1)
+112 < 2   finish({ refolded: false, reason: 'red' }, 1)
+113 < 1 }
+114 < 1 let work
+115 < 1 try { work = workloadFromPlan(PLAN, arg('--plan-json')) } catch (e) { back(`plan: ${e.message}`) }
+116 < 1 const env = { ...process.env, ULTRA_BASE: ONTO }
+117 < 1 const exam = (cmd, timeout) => {
+118 < 1   const r = spawnSync(cmd[0], cmd.slice(1), { cwd: T, env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024 })
+119 < 1   if (r.status !== 0) back(`${cmd.join(' ')} exited ${r.status ?? r.signal}: ${(r.stdout + r.stderr).slice(-400)}`)
+120 < 1 }
+121 < 1 // the run's own limits (EXAM_MS), so a fact red on time in the run is red here too
+122 < 1 if (work.setup) exam(work.setup, EXAM_MS.setup)
+123 < 1 for (const t of work.tasks) for (const f of t.facts) exam(f, EXAM_MS.fact)
+124 < 1 if (work.check) exam(work.check, work.checkTimeoutMs ?? 120_000)
+125 < 1 // The exams may leave artifacts; the commit is what the boot pushes.
+126 < 1 if (out(['rev-parse', 'HEAD']) !== head) back('an exam moved HEAD')
+127 < 1 // the caught-up commit's entry in main's memory; the publish pushes it before the merge request.
+128 < 1 // A path the three-text join decided is not in the joined Memory, so its stored weave would not
+129 < 1 // be the commit's text: the entry is then refused as drift, and the next reader replays the commit.
+130 < 1 if (memory) {
+131 < 1   const r = store('settle', '--repo', T, '--commit', head, '--from', memory.file)
+132 < 1   memory.stored = !!(r && r.stored)
+133 < 1   if (!memory.stored) process.stderr.write(`catchup: the caught-up commit's entry was not stored (${r ? r.reason : 'no answer'})\n`)
+134 < 1   fs.rmSync(path.dirname(memory.file), { recursive: true, force: true })
+135 < 1 }
+136 < 2 if (RUN_DIR) { try { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSync(path.join(RUN_DIR, 'catchup.json'), JSON.stringify({ head, onto: ONTO, run: runSha, memory: memory ? { joined: true, stored: memory.stored } : { joined: false } }) + '\n') } catch {} }
+137 < 1 // The record's line numbers were the run's commit's; carry them to the caught-up commit's.
+138 < 1 const provFile = RUN_DIR && path.join(RUN_DIR, 'provenance.json')
+139 < 1 if (provFile && fs.existsSync(provFile)) {
+140 < 1   try {
+141 < 1     const record = JSON.parse(fs.readFileSync(provFile, 'utf8'))
+142 < 1     // only the paths the record names, null on a side where the path is absent
+143 < 1     const named = new Set()
+144 < 1     for (const k of ['hunks', 'exceptions']) for (const e of Array.isArray(record[k]) ? record[k] : []) if (e && typeof e.path === 'string') named.add(e.path)
+145 < 1     const moved = changed(runSha, head)
+146 < 1     const texts = {}
+147 < 1     for (const p of named) {
+148 < 1       if (!moved.has(p)) continue
+149 < 1       const from = utf8(blob(runSha, p)), to = utf8(blob(head, p))
+150 < 1       if (typeof from === 'string' || typeof to === 'string') texts[p] = { from: from ?? null, to: to ?? null }
+151 < 1     }
+152 < 1     const prov = remapProvenance(record, texts)
+153 < 1     fs.writeFileSync(provFile, JSON.stringify({ ...prov, caughtUp: { run: runSha, head } }, null, 2) + '\n')
+154 < 1   } catch (e) { process.stderr.write(`catchup: provenance not remapped — ${e.message}\n`) }
+155 < 1 }
+157 > 1 finish({ caughtUp: true, head }, 0)
+156 < 2 finish({ refolded: true, head }, 0)
+157 < 1 

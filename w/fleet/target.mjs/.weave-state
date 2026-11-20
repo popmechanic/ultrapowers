@@ -1,0 +1,162 @@
+0 < 1 #!/usr/bin/env node
+1 < 1 /**
+2 < 1  * fleet/target.mjs — the one integration object a target repository needs.
+3 < 1  *
+4 < 1  *   node fleet/target.mjs <owner>/<repo>
+5 < 1  *   node fleet/target.mjs list
+6 < 1  *   node fleet/target.mjs gc
+7 < 1  *
+8 < 1  * Per target, exactly ONE object, created once, attached to `tag:fleet`:
+9 < 1  *
+10 < 1  *   gh-<owner>-<repo>   --act-as-user   --attach tag:fleet
+11 < 1  *
+12 < 1  * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
+13 < 1  * and the launcher's `--tag fleet` is the grant (the policy model exe.dev tried
+14 < 1  * on 2026-09-11 was rolled back; `integrations` has no `policy` verb, #1434).
+15 < 1  * The sandbox clones, pushes and opens the PR through it; the human gate is the
+16 < 1  * PR itself. There is no read-only twin and no write grant, because of two facts
+17 < 1  * measured 2026-09-03: exe.dev's GitHub edge routes each request by repo path
+18 < 1  * and serves a cached installation token for 30–60 s after an integration is
+19 < 1  * edited (a `gh pr create` twenty seconds after a swap produced a bot-authored
+20 < 1  * PR), and two integrations naming one repo on one VM have no documented
+21 < 1  * tie-break. One object per repo makes both faults inexpressible — two targets'
+22 < 1  * objects on one VM name two repos, which the edge routes apart by path.
+23 < 1  *
+24 < 1  * Creating is idempotent: an object that exists is left exactly as it is and
+25 < 1  * reported as `skipped`, and attached to `tag:fleet` when the listing shows it
+26 < 1  * is not. `gc` reports and never deletes — it names integration
+27 < 1  * objects whose repository `gh repo view` can no longer see, and leaves the
+28 < 1  * decision to the operator, because a repo that is merely private to another
+29 < 1  * account looks identical to one that is gone.
+30 < 1  */
+31 < 1 
+32 < 1 import path from 'node:path'
+33 < 1 import { fileURLToPath } from 'node:url'
+34 < 1 
+35 < 1 import {
+36 < 1   FLEET_POLICY,
+37 < 2   LobbyError,
+38 < 1   Refusal,
+39 < 1   defaultExec,
+40 < 1   githubIntegrationFor,
+41 < 1   isSafeTarget,
+42 < 1   listIntegrations,
+43 < 1   lobby,
+44 < 1   parseArgs,
+45 < 1   runCli
+46 < 1 } from './lobby.mjs'
+47 < 1 
+48 < 1 export const USAGE = `usage: node fleet/target.mjs <owner>/<repo>
+49 < 1        node fleet/target.mjs list
+50 < 1        node fleet/target.mjs gc [--json]`
+51 < 1 
+52 < 1 export const usage = () => USAGE
+53 < 1 
+54 < 1 /** The one `integrations add` line, verbatim, for a target: attached at creation,
+55 < 1  *  so a fresh object never needs a second write. No `--readonly`. */
+56 < 1 const addCommand = (target) =>
+57 < 1   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
+58 < 1 const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
+59 < 1 
+60 < 1 /** Is this one of the per-target objects? `gh-<slug>`. */
+61 < 1 const isTargetIntegration = (name) => /^gh-.+/.test(name)
+62 < 1 
+63 < 1 /** Attach the object to `tag:fleet` unless the listing already shows it there.
+64 < 1  *  Answers `kept` or `set`. */
+65 < 1 async function ensureAttached ({ exec, name, rows = null }) {
+66 < 1   const listed = rows ?? await listIntegrations(exec)
+67 < 1   const row = listed.find((r) => r.name === name)
+68 < 1   if (row && row.attachments.some((a) => a.kind === 'tag' && a.value === 'fleet')) {
+69 < 1     return { policy: 'kept', command: null }
+70 < 1   }
+71 < 1   const command = attachCommand(name)
+72 < 1   await lobby(exec, command)
+73 < 1   return { policy: 'set', command }
+74 < 1 }
+75 < 1 
+76 < 1 async function add ({ exec, target }) {
+77 < 1   const name = githubIntegrationFor(target)
+78 < 1   const rows = await listIntegrations(exec)
+79 < 1   const existing = new Set(rows.map((row) => row.name))
+80 < 1   if (existing.has(name)) {
+81 < 1     const ensured = await ensureAttached({ exec, name, rows })
+82 < 1     return { verb: 'add', target, results: [{ name, action: 'skipped', command: ensured.command, policy: ensured.policy }] }
+83 < 1   }
+84 < 1   const command = addCommand(target)
+85 < 1   await lobby(exec, command)
+86 < 1   return { verb: 'add', target, results: [{ name, action: 'created', command, policy: 'set' }] }
+87 < 1 }
+88 < 1 
+89 < 1 async function list ({ exec }) {
+90 < 1   const rows = (await listIntegrations(exec))
+91 < 1     .filter((row) => isTargetIntegration(row.name))
+92 < 1     .map((row) => ({ name: row.name, repository: row.repository, attachments: row.attachments }))
+93 < 1   return { verb: 'list', results: rows }
+94 < 1 }
+95 < 1 
+96 < 1 /**
+97 < 1  * Report objects whose repository is gone. The repository comes from the
+98 < 1  * listing's own `repository` field: `gh-<owner>-<repo>` cannot be reversed,
+99 < 1  * because the slash became a hyphen and hyphens are legal in both halves.
+100 < 1  */
+101 < 1 async function gc ({ exec }) {
+102 < 1   const rows = (await listIntegrations(exec)).filter((row) => isTargetIntegration(row.name))
+103 < 1   const seen = new Map()
+104 < 1   const results = []
+105 < 1   for (const row of rows) {
+106 < 1     if (!row.repository) {
+107 < 1       results.push({ name: row.name, repository: null, verdict: 'unknown' })
+108 < 1       continue
+109 < 1     }
+110 < 1     if (!seen.has(row.repository)) {
+111 < 1       const res = await exec('gh', ['repo', 'view', row.repository, '--json', 'name'])
+112 < 1       seen.set(row.repository, res.code === 0)
+113 < 1     }
+114 < 1     results.push({
+115 < 1       name: row.name,
+116 < 1       repository: row.repository,
+117 < 1       verdict: seen.get(row.repository) ? 'present' : 'missing'
+118 < 1     })
+119 < 1   }
+120 < 1   return { verb: 'gc', results }
+121 < 1 }
+122 < 1 
+123 < 1 export async function target ({ argv, exec = defaultExec }) {
+124 < 1   const { opts, positional } = parseArgs(argv, { flags: ['json'] })
+125 < 1   const [verb] = positional
+126 < 1   const json = opts.json === true
+127 < 1   if (verb === 'list') return { ...await list({ exec }), json }
+128 < 1   if (verb === 'gc') return { ...await gc({ exec }), json }
+129 < 1   // A target has a slash and a verb has none, so the bare form is unambiguous.
+130 < 1   if (isSafeTarget(verb)) return { ...await add({ exec, target: verb }), json }
+131 < 1   throw new Refusal(`target: expected <owner>/<repo>, list or gc, got ${JSON.stringify(verb ?? null)}\n${usage()}`)
+132 < 1 }
+133 < 1 
+134 < 1 const attachedTo = (attachments) =>
+135 < 1   attachments.length === 0 ? 'unattached' : attachments.map((a) => `${a.kind}:${a.value}`).join(' ')
+136 < 1 
+137 < 1 const renderTarget = (result) => {
+138 < 1   if (result.verb === 'add') {
+139 < 1     return result.results.map((r) => `${r.action} ${r.name} (attached ${FLEET_POLICY} ${r.policy})`).join('\n')
+140 < 1   }
+141 < 1   if (result.verb === 'list') {
+142 < 1     if (result.results.length === 0) return 'no target integrations'
+143 < 1     return result.results
+144 < 1       .map((r) => `${r.name}  ${r.repository ?? '?'}  ${attachedTo(r.attachments)}`)
+145 < 1       .join('\n')
+146 < 1   }
+147 < 1   const missing = result.results.filter((r) => r.verdict !== 'present')
+148 < 1   if (missing.length === 0) return 'every target integration names a repository gh can see'
+149 < 1   return missing.map((r) => `${r.verdict} ${r.name}  ${r.repository ?? '?'}`).join('\n')
+150 < 1 }
+151 < 1 
+152 < 1 async function main (argv) {
+153 < 1   const result = await target({ argv })
+154 < 1   process.stdout.write(result.json ? `${JSON.stringify(result)}\n` : `${renderTarget(result)}\n`)
+155 < 1 }
+156 < 1 
+157 < 1 const invokedPath = process.argv[1] ? path.resolve(process.argv[1]) : ''
+158 < 1 if (invokedPath === fileURLToPath(import.meta.url)) {
+159 < 1   await runCli(main, process.argv.slice(2))
+160 < 1 }
+161 < 1 

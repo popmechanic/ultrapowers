@@ -1,0 +1,617 @@
+0 < 1 /**
+1 < 1  * The browser move's engine: the machine's own Chromium, driven over the
+2 < 1  * DevTools protocol with nothing between us and it.
+3 < 1  *
+4 < 1  * There is no client library here and no dependency to add — a CDP connection
+5 < 1  * is a WebSocket carrying `{id, method, params, sessionId?}` and replies
+6 < 1  * `{id, result|error}`, and Bun ships both the spawn and the socket. The
+7 < 1  * headless shell is asked for `--remote-debugging-port=0` and answers with the
+8 < 1  * port it chose on the `DevTools listening on ws://…` line of its stderr: Bun
+9 < 1  * cannot hand a child extra pipes, so the port form is the one available, and a
+10 < 1  * port of `0` keeps two exams running side by side from colliding.
+11 < 1  *
+12 < 1  * Nothing the page asks for leaves the machine. `openUrl` serves the page from
+13 < 1  * a loopback origin, and a blanket block would refuse the page's own document,
+14 < 1  * so every request is paused through the `Fetch` domain and judged one at a
+15 < 1  * time: continued when it is to that origin, failed in the browser otherwise.
+16 < 1  * The page bundles its own font, so it draws its real face from that origin
+17 < 1  * and dials nothing else.
+18 < 1  */
+19 < 1 
+20 < 1 import {existsSync, mkdtempSync, rmSync} from 'node:fs';
+21 < 1 import {tmpdir} from 'node:os';
+22 < 1 import {join} from 'node:path';
+23 < 1 
+24 < 1 // Borrowed from popmechanic/tinyapp-fixture packages/tinyapp-exam/src/browser.ts
+25 < 1 // at d71c037 (2026-09-27); the two sibling imports are inlined below.
+26 < 1 export type Locator = {role: string; name: string};
+27 < 1 export type Action =
+28 < 1   | {click: Locator}
+29 < 1   | {type: [Locator, string]}
+30 < 1   | {key: [Locator, string]};
+31 < 1 
+32 < 1 /** Where the fleet image keeps its headless shell. */
+33 < 1 const DEFAULT_BINARY = '/headless-shell/headless-shell';
+34 < 1 
+35 < 1 const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
+36 < 1 
+37 < 1 /** The browser to run: an explicit path, else TINYAPP_BROWSER, else the fleet
+38 < 1  *  image's headless shell, else a laptop's Chrome. Nothing is installed. */
+40 > 1 const resolveBinary = (
+39 < 2 export const resolveBinary = (
+40 < 1   explicit?: string,
+41 < 1   env: Record<string, string | undefined> = process.env,
+42 < 1 ): string => {
+43 < 1   if (explicit) return explicit;
+44 < 1   if (env.TINYAPP_BROWSER) return env.TINYAPP_BROWSER;
+45 < 1   return existsSync(DEFAULT_BINARY) ? DEFAULT_BINARY : MAC_CHROME;
+46 < 1 };
+47 < 1 
+48 < 1 /** The line the shell prints once its debugging endpoint is listening. */
+49 < 1 const DEVTOOLS_LINE = /DevTools listening on (ws:\S+)/;
+50 < 1 
+51 < 1 /** How long that line may take. Measured at ~100 ms; this is the give-up point. */
+52 < 1 const DEVTOOLS_TIMEOUT_MS = 15_000;
+53 < 1 
+54 < 1 /** How long one protocol call may go unanswered before it is called a failure. */
+55 < 1 const CALL_TIMEOUT_MS = 30_000;
+56 < 1 
+57 < 1 /** How long `close()` waits for a polite `Browser.close` before it kills. */
+58 < 1 const EXIT_GRACE_MS = 2_000;
+59 < 1 
+60 < 1 /** One open page: act on it, read from it, close it. */
+61 < 1 export interface Page {
+62 < 1   /** Performs one action, rejecting when its locator matches nothing. */
+63 < 1   act(action: Action): Promise<void>;
+64 < 1   /** The JSON value of `expression` evaluated in the page. */
+65 < 1   evaluate(expression: string): Promise<unknown>;
+66 < 1   /** How many elements match this accessible role and name. */
+67 < 1   count(locator: {role: string; name: string}): Promise<number>;
+68 < 1   /** Detaches from the target and closes it. */
+69 < 1   close(): Promise<void>;
+70 < 1 }
+71 < 1 
+72 < 1 /** One running browser process. */
+73 < 1 export interface Browser {
+74 < 1   /** The arguments it was spawned with, `argv[0]` the binary. */
+75 < 1   readonly argv: string[];
+76 < 1   /**
+77 < 1    * Opens `url` in a page whose clock is pinned to `clock`, which runs `prelude`
+78 < 1    * on every new document of it, and every request of which is refused in the
+79 < 1    * browser unless it is to `origin` or to an origin `allow` lists.
+80 < 1    *
+81 < 1    * `allow` is how a page reaches a *second* loopback origin — the runtime a
+82 < 1    * convergence exam syncs through — without the block being lifted: each entry
+83 < 1    * is judged by the same rule `origin` is, so an origin not named is refused
+84 < 1    * exactly as the whole world outside is.
+85 < 1    *
+86 < 1    * It resolves as soon as the navigation is under way rather than on a load event: the page it is
+87 < 1    * meant for redirects on its first document, and the caller is polling the
+88 < 1    * page for its own signal of readiness anyway.
+89 < 1    */
+90 < 1   openUrl(opts: {
+91 < 1     url: string;
+92 < 1     origin: string;
+93 < 1     clock: string;
+94 < 1     prelude?: string;
+95 < 1     allow?: string[];
+96 < 1   }): Promise<Page>;
+97 < 1   /** Ends the process and removes its user data directory. */
+98 < 1   close(): Promise<void>;
+99 < 1 }
+100 < 1 
+101 < 1 /** A reply or an event off the wire. */
+102 < 1 type Incoming = {
+103 < 1   id?: number;
+104 < 1   result?: Record<string, unknown>;
+105 < 1   error?: {message?: string; code?: number};
+106 < 1   method?: string;
+107 < 1   params?: Record<string, unknown>;
+108 < 1   sessionId?: string;
+109 < 1 };
+110 < 1 
+111 < 1 /** The pieces of a connection the rest of this module speaks through. */
+112 < 1 type Connection = {
+113 < 1   send(
+114 < 1     method: string,
+115 < 1     params?: Record<string, unknown>,
+116 < 1     sessionId?: string,
+117 < 1   ): Promise<Record<string, unknown>>;
+118 < 1   /**
+119 < 1    * Calls `handler` for every `method` event on `sessionId`, until the
+120 < 1    * connection closes: a request interceptor has to answer every paused
+121 < 1    * request, not the first one.
+122 < 1    */
+123 < 1   on(
+124 < 1     method: string,
+125 < 1     sessionId: string,
+126 < 1     handler: (params: Record<string, unknown>) => void,
+127 < 1   ): void;
+128 < 1   close(): void;
+129 < 1 };
+130 < 1 
+131 < 1 /** A promise that settles after `ms`, its timer unref'd so it holds nothing open. */
+132 < 1 const after = (ms: number): Promise<void> =>
+133 < 1   new Promise((resolve) => {
+134 < 1     const timer = setTimeout(resolve, ms);
+135 < 1     (timer as unknown as {unref?: () => void}).unref?.();
+136 < 1   });
+137 < 1 
+138 < 1 /**
+139 < 1  * The script installed on every new document of the page.
+140 < 1  *
+141 < 1  * It replaces `Date` before a line of the app runs, so `Date.now()` and a bare
+142 < 1  * `new Date()` are the exam's instant; `new Date(x)`, `Date.parse` and
+143 < 1  * `Date.UTC` keep working, inherited from the real constructor.
+144 < 1  */
+145 < 1 const clockPin = (clock: string): string => {
+146 < 1   const instant = Date.parse(clock);
+147 < 1   if (Number.isNaN(instant)) {
+148 < 1     throw new Error(`browser: clock is not a date: ${clock}`);
+149 < 1   }
+150 < 1   return (
+151 < 1     `const t = ${instant}; const D = Date; globalThis.Date = class extends D ` +
+152 < 1     `{ constructor(...a) { super(...(a.length ? a : [t])); } static now() { return t; } }`
+153 < 1   );
+154 < 1 };
+155 < 1 
+156 < 1 /** Opens a CDP connection to `url` and resolves once it is talking. */
+157 < 1 const connect = async (url: string): Promise<Connection> => {
+158 < 1   const socket = new WebSocket(url);
+159 < 1   const pending = new Map<
+160 < 1     number,
+161 < 1     {resolve: (value: Record<string, unknown>) => void; reject: (error: Error) => void}
+162 < 1   >();
+163 < 1   const listeners = new Map<string, ((params: Record<string, unknown>) => void)[]>();
+164 < 1   let closed: Error | null = null;
+165 < 1   let nextId = 1;
+166 < 1 
+167 < 1   socket.addEventListener('message', (event: MessageEvent) => {
+168 < 1     const message = JSON.parse(String(event.data)) as Incoming;
+169 < 1     if (typeof message.id === 'number') {
+170 < 1       const call = pending.get(message.id);
+171 < 1       pending.delete(message.id);
+172 < 1       if (call === undefined) {
+173 < 1         return;
+174 < 1       }
+175 < 1       if (message.error !== undefined) {
+176 < 1         call.reject(new Error(`browser: ${message.error.message ?? 'protocol error'}`));
+177 < 1       } else {
+178 < 1         call.resolve(message.result ?? {});
+179 < 1       }
+180 < 1       return;
+181 < 1     }
+182 < 1     if (typeof message.method !== 'string') {
+183 < 1       return;
+184 < 1     }
+185 < 1     const key = `${message.sessionId ?? ''} ${message.method}`;
+186 < 1     for (const listener of listeners.get(key) ?? []) {
+187 < 1       listener(message.params ?? {});
+188 < 1     }
+189 < 1   });
+190 < 1 
+191 < 1   const give = (reason: string) => {
+192 < 1     closed = new Error(`browser: ${reason}`);
+193 < 1     for (const call of pending.values()) {
+194 < 1       call.reject(closed);
+195 < 1     }
+196 < 1     pending.clear();
+197 < 1   };
+198 < 1   socket.addEventListener('close', () => give('connection closed'));
+199 < 1   socket.addEventListener('error', () => give('connection failed'));
+200 < 1 
+201 < 1   await new Promise<void>((resolve, reject) => {
+202 < 1     socket.addEventListener('open', () => resolve());
+203 < 1     socket.addEventListener('error', () =>
+204 < 1       reject(new Error(`browser: cannot connect to ${url}`)),
+205 < 1     );
+206 < 1   });
+207 < 1 
+208 < 1   return {
+209 < 1     send: (method, params = {}, sessionId) => {
+210 < 1       if (closed !== null) {
+211 < 1         return Promise.reject(closed);
+212 < 1       }
+213 < 1       const id = nextId++;
+214 < 1       const message: Record<string, unknown> = {id, method, params};
+215 < 1       if (sessionId !== undefined) {
+216 < 1         message.sessionId = sessionId;
+217 < 1       }
+218 < 1       return new Promise<Record<string, unknown>>((resolve, reject) => {
+219 < 1         pending.set(id, {resolve, reject});
+220 < 1         socket.send(JSON.stringify(message));
+221 < 1         void after(CALL_TIMEOUT_MS).then(() => {
+222 < 1           if (pending.delete(id)) {
+223 < 1             reject(new Error(`browser: ${method} did not answer`));
+224 < 1           }
+225 < 1         });
+226 < 1       });
+227 < 1     },
+228 < 1     on: (method, sessionId, handler) => {
+229 < 1       const key = `${sessionId} ${method}`;
+230 < 1       listeners.set(key, [...(listeners.get(key) ?? []), handler]);
+231 < 1     },
+232 < 1     close: () => socket.close(),
+233 < 1   };
+234 < 1 };
+235 < 1 
+236 < 1 /**
+237 < 1  * Reads the shell's stderr until the DevTools line, and keeps draining it after.
+238 < 1  *
+239 < 1  * The child blocks on a full stderr pipe, so the tail is read and dropped for
+240 < 1  * as long as the process lives.
+241 < 1  */
+242 < 1 const devtoolsUrl = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+243 < 1   const reader = stream.getReader();
+244 < 1   const decoder = new TextDecoder();
+245 < 1   let seen = '';
+246 < 1 
+247 < 1   const drain = (async (): Promise<string> => {
+248 < 1     for (;;) {
+249 < 1       const {done, value} = await reader.read();
+250 < 1       if (done) {
+251 < 1         throw new Error('browser: no devtools line');
+252 < 1       }
+253 < 1       seen += decoder.decode(value, {stream: true});
+254 < 1       const found = DEVTOOLS_LINE.exec(seen);
+255 < 1       if (found !== null) {
+256 < 1         // Nothing awaits this: it only keeps the pipe from filling.
+257 < 1         void (async () => {
+258 < 1           try {
+259 < 1             for (;;) {
+260 < 1               const next = await reader.read();
+261 < 1               if (next.done) {
+262 < 1                 return;
+263 < 1               }
+264 < 1             }
+265 < 1           } catch {
+266 < 1             return;
+267 < 1           }
+268 < 1         })();
+269 < 1         return found[1]!;
+270 < 1       }
+271 < 1     }
+272 < 1   })();
+273 < 1 
+274 < 1   return await Promise.race([
+275 < 1     drain,
+276 < 1     after(DEVTOOLS_TIMEOUT_MS).then((): never => {
+277 < 1       throw new Error('browser: no devtools line');
+278 < 1     }),
+279 < 1   ]);
+280 < 1 };
+281 < 1 
+282 < 1 /**
+283 < 1  * How the DOM domain is told which element is meant: `DOM.getBoxModel`,
+284 < 1  * `DOM.focus` and `DOM.resolveNode` each take a `backendNodeId`, so the
+285 < 1  * resolver below hands back a parameter object and every call after it spreads it.
+286 < 1  */
+287 < 1 type NodeRef = {backendNodeId: number};
+288 < 1 
+289 < 1 /** How a locator reads in `act`'s rejection. */
+290 < 1 const spellLocator = (locator: Locator): string =>
+291 < 1   `role=${locator.role} name=${JSON.stringify(locator.name)}`;
+292 < 1 
+293 < 1 /** The document's root nodeId — the scope every query below starts from. */
+294 < 1 const rootOf = async (connection: Connection, sessionId: string): Promise<number> => {
+295 < 1   const document = (await connection.send('DOM.getDocument', {}, sessionId)) as {
+296 < 1     root?: {nodeId?: number};
+297 < 1   };
+298 < 1   return document.root?.nodeId ?? 0;
+299 < 1 };
+300 < 1 
+301 < 1 /**
+302 < 1  * The first element `locator` names, or a rejection spelling it.
+303 < 1  *
+304 < 1  * `Accessibility.queryAXTree` answers the nodes whose computed role and
+305 < 1  * computed *accessible name* are both what was asked for, in tree order. The
+306 < 1  * accessible name is the browser's own computation and nothing a selector can
+307 < 1  * reach: a `<label for>` names its input, an `aria-label` names anything at
+308 < 1  * all, and a bare `placeholder` names a text input.
+309 < 1  *
+310 < 1  * `Accessibility.enable` is idempotent and cheap, so it is enabled on every call.
+311 < 1  */
+312 < 1 const nodeFor = async (
+313 < 1   connection: Connection,
+314 < 1   sessionId: string,
+315 < 1   locator: Locator,
+316 < 1 ): Promise<NodeRef> => {
+317 < 1   await connection.send('Accessibility.enable', {}, sessionId);
+318 < 1   const found = (await connection.send(
+319 < 1     'Accessibility.queryAXTree',
+320 < 1     {
+321 < 1       nodeId: await rootOf(connection, sessionId),
+322 < 1       role: locator.role,
+323 < 1       accessibleName: locator.name,
+324 < 1     },
+325 < 1     sessionId,
+326 < 1   )) as {nodes?: {backendDOMNodeId?: number}[]};
+327 < 1   const backendNodeId = (found.nodes ?? []).find(
+328 < 1     (node) => node.backendDOMNodeId !== undefined && node.backendDOMNodeId !== 0,
+329 < 1   )?.backendDOMNodeId;
+330 < 1   if (backendNodeId === undefined) {
+331 < 1     throw new Error(`act: no element matches ${spellLocator(locator)}`);
+332 < 1   }
+333 < 1   return {backendNodeId};
+334 < 1 };
+335 < 1 
+336 < 1 /**
+337 < 1  * The centre of a node's content box, or `null` when it has no area.
+338 < 1  *
+339 < 1  * `content` is the quad x1 y1 x2 y2 x3 y3 x4 y4. An unstyled `<span
+340 < 1  * role="checkbox">` has a content box of zero width and height, and a mouse
+341 < 1  * event dispatched at the centre of that box lands on whatever is painted
+342 < 1  * underneath — `<body>`, not the span. So a degenerate box is reported as one
+343 < 1  * rather than clicked at, and `act` takes the other path for it.
+344 < 1  */
+345 < 1 const centreOf = async (
+346 < 1   connection: Connection,
+347 < 1   sessionId: string,
+348 < 1   node: NodeRef,
+349 < 1 ): Promise<{x: number; y: number} | null> => {
+350 < 1   const box = (await connection
+351 < 1     .send('DOM.getBoxModel', {...node}, sessionId)
+352 < 1     .catch(() => ({}))) as {model?: {content?: number[]}};
+353 < 1   const content = box.model?.content ?? [];
+354 < 1   if (content.length < 8) {
+355 < 1     return null;
+356 < 1   }
+357 < 1   const xs = [content[0]!, content[2]!, content[4]!, content[6]!];
+358 < 1   const ys = [content[1]!, content[3]!, content[5]!, content[7]!];
+359 < 1   if (Math.max(...xs) - Math.min(...xs) === 0 || Math.max(...ys) - Math.min(...ys) === 0) {
+360 < 1     return null;
+361 < 1   }
+362 < 1   return {x: (content[0]! + content[4]!) / 2, y: (content[1]! + content[5]!) / 2};
+363 < 1 };
+364 < 1 
+365 < 1 /**
+366 < 1  * Calls `click()` on the element itself, in the page.
+367 < 1  *
+368 < 1  * The fallback for an element with no box to aim at: `DOM.resolveNode` turns
+369 < 1  * the id into a `Runtime` handle and `Runtime.callFunctionOn` invokes the
+370 < 1  * element's own method, which dispatches a trusted-enough `click` event through
+371 < 1  * the same listeners a mouse would have reached.
+372 < 1  */
+373 < 1 const clickInPage = async (
+374 < 1   connection: Connection,
+375 < 1   sessionId: string,
+376 < 1   node: NodeRef,
+377 < 1 ): Promise<void> => {
+378 < 1   const resolved = (await connection.send('DOM.resolveNode', {...node}, sessionId)) as {
+379 < 1     object?: {objectId?: string};
+380 < 1   };
+381 < 1   const objectId = resolved.object?.objectId;
+382 < 1   if (objectId === undefined) {
+383 < 1     throw new Error('act: element cannot be reached in the page');
+384 < 1   }
+385 < 1   await connection.send(
+386 < 1     'Runtime.callFunctionOn',
+387 < 1     {objectId, functionDeclaration: 'function () { this.click() }'},
+388 < 1     sessionId,
+389 < 1   );
+390 < 1 };
+391 < 1 
+392 < 1 /** Builds the `Page` facade over one attached target. */
+393 < 1 const pageOn = (
+394 < 1   connection: Connection,
+395 < 1   sessionId: string,
+396 < 1   targetId: string,
+397 < 1 ): Page => {
+398 < 1   let open = true;
+399 < 1   const live = (): void => {
+400 < 1     if (!open) {
+401 < 1       throw new Error('page: closed');
+402 < 1     }
+403 < 1   };
+404 < 1 
+405 < 1   const evaluate = async (expression: string): Promise<unknown> => {
+406 < 1     live();
+407 < 1     const answer = (await connection.send(
+408 < 1       'Runtime.evaluate',
+409 < 1       {expression, returnByValue: true, awaitPromise: true},
+410 < 1       sessionId,
+411 < 1     )) as {
+412 < 1       result?: {value?: unknown};
+413 < 1       exceptionDetails?: {exception?: {description?: string}; text?: string};
+414 < 1     };
+415 < 1     if (answer.exceptionDetails !== undefined) {
+416 < 1       const detail = answer.exceptionDetails;
+417 < 1       throw new Error(
+418 < 1         `evaluate: ${detail.exception?.description ?? detail.text ?? 'threw'}`,
+419 < 1       );
+420 < 1     }
+421 < 1     return answer.result?.value;
+422 < 1   };
+423 < 1 
+424 < 1   return {
+425 < 1     evaluate,
+426 < 1 
+427 < 1     count: async (locator) => {
+428 < 1       await connection.send('Accessibility.enable', {}, sessionId);
+429 < 1       const found = (await connection.send('Accessibility.queryAXTree', {
+430 < 1         nodeId: await rootOf(connection, sessionId),
+431 < 1         role: locator.role,
+432 < 1         accessibleName: locator.name,
+433 < 1       }, sessionId)) as {nodes?: {backendDOMNodeId?: number; ignored?: boolean}[]};
+434 < 1       return (found.nodes ?? []).filter(
+435 < 1         (n) => !n.ignored && (n.backendDOMNodeId ?? 0) !== 0).length;
+436 < 1     },
+437 < 1 
+438 < 1     act: async (action: Action): Promise<void> => {
+439 < 1       live();
+440 < 1       if ('click' in action) {
+441 < 1         const node = await nodeFor(connection, sessionId, action.click);
+442 < 1         // A box below the fold is off the viewport, and a mouse event aimed at
+443 < 1         // it lands on nothing — so the element is scrolled into view first.
+444 < 1         await connection
+445 < 1           .send('DOM.scrollIntoViewIfNeeded', {...node}, sessionId)
+446 < 1           .catch(() => undefined);
+447 < 1         const centre = await centreOf(connection, sessionId, node);
+448 < 1         if (centre === null) {
+449 < 1           await clickInPage(connection, sessionId, node);
+450 < 1           return;
+451 < 1         }
+452 < 1         const {x, y} = centre;
+453 < 1         for (const type of ['mousePressed', 'mouseReleased'] as const) {
+454 < 1           await connection.send(
+455 < 1             'Input.dispatchMouseEvent',
+456 < 1             {type, x, y, button: 'left', clickCount: 1},
+457 < 1             sessionId,
+458 < 1           );
+459 < 1         }
+460 < 1         return;
+461 < 1       }
+462 < 1 
+463 < 1       const [locator, argument] = 'type' in action ? action.type : action.key;
+464 < 1       const node = await nodeFor(connection, sessionId, locator);
+465 < 1       await connection.send('DOM.focus', {...node}, sessionId);
+466 < 1 
+467 < 1       if ('type' in action) {
+468 < 1         await connection.send('Input.insertText', {text: argument}, sessionId);
+469 < 1         return;
+470 < 1       }
+471 < 1 
+472 < 1       // `Enter` carries `\r` as its text, which is what a page's keypress
+473 < 1       // handlers and a form's implicit submission read.
+474 < 1       const isEnter = argument === 'Enter';
+475 < 1       for (const type of ['keyDown', 'keyUp'] as const) {
+476 < 1         await connection.send(
+477 < 1           'Input.dispatchKeyEvent',
+478 < 1           {
+479 < 1             type,
+480 < 1             key: argument,
+481 < 1             code: argument,
+482 < 1             ...(isEnter ? {text: '\r', windowsVirtualKeyCode: 13} : {}),
+483 < 1           },
+484 < 1           sessionId,
+485 < 1         );
+486 < 1       }
+487 < 1     },
+488 < 1 
+489 < 1     close: async (): Promise<void> => {
+490 < 1       if (!open) {
+491 < 1         return;
+492 < 1       }
+493 < 1       open = false;
+494 < 1       await connection.send('Target.detachFromTarget', {sessionId}).catch(() => {});
+495 < 1       await connection.send('Target.closeTarget', {targetId}).catch(() => {});
+496 < 1     },
+497 < 1   };
+498 < 1 };
+499 < 1 
+500 < 1 /**
+501 < 1  * Spawns a browser and resolves once its DevTools endpoint is answering.
+502 < 1  *
+503 < 1  * `binary` defaults to `env.TINYAPP_BROWSER` and then to the image's
+504 < 1  * `/headless-shell/headless-shell`; `env` defaults to the process's own. A
+505 < 1  * binary that is not there rejects with `browser: no such binary <path>` before
+506 < 1  * anything is spawned, so nothing is left running behind the rejection.
+507 < 1  *
+508 < 1  * The default sandbox mode launches on the fleet image, so no `--no-sandbox` is
+509 < 1  * passed. A machine that needs it — a laptop, a container without user
+510 < 1  * namespaces — opts in through `env.TINYAPP_BROWSER_ARGS`, space-separated
+511 < 1  * flags appended to the argv.
+512 < 1  */
+513 < 1 export const launchBrowser = async (opts?: {
+514 < 1   binary?: string;
+515 < 1   env?: Record<string, string | undefined>;
+516 < 1 }): Promise<Browser> => {
+517 < 1   const env = opts?.env ?? (process.env as Record<string, string | undefined>);
+518 < 1   const binary = resolveBinary(opts?.binary, env);
+519 < 1 
+520 < 1   if (!existsSync(binary)) {
+521 < 1     throw new Error(`browser: no such binary ${binary}`);
+522 < 1   }
+523 < 1 
+524 < 1   const userDataDir = mkdtempSync(join(tmpdir(), 'tinyapp-browser-'));
+525 < 1   const extra = (env.TINYAPP_BROWSER_ARGS ?? '').split(/\s+/).filter((flag) => flag !== '');
+526 < 1   const argv = [
+527 < 1     binary,
+528 < 1     '--headless',
+529 < 1     '--remote-debugging-port=0',
+530 < 1     `--user-data-dir=${userDataDir}`,
+531 < 1     '--disable-gpu',
+532 < 1     '--hide-scrollbars',
+533 < 1     ...extra,
+534 < 1   ];
+535 < 1 
+536 < 1   const child = Bun.spawn(argv, {stdout: 'ignore', stderr: 'pipe'});
+537 < 1 
+538 < 1   const sweep = async (): Promise<void> => {
+539 < 1     child.kill();
+540 < 1     await child.exited.catch(() => undefined);
+541 < 1     rmSync(userDataDir, {recursive: true, force: true});
+542 < 1   };
+543 < 1 
+544 < 1   let connection: Connection;
+545 < 1   try {
+546 < 1     connection = await connect(await devtoolsUrl(child.stderr));
+547 < 1   } catch (error) {
+548 < 1     await sweep();
+549 < 1     throw error;
+550 < 1   }
+551 < 1 
+552 < 1   return {
+553 < 1     argv,
+554 < 1 
+555 < 1     openUrl: async ({url, origin, clock, prelude, allow}): Promise<Page> => {
+556 < 1       const source = [clockPin(clock), prelude ?? '']
+557 < 1         .filter((part) => part !== '')
+558 < 1         .join(';\n');
+559 < 1 
+560 < 1       const created = (await connection.send('Target.createTarget', {
+561 < 1         url: 'about:blank',
+562 < 1       })) as {targetId?: string};
+563 < 1       const targetId = created.targetId ?? '';
+564 < 1       const attached = (await connection.send('Target.attachToTarget', {
+565 < 1         targetId,
+566 < 1         flatten: true,
+567 < 1       })) as {sessionId?: string};
+568 < 1       const sessionId = attached.sessionId ?? '';
+569 < 1 
+570 < 1       // A page served from an origin cannot have its every request blocked the
+571 < 1       // way a `data:` page can — its own document is a request. So each one is
+572 < 1       // paused and judged instead: continued when it is to `origin` or to one
+573 < 1       // of `allow`'s origins, and failed in the browser otherwise, before a byte
+574 < 1       // of it leaves the machine.
+575 < 1       await connection.send('Fetch.enable', {patterns: [{urlPattern: '*'}]}, sessionId);
+576 < 1       const allowed = [origin, ...(allow ?? [])].map((each) => `${each}/`);
+577 < 1       connection.on('Fetch.requestPaused', sessionId, (params) => {
+578 < 1         const {requestId, request} = params as {
+579 < 1           requestId?: string;
+580 < 1           request?: {url?: string};
+581 < 1         };
+582 < 1         const target = request?.url ?? '';
+583 < 1         const pass = allowed.some((prefix) => target.startsWith(prefix));
+584 < 1         void connection
+585 < 1           .send(
+586 < 1             pass ? 'Fetch.continueRequest' : 'Fetch.failRequest',
+587 < 1             pass
+588 < 1               ? {requestId}
+589 < 1               : {requestId, errorReason: 'BlockedByClient'},
+590 < 1             sessionId,
+591 < 1           )
+592 < 1           .catch(() => {});
+593 < 1       });
+594 < 1 
+595 < 1       await connection.send('Page.enable', {}, sessionId);
+596 < 1       await connection.send(
+597 < 1         'Page.addScriptToEvaluateOnNewDocument',
+598 < 1         {source},
+599 < 1         sessionId,
+600 < 1       );
+601 < 1       await connection.send('Page.navigate', {url}, sessionId);
+602 < 1 
+603 < 1       return pageOn(connection, sessionId, targetId);
+604 < 1     },
+605 < 1 
+606 < 1     close: async (): Promise<void> => {
+607 < 1       // Asked politely first, so the shell takes its own children down with it.
+608 < 1       await connection.send('Browser.close').catch(() => {});
+609 < 1       await Promise.race([child.exited.catch(() => undefined), after(EXIT_GRACE_MS)]);
+610 < 1       connection.close();
+611 < 1       await sweep();
+612 < 1     },
+613 < 1   };
+614 < 1 };
+615 < 1 

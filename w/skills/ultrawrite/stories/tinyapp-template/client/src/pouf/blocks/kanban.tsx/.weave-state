@@ -1,0 +1,250 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import clsx from 'clsx'
+2 < 2 import {
+3 < 2   DndContext,
+4 < 2   PointerSensor,
+5 < 2   KeyboardSensor,
+6 < 2   useSensor,
+7 < 2   useSensors,
+8 < 2   useDraggable,
+9 < 2   useDroppable,
+10 < 2   type DragEndEvent,
+11 < 2 } from '@dnd-kit/core'
+12 < 2 import { Shell, Sidebar, Stack, Row, Grid, Spacer } from '../layout'
+13 < 2 import { Heading, Text, Eyebrow } from '../text'
+14 < 2 import { RowCard } from '../surface'
+15 < 2 import { Badge, Blob } from '../media'
+16 < 2 import { Avatar } from '../avatar'
+17 < 2 import { Button } from '../Button'
+18 < 2 import { Icon } from '../Icon'
+19 < 2 import { NavLink } from '../NavLink'
+20 < 2 import { BottomNav, type NavItem } from '../BottomNav'
+21 < 2 
+22 < 2 const NAV: NavItem[] = [
+23 < 2   { href: '/', label: 'Overview', icon: 'overview', tone: 'purple' },
+24 < 2   { href: '/inbox', label: 'Inbox', icon: 'mail', tone: 'blue' },
+25 < 2   { href: '/board', label: 'Board', icon: 'log', tone: 'mint' },
+26 < 2   { href: '/messages', label: 'Messages', icon: 'comment', tone: 'pink' },
+27 < 2   { href: '/settings', label: 'Settings', icon: 'settings', tone: 'orange' },
+28 < 2 ]
+29 < 2 
+30 < 2 const HERE = '/board'
+31 < 2 
+32 < 2 interface Task {
+33 < 2   id: string
+34 < 2   title: string
+35 < 2   priority: 'low' | 'med' | 'high'
+36 < 2   who: string
+37 < 2 }
+38 < 2 
+39 < 2 type ColumnKey = 'todo' | 'doing' | 'done'
+40 < 2 
+41 < 2 const COLUMNS: { key: ColumnKey; title: string; tone: 'blue' | 'yellow' | 'mint' }[] = [
+42 < 2   { key: 'todo', title: 'To do', tone: 'blue' },
+43 < 2   { key: 'doing', title: 'In progress', tone: 'yellow' },
+44 < 2   { key: 'done', title: 'Done', tone: 'mint' },
+45 < 2 ]
+46 < 2 
+47 < 2 const SEED: Record<ColumnKey, Task[]> = {
+48 < 2   todo: [
+49 < 2     { id: '1', title: 'Design the empty states', priority: 'med', who: 'AL' },
+50 < 2     { id: '2', title: 'Audit colour contrast', priority: 'high', who: 'GH' },
+51 < 2   ],
+52 < 2   doing: [
+53 < 2     { id: '3', title: 'Migrate the table to Tailwind', priority: 'high', who: 'AT' },
+54 < 2     { id: '4', title: 'Write the changelog script', priority: 'low', who: 'KJ' },
+55 < 2   ],
+56 < 2   done: [{ id: '5', title: 'Ship the snapshot gate', priority: 'high', who: 'AL' }],
+57 < 2 }
+58 < 2 
+59 < 2 const PRIORITY_TONE = { low: 'blue', med: 'yellow', high: 'pink' } as const
+60 < 2 const ORDER: ColumnKey[] = ['todo', 'doing', 'done']
+61 < 2 
+62 < 2 /** A draggable card. The ←/→ buttons are not decoration: pointer drag is
+63 < 2  *  unavailable on touch and awkward with a screen reader, so the same move is
+64 < 2  *  always reachable as a plain button press. */
+65 < 2 function Card({
+66 < 2   task,
+67 < 2   column,
+68 < 2   onMove,
+69 < 2 }: {
+70 < 2   task: Task
+71 < 2   column: ColumnKey
+72 < 2   onMove: (id: string, from: ColumnKey, dir: -1 | 1) => void
+73 < 2 }) {
+74 < 2   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+75 < 2     id: task.id,
+76 < 2     data: { from: column },
+77 < 2   })
+78 < 2   const i = ORDER.indexOf(column)
+79 < 2 
+80 < 2   return (
+81 < 2     <div ref={setNodeRef} className={clsx(isDragging && 'opacity-40')}>
+82 < 2       <RowCard>
+83 < 2         <Stack gap={2}>
+84 < 2           {/* The drag handle is the title row, not the whole card — otherwise
+85 < 2             * the move buttons inside would start a drag instead of firing. */}
+86 < 2           <div className="cursor-grab active:cursor-grabbing" {...listeners} {...attributes}>
+87 < 2             <Text>{task.title}</Text>
+88 < 2           </div>
+89 < 2           <Row justify="between">
+90 < 2             <Badge tone={PRIORITY_TONE[task.priority]}>{task.priority}</Badge>
+91 < 2             <Row gap={2} wrap={false}>
+92 < 2               <Button
+93 < 2                 size="sm"
+94 < 2                 variant="quiet"
+95 < 2                 disabled={i === 0}
+96 < 2                 onClick={() => onMove(task.id, column, -1)}
+97 < 2                 label={`Move “${task.title}” left`}
+98 < 2               >
+99 < 2                 <Icon name="prev" size="sm" />
+100 < 2               </Button>
+101 < 2               <Button
+102 < 2                 size="sm"
+103 < 2                 variant="quiet"
+104 < 2                 disabled={i === ORDER.length - 1}
+105 < 2                 onClick={() => onMove(task.id, column, 1)}
+106 < 2                 label={`Move “${task.title}” right`}
+107 < 2               >
+108 < 2                 <Icon name="next" size="sm" />
+109 < 2               </Button>
+110 < 2               <Avatar fallback={task.who} size="sm" tone="purple" />
+111 < 2             </Row>
+112 < 2           </Row>
+113 < 2         </Stack>
+114 < 2       </RowCard>
+115 < 2     </div>
+116 < 2   )
+117 < 2 }
+118 < 2 
+119 < 2 function Column({
+120 < 2   col,
+121 < 2   tasks,
+122 < 2   onMove,
+123 < 2 }: {
+124 < 2   col: (typeof COLUMNS)[number]
+125 < 2   tasks: Task[]
+126 < 2   onMove: (id: string, from: ColumnKey, dir: -1 | 1) => void
+127 < 2 }) {
+128 < 2   const { setNodeRef, isOver } = useDroppable({ id: col.key })
+129 < 2 
+130 < 2   return (
+131 < 2     <Stack gap={3}>
+132 < 2       <Row justify="between">
+133 < 2         <Heading level={3}>{col.title}</Heading>
+134 < 2         <Badge tone={col.tone}>{tasks.length}</Badge>
+135 < 2       </Row>
+136 < 2       {/* The highlight appears only while a card is dragged over this column;
+137 < 2         * a permanent one would add noise to the board.
+138 < 2         *
+139 < 2         * Everything visual here is an inline style on purpose. Tailwind
+140 < 2         * registers an @property for each theme token a utility touches, and
+141 < 2         * those registrations are DOCUMENT-WIDE — two such utilities here put
+142 < 2         * two custom properties onto the computed styles of every element on
+143 < 2         * the page and drifted 223 unrelated snapshots in the gate.
+144 < 2         *
+145 < 2         * Worse, the scanner reads source as plain text and cannot tell prose,
+146 < 2         * or a style object's key, from a class name — so the obvious CSS
+147 < 2         * property for this effect regenerated the very utility it was written
+148 < 2         * to avoid, from inside the comment warning against it. Any bare
+149 < 2         * one-word utility name is unsafe anywhere in this file. */}
+150 < 2       <div
+151 < 2         ref={setNodeRef}
+152 < 2         className="flex flex-col gap-(--s2) p-(--s2)"
+153 < 2         style={{
+154 < 2           minHeight: 120,
+155 < 2           borderRadius: 18,
+156 < 2           transition: 'background 120ms ease, box-shadow 120ms ease',
+157 < 2           background: isOver ? 'rgba(201,168,255,0.16)' : 'transparent',
+158 < 2           boxShadow: isOver ? 'inset 0 0 0 2px var(--purple)' : 'none',
+159 < 2         }}
+160 < 2       >
+161 < 2         {tasks.length === 0 ? (
+162 < 2           <div className="grid place-items-center flex-1 py-(--s5)">
+163 < 2             <Text size="sm" muted>Drop a card here</Text>
+164 < 2           </div>
+165 < 2         ) : (
+166 < 2           tasks.map((t) => <Card key={t.id} task={t} column={col.key} onMove={onMove} />)
+167 < 2         )}
+168 < 2       </div>
+169 < 2     </Stack>
+170 < 2   )
+171 < 2 }
+172 < 2 
+173 < 2 /** An example kanban board: app shell and columns you can actually move cards
+174 < 2  * between — by dragging, or with the arrow buttons on every card. */
+175 < 2 export function KanbanBlock() {
+176 < 2   const [board, setBoard] = useState<Record<ColumnKey, Task[]>>(SEED)
+177 < 2 
+178 < 2   /* PointerSensor with a small distance constraint so a click on the move
+179 < 2    * buttons is not swallowed as a micro-drag. */
+180 < 2   const sensors = useSensors(
+181 < 2     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+182 < 2     useSensor(KeyboardSensor),
+183 < 2   )
+184 < 2 
+185 < 2   function move(id: string, from: ColumnKey, to: ColumnKey) {
+186 < 2     if (from === to) return
+187 < 2     setBoard((b) => {
+188 < 2       const task = b[from].find((t) => t.id === id)
+189 < 2       if (!task) return b
+190 < 2       return {
+191 < 2         ...b,
+192 < 2         [from]: b[from].filter((t) => t.id !== id),
+193 < 2         [to]: [...b[to], task],
+194 < 2       }
+195 < 2     })
+196 < 2   }
+197 < 2 
+198 < 2   function onDragEnd({ active, over }: DragEndEvent) {
+199 < 2     if (!over) return
+200 < 2     const from = active.data.current?.from as ColumnKey | undefined
+201 < 2     if (from) move(String(active.id), from, over.id as ColumnKey)
+202 < 2   }
+203 < 2 
+204 < 2   function step(id: string, from: ColumnKey, dir: -1 | 1) {
+205 < 2     const to = ORDER[ORDER.indexOf(from) + dir]
+206 < 2     if (to) move(id, from, to)
+207 < 2   }
+208 < 2 
+209 < 2   const total = ORDER.reduce((n, k) => n + board[k].length, 0)
+210 < 2 
+211 < 2   return (
+212 < 2     <>
+213 < 2       <Shell>
+214 < 2         <Sidebar mobile="hide">
+215 < 2           <Row gap={2} wrap={false}>
+216 < 2             <Blob icon="target" tone="purple" size="sm" />
+217 < 2             <Heading level={3}>Acme</Heading>
+218 < 2           </Row>
+219 < 2           {NAV.map((item) => (
+220 < 2             <NavLink key={item.href} href={item.href} currentPath={HERE} icon={item.icon} tone={item.tone}>
+221 < 2               {item.label}
+222 < 2             </NavLink>
+223 < 2           ))}
+224 < 2         </Sidebar>
+225 < 2 
+226 < 2         <Stack gap={5}>
+227 < 2           <Row justify="between">
+228 < 2             <Stack gap={1}>
+229 < 2               <Eyebrow>Sprint 12</Eyebrow>
+230 < 2               <Heading level={1}>Board</Heading>
+231 < 2             </Stack>
+232 < 2             <Badge tone="purple">{total} cards</Badge>
+233 < 2           </Row>
+234 < 2 
+235 < 2           <DndContext id="pouf-kanban" sensors={sensors} onDragEnd={onDragEnd}>
+236 < 2             <Grid cols={3}>
+237 < 2               {COLUMNS.map((col) => (
+238 < 2                 <Column key={col.key} col={col} tasks={board[col.key]} onMove={step} />
+239 < 2               ))}
+240 < 2             </Grid>
+241 < 2           </DndContext>
+242 < 2           <Spacer />
+243 < 2         </Stack>
+244 < 2       </Shell>
+245 < 2       <BottomNav primary={NAV.slice(0, 4)} groups={[{ title: 'App', items: NAV }]} currentPath={HERE} />
+246 < 2     </>
+247 < 2   )
+248 < 2 }
+249 < 2 

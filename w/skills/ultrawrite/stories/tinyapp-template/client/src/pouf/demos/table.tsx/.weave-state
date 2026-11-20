@@ -1,0 +1,35 @@
+0 < 2 import { Table } from '../table'
+1 < 2 import { Badge } from '../media'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 interface Row { fruit: string; kind: string; qty: string; total: string }
+5 < 2 
+6 < 2 const rows: Row[] = [
+7 < 2   { fruit: 'Apple', kind: 'Fresh', qty: '0.4', total: '+$31.20' },
+8 < 2   { fruit: 'Banana', kind: 'Dried', qty: '2.1', total: '−$8.05' },
+9 < 2   { fruit: 'Cherry', kind: 'Fresh', qty: '5.0', total: '+$12.40' },
+10 < 2 ]
+11 < 2 
+12 < 2 const columns = [
+13 < 2   { key: 'fruit', header: 'Fruit', render: (r: Row) => r.fruit },
+14 < 2   { key: 'kind', header: 'Kind', render: (r: Row) => <Badge tone={r.kind === 'Fresh' ? 'up' : 'down'}>{r.kind}</Badge> },
+15 < 2   { key: 'qty', header: 'Qty', render: (r: Row) => r.qty, align: 'right' as const, mono: true },
+16 < 2   { key: 'total', header: 'Total', render: (r: Row) => r.total, align: 'right' as const, mono: true },
+17 < 2 ]
+18 < 2 
+19 < 2 export const tableDemos: Demo[] = [
+20 < 2   { id: 'default', render: () => <Table columns={columns} rows={rows} getKey={(r) => r.fruit} /> },
+21 < 2   { id: 'empty', render: () => <Table columns={columns} rows={[]} getKey={(r) => r.fruit} /> },
+22 < 2   { id: 'clickable-rows', states: ['hover', 'focus'], render: () => (
+23 < 2       <span data-subject>
+24 < 2         <Table
+25 < 2           columns={columns}
+26 < 2           rows={rows}
+27 < 2           getKey={(r) => r.fruit}
+28 < 2           onRowClick={() => {}}
+29 < 2           getRowLabel={(r) => `Open ${r.fruit}`}
+30 < 2         />
+31 < 2       </span>
+32 < 2     ) },
+33 < 2 ]
+34 < 2 

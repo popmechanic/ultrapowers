@@ -1,0 +1,46 @@
+0 < 2 {
+1 < 2   "key": {
+2 < 2     "X": "B",
+3 < 2     "Y": "A"
+4 < 2   },
+5 < 2   "response": {
+6 < 2     "defectsX": [
+7 < 2       {
+8 < 2         "detail": "Unauthorized modification of the test script: the plan's acceptance names the committed `node --test tests/` invocation as the check and no task asks to change package.json; the change to `tests/*.test.js` is scope creep (though behaviorally equivalent, since sh expands the glob before node sees it)",
+9 < 2         "evidence": "package.json:5"
+10 < 2       },
+11 < 2       {
+12 < 2         "detail": "store.list() returns the internal array by reference, so any caller can mutate the store's private state (e.g. push/splice on the returned array corrupts insertion order); Y returns a defensive copy",
+13 < 2         "evidence": "src/store.js:18-20"
+14 < 2       },
+15 < 2       {
+16 < 2         "detail": "Plan's 'rejects non-object input' case is only partially tested: string, null, and number are covered but array input is not exercised anywhere in the validate tests",
+17 < 2         "evidence": "tests/validate.test.js:31-43"
+18 < 2       },
+19 < 2       {
+20 < 2         "detail": "Near-vacuous test: 'renderPage returns a complete HTML document as a string' re-asserts the doctype/title checks already made by the preceding four tests, adding no new coverage beyond the </html> match",
+21 < 2         "evidence": "tests/page.test.js:26-32"
+22 < 2       }
+23 < 2     ],
+24 < 2     "defectsY": [
+25 < 2       {
+26 < 2         "detail": "The rewritten test script `node --test \"tests/**/*.test.js\"` quotes the glob so the shell never expands it, and Node 20's test runner does not glob positional arguments (glob support for --test args arrived in v21) \u2014 `npm test` therefore fails outright ('could not find' the literal path) on the plan's stated minimum runtime, Node \u226520",
+27 < 2         "evidence": "package.json:5"
+28 < 2       },
+29 < 2       {
+30 < 2         "detail": "Same scope creep as X: the plan's acceptance is the committed `node --test tests/` command and no task authorizes editing package.json, but here the edit is also behavior-changing rather than equivalent",
+31 < 2         "evidence": "package.json:5"
+32 < 2       },
+33 < 2       {
+34 < 2         "detail": "createApp reads and JSON-parses the body before route matching, so a request with a malformed JSON body to an unregistered path returns 400 'invalid json' instead of the spec's 404 'not found' for unmatched routes, and every 404 pays a full body read",
+35 < 2         "evidence": "src/app.js:24-40"
+36 < 2       },
+37 < 2       {
+38 < 2         "detail": "The req 'error' handler mislabels transport/stream errors as 400 'invalid json', and because it can fire after the 'end' path has already responded it can attempt a second writeHead (ERR_HTTP_HEADERS_SENT)",
+39 < 2         "evidence": "src/app.js:47-49"
+40 < 2       }
+41 < 2     ],
+42 < 2     "verdict": "X",
+43 < 2     "reason": "X's defects are minor quality issues (mutable list() reference, redundant test), while Y's quoted glob in the npm test script breaks the entire acceptance suite on Node 20 \u2014 the plan's declared minimum runtime \u2014 and its parse-before-route ordering returns 400 where the spec requires 404."
+44 < 2   }
+45 < 2 }

@@ -1,0 +1,495 @@
+0 < 1 // Intent tray mod: Claude shows a screen through the show_screen tool, the
+1 < 1 // operator picks a version and adds notes in a pane beside the chat (or in
+2 < 1 // the preview page, which appends to .ultrapowers/feedback.jsonl), and Send
+3 < 1 // hands everything to Claude as one prompt holding a ```json block.
+4 < 1 
+5 < 1 const PANE = { id: "intent-tray", title: "Intent tray", rows: 10 };
+6 < 1 const FEEDBACK = ".ultrapowers/feedback.jsonl";
+7 < 1 const FENCE = "`".repeat(3);
+8 < 1 
+10 > 1 const GONE_KEPT = 500; // ids of notes sent, cleared or dropped, kept so no session brings them back
+11 < 1 
+9 < 1 let screen = null; // { name, stage, versions, url }
+10 < 1 let pick = null;
+12 > 1 let piece = null; // the piece a preview's pick was for, when it named one
+13 < 1 let notes = []; // { id, kind, target?, note }
+14 < 1 let gone = []; // ids of notes that left the tray, newest last
+11 < 2 let notes = []; // { kind, target?, note }
+12 < 1 let offset = 0; // bytes of the feedback file already taken (always ends at a newline)
+14 > 1 let mark = ""; // the feedback file's first whole line when `offset` was taken: a new one is a new file
+13 < 1 let cwd = "";
+15 > 1 let sending = false;
+16 < 1 const changed = new Set(); // "screen", "pick": set here since the last save, so this session's value wins
+14 < 1 
+15 < 1 // One tray per working directory: sessions in other repos never see this one.
+16 < 1 function trayKey() {
+17 < 1   return `tray:${cwd.replace(/\/+$/, "")}`;
+18 < 1 }
+19 < 1 
+21 > 1 let made = 0;
+22 < 1 function newId() {
+23 < 1   made += 1;
+24 < 1   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${made}`;
+25 < 1 }
+26 < 1 
+27 < 1 // A note stored before notes carried ids gets one from its content, the same in every session.
+28 < 1 function withId(n) {
+29 < 1   return typeof n.id === "string" ? n : { ...n, id: `v0:${JSON.stringify(record(n))}` };
+30 < 1 }
+31 < 1 
+32 < 1 function notesOf(v) {
+33 < 1   return Array.isArray(v) ? v.filter((n) => n && typeof n === "object").map(withId) : [];
+34 < 1 }
+35 < 1 
+36 < 1 // Fold in what other sessions in this repo stored: their notes join ours (none
+37 < 1 // that any session sent, cleared or dropped), and their screen and pick stand
+38 < 1 // unless this session changed its own since it last saved.
+39 < 1 function merge(held) {
+40 < 1   if (!held || typeof held !== "object") return;
+41 < 1   const left = new Set([...(Array.isArray(held.gone) ? held.gone.map(String) : []), ...gone]);
+42 < 1   gone = [...left].slice(-GONE_KEPT);
+43 < 1   if (!changed.has("screen")) screen = held.screen || null;
+44 < 1   if (!changed.has("pick")) {
+45 < 1     pick = held.pick != null ? held.pick : null;
+46 < 1     piece = held.piece != null ? held.piece : null;
+47 < 1   }
+48 < 1   const byId = new Map();
+49 < 1   for (const n of [...notesOf(held.notes), ...notes]) if (!left.has(n.id) && !byId.has(n.id)) byId.set(n.id, n);
+50 < 1   notes = [...byId.values()];
+51 < 1   if (held.mark === mark && Number(held.offset) > offset) offset = Number(held.offset);
+52 < 1 }
+53 < 1 
+54 < 1 // Store the tray merged with what is stored, so two sessions in one repo keep each other's notes.
+20 < 1 async function save($) {
+22 > 1   merge(await $.store.get(trayKey()));
+23 < 1   changed.clear();
+24 < 1   await $.store.set(trayKey(), { screen, pick, piece, notes, gone, offset, mark });
+21 < 2   await $.store.set(trayKey(), { screen, pick, notes, offset });
+22 < 1   $.ui.invalidate();
+23 < 1 }
+24 < 1 
+26 > 1 function drop(ids) {
+27 < 1   const out = new Set(ids);
+28 < 1   if (!out.size) return;
+29 < 1   notes = notes.filter((n) => !out.has(n.id));
+30 < 1   gone = [...gone.filter((id) => !out.has(id)), ...out].slice(-GONE_KEPT);
+31 < 1 }
+32 < 1 
+33 < 1 function setScreen(next) {
+34 < 1   screen = next;
+35 < 1   changed.add("screen");
+36 < 1 }
+37 < 1 
+38 < 1 function setPick(version, of = null) {
+39 < 1   pick = version;
+40 < 1   piece = version == null ? null : of;
+41 < 1   changed.add("pick");
+42 < 1 }
+43 < 1 
+25 < 1 function empty() {
+27 > 1   setScreen(null);
+28 < 1   setPick(null);
+29 < 1   drop(notes.map((n) => n.id));
+26 < 2   screen = null;
+27 < 2   pick = null;
+28 < 2   notes = [];
+29 < 1 }
+30 < 1 
+31 < 1 function hasContent() {
+32 < 1   return Boolean(screen || pick || notes.length);
+33 < 1 }
+34 < 1 
+35 < 1 function feedbackPath() {
+36 < 1   return cwd ? `${cwd.replace(/\/+$/, "")}/${FEEDBACK}` : FEEDBACK;
+37 < 1 }
+38 < 1 
+39 < 1 // "element: note" is an element note; text without a colon is a view note.
+40 < 1 function parseNote(text) {
+41 < 1   const s = String(text || "").trim();
+42 < 1   if (!s) return null;
+43 < 1   const i = s.indexOf(":");
+44 < 1   if (i < 0) return { kind: "view", note: s };
+45 < 1   const target = s.slice(0, i).trim();
+46 < 1   const note = s.slice(i + 1).trim();
+47 < 1   if (!target) return note ? { kind: "view", note } : null;
+48 < 1   if (!note) return null;
+49 < 1   return { kind: "element", target, note };
+50 < 1 }
+51 < 1 
+53 > 1 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+54 < 1 
+52 < 1 function record(n) {
+53 < 1   return n.kind === "view"
+54 < 1     ? { kind: "view", note: n.note }
+55 < 1     : { kind: n.kind, target: n.target, note: n.note };
+56 < 1 }
+57 < 1 
+58 < 1 async function addNote($, text) {
+59 < 1   const n = parseNote(text);
+60 < 1   if (!n) return;
+62 > 1   notes.push({ id: newId(), ...n });
+61 < 2   notes.push(n);
+62 < 1   await save($);
+63 < 1 }
+64 < 1 
+65 < 1 async function choose($, version) {
+67 > 1   setPick(version);
+66 < 2   pick = version;
+67 < 1   await save($);
+68 < 1 }
+69 < 1 
+71 > 1 function pickRecord() {
+72 < 1   const r = { kind: "pick", screen: screen ? screen.name : "" };
+73 < 1   if (piece != null) r.piece = piece;
+74 < 1   r.chose = pick;
+75 < 1   return r;
+76 < 1 }
+77 < 1 
+78 < 1 // One Send at a time; what arrives while it is out stays for the next one.
+70 < 1 async function send($) {
+72 > 1   if (sending) return;
+73 < 1   sending = true;
+71 < 2   const recs = [];
+72 < 2   if (pick != null) recs.push({ kind: "pick", screen: screen ? screen.name : "", chose: pick });
+73 < 2   for (const n of notes) recs.push(record(n));
+74 < 2   if (!recs.length) return;
+75 < 2   const name = screen ? screen.name : "the screen";
+76 < 2   const text =
+77 < 2     `Feedback from the intent tray on ${name}:\n\n` +
+78 < 2     `${FENCE}json\n${JSON.stringify(recs)}\n${FENCE}`;
+79 < 2   let entered;
+80 < 1   try {
+82 > 1     await save($); // take in what other sessions sent or dropped
+83 < 1     const sent = { screen, pick, piece, ids: notes.map((n) => n.id) };
+84 < 1     const recs = [];
+85 < 1     if (pick != null) recs.push(pickRecord());
+86 < 1     for (const n of notes) recs.push(record(n));
+87 < 1     if (!recs.length) return;
+88 < 1     const name = screen ? screen.name : "the screen";
+89 < 1     const text =
+90 < 1       `Feedback from the intent tray on ${name}:\n\n` +
+91 < 1       `${FENCE}json\n${JSON.stringify(recs)}\n${FENCE}`;
+92 < 1     let entered;
+93 < 1     try {
+94 < 1       entered = await $.prompt.submit({ text });
+95 < 1     } catch {
+96 < 1       return; // the tray keeps its notes
+97 < 1     }
+98 < 1     if (!entered || entered.drop != null) return;
+99 < 1     if (same(screen, sent.screen)) setScreen(null);
+100 < 1     if (pick === sent.pick && piece === sent.piece) setPick(null);
+101 < 1     drop(sent.ids);
+102 < 1     await save($);
+103 < 1   } finally {
+104 < 1     sending = false;
+81 < 2     entered = await $.prompt.submit({ text });
+82 < 2   } catch {
+83 < 2     return; // the tray keeps its notes
+84 < 1   }
+85 < 2   if (!entered || entered.drop != null) return;
+86 < 2   empty();
+87 < 2   await save($);
+88 < 1 }
+89 < 1 
+90 < 1 async function clear($) {
+91 < 1   empty();
+92 < 1   await save($);
+93 < 1 }
+94 < 1 
+95 < 1 async function openTray($) {
+96 < 1   await $.ui.open({ ...PANE, focus: true });
+97 < 1 }
+98 < 1 
+99 < 1 // The file's bytes up to and including its last newline, or null when it cannot be read.
+100 < 1 async function wholeLines($) {
+101 < 1   let text;
+102 < 1   try {
+103 < 1     text = await $.fs.read(feedbackPath());
+104 < 1   } catch {
+105 < 1     return null;
+106 < 1   }
+107 < 1   const bytes = new TextEncoder().encode(String(text));
+108 < 1   return bytes.subarray(0, bytes.lastIndexOf(10) + 1);
+109 < 1 }
+110 < 1 
+112 > 1 // The first whole line: it names which file an offset was taken in.
+113 < 1 function markOf(bytes) {
+114 < 1   const end = bytes.indexOf(10);
+115 < 1   return end < 0 ? "" : new TextDecoder().decode(bytes.subarray(0, end));
+116 < 1 }
+117 < 1 
+111 < 1 async function readFeedback($) {
+113 > 1   const bytes = await wholeLines($);
+114 < 1   if (!bytes) return;
+115 < 1   const now = markOf(bytes);
+116 < 1   if (now !== mark || bytes.length < offset) {
+117 < 1     mark = now; // the file was replaced: its lines are all new
+118 < 1     offset = 0;
+119 < 1   }
+112 < 1   const held = await $.store.get(trayKey());
+114 > 1   if (held && typeof held === "object" && held.mark === mark && Number(held.offset) > offset) {
+115 < 1     offset = Number(held.offset); // another session in this repo took them
+113 < 2   const stored = held && typeof held === "object" ? Number(held.offset) : 0;
+114 < 2   if (stored > offset) offset = stored; // another session in this repo took them
+115 < 2   let size;
+116 < 2   try {
+117 < 2     size = (await $.fs.stat(feedbackPath())).size;
+118 < 2   } catch {
+119 < 2     return;
+120 < 1   }
+122 > 1   if (bytes.length <= offset) return;
+121 < 2   if (size < offset) offset = 0; // the file was replaced
+122 < 2   if (size === offset) return;
+123 < 2   const bytes = await wholeLines($);
+124 < 2   if (!bytes || bytes.length <= offset) return;
+125 < 1   const lines = new TextDecoder().decode(bytes.subarray(offset)).split("\n").filter((l) => l.trim());
+126 < 1   for (const line of lines) {
+127 < 1     let r;
+128 < 1     try {
+129 < 1       r = JSON.parse(line);
+130 < 1     } catch {
+131 < 1       continue;
+132 < 1     }
+133 < 1     if (!r || typeof r !== "object") continue;
+134 < 1     if (r.kind === "pick") {
+136 > 1       // {kind, piece, chose} from the preview; a line without a piece is from before #1532.
+137 < 1       if (r.chose != null) setPick(String(r.chose), r.piece != null ? String(r.piece) : null);
+135 < 2       if (r.chose != null) pick = String(r.chose);
+136 < 1     } else if (r.note != null && String(r.note).trim()) {
+137 < 1       const note = String(r.note);
+139 > 1       const id = newId();
+138 < 1       if (r.target != null && String(r.target).trim()) {
+139 < 1         const kind = r.kind === "region" || r.kind === "view" ? r.kind : "element";
+141 > 1         notes.push(kind === "view" ? { id, kind, note } : { id, kind, target: String(r.target), note });
+140 < 2         notes.push(kind === "view" ? { kind, note } : { kind, target: String(r.target), note });
+141 < 1       } else {
+143 > 1         notes.push({ id, kind: "view", note });
+142 < 2         notes.push({ kind: "view", note });
+143 < 1       }
+144 < 1     }
+145 < 1   }
+146 < 1   offset = bytes.length;
+147 < 1   await save($);
+149 > 1 }
+150 < 1 
+151 < 1 // The Desktop app offers no $.process, so there the tray draws no Open screen button.
+152 < 1 function canRun($) {
+153 < 1   try {
+154 < 1     return "process" in $ && Boolean($.process);
+155 < 1   } catch {
+156 < 1     return false;
+157 < 1   }
+148 < 1 }
+149 < 1 
+150 < 1 // Run one command to its end; true when it exits 0, false when it fails or cannot start.
+151 < 1 async function run($, argv) {
+152 < 1   try {
+153 < 1     const stream = $.process.spawn({ argv });
+154 < 1     for await (const _ of stream);
+155 < 1     const { code } = await stream.result;
+156 < 1     return code === 0;
+157 < 1   } catch {
+158 < 1     return false;
+159 < 1   }
+160 < 1 }
+161 < 1 
+163 > 1 // Only a preview on this machine is opened (#1530): the url comes from the model.
+164 < 1 const LOCAL_URL = /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/;
+165 < 1 
+162 < 1 // macOS has `open`; elsewhere (Debian's `open` is openvt) fall back to xdg-open.
+163 < 1 async function openScreen($) {
+164 < 1   const url = screen && screen.url;
+166 > 1   if (!url || !LOCAL_URL.test(url)) return;
+165 < 2   if (!url) return;
+166 < 1   if (await run($, ["open", url])) return;
+167 < 1   await run($, ["xdg-open", url]);
+168 < 1 }
+169 < 1 
+170 < 1 function noteLabel(n) {
+171 < 1   return n.kind === "view" ? `[view] ${n.note}` : `[${n.kind}] ${n.target}: ${n.note}`;
+172 < 1 }
+173 < 1 
+174 < 1 function drawPane($, e) {
+175 < 1   const { Box, Text, Button, Input } = $.ui.resolve(e);
+176 < 1   const versions = (screen && screen.versions) || [];
+177 < 1   const head = screen
+178 < 1     ? `${screen.name}${screen.stage ? ` (${screen.stage})` : ""}`
+179 < 1     : "No screen shown";
+180 < 1   const top = [
+182 > 1     Text({ key: "screen", children: [head + (pick != null ? `  picked: ${piece != null ? `${piece} ` : ""}${pick}` : "")] }),
+181 < 2     Text({ key: "screen", children: [head + (pick != null ? `  picked: ${pick}` : "")] }),
+182 < 1     ...versions.map((v, i) =>
+183 < 1       Button({
+184 < 1         key: `pick-${v}`,
+185 < 1         hotkey: i < 9 ? String(i + 1) : undefined,
+186 < 1         onPress: () => choose($, v),
+187 < 1         children: [pick === v ? `[${v}]` : v],
+188 < 1       })
+189 < 1     ),
+191 > 1     ...(screen && screen.url && canRun($)
+190 < 2     ...(screen && screen.url
+191 < 1       ? [Button({ key: "open-screen", onPress: () => openScreen($), children: ["Open screen"] })]
+192 < 1       : []),
+193 < 1   ];
+194 < 1   const rows = notes.map((n, i) =>
+195 < 1     Box({
+196 < 1       key: `note-${i}`,
+197 < 1       flexDirection: "row",
+198 < 1       children: [
+199 < 1         Text({ key: `text-${i}`, children: [noteLabel(n)] }),
+200 < 1         Button({
+201 < 1           key: `drop-${i}`,
+202 < 1           onPress: async () => {
+204 > 1             drop([n.id]);
+203 < 2             notes.splice(i, 1);
+204 < 1             await save($);
+205 < 1           },
+206 < 1           children: ["x"],
+207 < 1         }),
+208 < 1       ],
+209 < 1     })
+210 < 1   );
+211 < 1   return Box({
+212 < 1     key: "tray",
+213 < 1     flexDirection: "column",
+214 < 1     children: [
+215 < 1       Box({ key: "top", flexDirection: "row", children: top }),
+216 < 1       Input({
+217 < 1         key: "view-note",
+218 < 1         autoFocus: true,
+219 < 1         placeholder: "element: note, or a note on the whole view",
+220 < 1         onSubmit: (text) => addNote($, text),
+221 < 1       }),
+222 < 1       Box({
+223 < 1         key: "actions",
+224 < 1         flexDirection: "row",
+225 < 1         children: [
+226 < 1           Button({ key: "send", hotkey: "s", onPress: () => send($), children: ["Send"] }),
+227 < 1           Button({ key: "clear", hotkey: "c", onPress: () => clear($), children: ["Clear"] }),
+228 < 1         ],
+229 < 1       }),
+230 < 1       Box({
+231 < 1         key: "notes",
+232 < 1         flexDirection: "column",
+233 < 1         children: rows.length ? rows : [Text({ key: "none", children: ["No notes yet"] })],
+234 < 1       }),
+235 < 1     ],
+236 < 1   });
+237 < 1 }
+238 < 1 
+239 < 1 function drawBand($, e) {
+240 < 1   const { Box, Text, Button } = $.ui.resolve(e);
+241 < 1   const count = notes.length + (pick != null ? 1 : 0);
+242 < 1   const label = `Intent tray: ${screen ? screen.name : "feedback"}, ${count} item${count === 1 ? "" : "s"}`;
+243 < 1   return Box({
+244 < 1     key: "band",
+245 < 1     flexDirection: "row",
+246 < 1     children: [
+247 < 1       Text({ key: "band-label", children: [label] }),
+248 < 1       Button({ key: "band-note", hotkey: "n", onPress: () => openTray($), children: ["Add note"] }),
+249 < 1       Button({ key: "band-send", hotkey: "s", onPress: () => send($), children: ["Send"] }),
+250 < 1       Button({ key: "band-clear", hotkey: "c", onPress: () => clear($), children: ["Clear"] }),
+252 > 1       ...(screen && screen.url && canRun($)
+251 < 2       ...(screen && screen.url
+252 < 1         ? [Button({ key: "band-open", onPress: () => openScreen($), children: ["Open screen"] })]
+253 < 1         : []),
+254 < 1     ],
+255 < 1   });
+256 < 1 }
+257 < 1 
+258 < 1 export function register(on) {
+259 < 1   on("session.start", async ($, e, next) => {
+260 < 1     cwd = (e && e.cwd) || "";
+261 < 1     const saved = await $.store.get(trayKey());
+262 < 1     if (!saved || typeof saved !== "object") {
+263 < 1       // Lines written before this repo's first session are history.
+265 > 1       const bytes = await wholeLines($);
+266 < 1       offset = bytes?.length ?? 0;
+267 < 1       mark = bytes ? markOf(bytes) : "";
+264 < 2       offset = (await wholeLines($))?.length ?? 0;
+265 < 1       await save($);
+266 < 1     } else {
+267 < 1       screen = saved.screen || null;
+268 < 1       pick = saved.pick != null ? saved.pick : null;
+270 > 1       piece = saved.piece != null ? saved.piece : null;
+271 < 1       notes = notesOf(saved.notes);
+272 < 1       gone = Array.isArray(saved.gone) ? saved.gone.map(String).slice(-GONE_KEPT) : [];
+269 < 2       notes = Array.isArray(saved.notes) ? saved.notes : [];
+270 < 1       offset = Number(saved.offset) || 0;
+272 > 1       if (typeof saved.mark === "string") {
+273 < 1         mark = saved.mark;
+274 < 1       } else {
+275 < 1         // Stored before the mark: the offset was taken in the file that is there now.
+276 < 1         const bytes = await wholeLines($);
+277 < 1         mark = bytes ? markOf(bytes) : "";
+278 < 1       }
+271 < 1     }
+272 < 1     await $.command.register({ name: "tray", description: "Open the intent tray", immediate: true });
+273 < 1     await $.command.register({
+274 < 1       name: "note",
+275 < 1       description: "Add a note to the intent tray: /note <element>: <note>, or /note <note>",
+276 < 1       argumentHint: "[element: note]",
+277 < 1       immediate: true,
+278 < 1     });
+279 < 1     await $.tool.register({
+280 < 1       name: "show_screen",
+281 < 1       description:
+282 < 1         "Show the operator a screen in the intent tray so they can pick a version and add notes; then wait for their feedback.",
+283 < 1       inputSchema: {
+284 < 1         type: "object",
+285 < 1         properties: {
+286 < 1           name: { type: "string", description: "Name of the screen" },
+287 < 1           stage: { type: "string", description: "What this round is about" },
+288 < 1           versions: { type: "array", items: { type: "string" }, description: "Version labels to pick from" },
+289 < 1           url: { type: "string", description: "Address of the preview page, opened by the tray's Open screen button" },
+290 < 1         },
+291 < 1         required: ["name"],
+292 < 1       },
+293 < 1     });
+294 < 1     $.clock.every(1000, () => readFeedback($));
+295 < 1     return next(e);
+296 < 1   });
+297 < 1 
+298 < 1   // A registered command is answered by a command.run hook; CommandSpec has no callback field.
+299 < 1   on("command.run", { command: "tray" }, async ($) => {
+300 < 1     await openTray($);
+301 < 1     return {};
+302 < 1   });
+303 < 1 
+304 < 1   on("command.run", { command: "note" }, async ($, e) => {
+305 < 1     const before = notes.length;
+306 < 1     await addNote($, e.args);
+307 < 1     return notes.length > before
+308 < 1       ? { text: `Added to the intent tray (${notes.length} ${notes.length === 1 ? "note" : "notes"})` }
+309 < 1       : { text: "Usage: /note <element>: <note>, or /note <note> for the whole view" };
+310 < 1   });
+311 < 1 
+312 < 1   on("tool.call", { tool: "mcp__ultrapowers__show_screen" }, async ($, e, next) => {
+313 < 1     const input = (e && (e.input || e.args)) || e || {};
+314 < 1     const name = String(input.name || e.name || "Screen");
+315 < 1     const stage = input.stage != null ? String(input.stage) : e.stage != null ? String(e.stage) : "";
+316 < 1     const raw = Array.isArray(input.versions) ? input.versions : Array.isArray(e.versions) ? e.versions : [];
+318 > 1     const asked = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
+319 < 1     const url = LOCAL_URL.test(asked) ? asked : "";
+317 < 2     const url = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
+318 < 1     empty();
+320 > 1     setScreen({ name, stage, versions: raw.map(String), url });
+319 < 2     screen = { name, stage, versions: raw.map(String), url };
+320 < 1     await save($);
+321 < 1     await $.ui.open(PANE);
+322 < 1     return {
+323 < 1       result:
+324 < 1         `Showing "${name}" in the intent tray${screen.versions.length ? ` with versions ${screen.versions.join(", ")}` : ""}. ` +
+326 > 1         (asked && !url ? `The url was not kept: only http://127.0.0.1:<port>/ or http://localhost:<port>/ opens. ` : "") +
+325 < 1         "Wait for the operator's feedback: it arrives as their next message with a json block of picks and notes.",
+326 < 1     };
+327 < 1   });
+328 < 1 
+329 < 1   on("ui.render", { component: "Pane", requestId: "intent-tray" }, async ($, e) => drawPane($, e));
+330 < 1 
+331 < 1   on("ui.render", { component: "AbovePrompt" }, async ($, e, next) => {
+332 < 1     if (!hasContent()) return next(e);
+333 < 1     return drawBand($, e);
+334 < 1   });
+335 < 1 }
+336 < 1 

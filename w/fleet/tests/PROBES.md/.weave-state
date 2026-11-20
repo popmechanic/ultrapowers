@@ -1,7 +1,9 @@
 0 < 1 # fleet/tests probes
 1 < 1 
-2 < 1 A `probe_*.mjs` file is either a live measurement or a design gate — never a
-3 < 1 suite test. A live measurement spends real tokens against a real `claude -p`; a
+3 > 1 A `probe_*.mjs` file (and a Bun `*_probe.mjs`) is either a live measurement or a design
+4 < 1 gate — never a suite test. A live measurement spends real tokens against a real `claude -p`; a
+2 < 2 A `probe_*.mjs` file is either a live measurement or a design gate — never a
+3 < 2 suite test. A live measurement spends real tokens against a real `claude -p`; a
 4 < 1 design gate is model-free and spends only minutes, but it is a reading a person
 5 < 1 takes before a change rather than a verdict CI owes on every commit. Either way
 6 < 1 the file is deliberately NOT named `test_*.mjs`: `tests/test_fleet_suite.py`
@@ -39,7 +41,8 @@
 38 < 1   the lobby's floor — and two copies of it) and removes every one of them as its last mutating verbs, and
 39 < 1   it refuses outright, issuing no `new`, when a `fleet-r*` VM is already
 40 < 1   listed — a live run's VM, never to be created beside. Run it on a
-41 < 1   verb-drift finding from the doctor's `verb-drift` row or the launch line,
+42 > 1   verb-drift finding from the doctor's `verb-drift` row,
+41 < 2   verb-drift finding from the doctor's `verb-drift` row or the launch line,
 42 < 1   and before any plan touching `fleet/launch.mjs` or `fleet/lobby.mjs` — the
 43 < 1   facts here are what those files' shape is argued from. Its exit codes:
 44 < 1   exit 0 every fact holds, 1 at least one drift or unreadable fact, 2 the
@@ -77,36 +80,37 @@
 76 < 1   Prints `JEV CALLS <case> OK`.
 77 < 1 
 78 < 1 Everything else the Flock's scripted runs used to probe by hand (catch-up,
-79 < 1 deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
-80 < 1 
-81 < 1 ## Jev's peer-rewrite read, live
-82 < 1 
-83 < 1 `jev_peer_probe.mjs` asks the real Jev (key in `~/.ultrapowers/typesafe.env`; it spends a few calls)
-84 < 1 the `flock_peer_rewrite` question four ways, with five replays each:
-85 < 1 - run-296's L:loose rewrite of `preview.ts` exactly as the engine sent it, as a bare agent name
-86 < 1   (reported, not judged);
-87 < 1 - the same rewrite with the loose-ends side's title and reason, which must read `supersedes` or
-88 < 1   `keeps` in a majority;
-89 < 1 - run-277's run-together words, which must still read `loses`;
-90 < 1 - an unrelated same-file rewrite (the loose-ends builder adds a line the reported problem never asked
-91 < 1   for), which must read `loses`.
-92 < 1 
-93 < 1 Run it before any change to that question, to `factory/flock/engine.mjs`'s `peerRewrites`, or to the
-94 < 1 `flock.jev_peer_rewrite` policy:
-95 < 1 
-96 < 1     node fleet/tests/jev_peer_probe.mjs 5
-97 < 1 
-98 < 1 Readings, 2026-10-02 06:40 UTC (after #1520, field `asked_to_fix`), `jev-1.13.0`, n=5 each:
-99 < 1 
-100 < 1 | Case | Answer |
-101 < 1 |---|---|
-102 < 1 | bare run-296 | loses 5/5 (L .51–.57) |
-103 < 1 | run-296 with its reason | supersedes 5/5 (S .55–.60) |
-104 < 1 | run-277 | loses 5/5 (L .65–.72) |
-105 < 1 | unrelated same-file rewrite | loses 5/5 (L .83–.88) |
-106 < 1 
-107 < 1 The readings of 2026-10-01 (before #1520, field `claim`) read the same answers: bare loses 5/5, with its
-108 < 1 reason supersedes 5/5, run-277 loses 5/5.
+80 > 1 deletes, provenance, peer rewrites, the loose ends) is `test_flock_runs.mjs`, in the suite.
+79 < 2 deletes, provenance, the Jev trials) is `test_flock_runs.mjs`, in the suite.
+80 < 2 
+81 < 2 ## Jev's peer-rewrite read, live
+82 < 2 
+83 < 2 `jev_peer_probe.mjs` asks the real Jev (key in `~/.ultrapowers/typesafe.env`; it spends a few calls)
+84 < 2 the `flock_peer_rewrite` question four ways, with five replays each:
+85 < 2 - run-296's L:loose rewrite of `preview.ts` exactly as the engine sent it, as a bare agent name
+86 < 2   (reported, not judged);
+87 < 2 - the same rewrite with the loose-ends side's title and reason, which must read `supersedes` or
+88 < 2   `keeps` in a majority;
+89 < 2 - run-277's run-together words, which must still read `loses`;
+90 < 2 - an unrelated same-file rewrite (the loose-ends builder adds a line the reported problem never asked
+91 < 2   for), which must read `loses`.
+92 < 2 
+93 < 2 Run it before any change to that question, to `factory/flock/engine.mjs`'s `peerRewrites`, or to the
+94 < 2 `flock.jev_peer_rewrite` policy:
+95 < 2 
+96 < 2     node fleet/tests/jev_peer_probe.mjs 5
+97 < 2 
+98 < 2 Readings, 2026-10-02 06:40 UTC (after #1520, field `asked_to_fix`), `jev-1.13.0`, n=5 each:
+99 < 2 
+100 < 2 | Case | Answer |
+101 < 2 |---|---|
+102 < 2 | bare run-296 | loses 5/5 (L .51–.57) |
+103 < 2 | run-296 with its reason | supersedes 5/5 (S .55–.60) |
+104 < 2 | run-277 | loses 5/5 (L .65–.72) |
+105 < 2 | unrelated same-file rewrite | loses 5/5 (L .83–.88) |
+106 < 2 
+107 < 2 The readings of 2026-10-01 (before #1520, field `claim`) read the same answers: bare loses 5/5, with its
+108 < 2 reason supersedes 5/5, run-277 loses 5/5.
 109 < 1 
 110 < 1 ## Jev's gate reading, live
 111 < 1 

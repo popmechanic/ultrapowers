@@ -34,20 +34,27 @@
 32 < 1 target at `base=`, fetches only the live branch of the evidence repository, shallow, runs the engine
 34 > 1 as a transient user service with a memory cap, commits the record to the live branch every 10 s and
 33 < 2 as a transient user service with a memory cap, commits the record to the live branch every 60 s and
-34 < 1 at each transition — no status page; git is the record — and, only when there is something to publish
+35 > 1 at each transition — no status server; git is the record — and, only when there is something to publish
+34 < 2 at each transition — no status page; git is the record — and, only when there is something to publish
 35 < 1 and the default branch moved underneath it, catches the run up to the target's tip inline
 36 < 1 (`factory/flock/catchup.mjs`) before the PR, then pushes `ultra/integration-run-N` to the target and
 37 < 1 opens the PR over GitHub's REST API through the edge. At the end of every run (done, parked and
 38 < 1 failed) it cuts one tag `<owner>-<repo>/run-<N>` on the live branch's last commit, verifies it with
-39 < 1 `git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
-40 < 1 whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
-42 > 1 removes the calling VM only when the run's `status.json` at that tag, read from the evidence
-44 > 1 repository, says `state` `done` (#1470); the janitor still reaps what
+40 > 1 `git ls-remote --tags`, and deletes the live branch. Nothing on the VM asks to be removed:
+41 < 1 the janitor removes a finished run's VM, at each launch or by hand. The hub's reaper (#1470),
+42 < 1 which removed a done run's VM on its request, retired on 2026-11-14: its `rm`-only key expired
+43 < 1 unnoticed for two weeks while the janitor covered, and exe.dev offers no VM expiry, tokenless
+44 < 1 self-removal or remove-only-yourself key (Shelley, 2026-11-14). The PR is the human gate: the
+45 < 1 target's integration and the evidence repository's ride the VM for the run's whole life, and there is no
+39 < 2 `git ls-remote --tags`, and deletes the live branch. A `done` run whose PR merged, not held, or that opened no PR (a stories-v1 run with nothing to build), and
+40 < 2 whose tag verified then asks `https://reaper.int.exe.xyz/reap` once with `{run, target}`, and the hub
+42 > 2 removes the calling VM only when the run's `status.json` at that tag, read from the evidence
+44 > 2 repository, says `state` `done` (#1470); the janitor still reaps what
 43 < 2 repository, says `state` `done` (#1470; a run issue closed `done` on the hub's kata is the rollback,
 44 < 2 `REAPER_RECORD=kata` in the hub's `/etc/reaper/reaper.env`); the janitor still reaps what
 41 < 2 removes the calling VM only when the run issue is closed `done` (#1470); the janitor still reaps what
-42 < 1 never asks. The PR is the human gate: the target's
-43 < 1 integration and the evidence repository's ride the VM for the run's whole life, and there is no
+42 < 2 never asks. The PR is the human gate: the target's
+43 < 2 integration and the evidence repository's ride the VM for the run's whole life, and there is no
 44 < 1 grant step. There is no image to keep fresh, no orchestrator, no control VM, and no token on any VM.
 45 < 1 The product repository receives only `ultra/integration-run-<N>`; what a run leaves is one tag in the
 46 < 1 evidence repository.
@@ -84,12 +91,12 @@
 77 > 1     `FLEET_COMMIT_SECONDS` seconds apart (default 10) — so the branch is never far behind the
 76 < 2     `FLEET_COMMIT_SECONDS` seconds apart (default 60) — so the branch is never far behind the
 77 < 1     live run, and a tick that saw no change commits nothing however long it has been.
-78 < 1     **This bullet described the wave engine's own record here in detail through 2026-09-21** —
-79 < 1     `report.json`'s per-run schema, the `driver:wave-adopted`/`driver:wave-blocked`/
-80 < 1     `driver:finding` event kinds, the seven kinds of receipt, the `FACTS:` block, `frontier/`,
-81 < 1     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
-82 < 1     receipts directory — and it left with that engine at cut two; what the current engine writes
-83 < 1     to this branch beyond the three files above is not yet described in this contract.
+78 < 2     **This bullet described the wave engine's own record here in detail through 2026-09-21** —
+79 < 2     `report.json`'s per-run schema, the `driver:wave-adopted`/`driver:wave-blocked`/
+80 < 2     `driver:finding` event kinds, the seven kinds of receipt, the `FACTS:` block, `frontier/`,
+81 < 2     `state-exams/`, `residuals.jsonl`, `kata.jsonl`'s per-event hub export and the fold-again
+82 < 2     receipts directory — and it left with that engine at cut two; what the current engine writes
+83 < 2     to this branch beyond the three files above is not yet described in this contract.
 84 < 1     **A Flock run adds eight files beside them** (with `summary.json` and the
 85 < 1     publish files), so its record says what went wrong and not only that it did:
 86 < 1     - `board.json` — the board as it stood at the end: every task with its state and owner, and
@@ -128,12 +135,14 @@
 119 < 1     a merged one goes with the merge (delete-on-merge), a `hold=1` run's stays while its PR is open,
 120 < 1     and the retire sweep deletes one whose pull request is closed and not merged.
 121 < 1 - **`$RUN_DIR/base`** — one line, a 40-hex sha, written by the engine only when a run that follows
-122 < 1   main (policy `flock.main.mode = peer`) moved its base: the main the run's commit sits on. The boot
+123 > 1   main moved its base: the main the run's commit sits on. The boot
+122 < 2   main (policy `flock.main.mode = peer`) moved its base: the main the run's commit sits on. The boot
 123 < 1   reads it after the engine exits and judges "nothing ahead of base" and the publish's catch-up
 124 < 1   against it; absent, the base is the assignment's `base=`.
 125 < 1 - **`refs/ultrapowers/weave/v1` on the target** — main's memory (`factory/flock/weave_store.py`), the
-126 < 1   one ref outside `refs/heads/` the product repository receives, and only under policy
-127 < 1   `flock.main.mode = memory`. One commit per tree of the default branch, subject `weave <tree sha>`,
+127 > 1   one ref outside `refs/heads/` the product repository receives. One commit per tree of the default branch, subject `weave <tree sha>`,
+126 < 2   one ref outside `refs/heads/` the product repository receives, and only under policy
+127 < 2   `flock.main.mode = memory`. One commit per tree of the default branch, subject `weave <tree sha>`,
 128 < 1   holding the Manyana weave of every path changed since the store began. It is not a branch: a
 129 < 1   clone does not fetch it, branch protection does not cover it, and nothing reads it but a sandbox.
 130 < 1   The publish pushes it after the pull request is open and after each catch-up, always before a
@@ -170,22 +179,32 @@
 161 < 1   reads it ONCE from `https://reflection.int.exe.xyz/comment` (`{"comment": "..."}`) and fails the run
 162 < 1   if it is absent or malformed. Nobody rewrites it.
 163 < 1 - **Proof environment:** one variable, set by the engine and by nothing else. A plan's `Check:`
-164 < 1   lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
-165 < 1   never a candidate's own base — and it rides no other line. A run's proof is the plan's `Run:`
-166 < 1   probes and `Check:` lines only: a task is measured by its `Run:` probes, run in the candidate's
-167 < 1   own clone, and by the plan's `Check:` lines on the folded tree; the Flock selects no other tests
-168 < 1   (probes-only, operator, 2026-09-27) — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
-169 < 1   engine's own environment and nothing added: no `ULTRA_BASE` (that rides `Check:` lines and
-170 < 1   nothing else), no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the
-171 < 1   numbered exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were
-172 < 1   the wave engine's and left at cut two (2026-09-21); a probe that wants a base to compare against
-173 < 1   carries a frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`. The
-174 < 1   peer exam role, its files and their
-175 < 1   evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
-176 < 1   before it.
-177 < 1 - **State handshake:** left with the factory at cut three (2026-09-22); nothing reads it. Its
-178 < 1   shape is #812 (4a63b4ef); map #998 dropped it on 2026-09-30, and #1419 (the Flock's beliefs) is
-179 < 1   where a reached state would return.
+165 > 1   lines run on every tested snapshot with `ULTRA_BASE` set to the run's base sha (the moved main's
+166 < 1   tip once the run follows main), and it rides no other line. A run's proof is the plan's `Run:`
+167 < 1   probes and `Check:` lines only: a task is measured by its `Run:` probes and the run by the plan's
+168 < 1   `Check:` lines; the Flock selects no other tests (probes-only, operator, 2026-09-27). A task's
+169 < 1   `Run:` probes run with the engine's own environment and nothing added — no `ULTRA_BASE`, no
+170 < 1   `ULTRA_TASK`, no `ULTRA_RUN_DIR` — so a probe that wants a base to compare against carries a
+171 < 1   frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`.
+164 < 2   lines run at every fold check with `ULTRA_BASE` set to the run's base sha — never the anchor,
+165 < 2   never a candidate's own base — and it rides no other line. A run's proof is the plan's `Run:`
+166 < 2   probes and `Check:` lines only: a task is measured by its `Run:` probes, run in the candidate's
+167 < 2   own clone, and by the plan's `Check:` lines on the folded tree; the Flock selects no other tests
+168 < 2   (probes-only, operator, 2026-09-27) — no file is written for it anywhere on the fleet. A task's `Run:` probes run with the
+169 < 2   engine's own environment and nothing added: no `ULTRA_BASE` (that rides `Check:` lines and
+170 < 2   nothing else), no `ULTRA_TASK`, no `ULTRA_RUN_DIR`, no `ULTRA_EXAM_PASS`. Those three, the
+171 < 2   numbered exam passes, the pre-review pass, the review rounds and `reviewOnStateExams` (#836) were
+172 < 2   the wave engine's and left at cut two (2026-09-21); a probe that wants a base to compare against
+173 < 2   carries a frozen literal (ultrawrite §Proof), and a comparison against BASE is a `Check:`. The
+174 < 2   peer exam role, its files and their
+176 > 2   evidence copy left the engine at cut three (2026-09-22); the way back is a launch from a checkout
+177 < 2   at `d412149a`, never `--engine d412149a` from today's launcher, whose `kind=` comment key that
+178 < 2   boot refuses (RUNBOOK §Rollback).
+175 < 2   evidence copy left the engine at cut three (2026-09-22); `--engine d412149a` runs the engine from
+176 < 2   before it.
+177 < 2 - **State handshake:** left with the factory at cut three (2026-09-22); nothing reads it. Its
+178 < 2   shape is #812 (4a63b4ef); map #998 dropped it on 2026-09-30, and #1419 (the Flock's beliefs) is
+179 < 2   where a reached state would return.
 180 < 1 - **Launch order (launcher):** read the evidence repository (`--evidence-repo`, else `fleet.json`'s
 181 < 1   `"evidence"`) and refuse a launch with neither, naming the key and `node fleet/doctor.mjs` →
 182 < 1   validate `--target`/`--base`/plan — a `--base` that is not an ancestor
@@ -270,20 +289,26 @@
 248 < 1 
 249 < 1   with the generated setup script on the verb's stdin, under a `# fleet: width=<W>`
 250 < 1   header line the
-251 < 1   launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells six and
-252 < 1   `parse_assignment` fails the boot on a seventh), so that header is a record only: the old wave
-253 < 1   engine read the same W back off its own compile (`args.json`) as its dispatch bound, falling back
-254 < 1   to 12 when the compile answered no waves, and that reading left with it at cut two (2026-09-21).
+252 > 1   launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells seven and
+253 < 1   `parse_assignment` fails the boot on any other), so that header is a record only.
+251 < 2   launcher stamps on it — W is not an assignment key (`COMMENT_KEYS` spells six and
+252 < 2   `parse_assignment` fails the boot on a seventh), so that header is a record only: the old wave
+253 < 2   engine read the same W back off its own compile (`args.json`) as its dispatch bound, falling back
+254 < 2   to 12 when the compile answered no waves, and that reading left with it at cut two (2026-09-21).
 255 < 1   `<cpu>` and `<memory>` are the PLAN's size,
 256 < 1   not the fleet's: the launcher parses the plan once before this verb (`plan_parse.py <plan>`,
 258 > 1   the one payload the sizing reads), takes
 257 < 2   the one payload the sizing and the kata filing both read), takes
-258 < 1   W — the task count of the widest `launch_waves` entry —
+259 > 1   W — the parse's `width`, the most tasks the plan can have ready at once —
+258 < 2   W — the task count of the widest `launch_waves` entry —
 259 < 1   and asks for `min(cpu, 2 + ceil(W / 3))` vCPU and
-260 < 1   `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+261 > 1   `min(memory, 2 + W)GB` (`max(6, ceil(2 + 1.25 × W))`GB for a stories-v1 plan, whose
+262 < 1   checker runs Chromium; #1087), where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+260 < 2   `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
 261 < 1   `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
-262 < 1   either number is refused when `billing plan --json` cannot seat it. The browser term the old
-263 < 1   state exams added to memory left with them (cut three, 2026-09-22; a return is owed on #1248).
+263 > 1   either number is refused when `billing plan --json` cannot seat it.
+262 < 2   either number is refused when `billing plan --json` cannot seat it. The browser term the old
+263 < 2   state exams added to memory left with them (cut three, 2026-09-22; a return is owed on #1248).
 264 < 1   The verb carries NO `--integration`, and the launcher refuses its own line
 265 < 1   before issuing it should the flag ever reappear. The run's credentials reach the VM by TAG instead:
 266 < 1   each integration a run needs — `claude-max`, the target's `gh-<owner>-<repo>` and the evidence
@@ -300,8 +325,11 @@
 277 < 1 - **Setup script (generated by `fleet/setup-script.mjs`, ≤10 KiB, bash, `set -euo pipefail`):** exe.dev
 278 < 1   runs it ONCE, as `exedev`, on first boot. It contains no secret and no `ANTHROPIC` string. Its duties,
 279 < 1   in order:
-280 < 1   1. wait, bounded, for the user bus (`systemctl --user` has no address before `user@.service` is
-281 < 1      up);
+281 > 1   1. wait, bounded, for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s):
+282 < 1      `systemctl --user` has no address before `user@.service` is up, and the image lingers `exedev`
+283 < 1      by a marker file, so the script never calls `loginctl`;
+280 < 2   1. wait, bounded, for the user bus (`systemctl --user` has no address before `user@.service` is
+281 < 2      up);
 283 > 1   2. install the toolchain: node 24.22.1, bun 1.4.4,
 282 < 2   2. install the toolchain: node 24.22.1, bun 1.4.4 — and no kata: a sandbox runs none, the engine
 283 < 2      writing the hub directly (#1390) —
@@ -338,10 +366,11 @@
 314 < 1      and the bearer itself never leaves the edge;
 315 < 1   6. write the evidence repository's `<owner>/<repo>` to `$HOME/fleet-evidence-repo` — the one way
 316 < 1      the VM learns it (the assignment comment carries no `evidence=`);
-317 < 1   7. wait for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s) to appear
-318 < 1      before any `systemctl --user` call — the image lingers `exedev` by a marker file, so the script
-319 < 1      never calls `loginctl`;
-320 < 1   8. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
+318 > 1   7. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
+317 < 2   7. wait for the user bus (`${FLEET_USER_BUS:-/run/user/$(id -u)/bus}`, at most 60 s) to appear
+318 < 2      before any `systemctl --user` call — the image lingers `exedev` by a marker file, so the script
+319 < 2      never calls `loginctl`;
+320 < 2   8. `systemctl --user daemon-reload`, then `systemctl --user start fleet-run@<N>.service`.
 321 < 1 
 322 < 1   `<N>` is baked into the script the launcher generates, so the script passes `bash -n` for every run
 323 < 1   number. Why a template of `Type=exec` and not a oneshot (Counsel 3, measured on exeuntu, systemd 255):
@@ -350,7 +379,8 @@
 326 < 1   `systemctl --user show fleet-run@<N>.service -p ActiveState -p SubState -p Result -p ExecMainStatus`
 327 < 1   reads: `active/exited` + `success` = done; `failed` + `ExecMainStatus=N` = crashed with exit N;
 328 < 1   `failed` + `Result=timeout` = over the 6 h budget; `inactive/dead` = never launched.
-329 < 1 - **Bootstrap (`fleet/fleet-bootstrap.sh`, installed as `/usr/local/lib/fleet/bootstrap.sh`, ≤40 lines,
+330 > 1 - **Bootstrap (`fleet/fleet-bootstrap.sh`, installed as `/usr/local/lib/fleet/bootstrap.sh`, under 50 lines,
+329 < 2 - **Bootstrap (`fleet/fleet-bootstrap.sh`, installed as `/usr/local/lib/fleet/bootstrap.sh`, ≤40 lines,
 330 < 1   bash, `set -euo pipefail`):** read the comment once → when `$1` (the unit's `%i`) is given, it and the
 331 < 1   comment's `run=` agree or the run fails → parse `engine=` (40 hex or fail) →
 332 < 1   `dst=/home/exedev/engines/<sha>`; if absent, clone `https://github.com/popmechanic/ultrapowers.git`
@@ -370,7 +400,9 @@
 346 < 1   into `$FLEET_HOME/plans/<run>.plan.json` (a refusal fails the run; the engine, the catch-up, the
 347 < 1   PR body and the publish probe all read that parse, #1449), extracts the previous run's folder for the
 348 < 1   engine's `--past-dir`, updates Claude Code to the newest release (`timeout 120 sudo -n exeuntu update claude`,
-349 < 1   unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
+350 > 1   unpinned) and fails the run below the floor `2.1.287` — the first release with mods; the floor
+351 < 1   requires a plain `X.Y.Z` release, so a pre-release (`2.1.300-beta`) fails it too — logging
+349 < 2   unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
 350 < 1   the release it runs (`claude: <version>` in `fleet-boot.log`) and setting `DISABLE_AUTOUPDATER=1`
 351 < 1   for the run, runs the engine as one transient unit, commits the record to the live
 353 > 1   branch every 10 s and at each transition (see above), cuts and verifies the run tag and deletes
@@ -381,8 +413,10 @@
 356 < 1   after the engine unit exits (#1441), GitHub over `curl` and the target over `git`, both off PATH. When the target's tip moved
 357 < 1   underneath the run, the boot catches the run up to the new main inline by running
 358 < 1   `node factory/flock/catchup.mjs --plan <plan> --plan-json <parse> --target <target> --base <run base> --onto <moved tip>
-359 < 1   --run-dir <dir>`, whose last stdout line is JSON: `{"refolded": true, "head", "onto"}` (exit 0) or
-360 < 1   `{"refolded": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
+360 > 1   --run-dir <dir>`, whose last stdout line is JSON: `{"caughtUp": true, "head", "onto"}` (exit 0) or
+361 < 1   `{"caughtUp": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
+359 < 2   --run-dir <dir>`, whose last stdout line is JSON: `{"refolded": true, "head", "onto"}` (exit 0) or
+360 < 2   `{"refolded": false, "reason": "conflict" | "red", "onto"}` (exit 1). It joins the run's work onto
 361 < 1   the new main through the weave keeper (`factory/flock/weave.py`) and re-runs the plan's setup,
 362 < 1   every task's probes and the run-wide check with `ULTRA_BASE` set to the new main; on exit 0 the
 363 < 1   boot force-pushes the new head over the run's branch, and on a conflict or a red check it leaves
@@ -392,16 +426,17 @@
 367 < 1   unit itself:
 368 < 1   - engine: `systemd-run --user --unit=fleet-engine-<N> --pipe --wait --collect -p MemoryMax=40G -p MemorySwapMax=0 -p LimitNOFILE=524288 -p RuntimeMaxSec=<seconds> -p WorkingDirectory=<target>
 369 < 1     -- env -u CLAUDE_CONFIG_DIR ANTHROPIC_BASE_URL=<proxy> CLAUDE_CODE_OAUTH_TOKEN=placeholder
-370 < 1     TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
+371 > 1     ULTRAPOWERS_FLEET_RUN=<run id> node
+370 < 2     TYPESAFE_BASE_URL=https://typesafe.int.exe.xyz ULTRAPOWERS_FLEET_RUN=<run id> node
 371 < 1     <engine>/factory/flock/engine.mjs --plan <plan> --plan-json <parse> --target <target> --base <sha> --run-dir <dir>`,
 372 < 1     stdout+stderr teed to `engine.log`.
 373 < 1     cwd `<target>` — the same working directory the unit's own `WorkingDirectory=` sets.
-374 < 1   **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
-375 < 1   the kata ping and reuse-driven relaunch, the five declared worker roles and their confinement,
-376 < 1   the worker API-layer error classes, the fold-before-publish transient unit and its six
-377 < 1   dispositions, the fold-again wall-clock and the tag-and-branch record step — and all of it left
-378 < 1   with that engine at cut two; what `factory/boot.sh` itself does at this level of detail is not
-379 < 1   yet written down here.
+374 < 2   **This bullet spelled out the wave engine's own boot script here in detail through 2026-09-21** —
+375 < 2   the kata ping and reuse-driven relaunch, the five declared worker roles and their confinement,
+376 < 2   the worker API-layer error classes, the fold-before-publish transient unit and its six
+377 < 2   dispositions, the fold-again wall-clock and the tag-and-branch record step — and all of it left
+378 < 2   with that engine at cut two; what `factory/boot.sh` itself does at this level of detail is not
+379 < 2   yet written down here.
 380 < 2 - **Kata record (engine):** When a run carries a kata record, a worker's env names the hub it talks
 381 < 2   to as `KATA_SERVER` (the record's own `url`, or the fallback `https://kata.int.exe.xyz` when it
 382 < 2   names none), the placeholder bearer the edge replaces on the way out as
@@ -438,26 +473,33 @@
 413 < 1   run-277..291, never revised) ranked a wrong belief over its correction. Every belief posted is
 415 > 1   kept as one `belief` row in `events.jsonl`, whatever its `about`, and `fleet/run-read.mjs` prints
 416 < 1   each builder's as a `<builder> noted: <claim>` line, in `--follow` while the run is still going.
-417 < 1   (Until 2026-11-13 an `engine` belief was also posted to the kata hub as a comment.) A belief naming a `path` is a loose end: with
+418 > 1   (Until 2026-11-13 an `engine` belief was also posted to the kata hub as a comment.) A belief naming a `path` is a loose end: the engine adds one `L:loose` task
+417 < 2   (Until 2026-11-13 an `engine` belief was also posted to the kata hub as a comment.) A belief naming a `path` is a loose end: with
 414 < 2   kept as one `belief` row in `events.jsonl`, whatever its `about`. Every `engine` belief is also
 415 < 2   posted to Kata, while the run is still going, as the comment
 416 < 2   `engine belief from <builder>: <claim>` on its task's issue, or on the run issue when the belief
 417 < 2   names no task the record knows; it goes out as the mirror's posts do (fire-and-forget, a
 418 < 2   `kata:mirror` row) and shows in `--follow`. A belief naming a `path` is a loose end: with
-419 < 1   `flock.loose_ends.mode` `work` (policy; rollback `record`) the engine adds one `L:loose` task
+419 < 2   `flock.loose_ends.mode` `work` (policy; rollback `record`) the engine adds one `L:loose` task
 420 < 1   before settling when a loose end is open or not checked. One `loose-ends` row per run marks each
 421 < 1   loose end open, resolved or unchecked against the final snapshot, and the PR body lists the open
 422 < 1   and unchecked ones under `### Loose ends`.
 423 < 1   A draft after `L:loose` is added lands the pre-cleanup green snapshot as ready, recorded as a
 424 < 1   `loose:fallback` row and a second `settled` row, and the PR's Loose ends section says the cleanup
-425 < 1   was dropped; a losing peer-rewrite read on that pre-cleanup snapshot still ends draft.
-426 < 1 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
+426 > 1   was dropped.
+425 < 2   was dropped; a losing peer-rewrite read on that pre-cleanup snapshot still ends draft.
+427 > 1 - **Scope (Flock, the `scope:outside` and `amendment` rows, #1333):** the Flock's edge
+426 < 2 - **Scope (Flock, the `scope:outside` and `driver:amendment` rows, #1333):** the Flock's edge
 427 < 1   refuses to settle on a snapshot that changes a path outside every task's Files when no builder
 428 < 1   wrote that change; each such path is one `scope:outside` row in `events.jsonl` and the snapshot
 429 < 1   does not settle. A builder's own change to a path outside every task's Files is let through and
-430 < 1   recorded as a `driver:amendment` row naming the builder and the path. The switch is
-431 < 1   `flock.scope` in `factory/policy.json` (`mode = enforce`); `flock.scope.mode = record` is the
-432 < 1   rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
+432 > 1   recorded as an `amendment` row (`driver:amendment` before 2026-11-15) naming the builder and the path. Over 110 runs
+431 > 2   recorded as a `driver:amendment` row naming the builder and the path. Over 110 runs
+432 < 1   (2026-09-26..11-15) it refused nothing and let 59 amendments through in 15 runs, all done; its
+433 < 1   `record` mode was cut on 2026-11-14. Before this (run-247, #1322) a
+430 < 2   recorded as a `driver:amendment` row naming the builder and the path. The switch is
+431 < 2   `flock.scope` in `factory/policy.json` (`mode = enforce`); `flock.scope.mode = record` is the
+432 < 2   rollback — the rows are still written and nothing is refused. Before this (run-247, #1322) a
 433 < 1   green run merged a corrupted file no task listed.
 434 < 1 - **Stall (Flock, the `stall:no-progress` row, #1334):** a Flock run whose best-green count has not
 435 < 1   risen for `flock.stall.minutes` (20), with at least one builder session ended since it last rose
@@ -465,21 +507,30 @@
 437 < 1   `stall:no-progress` row in `events.jsonl` and ends as a draft, alerting, instead of running to its
 438 < 1   clock. The window opens when the builders start, not before setup. The stop interrupts every live
 439 < 1   session, starts no new one, and counts none of them as a give-back. Every stall row is named
-440 < 1   `stall:<kind>`. `--stall-minutes <n>` is an engine flag for a hand run (the launcher and boot do
-441 < 1   not pass it; a fleet run reads the cell), and a value that is not a number of minutes, 0 or more,
-442 < 1   refuses with exit 2. The cell is
-443 < 1   `flock.stall` in `factory/policy.json`; `flock.stall.minutes = 0` is the rollback — no limit, the
-444 < 1   run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
+441 > 1   `stall:<kind>`. The cell is `flock.stall` in `factory/policy.json`; a value that is not a number of
+442 < 1   minutes above 0 refuses with exit 2. Over 110 runs (2026-09-26..11-15) the stop never fired, and
+443 < 1   its off switch (`0`) and the `--stall-minutes` flag were cut on 2026-11-14. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
+440 < 2   `stall:<kind>`. `--stall-minutes <n>` is an engine flag for a hand run (the launcher and boot do
+441 < 2   not pass it; a fleet run reads the cell), and a value that is not a number of minutes, 0 or more,
+442 < 2   refuses with exit 2. The cell is
+443 < 2   `flock.stall` in `factory/policy.json`; `flock.stall.minutes = 0` is the rollback — no limit, the
+444 < 2   run ends only at its clock. Before this (runs 247, 251–255 and radio-station run-1, 2026-09-26..28,
 445 < 1   n=7) the longest wait for a rise in the green count was 2.0 min, while run-252 ran 229.7 min
 446 < 1   after its last rise.
-447 < 1 - **Jev (2026-09-16, the `jev:` seam):** one event kind rides the run's own event log exactly as
-448 < 1   a `driver:` row does — `jev:step` (the step read for a plan clause, one row per clause asked;
-449 < 1   `factory/record.mjs` reads the latest row per clause) — each one a `POST /v1/systemone` against
-450 < 1   the typesafe host, asked only over a reachable TypeSafe edge; a failed call is one log line and
-451 < 1   no row.
-452 < 1     Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
-453 < 1   neither is persisted anywhere this engine reads again.
-454 < 1 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
+448 > 1 - **Jev:** the engine asks Jev nothing. Its two reads, `jev:step` (each green story step, record
+449 < 1   only) and `jev:peer-rewrite` with its second look `jev:peer-settled` (an edit over a peer's line,
+450 < 1   drafting on `loses`), were cut on 2026-11-14 (operator's pick; n=110 runs: the step reads were
+451 < 1   never read, and the peer-rewrite read drafted 4 green runs and caught no lost line). A past run's
+452 < 1   record may still carry those rows; nothing reads them.
+447 < 2 - **Jev (2026-09-16, the `jev:` seam):** one event kind rides the run's own event log exactly as
+448 < 2   a `driver:` row does — `jev:step` (the step read for a plan clause, one row per clause asked;
+449 < 2   `factory/record.mjs` reads the latest row per clause) — each one a `POST /v1/systemone` against
+450 < 2   the typesafe host, asked only over a reachable TypeSafe edge; a failed call is one log line and
+451 < 2   no row.
+452 < 2     Receipts (2026-09-16): the same POST carries a `state` object out and an `answers` object back;
+453 < 2   neither is persisted anywhere this engine reads again.
+455 > 1 - **status.json:** `{"run":"<N>","state":"running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
+454 < 2 - **status.json:** `{"run":"<N>","state":"booting|running|publishing|done|parked|failed","phase":"<text>","pr":"<url or null>","prAuthor":"<GitHub login or null>","merged":"<40-hex or null>","branch":"ultra/integration-run-<N>","vm":"<vm_name>","startedAt":"<iso>","updatedAt":"<iso>","error":"<string or null>","tasks":{"<id>":{"state":"folded|failed","park":"<detail or null>"}}}`
 455 < 1   — committed to
 456 < 1   `runs/<owner>-<repo>/<N>/status.json` on `live/<owner>-<repo>/run-<N>` in the evidence repository
 457 < 1   at every transition **and, while
@@ -502,13 +553,20 @@
 472 < 2   that are not progress — `kata:*`, `transcript:*`, `engine:log` and `capture:*`, and `resolver:reply`
 473 < 1   with them — and the kind it takes is the last `driver:*`/`worker:*` one the log has written since
 474 < 1   that phase event, so a phase followed only by bookkeeping reads as that phase alone.
-475 < 1   The `state` cell is a sequence, not a set: a run that published reads
-476 < 1   `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
-477 < 1   again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
-478 < 1   `publish fold (attempt <n>)`. So a run folded once more reads
-479 < 1   `running → publishing → running → publishing → done`, one folded three times more carries three
-480 < 1   such pairs before its `done`, and the count is whatever the folds allowed under the refold bound
-481 < 1   `publish.self_merge.max_refolds` in `factory/policy.json` — never a fixed number. `parked` and `failed` are terminal wherever they are reached.
+476 > 1   The `state` cell is a sequence, not a set: a run that published reads `running → publishing →
+477 < 1   done` (engine exit 0) or `running → publishing → parked` (any other exit, a draft PR;
+479 > 1   `factory/publish.mjs`). A catch-up to a moved main (`publish.self_merge.max_catchups`) writes no
+478 < 2   `factory/publish.mjs`). A catch-up to a moved main (`publish.self_merge.max_refolds`) writes no
+479 < 1   state of its own. `failed` is a step outside the engine breaking, and is terminal wherever it is
+480 < 1   reached; nothing writes a `booting` page (a run that dies before the boot clones its evidence has
+481 < 1   no page, and the janitor reads it `unread`).
+475 < 2   The `state` cell is a sequence, not a set: a run that published reads
+476 < 2   `booting → running → publishing → done`, and a run whose merge PUT answered a base-moved 405 folds
+477 < 2   again — ONE `running → publishing` PAIR PER FOLD, the `running` carrying that fold's own phase
+478 < 2   `publish fold (attempt <n>)`. So a run folded once more reads
+479 < 2   `running → publishing → running → publishing → done`, one folded three times more carries three
+480 < 2   such pairs before its `done`, and the count is whatever the folds allowed under the refold bound
+481 < 2   `publish.self_merge.max_refolds` in `factory/policy.json` — never a fixed number. `parked` and `failed` are terminal wherever they are reached.
 482 < 1 - **Publish:** the pull request is one `POST /repos/<target>/pulls` with title
 483 < 1   `fleet run-<N>: <plan H1>`, head `ultra/integration-run-<N>`, base the target's default branch,
 484 < 1   `draft` true unless the engine exited 0, and no `authorization` header — the edge injects the
@@ -516,11 +574,20 @@
 486 < 1   `### Receipt` table with one `| task | probe | proves | exit |` row per `Run:` line of the plan,
 487 < 1   the exit read from the `edge` row of the last `settled` snapshot (the last `edge` row when
 488 < 1   nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the run tag's folder>` —
-489 < 1   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
-490 < 1   line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
+490 > 1   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — then,
+491 < 1   each only where the run has it and each its own `###` section or line, the provenance of its
+493 > 1   lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`) and
+494 < 1   what each story step changed, and last one `Closes #<n>` line per
+492 < 2   lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`), Jev's
+493 < 2   readings of each story step and what each step changed, and last one `Closes #<n>` line per
+494 < 1   number on the plan's `**Closes:**` line, all rendered by `factory/record.mjs pr-body`. A body
+495 < 1   over GitHub's cap gives up builders' lines first, never the summary or the closes. A run with no `edge` row carries only the
+489 < 2   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — a blank line, and one `Closes #<n>` line per number on the plan's `**Closes:**`
+490 < 2   line, all rendered by `factory/record.mjs pr-body`. A run with no `edge` row carries only the
 491 < 1   evidence line. The `publish:pr` row it leaves —
 492 < 1   `{ts, kind, url, number, draft}` — is appended by `factory/publish.mjs`, as are its `merge`,
-493 < 1   `refold` and `publish:*` rows.
+494 > 1   `catchup` (`refold` before 2026-11-15) and `publish:*` rows.
+493 < 2   `refold` and `publish:*` rows.
 494 < 1 - **Publish probe (#835, in `factory/publish.mjs`, run once the merge answered a sha, before the
 495 < 1   boot's `write_status`):** the plan's `**Publish:**`/`**Verify:**`/
 496 < 1   `**Rollback:**` header lines are read off the run's one parse (never grepped off the plan text);
@@ -564,26 +631,39 @@
 531 < 1   else: no `--integration` on `new`, no per-VM grant.
 532 < 1   Never two GitHub integrations naming one repo on a VM — the sandbox refuses to boot into that
 533 < 1   (preflight above); two targets' objects on one VM name two repos, which the edge routes apart.
-535 > 1   Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's
-536 < 1   `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
+537 > 1   Every object reaches a fleet VM by its own `tag:fleet` attachment. (Jev's `typesafe`
+539 > 1   **http-proxy** was detached from `tag:fleet` on 2026-11-16: no fleet code calls it since
+540 < 1   2026-11-14, when the engine's Jev reads were cut; the integration stays, attached to nothing.) The one
+538 < 2   **http-proxy**, `https://typesafe.int.exe.xyz`, is attached there too, but no fleet code calls it
+539 < 2   since 2026-11-14, when the engine's Jev reads were cut; the operator may detach it.) The one
+536 > 2   Every object reaches a fleet VM by its own `tag:fleet` attachment — including Jev's `typesafe`
+537 < 2   **http-proxy** (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one
+538 < 1   exception is attached to a VM by name and never to the tag: `evidence-read`, a `github --readonly`
+539 < 1   integration naming the evidence repository, on `vm:ultraviz` (the run viewer,
+540 < 1   popmechanic/ultraviz, a persistent VM that carries no tag and holds this one grant since
+541 < 1   2026-11-13: it reads each run's record and a write through it is refused, `integration is
+542 < 1   read-only`). It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
+535 > 2   Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's
+536 < 2   `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
 534 < 2   Every object reaches a fleet VM by its own `tag:fleet` attachment — including the hub's `kata`
 535 < 2   **http-proxy**, the hub's `reaper` peer (#1470) and Jev's `typesafe` **http-proxy**
-538 > 1   (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are
-539 < 1   attached to a VM by name and never to the tag: `lobby-rm`, the `rm`-only lobby key, on
-540 < 1   `vm:kata-hub`; and `evidence-read`, a `github --readonly` integration naming the evidence
-541 < 1   repository, on `vm:kata-hub` and on `vm:ultraviz` (the run viewer, popmechanic/ultraviz, a
-542 < 1   persistent VM that carries no tag and holds this one grant since 2026-11-13: it reads each run's
-543 < 1   record and a write through it is refused, `integration is read-only`). Through it
+538 > 2   (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are
+539 < 2   attached to a VM by name and never to the tag: `lobby-rm`, the `rm`-only lobby key, on
+540 < 2   `vm:kata-hub`; and `evidence-read`, a `github --readonly` integration naming the evidence
+541 < 2   repository, on `vm:kata-hub` and on `vm:ultraviz` (the run viewer, popmechanic/ultraviz, a
+542 < 2   persistent VM that carries no tag and holds this one grant since 2026-11-13: it reads each run's
+543 < 2   record and a write through it is refused, `integration is read-only`). Through it
 537 > 2   (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The two exceptions are the
 538 < 2   hub's own, attached to `vm:kata-hub` and never to the tag: `lobby-rm`, the `rm`-only lobby key, and
 539 < 2   `evidence-read`, a `github --readonly` integration naming the evidence repository, through which
-540 < 1   the hub's reaper reads one file — `GET https://github.int.exe.xyz/api/v3/repos/<evidence
-541 < 1   repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>` — and
-542 < 1   can write nothing. It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
+540 < 2   the hub's reaper reads one file — `GET https://github.int.exe.xyz/api/v3/repos/<evidence
+541 < 2   repo>/contents/runs/<owner>-<repo>/<N>/status.json?ref=refs/tags/<owner>-<repo>/run-<N>` — and
+542 < 2   can write nothing. It names the same repository as the fleet's `gh-<owner>-<repo>` and so is never
 543 < 1   attached to `tag:fleet`: two GitHub integrations for one repository on one VM have no tie-break.
 536 < 2   (`https://typesafe.int.exe.xyz`, the engine's `TYPESAFE_BASE_URL`). The one exception is
 537 < 2   `lobby-rm`, the `rm`-only lobby key, which is attached to `vm:kata-hub` and never to the tag.
-540 > 1 - **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
+541 > 1 - **Doctor (`fleet/doctor.mjs`) — nine rows, this order, `ROW_IDS`:**
+540 > 2 - **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
 539 > 2 - **Doctor (`fleet/doctor.mjs`) — eleven rows, this order, `ROW_IDS`:**
 538 < 2 - **Doctor (`fleet/doctor.mjs`) — ten rows, this order, `ROW_IDS`:**
 539 < 1   | id | what it reads | green when |
@@ -599,7 +679,7 @@
 550 > 2   | `kata` | `fleet/policy.json`'s `launch.kata.mode`; under `on`, `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` | with the mode `off`, always: no launch asks the hub, so it is no prerequisite and the detail says so; under `on`, the `kata` http-proxy exists, carries a bearer and is attached to `tag:fleet`, and `.vms[]` has a `kata-hub` row; the red says which is absent, and names `node fleet/kata-hub.mjs` — or, for a missing attachment, `integrations attach kata tag:fleet` |
 549 < 2   | `kata` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` | the `kata` http-proxy exists, carries a bearer and is attached to `tag:fleet`, and `.vms[]` has a `kata-hub` row; the red says which is absent, and names `node fleet/kata-hub.mjs` — or, for a missing attachment, `integrations attach kata tag:fleet` |
 550 < 1   | `cloudflare` | `integrations list --json` | green when the object is absent (only a plan with a `**Publish:**` line needs it) or attached to `tag:fleet`; red for a present object that is not, naming `integrations attach cloudflare tag:fleet` |
-554 > 1   | `reaper` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` (the hub VM's `ssh_dest`) + `ssh <the hub's ssh_dest> "curl … lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor); otherwise red when the remover, asked from the hub to remove a VM that cannot exist, answers `invalid token`, and red when no key named `hub-reaper…` exists or the one that lasts longest has expired, since the hub then answers a finished VM `202` and removes nothing; green with the key's day and days left, the detail saying whether the remover answered. `bash fleet/reaper-key.sh` renews the key |
+554 > 2   | `reaper` | `integrations list --json` + `ssh exe.dev "ls kata-hub --json"` (the hub VM's `ssh_dest`) + `ssh <the hub's ssh_dest> "curl … lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor); otherwise red when the remover, asked from the hub to remove a VM that cannot exist, answers `invalid token`, and red when no key named `hub-reaper…` exists or the one that lasts longest has expired, since the hub then answers a finished VM `202` and removes nothing; green with the key's day and days left, the detail saying whether the remover answered. `bash fleet/reaper-key.sh` renews the key |
 553 > 2   | `reaper` | `integrations list --json` + `ssh <the hub's ssh_dest> "curl … lobby-rm.int.exe.xyz/exec -d 'rm fleet-r0-doctor-probe --json'"` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor); otherwise red when the remover, asked from the hub to remove a VM that cannot exist, answers `invalid token`, and red when no key named `hub-reaper…` exists or the one that lasts longest has expired, since the hub then answers a finished VM `202` and removes nothing; green with the key's day and days left, the detail saying whether the remover answered. `bash fleet/reaper-key.sh` renews the key |
 552 > 2   | `reaper` | `integrations list --json` + `ssh exe.dev "ssh-key list --json"` | green when `lobby-rm` is absent (a finished VM then waits for the janitor), or when the exe.dev key named `hub-reaper…` that lasts longest has not expired, the detail giving its day and the days left; red when no such key exists or it has expired, since the hub then answers a finished VM `202` and removes nothing |
 551 < 1 
@@ -616,7 +696,8 @@
 558 < 1   repository (taken from the `"evidence"` setting) with `gh api`
 559 < 1   (`gh api repos/<evidence repo>/contents/…?ref=…`) at the run tag `<owner>-<repo>/run-<N>` first and
 560 < 1   at the branch `live/<owner>-<repo>/run-<N>` only when the tag answered no envelope — the page's
-561 < 1   `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) is the run's state
+562 > 1   `state` (`done|parked|failed` finished, `running|publishing` in flight) is the run's state
+561 < 2   `state` (`done|parked|failed` finished, `booting|running|publishing` in flight) is the run's state
 563 > 1   and its `updatedAt` the age → `rm <vm> --json` for a finished run older than 1 h. A run whose
 564 < 1   page cannot be read — absent at both refs, a read that failed, or the `"evidence"` key unset — is
 565 < 1   never removed and is reported `unread`, the line naming the two refs. (Until 2026-11-13 the
@@ -703,16 +784,33 @@
 605 < 2   refs. On a target the janitor's one write is the DELETE of an `ultra/integration-run-<N>` whose
 606 < 1   highest-numbered pull request (`pulls?state=all&per_page=100&head=<owner>:ultra/integration-run-<N>`, every page) is
 607 < 1   closed with `merged_at` null; an open, merged or absent one keeps the branch.
-609 > 1 - **The hub VM:** ONE persistent VM, named `kata-hub` since the days it ran the kata issue daemon,
-610 < 1   comment ending `persistent service, do not reap`, and NO tag — the janitor's `fleet-r*` never lists
-611 < 1   it, and the comment is the second lock. What it runs for the fleet is the VM remover
-612 < 1   (`fleet/reaper.py` as `reaper.service`, port 8001, fronted by the `reaper` `http-proxy --peer` on
-613 < 1   `tag:fleet`); what it holds is `/etc/reaper/reaper.env` (`REAPER_EVIDENCE_REPO=<owner>/<repo>`) and
-615 > 1   two integrations on `vm:kata-hub`, `lobby-rm` and `evidence-read` (the second shared with the
-616 < 1   viewer's VM). No tool builds it:
+610 > 1 - **The hub VM (retired 2026-11-14):** the persistent VM `kata-hub` ran the kata daemon until
+611 < 1   2026-11-13 and then only the VM remover, `fleet/reaper.py`. The janitor removes a finished run's
+612 < 1   VM, at each launch or by hand. The hub's reaper (#1470), which removed a done run's VM on its
+613 < 1   request, retired on 2026-11-14: its `rm`-only key expired unnoticed for two weeks while the
+614 < 1   janitor covered, and exe.dev offers no VM expiry, tokenless self-removal or remove-only-yourself
+615 < 1   key (Shelley, 2026-11-14).
+616 < 1   Gone from the repository: `fleet/reaper.py`, `reaper.service`, `reaper-key.sh`,
+618 > 1   `tests/test_reaper.py`, the doctor's `reaper` row and its sim, and the boot's `POST /reap`. Removed
+619 < 1   from exe.dev by the operator on 2026-11-16: the `kata-hub` VM, the `reaper` peer and `lobby-rm`
+620 < 1   integrations, the `hub-reaper-2026-11b` key, and `evidence-read`'s attachment to `vm:kata-hub`.
+621 < 1   Removing the VM deleted `/var/lib/kata`, the data the Kata rollback below started from. The
+617 < 2   `tests/test_reaper.py`, the doctor's `reaper` row and its sim, and the boot's `POST /reap`. Left
+618 < 2   for the operator to remove by hand: the `kata-hub` VM, the `reaper` peer and `lobby-rm`
+619 < 2   integrations, the `hub-reaper…` keys, and `evidence-read`'s attachment to `vm:kata-hub`.
+620 < 2   Removing the VM also deletes `/var/lib/kata`, the data the Kata rollback below starts from. The
+621 < 1   way back is a launch from a checkout made before that day, with the hub rebuilt from that
+622 < 1   checkout's RUNBOOK §The hub's reaper.
+609 > 2 - **The hub VM:** ONE persistent VM, named `kata-hub` since the days it ran the kata issue daemon,
+610 < 2   comment ending `persistent service, do not reap`, and NO tag — the janitor's `fleet-r*` never lists
+611 < 2   it, and the comment is the second lock. What it runs for the fleet is the VM remover
+612 < 2   (`fleet/reaper.py` as `reaper.service`, port 8001, fronted by the `reaper` `http-proxy --peer` on
+613 < 2   `tag:fleet`); what it holds is `/etc/reaper/reaper.env` (`REAPER_EVIDENCE_REPO=<owner>/<repo>`) and
+615 > 2   two integrations on `vm:kata-hub`, `lobby-rm` and `evidence-read` (the second shared with the
+616 < 2   viewer's VM). No tool builds it:
 614 < 2   two integrations of its own on `vm:kata-hub`, `lobby-rm` and `evidence-read`. No tool builds it:
-615 < 1   `fleet/RUNBOOK.md` §The hub's reaper is the hand procedure, and a fleet without one works, each
-616 < 1   finished VM waiting for the janitor. exe.dev re-runs a VM's stored setup script on every
+615 < 2   `fleet/RUNBOOK.md` §The hub's reaper is the hand procedure, and a fleet without one works, each
+616 < 2   finished VM waiting for the janitor. exe.dev re-runs a VM's stored setup script on every
 608 < 2 - **Kata hub (`fleet/kata-hub.mjs`):** ONE persistent VM named `kata-hub`, `--cpu 1 --memory 2GB
 609 < 2   --disk 20GB`, comment `kata hub — persistent service, do not reap`, and NO tag — the janitor's
 610 < 2   `fleet-r*` never lists it, and the comment is the second lock. Its port is pinned by
@@ -732,10 +830,10 @@
 624 < 2   (`fleet/kata-hub-setup.sh`),
 625 < 2   checked against that release's `SHA256SUMS`; and `/var/lib/kata/.setup-done`, the flag the setup
 626 < 2   script writes last and the laptop polls for. exe.dev re-runs the stored setup script on every
-627 < 1   restart (RUNBOOK §Traps, systemd on the VM), so the hub also carries
-628 < 1   `/etc/systemd/system/exe-setup.service.d/99-disabled.conf`
-629 < 1   (`[Unit] ConditionPathExists=!/var/lib/exe-setup.disabled`) and the empty marker
-631 > 1   `/var/lib/exe-setup.disabled`, both placed by hand on 2026-10-22.
+627 < 2   restart (RUNBOOK §Traps, systemd on the VM), so the hub also carries
+628 < 2   `/etc/systemd/system/exe-setup.service.d/99-disabled.conf`
+629 < 2   (`[Unit] ConditionPathExists=!/var/lib/exe-setup.disabled`) and the empty marker
+631 > 2   `/var/lib/exe-setup.disabled`, both placed by hand on 2026-10-22.
 632 < 1   **Kata left on 2026-11-13** (the operator's decision: no agent read it, the evidence repository
 633 < 1   holds every run in full, and it cost about 3,500 lines, a launch gate and a second record). Gone
 634 < 1   from the repository: `fleet/kata-client.mjs`, `kata-file.mjs`, `kata-hub.mjs`,

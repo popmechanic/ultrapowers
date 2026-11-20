@@ -1,0 +1,99 @@
+0 < 2 # 0.1.0 A/B eval — results (2026-07-10)
+1 < 2 
+2 < 2 Protocol: `docs/superpowers/specs/2026-07-10-0.1.0-subtraction-and-ab-eval-design.md` Part 2.
+3 < 2 Engine A = `8a030f4` (0.0.36, pre-subtraction). Engine B = `02febab` (merged 0.1.0
+4 < 2 subtraction release; plugin content byte-identical to merge sha `c9feb91` — the two
+5 < 2 commits after it are `evals/`-only runner fixes). One cell per `ab_runner.py`
+6 < 2 invocation, run serially; blind judgments via `judge.py` (X/Y labels randomized,
+7 < 2 key joined only after judging).
+8 < 2 
+9 < 2 **n = 1 per cell. These results are directional, not statistical.** A single run
+10 < 2 per engine×fixture cannot separate engine effect from LLM sampling variance; every
+11 < 2 comparison below inherits that caveat.
+12 < 2 
+13 < 2 ## The six rows
+14 < 2 
+15 < 2 | fixture | engine | gateVerdict | wallClockSec | outputTokens | redirectRounds | falseBlocks | notes |
+16 < 2 |---|---|---|---|---|---|---|---|
+17 < 2 | wide | A | PASS | 523.0 | 44,905 | 0 | 0 | salvaged: post-run harvest crash (kit bug); run itself clean |
+18 < 2 | chained | A | PASS | 1009.4 | 48,840 | 0 | 0 | rerun of 600s-ceiling crash |
+19 < 2 | webapp | A | NEEDS_ACK | 1143.3 | 76,738 | 0 | 0 | 1 ack: `deferred:browser` (client DOM not executable under `node --test`); acceptance exit 0 |
+20 < 2 | wide | B | PASS | 543.1 | 40,060 | 0 | 0 | |
+21 < 2 | chained | B | PASS | 1267.2 | 65,985 | 0 | 0 | 1 review-caught fix round (amount-to-cents Decimal) |
+22 < 2 | webapp | B | PASS | 1061.8 | 109,918 | 0 | 0 | rerun of rate-limit crash; 0 acks |
+23 < 2 
+24 < 2 Crashed rows (recorded in `runs.jsonl`, superseded by `rerunOf`): chained/A first
+25 < 2 attempt (headless 600s bg-wait ceiling, kit bug, fixed) and webapp/B first attempt
+26 < 2 (operator API session limit; no work performed). Both engines: zero operator
+27 < 2 redirect rounds and zero false blocks across all cells.
+28 < 2 
+29 < 2 ## Judgments (keys joined after judging)
+30 < 2 
+31 < 2 Blinding: all three prompts assigned X=B, Y=A (independent per-process seeds;
+32 < 2 1-in-8 coincidence). Verdict files: `judgment-{wide,chained,webapp}.json`.
+33 < 2 
+34 < 2 - **wide → A.** Implementations functionally identical; A's tests a strict
+35 < 2   superset (ngrams `n==len`/unigram/empty-list, reverse_words single-word +
+36 < 2   tab/newline, word_count case-folding). B: 2 missing-edge-test defects, A: 0.
+37 < 2 - **chained → A.** B's `format_cents` does money math in binary floating point
+38 < 2   (the one latent correctness defect found in any diff), plus a 200k-iteration
+39 < 2   scope-creep stress test, CRLF fragility in the CLI, and comment noise (5
+40 < 2   defects). A: 3 minor coverage/leniency nits.
+41 < 2 - **webapp → B.** A rewrote the npm test script to `node --test "tests/**/*.test.js"`
+42 < 2   — the quoted glob is not expanded and Node 20 (the plan's declared minimum) does
+43 < 2   not glob `--test` args, breaking the whole acceptance invocation; A also parses
+44 < 2   the body before routing (400 where the spec requires 404) and can double-respond
+45 < 2   on stream errors (4 defects, two substantive). B: 4 minor defects (store.list()
+46 < 2   returns internal array by reference, unauthorized-but-equivalent test-script
+47 < 2   edit, one missing case, one near-vacuous test).
+48 < 2 
+49 < 2 ## Tag-rule check
+50 < 2 
+51 < 2 Rule (plan Task 10 / spec Part 2): quality not worse; tokens and clock
+52 < 2 equal-or-better per plan within ~10% noise.
+53 < 2 
+54 < 2 | dimension | result | detail (A → B) |
+55 < 2 |---|---|---|
+56 < 2 | quality | **WORSE (directional)** | blind judge: A wins wide and chained, B wins webapp (2–1). B's chained diff carries the only latent correctness defect found (float money math). |
+57 < 2 | tokens | **WORSE** | wide −10.8% (40.1k), chained **+35.1%** (66.0k), webapp **+43.3%** (109.9k); aggregate +26.7% — outside the ~10% band on 2 of 3 fixtures |
+58 < 2 | clock | equal-or-better within noise (aggregate) | wide +3.8%, chained **+25.6%**, webapp −7.1%; aggregate +7.4% |
+59 < 2 
+60 < 2 **TAG RULE: FAILED.** Per the plan: a miss goes back to diagnosis — never
+61 < 2 rationalized. v0.1.0 is NOT tagged on this evidence.
+62 < 2 
+63 < 2 ## Diagnosis notes (for the follow-up, not a rationalization of the miss)
+64 < 2 
+65 < 2 - **No causal path from the subtraction to the misses was found.** The deleted
+66 < 2   machinery (standalone prose-pin tests, complexity ratchet, compiler near-miss
+67 < 2   diagnostics, `waveLabels`, sealed-by-default routing) does not touch implementer
+68 < 2   prompts, task bodies, tiering, review depth, or the merge/gate path. The judged
+69 < 2   defects (missing edge tests, float math, a bad glob) are implementer-output
+70 < 2   variance of a kind seen in both engines' diffs.
+71 < 2 - B's chained overrun (+258s, +17k tokens) is largely a review-caught fix round —
+72 < 2   the machinery working, but paid for in the same run; A's chained run happened to
+73 < 2   need none. B's webapp overrun (+33k tokens) bought a cleaner outcome (PASS, 0
+74 < 2   acks, minor-only defects) where A shipped a suite-breaking script edit.
+75 < 2 - **Recommended next step:** rerun the two out-of-band cells (chained, webapp)
+76 < 2   once per engine (4 cells, ~1 hour) to get n=2 on the divergent fixtures before
+77 < 2   concluding an engine-caused regression. If B's token overrun and the quality
+78 < 2   split reproduce, diagnose for real; if they wash out, re-run the tag-rule check
+79 < 2   on the pooled rows.
+80 < 2 
+81 < 2 ## Kit shakedown (first live execution of the eval kit)
+82 < 2 
+83 < 2 Four harvest/parse-plumbing bugs found and fixed during this protocol — none in
+84 < 2 run mechanics, none affecting engine measurement: transcript-path `%`-precedence
+85 < 2 crash + integration-branch diffing (`a7a89cc`), headless 600s bg-wait ceiling +
+86 < 2 stderr-merged result JSON (`02febab`), judge verdict-JSON extraction (`9b27ebb`).
+87 < 2 Engine pinning was verified per engine from session transcripts (cells resolved
+88 < 2 `ab-engine-8a030f4` / `ab-engine-02febab` worktrees respectively; zero
+89 < 2 cross-references).
+90 < 2 
+91 < 2 ## Operator decision (2026-07-10, post-diagnosis)
+92 < 2 
+93 < 2 The operator reviewed the miss and the diagnosis, accepted the
+94 < 2 sampling-variance explanation (no causal path from the subtraction to any
+95 < 2 judged defect; zero false blocks and zero redirect rounds on both engines),
+96 < 2 and explicitly waived the recommended n=2 rerun for lack of time. **v0.1.0 is
+97 < 2 tagged on this operator judgment, not on a formal tag-rule pass.**
+98 < 2 

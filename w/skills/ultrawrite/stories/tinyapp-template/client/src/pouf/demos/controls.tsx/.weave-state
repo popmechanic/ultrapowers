@@ -1,0 +1,277 @@
+0 < 2 import { useEffect, useRef, useState } from 'react'
+1 < 2 import { Select, Switch, Tooltip, TooltipProvider, Confirm, Dialog, Combobox } from '../controls'
+2 < 2 import { Field } from '../Input'
+3 < 2 import { Button } from '../Button'
+4 < 2 import { Row, Stack } from '../layout'
+5 < 2 import { RowCard } from '../surface'
+6 < 2 import { Text } from '../text'
+7 < 2 import { simulateOpen } from './interact'
+8 < 2 import type { Demo } from './types'
+9 < 2 
+10 < 2 /* ---------------------------------------------------------------- Select */
+11 < 2 
+12 < 2 const fruitOptions = [
+13 < 2   { value: 'apple', label: 'Apple' },
+14 < 2   { value: 'banana', label: 'Banana' },
+15 < 2   { value: 'cherry', label: 'Cherry' },
+16 < 2 ]
+17 < 2 
+18 < 2 function InteractiveSelect({
+19 < 2   initial,
+20 < 2   subject = false,
+21 < 2 }: {
+22 < 2   initial: string
+23 < 2   subject?: boolean
+24 < 2 }) {
+25 < 2   const [value, setValue] = useState(initial)
+26 < 2   const field = (
+27 < 2     <Field label="Fruit">
+28 < 2       {(id, d) => (
+29 < 2         <Select
+30 < 2           id={id}
+31 < 2           describedBy={d}
+32 < 2           value={value}
+33 < 2           onChange={setValue}
+34 < 2           options={fruitOptions}
+35 < 2           placeholder="Choose a fruit…"
+36 < 2         />
+37 < 2       )}
+38 < 2     </Field>
+39 < 2   )
+40 < 2   return subject ? <span data-subject>{field}</span> : field
+41 < 2 }
+42 < 2 
+43 < 2 function SelectOpen() {
+44 < 2   const ref = useRef<HTMLDivElement>(null)
+45 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+46 < 2   return (
+47 < 2     <div ref={ref}>
+48 < 2       <Field label="Fruit">
+49 < 2         {(id, d) => <Select id={id} describedBy={d} value="apple" onChange={() => {}} options={fruitOptions} />}
+50 < 2       </Field>
+51 < 2     </div>
+52 < 2   )
+53 < 2 }
+54 < 2 
+55 < 2 export const selectDemos: Demo[] = [
+56 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveSelect initial="apple" subject /> },
+57 < 2   { id: 'placeholder', render: () => <InteractiveSelect initial="" /> },
+58 < 2   { id: 'disabled', render: () => (
+59 < 2       <Field label="Fruit">
+60 < 2         {(id, d) => <Select id={id} describedBy={d} value="apple" onChange={() => {}} options={fruitOptions} disabled />}
+61 < 2       </Field>
+62 < 2     ) },
+63 < 2   { id: 'open', render: () => <SelectOpen /> },
+64 < 2 ]
+65 < 2 
+66 < 2 /* ---------------------------------------------------------------- Switch */
+67 < 2 
+68 < 2 function InteractiveSwitch({
+69 < 2   initial,
+70 < 2   subject = false,
+71 < 2 }: {
+72 < 2   initial: boolean
+73 < 2   subject?: boolean
+74 < 2 }) {
+75 < 2   const [checked, setChecked] = useState(initial)
+76 < 2   const control = (
+77 < 2     <Row gap={2} wrap={false}>
+78 < 2       <Switch checked={checked} onChange={setChecked} label="Notifications" />
+79 < 2       <Text size="sm">Notifications</Text>
+80 < 2     </Row>
+81 < 2   )
+82 < 2   return subject ? <span data-subject>{control}</span> : control
+83 < 2 }
+84 < 2 
+85 < 2 export const switchDemos: Demo[] = [
+86 < 2   { id: 'on', states: ['hover', 'focus'], render: () => <InteractiveSwitch initial subject /> },
+87 < 2   { id: 'off', render: () => <InteractiveSwitch initial={false} /> },
+88 < 2   { id: 'disabled', render: () => (
+89 < 2       <Row gap={2} wrap={false}>
+90 < 2         <Switch checked={false} onChange={() => {}} disabled label="Busy switch" />
+91 < 2         <Text size="sm" muted>Busy switch</Text>
+92 < 2       </Row>
+93 < 2     ) },
+94 < 2 ]
+95 < 2 
+96 < 2 /* --------------------------------------------------------------- Tooltip */
+97 < 2 
+98 < 2 // Radix's Tooltip.Root requires an ancestor Tooltip.Provider (it does not
+99 < 2 // fall back to a default one) — the real app mounts one at the shell root,
+100 < 2 // so each demo below supplies its own.
+101 < 2 export const tooltipDemos: Demo[] = [
+102 < 2   { id: 'trigger', states: ['hover', 'focus'], render: () => (
+103 < 2       <span data-subject>
+104 < 2         <TooltipProvider>
+105 < 2           <Tooltip tip="Cushions compress when pressed.">
+106 < 2             <Button tone="blue" size="sm">Hover me</Button>
+107 < 2           </Tooltip>
+108 < 2         </TooltipProvider>
+109 < 2       </span>
+110 < 2     ) },
+111 < 2   // The anchor-owns-the-hover design's pinning case: a disabled control fires
+112 < 2   // no pointer events at all, so only the element around it can carry it.
+113 < 2   { id: 'disabled-child', render: () => (
+114 < 2       <TooltipProvider>
+115 < 2         <Tooltip tip="Paused while a write is in flight.">
+116 < 2           <Switch checked={false} onChange={() => {}} disabled label="Busy switch" />
+117 < 2         </Tooltip>
+118 < 2       </TooltipProvider>
+119 < 2     ) },
+120 < 2 ]
+121 < 2 
+122 < 2 /* --------------------------------------------------------------- Confirm */
+123 < 2 
+124 < 2 const confirmDetails = (
+125 < 2   <Stack gap={2}>
+126 < 2     <RowCard>
+127 < 2       <Row justify="between" wrap={false}>
+128 < 2         <Text size="sm">Apple · 0.4</Text>
+129 < 2         <Text size="sm" num>+$31.20</Text>
+130 < 2       </Row>
+131 < 2     </RowCard>
+132 < 2     <RowCard>
+133 < 2       <Row justify="between" wrap={false}>
+134 < 2         <Text size="sm">Banana · 2.1</Text>
+135 < 2         <Text size="sm" num>−$8.05</Text>
+136 < 2       </Row>
+137 < 2     </RowCard>
+138 < 2   </Stack>
+139 < 2 )
+140 < 2 
+141 < 2 function ConfirmOpen() {
+142 < 2   const ref = useRef<HTMLDivElement>(null)
+143 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+144 < 2   return (
+145 < 2     <div ref={ref}>
+146 < 2       <Confirm
+147 < 2         title="Remove 2 items?"
+148 < 2         body="Both items are removed immediately. This cannot be undone."
+149 < 2         confirmLabel="Remove 2 items"
+150 < 2         cancelLabel="Keep items"
+151 < 2         onConfirm={() => {}}
+152 < 2         details={confirmDetails}
+153 < 2       >
+154 < 2         <Button tone="orange" size="sm">Confirm dialog</Button>
+155 < 2       </Confirm>
+156 < 2     </div>
+157 < 2   )
+158 < 2 }
+159 < 2 
+160 < 2 export const confirmDemos: Demo[] = [
+161 < 2   { id: 'trigger', states: ['hover', 'focus'], render: () => (
+162 < 2       <span data-subject>
+163 < 2         <Confirm
+164 < 2           title="Remove 2 items?"
+165 < 2           body="Both items are removed immediately. This cannot be undone."
+166 < 2           confirmLabel="Remove 2 items"
+167 < 2           cancelLabel="Keep items"
+168 < 2           onConfirm={() => {}}
+169 < 2           details={confirmDetails}
+170 < 2         >
+171 < 2           <Button tone="orange" size="sm">Confirm dialog</Button>
+172 < 2         </Confirm>
+173 < 2       </span>
+174 < 2     ) },
+175 < 2   { id: 'open', render: () => <ConfirmOpen /> },
+176 < 2 ]
+177 < 2 
+178 < 2 /* ---------------------------------------------------------------- Dialog */
+179 < 2 
+180 < 2 export const dialogDemos: Demo[] = [
+181 < 2   { id: 'trigger', states: ['hover', 'focus'], render: () => (
+182 < 2       <span data-subject>
+183 < 2         <Dialog
+184 < 2           trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+185 < 2           title="Pick a fruit"
+186 < 2           description="Dismisses on outside click — nothing here is destructive."
+187 < 2         >
+188 < 2           <Stack gap={2}>
+189 < 2             <RowCard onClick={() => {}}><Text>Apple</Text></RowCard>
+190 < 2             <RowCard onClick={() => {}}><Text>Banana</Text></RowCard>
+191 < 2           </Stack>
+192 < 2         </Dialog>
+193 < 2       </span>
+194 < 2     ) },
+195 < 2   { id: 'open', render: () => (
+196 < 2       <Dialog
+197 < 2         open
+198 < 2         onOpenChange={() => {}}
+199 < 2         trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+200 < 2         title="Pick a fruit"
+201 < 2         description="Dismisses on outside click — nothing here is destructive."
+202 < 2       >
+203 < 2         <Stack gap={2}>
+204 < 2           <RowCard onClick={() => {}}><Text>Apple</Text></RowCard>
+205 < 2           <RowCard onClick={() => {}}><Text>Banana</Text></RowCard>
+206 < 2         </Stack>
+207 < 2       </Dialog>
+208 < 2     ) },
+209 < 2   { id: 'large', render: () => (
+210 < 2       <Dialog
+211 < 2         open
+212 < 2         onOpenChange={() => {}}
+213 < 2         size="lg"
+214 < 2         trigger={<Button tone="blue" size="sm">Open dialog</Button>}
+215 < 2         title="A larger dialog"
+216 < 2       >
+217 < 2         <Text size="sm" muted>The size=&quot;lg&quot; variant.</Text>
+218 < 2       </Dialog>
+219 < 2     ) },
+220 < 2 ]
+221 < 2 
+222 < 2 /* -------------------------------------------------------------- Combobox */
+223 < 2 
+224 < 2 const timezoneOptions = ['America/New_York', 'Europe/London', 'Asia/Tokyo', 'Australia/Sydney']
+225 < 2 
+226 < 2 function InteractiveCombobox({
+227 < 2   initial,
+228 < 2   options = timezoneOptions,
+229 < 2   subject = false,
+230 < 2 }: {
+231 < 2   initial: string
+232 < 2   options?: string[]
+233 < 2   subject?: boolean
+234 < 2 }) {
+235 < 2   const [value, setValue] = useState(initial)
+236 < 2   const field = (
+237 < 2     <Field label={options.length ? 'Timezone' : 'Custom zone (no list offered)'}>
+238 < 2       {(id, d) => (
+239 < 2         <Combobox
+240 < 2           id={id}
+241 < 2           describedBy={d}
+242 < 2           value={value}
+243 < 2           onChange={setValue}
+244 < 2           options={options}
+245 < 2           error={options.length ? undefined : 'No presets — type an IANA name.'}
+246 < 2           mono
+247 < 2           placeholder={options.length ? 'Search a timezone…' : 'e.g. Europe/Paris…'}
+248 < 2         />
+249 < 2       )}
+250 < 2     </Field>
+251 < 2   )
+252 < 2   return subject ? <span data-subject>{field}</span> : field
+253 < 2 }
+254 < 2 
+255 < 2 function ComboboxOpen() {
+256 < 2   const ref = useRef<HTMLDivElement>(null)
+257 < 2   useEffect(() => { simulateOpen(ref.current?.querySelector('button')) }, [])
+258 < 2   return (
+259 < 2     <div ref={ref}>
+260 < 2       <Field label="Timezone">
+261 < 2         {(id, d) => (
+262 < 2           <Combobox id={id} describedBy={d} value="America/New_York" onChange={() => {}} options={timezoneOptions} mono placeholder="Search a timezone…" />
+263 < 2         )}
+264 < 2       </Field>
+265 < 2     </div>
+266 < 2   )
+267 < 2 }
+268 < 2 
+269 < 2 export const comboboxDemos: Demo[] = [
+270 < 2   { id: 'default', states: ['hover', 'focus'], render: () => <InteractiveCombobox initial="America/New_York" subject /> },
+271 < 2   // The empty-list case is the contract, not a degradation: a field that offers
+272 < 2   // no preset list must still let you type a value.
+273 < 2   { id: 'no-options', render: () => <InteractiveCombobox initial="" options={[]} /> },
+274 < 2   { id: 'open', render: () => <ComboboxOpen /> },
+275 < 2 ]
+276 < 2 

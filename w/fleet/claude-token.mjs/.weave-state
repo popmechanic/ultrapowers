@@ -67,7 +67,8 @@
 66 < 1 
 67 < 1 export const TARGET = 'https://api.anthropic.com'
 68 < 1 export const DEFAULT_ACCOUNT = 'ultrapowers'
-69 < 1 const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
+70 > 1 const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth' })
+69 < 2 const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth', account: DEFAULT_ACCOUNT })
 70 < 1 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 71 < 1 const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
 72 < 1 const LOCK_STALE_MS = 2 * 60 * 1000
@@ -208,7 +209,8 @@
 207 < 1     // The tables go to stdout so a reader can parse them; every human line goes
 208 < 1     // to stderr through `log`.
 209 < 1     stdout: (text) => process.stdout.write(text),
-210 < 1     // Single-flight across processes: two launches inside the 30-minute window
+211 > 1     // Single-flight across processes: two launches inside the refresh window
+210 < 2     // Single-flight across processes: two launches inside the 30-minute window
 211 < 1     // would both refresh, and the second would spend a refresh token the first
 212 < 1     // had already rotated away. The lock is a directory (mkdir is atomic on every
 213 < 1     // filesystem); a lock older than LOCK_STALE_MS belongs to a dead process.

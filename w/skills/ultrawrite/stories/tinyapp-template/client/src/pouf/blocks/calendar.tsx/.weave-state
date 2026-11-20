@@ -1,0 +1,202 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Card } from '../surface'
+2 < 2 import { Stack, Row, Spacer } from '../layout'
+3 < 2 import { Heading, Text, Eyebrow } from '../text'
+4 < 2 import { Button } from '../Button'
+5 < 2 import { Segmented } from '../Segmented'
+6 < 2 import { Badge } from '../media'
+7 < 2 import { Empty as EmptyState } from '../feedback'
+8 < 2 import { Icon } from '../Icon'
+9 < 2 
+10 < 2 interface Event {
+11 < 2   time: string
+12 < 2   /** Minutes the event occupies — the free-slot math below needs an end, not
+13 < 2    *  just a start. */
+14 < 2   duration: number
+15 < 2   title: string
+16 < 2   who: string
+17 < 2   tone: 'purple' | 'pink' | 'blue' | 'mint' | 'yellow'
+18 < 2 }
+19 < 2 
+20 < 2 interface Day {
+21 < 2   weekday: string
+22 < 2   date: string
+23 < 2   events: Event[]
+24 < 2 }
+25 < 2 
+26 < 2 const DAYS: Day[] = [
+27 < 2   { weekday: 'Wednesday', date: 'July 18', events: [
+28 < 2     { time: '11:00', duration: 60, title: 'Customer call', who: 'Sales', tone: 'blue' },
+29 < 2     { time: '15:00', duration: 45, title: 'Retro', who: 'Whole team', tone: 'purple' },
+30 < 2   ] },
+31 < 2   { weekday: 'Thursday', date: 'July 19', events: [
+32 < 2     { time: '09:00', duration: 15, title: 'Standup', who: 'Whole team', tone: 'blue' },
+33 < 2     { time: '10:30', duration: 30, title: 'Design review — cushions', who: 'Maya, Grace', tone: 'purple' },
+34 < 2     { time: '12:00', duration: 45, title: 'Lunch & learn', who: 'Optional', tone: 'yellow' },
+35 < 2     { time: '14:00', duration: 30, title: '1:1 with Alan', who: 'Alan T.', tone: 'mint' },
+36 < 2     { time: '16:00', duration: 45, title: 'Ship review', who: 'Katherine, you', tone: 'pink' },
+37 < 2   ] },
+38 < 2   { weekday: 'Friday', date: 'July 20', events: [
+39 < 2     { time: '13:00', duration: 120, title: 'Deep work', who: 'You', tone: 'mint' },
+40 < 2   ] },
+41 < 2 ]
+42 < 2 
+43 < 2 // Bounds for the visible day and the point "now" sits at — fixed rather than
+44 < 2 // wall-clock so the demo always renders the same free slots and now-line.
+45 < 2 const DAY_START = 9 * 60
+46 < 2 const DAY_END = 17 * 60
+47 < 2 const FREE_THRESHOLD = 60
+48 < 2 const NOW_MINUTES = 11 * 60 + 15
+49 < 2 const TODAY_INDEX = 1
+50 < 2 
+51 < 2 function toMinutes(time: string): number {
+52 < 2   const [h, m] = time.split(':').map(Number)
+53 < 2   return (h ?? 0) * 60 + (m ?? 0)
+54 < 2 }
+55 < 2 
+56 < 2 function fromMinutes(mins: number): string {
+57 < 2   const h = Math.floor(mins / 60)
+58 < 2   const m = mins % 60
+59 < 2   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+60 < 2 }
+61 < 2 
+62 < 2 type TimelineItem =
+63 < 2   | { kind: 'event'; start: number; event: Event }
+64 < 2   | { kind: 'free'; start: number; end: number }
+65 < 2   | { kind: 'now' }
+66 < 2 
+67 < 2 /* Turns a day's sparse event list into a full timeline: gaps of at least
+68 < 2  * FREE_THRESHOLD become "free" rows, and — only for the day that is actually
+69 < 2  * "today" — a now-line is spliced in wherever NOW_MINUTES falls. */
+70 < 2 function buildTimeline(day: Day, showNow: boolean): TimelineItem[] {
+71 < 2   const events = [...day.events].sort((a, b) => toMinutes(a.time) - toMinutes(b.time))
+72 < 2   const items: TimelineItem[] = []
+73 < 2   let cursor = DAY_START
+74 < 2   let nowPlaced = !showNow
+75 < 2 
+76 < 2   function placeNowBefore(start: number) {
+77 < 2     if (!nowPlaced && start > NOW_MINUTES) {
+78 < 2       items.push({ kind: 'now' })
+79 < 2       nowPlaced = true
+80 < 2     }
+81 < 2   }
+82 < 2 
+83 < 2   for (const event of events) {
+84 < 2     const start = toMinutes(event.time)
+85 < 2     if (start - cursor >= FREE_THRESHOLD) {
+86 < 2       placeNowBefore(start)
+87 < 2       items.push({ kind: 'free', start: cursor, end: start })
+88 < 2     }
+89 < 2     placeNowBefore(start)
+90 < 2     items.push({ kind: 'event', start, event })
+91 < 2     cursor = Math.max(cursor, start + event.duration)
+92 < 2   }
+93 < 2   if (DAY_END - cursor >= FREE_THRESHOLD) {
+94 < 2     placeNowBefore(DAY_END)
+95 < 2     items.push({ kind: 'free', start: cursor, end: DAY_END })
+96 < 2   }
+97 < 2   if (!nowPlaced) items.push({ kind: 'now' })
+98 < 2 
+99 < 2   return items
+100 < 2 }
+101 < 2 
+102 < 2 function EventRow({ event }: { event: Event }) {
+103 < 2   return (
+104 < 2     <Row gap={3} wrap={false} align="top">
+105 < 2       <div style={{ width: 52, flex: 'none', paddingTop: 4 }}>
+106 < 2         <Text size="sm" muted num>{event.time}</Text>
+107 < 2       </div>
+108 < 2       <div style={{ flex: 1, minWidth: 0, borderRadius: 18, padding: '14px 16px', background: `var(--${event.tone})`, color: 'var(--on-accent)', boxShadow: 'var(--pouf-control)' }}>
+109 < 2         <Row justify="between" wrap={false}>
+110 < 2           <Stack gap={1}>
+111 < 2             <Text>{event.title}</Text>
+112 < 2             <Text size="sm">{event.who}</Text>
+113 < 2           </Stack>
+114 < 2           <Spacer />
+115 < 2           <Icon name="calendar" size="sm" />
+116 < 2         </Row>
+117 < 2       </div>
+118 < 2     </Row>
+119 < 2   )
+120 < 2 }
+121 < 2 
+122 < 2 function FreeRow({ start, end }: { start: number; end: number }) {
+123 < 2   return (
+124 < 2     <Row gap={3} wrap={false} align="center">
+125 < 2       <div style={{ width: 52, flex: 'none' }}>
+126 < 2         <Text size="sm" muted num>{fromMinutes(start)}</Text>
+127 < 2       </div>
+128 < 2       <Row gap={2} wrap={false} align="center">
+129 < 2         <Icon name="clock" size="sm" />
+130 < 2         <Text size="sm" muted>Free until {fromMinutes(end)}</Text>
+131 < 2       </Row>
+132 < 2     </Row>
+133 < 2   )
+134 < 2 }
+135 < 2 
+136 < 2 function NowLine() {
+137 < 2   return (
+138 < 2     <Row gap={3} wrap={false} align="center">
+139 < 2       <div style={{ width: 52, flex: 'none' }}>
+140 < 2         <Text size="sm" num>{fromMinutes(NOW_MINUTES)}</Text>
+141 < 2       </div>
+142 < 2       <div style={{ flex: 1, height: 2, borderRadius: 999, background: 'var(--pink)' }} />
+143 < 2     </Row>
+144 < 2   )
+145 < 2 }
+146 < 2 
+147 < 2 /** An example day agenda: a day picker across the week, timed events, a
+148 < 2  *  now-line pinned to the current moment on today's timeline, and the free
+149 < 2  *  slots between events. */
+150 < 2 export function CalendarBlock() {
+151 < 2   const [i, setI] = useState(TODAY_INDEX)
+152 < 2   const day = DAYS[i]!
+153 < 2   const isToday = i === TODAY_INDEX
+154 < 2   const timeline = buildTimeline(day, isToday)
+155 < 2 
+156 < 2   return (
+157 < 2     <div style={{ maxWidth: 560, margin: '0 auto', padding: 24 }}>
+158 < 2       <Card>
+159 < 2         <Stack gap={5}>
+160 < 2           <Row justify="between">
+161 < 2             <Stack gap={1}>
+162 < 2               <Row gap={2} wrap={false}>
+163 < 2                 <Eyebrow>{day.weekday}</Eyebrow>
+164 < 2                 {isToday && <Badge tone="mint">Today</Badge>}
+165 < 2               </Row>
+166 < 2               <Heading level={2}>{day.date}</Heading>
+167 < 2             </Stack>
+168 < 2             <Row gap={2} wrap={false}>
+169 < 2               <Button size="sm" variant="quiet" disabled={i === 0} label="Previous day" onClick={() => setI((x) => Math.max(0, x - 1))}><Icon name="prev" size="sm" /></Button>
+170 < 2               <Button size="sm" variant="quiet" disabled={isToday} onClick={() => setI(TODAY_INDEX)}>Today</Button>
+171 < 2               <Button size="sm" variant="quiet" disabled={i === DAYS.length - 1} label="Next day" onClick={() => setI((x) => Math.min(DAYS.length - 1, x + 1))}><Icon name="next" size="sm" /></Button>
+172 < 2             </Row>
+173 < 2           </Row>
+174 < 2 
+175 < 2           <Segmented
+176 < 2             label="Day"
+177 < 2             value={day.date}
+178 < 2             onChange={(date) => setI(DAYS.findIndex((d) => d.date === date))}
+179 < 2             options={DAYS.map((d) => ({ value: d.date, label: `${d.weekday.slice(0, 3)} ${d.date.split(' ')[1]}` }))}
+180 < 2             tone="blue"
+181 < 2           />
+182 < 2 
+183 < 2           <Stack gap={2}>
+184 < 2             {timeline.map((item, idx) => {
+185 < 2               if (item.kind === 'now') return <NowLine key="now" />
+186 < 2               if (item.kind === 'free') return <FreeRow key={`free-${idx}`} start={item.start} end={item.end} />
+187 < 2               return <EventRow key={item.event.time} event={item.event} />
+188 < 2             })}
+189 < 2             {day.events.length === 0 && <EmptyState icon="ok" title="Nothing scheduled">Enjoy the quiet.</EmptyState>}
+190 < 2           </Stack>
+191 < 2 
+192 < 2           <Row justify="between">
+193 < 2             <Badge tone="mint">{day.events.length} {day.events.length === 1 ? 'event' : 'events'}</Badge>
+194 < 2             <Button size="sm"><Icon name="add" size="sm" /> New event</Button>
+195 < 2           </Row>
+196 < 2         </Stack>
+197 < 2       </Card>
+198 < 2     </div>
+199 < 2   )
+200 < 2 }
+201 < 2 

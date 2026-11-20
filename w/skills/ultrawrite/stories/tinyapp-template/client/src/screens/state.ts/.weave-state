@@ -1,0 +1,53 @@
+0 < 1 /** The json-render StateStore over a TinyBase store.
+1 < 1  *
+2 < 1  * Snapshot: {tables: {<table>: [{id, ...cells}, ...]}, values, draft, session}.
+3 < 1  * Only `draft` is writable from a screen: setSnapshot keeps the new draft and
+4 < 1  * drops everything else, so saved data changes only through the app's actions.
+6 > 1  * The snapshot rebuilds on each store transaction; `refresh` rebuilds it when
+7 < 1  * something outside the store changes, such as the session's `who`.
+5 < 1  */
+6 < 1 import { createStoreAdapter } from '@json-render/core/store-utils'
+7 < 1 import type { StateStore } from '@json-render/core'
+8 < 1 import type { MergeableStore } from 'tinybase'
+9 < 1 
+10 < 1 type Session = { staff: boolean; who: string | null }
+11 < 1 
+13 > 1 export function tinybaseState(store: MergeableStore, session: () => Session): StateStore & {refresh: () => void} {
+12 < 2 export function tinybaseState(store: MergeableStore, session: () => Session): StateStore {
+13 < 1   let draft: Record<string, unknown> = {}
+14 < 1   const listeners = new Set<() => void>()
+15 < 1 
+16 < 1   const build = () => {
+17 < 1     const tables: Record<string, Record<string, unknown>[]> = {}
+18 < 1     for (const table of store.getTableIds()) {
+19 < 1       tables[table] = store.getRowIds(table).map((id) => ({ id, ...store.getRow(table, id) }))
+20 < 1     }
+21 < 1     return { tables, values: store.getValues(), draft, session: session() }
+22 < 1   }
+23 < 1 
+24 < 1   let snapshot = build()
+25 < 1   const refresh = () => {
+26 < 1     snapshot = build()
+27 < 1     for (const l of [...listeners]) l()
+28 < 1   }
+29 < 1 
+30 < 1   store.addDidFinishTransactionListener(refresh)
+31 < 1 
+33 > 1   return Object.assign(createStoreAdapter({
+32 < 2   return createStoreAdapter({
+33 < 1     getSnapshot: () => snapshot,
+34 < 1     setSnapshot: (next) => {
+35 < 1       const nextDraft = next.draft
+36 < 1       draft = nextDraft && typeof nextDraft === 'object' ? (nextDraft as Record<string, unknown>) : {}
+37 < 1       refresh()
+38 < 1     },
+39 < 1     subscribe: (listener) => {
+40 < 1       listeners.add(listener)
+41 < 1       return () => {
+42 < 1         listeners.delete(listener)
+43 < 1       }
+44 < 1     },
+46 > 1   }), {refresh})
+45 < 2   })
+46 < 1 }
+47 < 1 

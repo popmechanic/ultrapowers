@@ -1,0 +1,41 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { RadioGroup } from '../radiogroup'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 const sortOptions = [
+5 < 2   { value: 'weekly', label: 'Weekly' },
+6 < 2   { value: 'monthly', label: 'Monthly' },
+7 < 2   { value: 'alpha', label: 'Alphabetical' },
+8 < 2 ]
+9 < 2 
+10 < 2 function InteractiveRadioGroup({ subject = false }: { subject?: boolean }) {
+11 < 2   const [value, setValue] = useState('weekly')
+12 < 2   const control = (
+13 < 2     <RadioGroup
+14 < 2       label="Sort by"
+15 < 2       value={value}
+16 < 2       onChange={setValue}
+17 < 2       options={sortOptions}
+18 < 2     />
+19 < 2   )
+20 < 2   return subject ? <span data-subject>{control}</span> : control
+21 < 2 }
+22 < 2 
+23 < 2 export const radioGroupDemos: Demo[] = [
+24 < 2   { id: 'default', states: ['hover', 'focus'], render: () => (
+25 < 2       <InteractiveRadioGroup subject />
+26 < 2     ) },
+27 < 2   { id: 'disabled', render: () => (
+28 < 2       <RadioGroup
+29 < 2         label="Sort by"
+30 < 2         value="weekly"
+31 < 2         onChange={() => {}}
+32 < 2         disabled
+33 < 2         options={[
+34 < 2           { value: 'weekly', label: 'Weekly' },
+35 < 2           { value: 'monthly', label: 'Monthly' },
+36 < 2         ]}
+37 < 2       />
+38 < 2     ) },
+39 < 2 ]
+40 < 2 

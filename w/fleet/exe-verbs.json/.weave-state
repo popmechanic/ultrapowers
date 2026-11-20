@@ -1,0 +1,98 @@
+0 < 1 {
+1 < 1   "capturedAt": "2026-09-29",
+2 < 1   "verbs": {
+3 < 1     "new": [
+4 < 1       "--comment",
+5 < 1       "--cpu",
+6 < 1       "--disk",
+7 < 1       "--env",
+8 < 1       "--image",
+9 < 1       "--integration",
+10 < 1       "--json",
+11 < 1       "--memory",
+12 < 1       "--name",
+13 < 1       "--no-email",
+14 < 1       "--no-pool",
+15 < 1       "--pool",
+16 < 1       "--prompt",
+17 < 1       "--registry-auth",
+18 < 1       "--sandbox",
+19 < 1       "--setup-script",
+20 < 1       "--standalone",
+21 < 1       "--tag"
+22 < 1     ],
+23 < 1     "rm": [
+24 < 1       "--json"
+25 < 1     ],
+26 < 1     "ls": [
+27 < 1       "--group",
+28 < 1       "--json",
+29 < 1       "--l"
+30 < 1     ],
+31 < 2     "comment": [
+32 < 2       "--json"
+33 < 2     ],
+34 < 2     "tag": [
+35 < 2       "--d",
+36 < 2       "--json"
+37 < 2     ],
+38 < 1     "integrations add": [
+39 < 1       "--act-as-user",
+40 < 1       "--attach",
+41 < 1       "--bearer",
+42 < 1       "--comment",
+43 < 1       "--fields",
+44 < 1       "--for",
+45 < 1       "--header",
+46 < 1       "--host-key",
+47 < 1       "--name",
+48 < 1       "--no-auth",
+49 < 1       "--peer",
+50 < 1       "--readonly",
+51 < 1       "--repository",
+52 < 1       "--strip-prefix",
+53 < 1       "--target",
+54 < 1       "--team"
+55 < 1     ],
+56 < 1     "integrations attach": [
+57 < 1       "--for",
+58 < 1       "--team",
+59 < 1       "--until"
+60 < 1     ],
+61 < 2     "integrations detach": [
+62 < 2       "--team"
+63 < 2     ],
+64 < 1     "integrations list": [
+65 < 1       "--json",
+66 < 1       "--usage"
+67 < 1     ],
+68 < 1     "integrations edit": [
+69 < 1       "--act-as-user",
+70 < 1       "--bearer",
+71 < 1       "--clear-header",
+72 < 1       "--comment",
+73 < 1       "--fields",
+74 < 1       "--header",
+75 < 1       "--host-key",
+76 < 1       "--no-auth",
+77 < 1       "--readonly",
+78 < 1       "--repository",
+79 < 1       "--strip-prefix",
+80 < 1       "--target",
+81 < 1       "--team",
+82 < 1       "--webhook-url"
+83 < 1     ],
+84 < 2     "ssh-key generate-api-key": [
+85 < 2       "--cmds",
+86 < 2       "--exp",
+87 < 2       "--json",
+88 < 2       "--label",
+89 < 2       "--vm"
+90 < 2     ],
+91 < 1     "billing plan": [
+92 < 1       "--all",
+93 < 1       "--json"
+94 < 1     ]
+95 < 1   }
+96 < 1 }
+97 < 1 

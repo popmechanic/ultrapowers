@@ -1,0 +1,27 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Checkbox } from '../checkbox'
+2 < 2 import type { Demo } from './types'
+3 < 2 
+4 < 2 function InteractiveCheckbox({
+5 < 2   initial,
+6 < 2   label,
+7 < 2   subject = false,
+8 < 2 }: {
+9 < 2   initial: boolean | 'indeterminate'
+10 < 2   label: string
+11 < 2   subject?: boolean
+12 < 2 }) {
+13 < 2   const [checked, setChecked] = useState<boolean | 'indeterminate'>(initial)
+14 < 2   const control = <Checkbox checked={checked} onChange={setChecked} label={label} />
+15 < 2   return subject ? <span data-subject>{control}</span> : control
+16 < 2 }
+17 < 2 
+18 < 2 export const checkboxDemos: Demo[] = [
+19 < 2   { id: 'unchecked', states: ['hover', 'focus'], render: () => (
+20 < 2       <InteractiveCheckbox initial={false} label="Enable notifications" subject />
+21 < 2     ) },
+22 < 2   { id: 'checked', render: () => <InteractiveCheckbox initial label="Enable notifications" /> },
+23 < 2   { id: 'indeterminate', render: () => <InteractiveCheckbox initial="indeterminate" label="Select all" /> },
+24 < 2   { id: 'disabled', render: () => <Checkbox checked={false} onChange={() => {}} disabled label="Disabled" /> },
+25 < 2 ]
+26 < 2 

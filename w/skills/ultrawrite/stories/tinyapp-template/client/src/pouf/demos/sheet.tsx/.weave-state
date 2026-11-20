@@ -1,0 +1,40 @@
+0 < 2 import { useState } from 'react'
+1 < 2 import { Sheet } from '../sheet'
+2 < 2 import { Button } from '../Button'
+3 < 2 import { Switch } from '../controls'
+4 < 2 import { Stack } from '../layout'
+5 < 2 import type { Demo } from './types'
+6 < 2 
+7 < 2 function SheetBody() {
+8 < 2   const [push, setPush] = useState(true)
+9 < 2   const [email, setEmail] = useState(false)
+10 < 2   return (
+11 < 2     <Stack gap={3}>
+12 < 2       <Switch checked={push} onChange={setPush} label="Push notifications" />
+13 < 2       <Switch checked={email} onChange={setEmail} label="Email digests" />
+14 < 2     </Stack>
+15 < 2   )
+16 < 2 }
+17 < 2 
+18 < 2 export const sheetDemos: Demo[] = [
+19 < 2   { id: 'trigger', viewport: 'mobile', states: ['hover', 'focus'], render: () => (
+20 < 2       <span data-subject>
+21 < 2         <Sheet trigger={<Button tone="blue" size="sm">Open sheet</Button>} title="Notification settings" description="Manage how you receive alerts.">
+22 < 2           <SheetBody />
+23 < 2         </Sheet>
+24 < 2       </span>
+25 < 2     ) },
+26 < 2   // Sheet exposes a controlled `open` prop — no simulation needed.
+27 < 2   { id: 'open', viewport: 'mobile', render: () => (
+28 < 2       <Sheet
+29 < 2         open
+30 < 2         onOpenChange={() => {}}
+31 < 2         trigger={<Button tone="blue" size="sm">Open sheet</Button>}
+32 < 2         title="Notification settings"
+33 < 2         description="Manage how you receive alerts."
+34 < 2       >
+35 < 2         <SheetBody />
+36 < 2       </Sheet>
+37 < 2     ) },
+38 < 2 ]
+39 < 2 

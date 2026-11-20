@@ -1,0 +1,828 @@
+0 < 2 diff --git a/ledger/balance.py b/ledger/balance.py
+1 < 2 new file mode 100644
+2 < 2 index 0000000..2e6a3ce
+3 < 2 --- /dev/null
+4 < 2 +++ b/ledger/balance.py
+5 < 2 @@ -0,0 +1,21 @@
+6 < 2 +def running_balance(entries):
+7 < 2 +    """Calculate running balance from a list of entries.
+8 < 2 +
+9 < 2 +    Args:
+10 < 2 +        entries: A list of Entry objects with amount_cents attribute.
+11 < 2 +
+12 < 2 +    Returns:
+13 < 2 +        A list of cumulative sums of amount_cents. Empty list if entries is empty.
+14 < 2 +
+15 < 2 +    Example:
+16 < 2 +        >>> running_balance([Entry(..., amount_cents=1000), Entry(..., amount_cents=-450)])
+17 < 2 +        [1000, 550]
+18 < 2 +    """
+19 < 2 +    result = []
+20 < 2 +    cumulative = 0
+21 < 2 +
+22 < 2 +    for entry in entries:
+23 < 2 +        cumulative += entry.amount_cents
+24 < 2 +        result.append(cumulative)
+25 < 2 +
+26 < 2 +    return result
+27 < 2 diff --git a/ledger/cli.py b/ledger/cli.py
+28 < 2 new file mode 100644
+29 < 2 index 0000000..9d13770
+30 < 2 --- /dev/null
+31 < 2 +++ b/ledger/cli.py
+32 < 2 @@ -0,0 +1,50 @@
+33 < 2 +import sys
+34 < 2 +from ledger.parse import parse_line
+35 < 2 +from ledger.report import format_report
+36 < 2 +
+37 < 2 +
+38 < 2 +def main(argv):
+39 < 2 +    """Main CLI entry point for the ledger application.
+40 < 2 +
+41 < 2 +    Args:
+42 < 2 +        argv: A list where the first element is a path to a ledger file.
+43 < 2 +
+44 < 2 +    Returns:
+45 < 2 +        0 on success, 1 on error.
+46 < 2 +
+47 < 2 +    Behavior:
+48 < 2 +        - Reads the file specified in argv[0]
+49 < 2 +        - Skips blank (whitespace-only) lines
+50 < 2 +        - Parses each remaining line using parse_line()
+51 < 2 +        - Prints the formatted report to stdout
+52 < 2 +        - On any ValueError, prints "error: {message}" to stderr
+53 < 2 +    """
+54 < 2 +    # Get the ledger file path from argv
+55 < 2 +    ledger_file = argv[0]
+56 < 2 +
+57 < 2 +    try:
+58 < 2 +        # Read the file
+59 < 2 +        with open(ledger_file, 'r') as f:
+60 < 2 +            lines = f.readlines()
+61 < 2 +
+62 < 2 +        # Parse entries, skipping blank lines
+63 < 2 +        entries = []
+64 < 2 +        for line in lines:
+65 < 2 +            # Skip blank (whitespace-only) lines
+66 < 2 +            if not line.strip():
+67 < 2 +                continue
+68 < 2 +
+69 < 2 +            # Parse the line
+70 < 2 +            entry = parse_line(line.rstrip('\n'))
+71 < 2 +            entries.append(entry)
+72 < 2 +
+73 < 2 +        # Format and print the report
+74 < 2 +        report = format_report(entries)
+75 < 2 +        print(report)
+76 < 2 +
+77 < 2 +        return 0
+78 < 2 +
+79 < 2 +    except ValueError as e:
+80 < 2 +        # Print error message to stderr
+81 < 2 +        print(f"error: {e}", file=sys.stderr)
+82 < 2 +        return 1
+83 < 2 diff --git a/ledger/model.py b/ledger/model.py
+84 < 2 index d927cd3..a796132 100644
+85 < 2 --- a/ledger/model.py
+86 < 2 +++ b/ledger/model.py
+87 < 2 @@ -1,4 +1,5 @@
+88 < 2  from dataclasses import dataclass
+89 < 2 +import re
+90 < 2  
+91 < 2  
+92 < 2  @dataclass
+93 < 2 @@ -6,3 +7,20 @@ class Entry:
+94 < 2      date: str
+95 < 2      description: str
+96 < 2      amount_cents: int
+97 < 2 +
+98 < 2 +    def validate(self):
+99 < 2 +        """Validate the entry.
+100 < 2 +
+101 < 2 +        Raises:
+102 < 2 +            ValueError: If description is empty or date format is invalid.
+103 < 2 +
+104 < 2 +        Returns:
+105 < 2 +            None on success.
+106 < 2 +        """
+107 < 2 +        if not self.description.strip():
+108 < 2 +            raise ValueError("empty description")
+109 < 2 +
+110 < 2 +        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', self.date):
+111 < 2 +            raise ValueError("bad date")
+112 < 2 +
+113 < 2 +        return None
+114 < 2 diff --git a/ledger/parse.py b/ledger/parse.py
+115 < 2 new file mode 100644
+116 < 2 index 0000000..37a599e
+117 < 2 --- /dev/null
+118 < 2 +++ b/ledger/parse.py
+119 < 2 @@ -0,0 +1,41 @@
+120 < 2 +import re
+121 < 2 +from decimal import Decimal
+122 < 2 +
+123 < 2 +from ledger.model import Entry
+124 < 2 +
+125 < 2 +
+126 < 2 +def parse_line(line):
+127 < 2 +    """Parse a ledger line into an Entry object.
+128 < 2 +
+129 < 2 +    Args:
+130 < 2 +        line: A string in format "DATE|DESCRIPTION|AMOUNT"
+131 < 2 +
+132 < 2 +    Returns:
+133 < 2 +        Entry: A validated Entry object
+134 < 2 +
+135 < 2 +    Raises:
+136 < 2 +        ValueError: If the line format is invalid, amount format is invalid,
+137 < 2 +                    or the entry fails validation.
+138 < 2 +    """
+139 < 2 +    # Split on '|'
+140 < 2 +    parts = line.split('|')
+141 < 2 +
+142 < 2 +    # Check for exactly 3 fields
+143 < 2 +    if len(parts) != 3:
+144 < 2 +        raise ValueError("bad line")
+145 < 2 +
+146 < 2 +    date, description, amount_str = parts
+147 < 2 +
+148 < 2 +    # Validate amount format: -?\d+\.\d{2}
+149 < 2 +    if not re.fullmatch(r'-?\d+\.\d{2}', amount_str):
+150 < 2 +        raise ValueError("bad amount")
+151 < 2 +
+152 < 2 +    # Convert dollars to cents (as integer). Use Decimal to avoid IEEE-754
+153 < 2 +    # float rounding errors (e.g. "0.29" -> 28 instead of 29).
+154 < 2 +    amount_cents = int(Decimal(amount_str) * 100)
+155 < 2 +
+156 < 2 +    # Create Entry and validate
+157 < 2 +    entry = Entry(date=date, description=description, amount_cents=amount_cents)
+158 < 2 +    entry.validate()
+159 < 2 +
+160 < 2 +    return entry
+161 < 2 diff --git a/ledger/report.py b/ledger/report.py
+162 < 2 new file mode 100644
+163 < 2 index 0000000..bce9840
+164 < 2 --- /dev/null
+165 < 2 +++ b/ledger/report.py
+166 < 2 @@ -0,0 +1,71 @@
+167 < 2 +from ledger.balance import running_balance
+168 < 2 +
+169 < 2 +
+170 < 2 +def format_cents(cents):
+171 < 2 +    """Format an amount in cents as a dollar string.
+172 < 2 +
+173 < 2 +    Args:
+174 < 2 +        cents: Integer amount in cents.
+175 < 2 +
+176 < 2 +    Returns:
+177 < 2 +        Formatted string like "$10.00", "-$4.50", or "$0.00".
+178 < 2 +
+179 < 2 +    Examples:
+180 < 2 +        >>> format_cents(1000)
+181 < 2 +        '$10.00'
+182 < 2 +        >>> format_cents(-450)
+183 < 2 +        '-$4.50'
+184 < 2 +        >>> format_cents(0)
+185 < 2 +        '$0.00'
+186 < 2 +    """
+187 < 2 +    # Convert cents to dollars
+188 < 2 +    dollars = cents / 100.0
+189 < 2 +
+190 < 2 +    # Handle negative amounts
+191 < 2 +    if dollars < 0:
+192 < 2 +        return f"-${abs(dollars):.2f}"
+193 < 2 +    else:
+194 < 2 +        return f"${dollars:.2f}"
+195 < 2 +
+196 < 2 +
+197 < 2 +def format_report(entries):
+198 < 2 +    """Format a report from a list of entries.
+199 < 2 +
+200 < 2 +    Args:
+201 < 2 +        entries: A list of Entry objects.
+202 < 2 +
+203 < 2 +    Returns:
+204 < 2 +        Formatted report string with one line per entry and a total line.
+205 < 2 +        Lines are joined with "\n", no trailing newline.
+206 < 2 +
+207 < 2 +    Example:
+208 < 2 +        >>> entries = [
+209 < 2 +        ...     Entry(date="2026-01-15", description="coffee", amount_cents=-450),
+210 < 2 +        ...     Entry(date="2026-01-16", description="salary", amount_cents=500000),
+211 < 2 +        ... ]
+212 < 2 +        >>> print(format_report(entries))
+213 < 2 +        2026-01-15 coffee -$4.50
+214 < 2 +        2026-01-16 salary $5000.00
+215 < 2 +        TOTAL $4995.50
+216 < 2 +    """
+217 < 2 +    lines = []
+218 < 2 +
+219 < 2 +    # Format each entry
+220 < 2 +    for entry in entries:
+221 < 2 +        formatted_amount = format_cents(entry.amount_cents)
+222 < 2 +        line = f"{entry.date} {entry.description} {formatted_amount}"
+223 < 2 +        lines.append(line)
+224 < 2 +
+225 < 2 +    # Calculate total using running_balance
+226 < 2 +    if entries:
+227 < 2 +        balances = running_balance(entries)
+228 < 2 +        total = balances[-1]  # Get the last (final) balance
+229 < 2 +    else:
+230 < 2 +        total = 0
+231 < 2 +
+232 < 2 +    # Add total line
+233 < 2 +    formatted_total = format_cents(total)
+234 < 2 +    lines.append(f"TOTAL {formatted_total}")
+235 < 2 +
+236 < 2 +    # Join with newline, no trailing newline
+237 < 2 +    return "\n".join(lines)
+238 < 2 diff --git a/tests/test_balance.py b/tests/test_balance.py
+239 < 2 new file mode 100644
+240 < 2 index 0000000..49b0ab3
+241 < 2 --- /dev/null
+242 < 2 +++ b/tests/test_balance.py
+243 < 2 @@ -0,0 +1,96 @@
+244 < 2 +import pytest
+245 < 2 +from ledger.balance import running_balance
+246 < 2 +from ledger.parse import parse_line
+247 < 2 +
+248 < 2 +
+249 < 2 +class TestRunningBalance:
+250 < 2 +    """Tests for running_balance function."""
+251 < 2 +
+252 < 2 +    def test_empty_list(self):
+253 < 2 +        """Test that empty list returns empty list."""
+254 < 2 +        result = running_balance([])
+255 < 2 +        assert result == []
+256 < 2 +
+257 < 2 +    def test_single_positive_entry(self):
+258 < 2 +        """Test with a single positive entry."""
+259 < 2 +        entry = parse_line("2026-01-15|coffee|10.00")
+260 < 2 +        result = running_balance([entry])
+261 < 2 +        assert result == [1000]
+262 < 2 +
+263 < 2 +    def test_single_negative_entry(self):
+264 < 2 +        """Test with a single negative entry."""
+265 < 2 +        entry = parse_line("2026-01-15|expense|-4.50")
+266 < 2 +        result = running_balance([entry])
+267 < 2 +        assert result == [-450]
+268 < 2 +
+269 < 2 +    def test_multiple_positive_entries(self):
+270 < 2 +        """Test with multiple positive entries."""
+271 < 2 +        entries = [
+272 < 2 +            parse_line("2026-01-15|salary|10.00"),
+273 < 2 +            parse_line("2026-01-16|bonus|5.00"),
+274 < 2 +            parse_line("2026-01-17|interest|1.00"),
+275 < 2 +        ]
+276 < 2 +        result = running_balance(entries)
+277 < 2 +        assert result == [1000, 1500, 1600]
+278 < 2 +
+279 < 2 +    def test_mixed_positive_negative_entries(self):
+280 < 2 +        """Test with mixed positive and negative amounts."""
+281 < 2 +        entries = [
+282 < 2 +            parse_line("2026-01-15|income|10.00"),
+283 < 2 +            parse_line("2026-01-16|expense|-4.50"),
+284 < 2 +            parse_line("2026-01-17|income|2.00"),
+285 < 2 +        ]
+286 < 2 +        result = running_balance(entries)
+287 < 2 +        assert result == [1000, 550, 750]
+288 < 2 +
+289 < 2 +    def test_example_from_spec(self):
+290 < 2 +        """Test the example from the task specification."""
+291 < 2 +        # Example: amounts [1000, -450, 200] → [1000, 550, 750]
+292 < 2 +        entries = [
+293 < 2 +            parse_line("2026-01-15|a|10.00"),
+294 < 2 +            parse_line("2026-01-16|b|-4.50"),
+295 < 2 +            parse_line("2026-01-17|c|2.00"),
+296 < 2 +        ]
+297 < 2 +        result = running_balance(entries)
+298 < 2 +        assert result == [1000, 550, 750]
+299 < 2 +
+300 < 2 +    def test_negative_balance(self):
+301 < 2 +        """Test that balances can go negative."""
+302 < 2 +        entries = [
+303 < 2 +            parse_line("2026-01-15|expense|-5.00"),
+304 < 2 +            parse_line("2026-01-16|expense|-3.00"),
+305 < 2 +            parse_line("2026-01-17|income|6.00"),
+306 < 2 +        ]
+307 < 2 +        result = running_balance(entries)
+308 < 2 +        assert result == [-500, -800, -200]
+309 < 2 +
+310 < 2 +    def test_zero_balance(self):
+311 < 2 +        """Test balance with zero amount."""
+312 < 2 +        entries = [
+313 < 2 +            parse_line("2026-01-15|income|5.00"),
+314 < 2 +            parse_line("2026-01-16|no-op|0.00"),
+315 < 2 +            parse_line("2026-01-17|expense|-5.00"),
+316 < 2 +        ]
+317 < 2 +        result = running_balance(entries)
+318 < 2 +        assert result == [500, 500, 0]
+319 < 2 +
+320 < 2 +    def test_large_amounts(self):
+321 < 2 +        """Test with large amounts."""
+322 < 2 +        entries = [
+323 < 2 +            parse_line("2026-01-15|big|9999.99"),
+324 < 2 +            parse_line("2026-01-16|bigger|1000000.00"),
+325 < 2 +        ]
+326 < 2 +        result = running_balance(entries)
+327 < 2 +        assert result == [999999, 100999999]
+328 < 2 +
+329 < 2 +    def test_type_correctness(self):
+330 < 2 +        """Test that result is a list of integers."""
+331 < 2 +        entries = [
+332 < 2 +            parse_line("2026-01-15|test|1.23"),
+333 < 2 +            parse_line("2026-01-16|test|4.56"),
+334 < 2 +        ]
+335 < 2 +        result = running_balance(entries)
+336 < 2 +        assert isinstance(result, list)
+337 < 2 +        assert all(isinstance(x, int) for x in result)
+338 < 2 +        assert len(result) == 2
+339 < 2 +        assert result == [123, 579]
+340 < 2 diff --git a/tests/test_cli.py b/tests/test_cli.py
+341 < 2 new file mode 100644
+342 < 2 index 0000000..a8b0c7b
+343 < 2 --- /dev/null
+344 < 2 +++ b/tests/test_cli.py
+345 < 2 @@ -0,0 +1,171 @@
+346 < 2 +import pytest
+347 < 2 +from ledger.cli import main
+348 < 2 +
+349 < 2 +
+350 < 2 +class TestMain:
+351 < 2 +    """Test the CLI main function."""
+352 < 2 +
+353 < 2 +    def test_main_success_simple(self, tmp_path, capsys):
+354 < 2 +        """Test main with a simple valid ledger file."""
+355 < 2 +        # Create a temporary ledger file
+356 < 2 +        ledger_file = tmp_path / "ledger.txt"
+357 < 2 +        ledger_file.write_text("2026-01-15|coffee|-4.50\n2026-01-16|salary|5000.00\n")
+358 < 2 +
+359 < 2 +        # Call main
+360 < 2 +        result = main([str(ledger_file)])
+361 < 2 +
+362 < 2 +        # Check return code
+363 < 2 +        assert result == 0
+364 < 2 +
+365 < 2 +        # Check stdout
+366 < 2 +        captured = capsys.readouterr()
+367 < 2 +        lines = captured.out.strip().split("\n")
+368 < 2 +        assert len(lines) == 3
+369 < 2 +        assert lines[0] == "2026-01-15 coffee -$4.50"
+370 < 2 +        assert lines[1] == "2026-01-16 salary $5000.00"
+371 < 2 +        assert lines[2] == "TOTAL $4995.50"
+372 < 2 +
+373 < 2 +    def test_main_with_blank_lines(self, tmp_path, capsys):
+374 < 2 +        """Test that main skips blank lines."""
+375 < 2 +        ledger_file = tmp_path / "ledger.txt"
+376 < 2 +        ledger_file.write_text(
+377 < 2 +            "2026-01-15|coffee|-4.50\n"
+378 < 2 +            "\n"  # blank line
+379 < 2 +            "  \n"  # whitespace-only line
+380 < 2 +            "2026-01-16|salary|5000.00\n"
+381 < 2 +        )
+382 < 2 +
+383 < 2 +        result = main([str(ledger_file)])
+384 < 2 +
+385 < 2 +        assert result == 0
+386 < 2 +
+387 < 2 +        captured = capsys.readouterr()
+388 < 2 +        lines = captured.out.strip().split("\n")
+389 < 2 +        assert len(lines) == 3
+390 < 2 +        assert lines[0] == "2026-01-15 coffee -$4.50"
+391 < 2 +        assert lines[1] == "2026-01-16 salary $5000.00"
+392 < 2 +        assert lines[2] == "TOTAL $4995.50"
+393 < 2 +
+394 < 2 +    def test_main_empty_file(self, tmp_path, capsys):
+395 < 2 +        """Test main with an empty file."""
+396 < 2 +        ledger_file = tmp_path / "ledger.txt"
+397 < 2 +        ledger_file.write_text("")
+398 < 2 +
+399 < 2 +        result = main([str(ledger_file)])
+400 < 2 +
+401 < 2 +        assert result == 0
+402 < 2 +
+403 < 2 +        captured = capsys.readouterr()
+404 < 2 +        # Should just have the TOTAL line
+405 < 2 +        assert captured.out == "TOTAL $0.00\n"
+406 < 2 +
+407 < 2 +    def test_main_only_blank_lines(self, tmp_path, capsys):
+408 < 2 +        """Test main with only blank lines."""
+409 < 2 +        ledger_file = tmp_path / "ledger.txt"
+410 < 2 +        ledger_file.write_text("  \n\n  \n")
+411 < 2 +
+412 < 2 +        result = main([str(ledger_file)])
+413 < 2 +
+414 < 2 +        assert result == 0
+415 < 2 +
+416 < 2 +        captured = capsys.readouterr()
+417 < 2 +        assert captured.out == "TOTAL $0.00\n"
+418 < 2 +
+419 < 2 +    def test_main_bad_line_format(self, tmp_path, capsys):
+420 < 2 +        """Test that main returns 1 and prints error on bad line format."""
+421 < 2 +        ledger_file = tmp_path / "ledger.txt"
+422 < 2 +        ledger_file.write_text("2026-01-15|coffee\n")  # Missing amount
+423 < 2 +
+424 < 2 +        result = main([str(ledger_file)])
+425 < 2 +
+426 < 2 +        assert result == 1
+427 < 2 +
+428 < 2 +        captured = capsys.readouterr()
+429 < 2 +        assert "error: bad line" in captured.err
+430 < 2 +
+431 < 2 +    def test_main_bad_amount(self, tmp_path, capsys):
+432 < 2 +        """Test that main returns 1 on bad amount format."""
+433 < 2 +        ledger_file = tmp_path / "ledger.txt"
+434 < 2 +        ledger_file.write_text("2026-01-15|coffee|bad\n")
+435 < 2 +
+436 < 2 +        result = main([str(ledger_file)])
+437 < 2 +
+438 < 2 +        assert result == 1
+439 < 2 +
+440 < 2 +        captured = capsys.readouterr()
+441 < 2 +        assert "error: bad amount" in captured.err
+442 < 2 +
+443 < 2 +    def test_main_bad_date(self, tmp_path, capsys):
+444 < 2 +        """Test that main returns 1 on bad date format."""
+445 < 2 +        ledger_file = tmp_path / "ledger.txt"
+446 < 2 +        ledger_file.write_text("01-15-2026|coffee|-4.50\n")  # Wrong date format
+447 < 2 +
+448 < 2 +        result = main([str(ledger_file)])
+449 < 2 +
+450 < 2 +        assert result == 1
+451 < 2 +
+452 < 2 +        captured = capsys.readouterr()
+453 < 2 +        assert "error: bad date" in captured.err
+454 < 2 +
+455 < 2 +    def test_main_empty_description(self, tmp_path, capsys):
+456 < 2 +        """Test that main returns 1 on empty description."""
+457 < 2 +        ledger_file = tmp_path / "ledger.txt"
+458 < 2 +        ledger_file.write_text("2026-01-15||-4.50\n")  # Empty description
+459 < 2 +
+460 < 2 +        result = main([str(ledger_file)])
+461 < 2 +
+462 < 2 +        assert result == 1
+463 < 2 +
+464 < 2 +        captured = capsys.readouterr()
+465 < 2 +        assert "error: empty description" in captured.err
+466 < 2 +
+467 < 2 +    def test_main_whitespace_only_description(self, tmp_path, capsys):
+468 < 2 +        """Test that main returns 1 on whitespace-only description."""
+469 < 2 +        ledger_file = tmp_path / "ledger.txt"
+470 < 2 +        ledger_file.write_text("2026-01-15|   |-4.50\n")  # Whitespace-only description
+471 < 2 +
+472 < 2 +        result = main([str(ledger_file)])
+473 < 2 +
+474 < 2 +        assert result == 1
+475 < 2 +
+476 < 2 +        captured = capsys.readouterr()
+477 < 2 +        assert "error: empty description" in captured.err
+478 < 2 +
+479 < 2 +    def test_main_multiple_entries(self, tmp_path, capsys):
+480 < 2 +        """Test main with multiple entries."""
+481 < 2 +        ledger_file = tmp_path / "ledger.txt"
+482 < 2 +        ledger_file.write_text(
+483 < 2 +            "2026-01-15|coffee|-4.50\n"
+484 < 2 +            "2026-01-16|breakfast|-10.00\n"
+485 < 2 +            "2026-01-17|salary|5000.00\n"
+486 < 2 +            "2026-01-18|groceries|-50.25\n"
+487 < 2 +        )
+488 < 2 +
+489 < 2 +        result = main([str(ledger_file)])
+490 < 2 +
+491 < 2 +        assert result == 0
+492 < 2 +
+493 < 2 +        captured = capsys.readouterr()
+494 < 2 +        lines = captured.out.strip().split("\n")
+495 < 2 +        assert len(lines) == 5
+496 < 2 +        assert lines[0] == "2026-01-15 coffee -$4.50"
+497 < 2 +        assert lines[1] == "2026-01-16 breakfast -$10.00"
+498 < 2 +        assert lines[2] == "2026-01-17 salary $5000.00"
+499 < 2 +        assert lines[3] == "2026-01-18 groceries -$50.25"
+500 < 2 +        assert lines[4] == "TOTAL $4935.25"
+501 < 2 +
+502 < 2 +    def test_main_error_stops_processing(self, tmp_path, capsys):
+503 < 2 +        """Test that main stops processing on the first error."""
+504 < 2 +        ledger_file = tmp_path / "ledger.txt"
+505 < 2 +        ledger_file.write_text(
+506 < 2 +            "2026-01-15|coffee|-4.50\n"
+507 < 2 +            "2026-01-16|bad line without pipe\n"  # Error on second line
+508 < 2 +            "2026-01-17|salary|5000.00\n"  # This shouldn't be processed
+509 < 2 +        )
+510 < 2 +
+511 < 2 +        result = main([str(ledger_file)])
+512 < 2 +
+513 < 2 +        assert result == 1
+514 < 2 +
+515 < 2 +        captured = capsys.readouterr()
+516 < 2 +        assert "error: bad line" in captured.err
+517 < 2 diff --git a/tests/test_parse.py b/tests/test_parse.py
+518 < 2 new file mode 100644
+519 < 2 index 0000000..0359810
+520 < 2 --- /dev/null
+521 < 2 +++ b/tests/test_parse.py
+522 < 2 @@ -0,0 +1,132 @@
+523 < 2 +import pytest
+524 < 2 +from ledger.parse import parse_line
+525 < 2 +from ledger.model import Entry
+526 < 2 +
+527 < 2 +
+528 < 2 +class TestParseLine:
+529 < 2 +    """Tests for parse_line function."""
+530 < 2 +
+531 < 2 +    def test_valid_positive_amount(self):
+532 < 2 +        """Test parsing a line with positive amount."""
+533 < 2 +        result = parse_line("2026-01-15|coffee|4.50")
+534 < 2 +        assert isinstance(result, Entry)
+535 < 2 +        assert result.date == "2026-01-15"
+536 < 2 +        assert result.description == "coffee"
+537 < 2 +        assert result.amount_cents == 450
+538 < 2 +
+539 < 2 +    def test_valid_negative_amount(self):
+540 < 2 +        """Test parsing a line with negative amount."""
+541 < 2 +        result = parse_line("2026-01-15|coffee|-4.50")
+542 < 2 +        assert isinstance(result, Entry)
+543 < 2 +        assert result.date == "2026-01-15"
+544 < 2 +        assert result.description == "coffee"
+545 < 2 +        assert result.amount_cents == -450
+546 < 2 +
+547 < 2 +    def test_valid_zero_amount(self):
+548 < 2 +        """Test parsing a line with zero amount."""
+549 < 2 +        result = parse_line("2026-01-15|coffee|0.00")
+550 < 2 +        assert isinstance(result, Entry)
+551 < 2 +        assert result.date == "2026-01-15"
+552 < 2 +        assert result.description == "coffee"
+553 < 2 +        assert result.amount_cents == 0
+554 < 2 +
+555 < 2 +    def test_valid_large_amount(self):
+556 < 2 +        """Test parsing a line with large amount."""
+557 < 2 +        result = parse_line("2026-01-15|salary|1000.00")
+558 < 2 +        assert isinstance(result, Entry)
+559 < 2 +        assert result.amount_cents == 100000
+560 < 2 +
+561 < 2 +    def test_valid_large_negative_amount(self):
+562 < 2 +        """Test parsing a line with large negative amount."""
+563 < 2 +        result = parse_line("2026-01-15|expense|-999.99")
+564 < 2 +        assert isinstance(result, Entry)
+565 < 2 +        assert result.amount_cents == -99999
+566 < 2 +
+567 < 2 +    def test_float_rounding_cents_positive(self):
+568 < 2 +        """Regression: 0.29 must be 29 cents, not 28 (float truncation)."""
+569 < 2 +        result = parse_line("2026-01-15|x|0.29")
+570 < 2 +        assert result.amount_cents == 29
+571 < 2 +
+572 < 2 +    def test_float_rounding_cents_negative(self):
+573 < 2 +        """Regression: -655.31 must be -65531 cents, not -65530."""
+574 < 2 +        result = parse_line("2026-01-15|x|-655.31")
+575 < 2 +        assert result.amount_cents == -65531
+576 < 2 +
+577 < 2 +    def test_all_cents_convert_exactly(self):
+578 < 2 +        """Every two-decimal amount in a range must convert to exact cents."""
+579 < 2 +        for cents in range(-100000, 100001):
+580 < 2 +            sign = "-" if cents < 0 else ""
+581 < 2 +            whole, frac = divmod(abs(cents), 100)
+582 < 2 +            amount_str = f"{sign}{whole}.{frac:02d}"
+583 < 2 +            result = parse_line(f"2026-01-15|x|{amount_str}")
+584 < 2 +            assert result.amount_cents == cents, amount_str
+585 < 2 +
+586 < 2 +    def test_bad_line_too_few_fields(self):
+587 < 2 +        """Test that too few fields raises ValueError."""
+588 < 2 +        with pytest.raises(ValueError, match="bad line"):
+589 < 2 +            parse_line("2026-01-15|coffee")
+590 < 2 +
+591 < 2 +    def test_bad_line_too_many_fields(self):
+592 < 2 +        """Test that too many fields raises ValueError."""
+593 < 2 +        with pytest.raises(ValueError, match="bad line"):
+594 < 2 +            parse_line("2026-01-15|coffee|4.50|extra")
+595 < 2 +
+596 < 2 +    def test_bad_line_empty(self):
+597 < 2 +        """Test that empty line raises ValueError."""
+598 < 2 +        with pytest.raises(ValueError, match="bad line"):
+599 < 2 +            parse_line("")
+600 < 2 +
+601 < 2 +    def test_bad_line_single_field(self):
+602 < 2 +        """Test that single field raises ValueError."""
+603 < 2 +        with pytest.raises(ValueError, match="bad line"):
+604 < 2 +            parse_line("2026-01-15")
+605 < 2 +
+606 < 2 +    def test_bad_amount_no_decimal(self):
+607 < 2 +        """Test that amount without decimal raises ValueError."""
+608 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+609 < 2 +            parse_line("2026-01-15|coffee|4")
+610 < 2 +
+611 < 2 +    def test_bad_amount_one_decimal_place(self):
+612 < 2 +        """Test that amount with one decimal place raises ValueError."""
+613 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+614 < 2 +            parse_line("2026-01-15|coffee|4.5")
+615 < 2 +
+616 < 2 +    def test_bad_amount_three_decimal_places(self):
+617 < 2 +        """Test that amount with three decimal places raises ValueError."""
+618 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+619 < 2 +            parse_line("2026-01-15|coffee|4.500")
+620 < 2 +
+621 < 2 +    def test_bad_amount_no_leading_digits(self):
+622 < 2 +        """Test that amount without leading digits raises ValueError."""
+623 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+624 < 2 +            parse_line("2026-01-15|coffee|.50")
+625 < 2 +
+626 < 2 +    def test_bad_amount_invalid_characters(self):
+627 < 2 +        """Test that amount with invalid characters raises ValueError."""
+628 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+629 < 2 +            parse_line("2026-01-15|coffee|4.5a")
+630 < 2 +
+631 < 2 +    def test_bad_amount_multiple_minuses(self):
+632 < 2 +        """Test that amount with multiple minuses raises ValueError."""
+633 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+634 < 2 +            parse_line("2026-01-15|coffee|--4.50")
+635 < 2 +
+636 < 2 +    def test_bad_amount_minus_not_leading(self):
+637 < 2 +        """Test that minus not at start raises ValueError."""
+638 < 2 +        with pytest.raises(ValueError, match="bad amount"):
+639 < 2 +            parse_line("2026-01-15|coffee|4.-50")
+640 < 2 +
+641 < 2 +    def test_bad_date_raises_from_validate(self):
+642 < 2 +        """Test that invalid date raises from validate method."""
+643 < 2 +        with pytest.raises(ValueError, match="bad date"):
+644 < 2 +            parse_line("2026-1-15|coffee|4.50")
+645 < 2 +
+646 < 2 +    def test_empty_description_raises_from_validate(self):
+647 < 2 +        """Test that empty description raises from validate method."""
+648 < 2 +        with pytest.raises(ValueError, match="empty description"):
+649 < 2 +            parse_line("2026-01-15||4.50")
+650 < 2 +
+651 < 2 +    def test_whitespace_only_description_raises_from_validate(self):
+652 < 2 +        """Test that whitespace-only description raises from validate method."""
+653 < 2 +        with pytest.raises(ValueError, match="empty description"):
+654 < 2 +            parse_line("2026-01-15|   |4.50")
+655 < 2 diff --git a/tests/test_report.py b/tests/test_report.py
+656 < 2 new file mode 100644
+657 < 2 index 0000000..fb5b731
+658 < 2 --- /dev/null
+659 < 2 +++ b/tests/test_report.py
+660 < 2 @@ -0,0 +1,87 @@
+661 < 2 +import pytest
+662 < 2 +from ledger.model import Entry
+663 < 2 +from ledger.report import format_cents, format_report
+664 < 2 +
+665 < 2 +
+666 < 2 +class TestFormatCents:
+667 < 2 +    """Tests for format_cents function."""
+668 < 2 +
+669 < 2 +    def test_format_cents_positive(self):
+670 < 2 +        """Test formatting positive amount in cents."""
+671 < 2 +        assert format_cents(1000) == "$10.00"
+672 < 2 +
+673 < 2 +    def test_format_cents_negative(self):
+674 < 2 +        """Test formatting negative amount in cents."""
+675 < 2 +        assert format_cents(-450) == "-$4.50"
+676 < 2 +
+677 < 2 +    def test_format_cents_zero(self):
+678 < 2 +        """Test formatting zero amount."""
+679 < 2 +        assert format_cents(0) == "$0.00"
+680 < 2 +
+681 < 2 +    def test_format_cents_large_positive(self):
+682 < 2 +        """Test formatting large positive amount."""
+683 < 2 +        assert format_cents(999999) == "$9999.99"
+684 < 2 +
+685 < 2 +    def test_format_cents_one_cent(self):
+686 < 2 +        """Test formatting one cent."""
+687 < 2 +        assert format_cents(1) == "$0.01"
+688 < 2 +
+689 < 2 +    def test_format_cents_negative_one_cent(self):
+690 < 2 +        """Test formatting negative one cent."""
+691 < 2 +        assert format_cents(-1) == "-$0.01"
+692 < 2 +
+693 < 2 +
+694 < 2 +class TestFormatReport:
+695 < 2 +    """Tests for format_report function."""
+696 < 2 +
+697 < 2 +    def test_format_report_empty(self):
+698 < 2 +        """Test formatting report with no entries."""
+699 < 2 +        result = format_report([])
+700 < 2 +        assert result == "TOTAL $0.00"
+701 < 2 +
+702 < 2 +    def test_format_report_single_entry(self):
+703 < 2 +        """Test formatting report with single entry."""
+704 < 2 +        entries = [
+705 < 2 +            Entry(date="2026-01-15", description="coffee", amount_cents=-450)
+706 < 2 +        ]
+707 < 2 +        result = format_report(entries)
+708 < 2 +        expected = "2026-01-15 coffee -$4.50\nTOTAL -$4.50"
+709 < 2 +        assert result == expected
+710 < 2 +
+711 < 2 +    def test_format_report_multiple_entries(self):
+712 < 2 +        """Test formatting report with multiple entries."""
+713 < 2 +        entries = [
+714 < 2 +            Entry(date="2026-01-15", description="coffee", amount_cents=-450),
+715 < 2 +            Entry(date="2026-01-16", description="salary", amount_cents=500000),
+716 < 2 +            Entry(date="2026-01-17", description="rent", amount_cents=-150000),
+717 < 2 +        ]
+718 < 2 +        result = format_report(entries)
+719 < 2 +        expected = (
+720 < 2 +            "2026-01-15 coffee -$4.50\n"
+721 < 2 +            "2026-01-16 salary $5000.00\n"
+722 < 2 +            "2026-01-17 rent -$1500.00\n"
+723 < 2 +            "TOTAL $3495.50"
+724 < 2 +        )
+725 < 2 +        assert result == expected
+726 < 2 +
+727 < 2 +    def test_format_report_with_zero_total(self):
+728 < 2 +        """Test formatting report that balances to zero."""
+729 < 2 +        entries = [
+730 < 2 +            Entry(date="2026-01-15", description="debit", amount_cents=1000),
+731 < 2 +            Entry(date="2026-01-16", description="credit", amount_cents=-1000),
+732 < 2 +        ]
+733 < 2 +        result = format_report(entries)
+734 < 2 +        expected = (
+735 < 2 +            "2026-01-15 debit $10.00\n"
+736 < 2 +            "2026-01-16 credit -$10.00\n"
+737 < 2 +            "TOTAL $0.00"
+738 < 2 +        )
+739 < 2 +        assert result == expected
+740 < 2 +
+741 < 2 +    def test_format_report_no_trailing_newline(self):
+742 < 2 +        """Test that report has no trailing newline."""
+743 < 2 +        entries = [
+744 < 2 +            Entry(date="2026-01-15", description="test", amount_cents=100)
+745 < 2 +        ]
+746 < 2 +        result = format_report(entries)
+747 < 2 +        assert not result.endswith("\n")
+748 < 2 diff --git a/tests/test_validate.py b/tests/test_validate.py
+749 < 2 new file mode 100644
+750 < 2 index 0000000..a42792c
+751 < 2 --- /dev/null
+752 < 2 +++ b/tests/test_validate.py
+753 < 2 @@ -0,0 +1,73 @@
+754 < 2 +import pytest
+755 < 2 +from ledger.model import Entry
+756 < 2 +
+757 < 2 +
+758 < 2 +def test_validate_empty_description():
+759 < 2 +    """Raises ValueError('empty description') when description.strip() is empty."""
+760 < 2 +    e = Entry(date="2026-01-15", description="", amount_cents=0)
+761 < 2 +    with pytest.raises(ValueError) as excinfo:
+762 < 2 +        e.validate()
+763 < 2 +    assert str(excinfo.value) == "empty description"
+764 < 2 +
+765 < 2 +
+766 < 2 +def test_validate_whitespace_only_description():
+767 < 2 +    """Raises ValueError('empty description') when description is only whitespace."""
+768 < 2 +    e = Entry(date="2026-01-15", description="   ", amount_cents=0)
+769 < 2 +    with pytest.raises(ValueError) as excinfo:
+770 < 2 +        e.validate()
+771 < 2 +    assert str(excinfo.value) == "empty description"
+772 < 2 +
+773 < 2 +
+774 < 2 +def test_validate_bad_date_format():
+775 < 2 +    """Raises ValueError('bad date') unless date matches \\d{4}-\\d{2}-\\d{2}."""
+776 < 2 +    # Test various bad date formats
+777 < 2 +    bad_dates = [
+778 < 2 +        "2026-1-15",      # single digit month
+779 < 2 +        "26-01-15",       # two digit year
+780 < 2 +        "2026-01-5",      # single digit day
+781 < 2 +        "2026/01/15",     # wrong separator
+782 < 2 +        "2026-01",        # missing day
+783 < 2 +        "01-15",          # missing year
+784 < 2 +        "2026-01-15-01",  # extra component
+785 < 2 +        "not-a-date",     # invalid
+786 < 2 +        "",               # empty
+787 < 2 +    ]
+788 < 2 +    for bad_date in bad_dates:
+789 < 2 +        e = Entry(date=bad_date, description="coffee", amount_cents=0)
+790 < 2 +        with pytest.raises(ValueError) as excinfo:
+791 < 2 +            e.validate()
+792 < 2 +        assert str(excinfo.value) == "bad date", f"Failed for date: {bad_date}"
+793 < 2 +
+794 < 2 +
+795 < 2 +def test_validate_good_date_format():
+796 < 2 +    """Does not raise for valid date format \\d{4}-\\d{2}-\\d{2}."""
+797 < 2 +    e = Entry(date="2026-01-15", description="coffee", amount_cents=0)
+798 < 2 +    result = e.validate()
+799 < 2 +    assert result is None
+800 < 2 +
+801 < 2 +
+802 < 2 +def test_validate_valid_entry():
+803 < 2 +    """Returns None on a valid entry."""
+804 < 2 +    e = Entry(date="2026-12-31", description="valid entry", amount_cents=100)
+805 < 2 +    result = e.validate()
+806 < 2 +    assert result is None
+807 < 2 +
+808 < 2 +
+809 < 2 +def test_validate_valid_entry_with_whitespace_description():
+810 < 2 +    """Valid entry with description containing spaces."""
+811 < 2 +    e = Entry(date="2026-01-15", description="  valid description  ", amount_cents=-450)
+812 < 2 +    result = e.validate()
+813 < 2 +    assert result is None
+814 < 2 +
+815 < 2 +
+816 < 2 +def test_validate_edge_case_dates():
+817 < 2 +    """Test edge case valid dates."""
+818 < 2 +    valid_dates = [
+819 < 2 +        "0000-00-00",  # technically matches pattern
+820 < 2 +        "9999-99-99",  # technically matches pattern
+821 < 2 +        "2026-02-29",  # leap year
+822 < 2 +    ]
+823 < 2 +    for valid_date in valid_dates:
+824 < 2 +        e = Entry(date=valid_date, description="test", amount_cents=0)
+825 < 2 +        result = e.validate()
+826 < 2 +        assert result is None
+827 < 2 
