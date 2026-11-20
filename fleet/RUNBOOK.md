@@ -674,6 +674,11 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 - `ssh exe.dev restart <vm>` loses writes the guest has not flushed: a drop-in
   written about a minute before a restart came back as 199 NUL bytes
   (2026-10-22). Run `sync` on the VM before every restart.
+- **Never power a fleet VM off from inside.** exe.dev has no stop verb: a guest halt
+  (`poweroff`, `shutdown`) leaves the VM listed as running, unreachable, and still holding its
+  pool share until `rm`; only `pause` (a token) or `rm` releases it (Shelley, 2026-11-19, #1536).
+  A finished run's idle VM costs nothing on a pool plan but pool space and disk, and the launch
+  reaps finished VMs before it opens a new one, so the janitor at each launch is enough.
 
 **Asking Shelley.**
 
