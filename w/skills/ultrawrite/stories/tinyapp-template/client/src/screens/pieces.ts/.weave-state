@@ -1,17 +1,39 @@
-0 < 1 /** Every piece's screen, read at build time.
-1 < 1  *
-2 < 1  * Imported as a Bun macro (`with {type: 'macro'}`): the bundler runs
-3 < 1  * pieceSpecs() and inlines what it answers, so the page carries each
-4 < 1  * client/src/pieces/<piece>.json as a json-render spec and no pieces index
-6 > 1  * is generated. In the order client/src/screens/order.json names (the build order,
+2 > 1 /** The page's screens, read at build time.
+3 < 1  *
+4 < 1  * Imported as Bun macros (`with {type: 'macro'}`): the bundler runs them and
+5 < 1  * inlines what they answer.
+6 < 1  */
+7 < 1 import { existsSync, readdirSync, readFileSync } from 'node:fs'
+8 < 1 import { join } from 'node:path'
+9 < 1 
+10 < 1 /** The page's screen: client/src/screen.json
+1 > 2 /** The page's screen, read at build time: client/src/screen.json
+2 < 1  * (`{root, elements, public?}`), or null when the app has none. An app built
+3 < 1  * before the one-screen page has no screen.json and keeps its per-piece specs,
+4 < 1  * which pieceSpecs() reads.
+5 < 1  */
+6 < 1 export function screenSpec(): unknown {
+7 < 1   const file = join(import.meta.dir, '..', 'screen.json')
+8 < 1   return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : null
+9 < 1 }
+10 < 1 
+11 < 1 /** Every piece's screen, for an app with no screen.json: the page carries
+12 < 1  * each client/src/pieces/<piece>.json as a json-render spec and no pieces
+13 < 1  * index is generated. In the order client/src/screens/order.json names (the build order,
+0 < 2 /** Every piece's screen, read at build time.
+1 < 2  *
+2 < 2  * Imported as a Bun macro (`with {type: 'macro'}`): the bundler runs
+3 < 2  * pieceSpecs() and inlines what it answers, so the page carries each
+4 < 2  * client/src/pieces/<piece>.json as a json-render spec and no pieces index
+6 > 2  * is generated. In the order client/src/screens/order.json names (the build order,
 7 < 1  * written by scaffold and compile), then any other piece by file name; `{}` when
 8 < 1  * there is no pieces directory.
 5 < 2  * is generated. Sorted by file name; `{}` when there is no pieces directory.
 6 < 1  * A spec is `{root, elements, state?}` plus an optional `"public": true`.
 7 < 1  */
-8 < 1 import { existsSync, readdirSync, readFileSync } from 'node:fs'
-9 < 1 import { join } from 'node:path'
-10 < 1 
+8 < 2 import { existsSync, readdirSync, readFileSync } from 'node:fs'
+9 < 2 import { join } from 'node:path'
+10 < 2 
 11 < 1 export function pieceSpecs(): Record<string, unknown> {
 12 < 1   const dir = join(import.meta.dir, '..', 'pieces')
 13 < 1   if (!existsSync(dir)) return {}

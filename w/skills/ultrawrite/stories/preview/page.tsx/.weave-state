@@ -1,10 +1,17 @@
-0 < 1 // The preview page: the app's own kit draws each piece's spec over a store
-1 < 1 // filled from the bundle's stories. At / each piece's approved spec (else
-2 < 1 // ?v=<V>, else A); at /compare every version side by side, each with a
-3 < 1 // "Choose <V>" button; the chosen version (clicked here, else the one whose
-4 < 1 // spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
-6 > 1 // arrive over /ws and redraw in place; a piece whose versions change loses the
-7 < 1 // pick clicked here. Plays run one at a time on the one shared store.
+1 > 1 // The preview page: the app's own kit draws the one whole-page screen through
+2 < 1 // one Renderer over a store filled from the bundle's stories. At / the approved
+3 < 1 // spec (else ?v=<V>, else A); at /compare every whole-page version side by
+4 < 1 // side, each with a "Choose <V>" button; the chosen version (clicked here, else
+5 < 1 // the one whose spec equals the approved screen) reads "Chosen ✓" and is
+6 < 1 // outlined. Specs arrive over /ws and redraw in place; when the versions change
+7 < 1 // the pick clicked here is dropped. Plays run one at a time on the one shared store.
+0 < 2 // The preview page: the app's own kit draws each piece's spec over a store
+1 < 2 // filled from the bundle's stories. At / each piece's approved spec (else
+2 < 2 // ?v=<V>, else A); at /compare every version side by side, each with a
+3 < 2 // "Choose <V>" button; the chosen version (clicked here, else the one whose
+4 < 2 // spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
+6 > 2 // arrive over /ws and redraw in place; a piece whose versions change loses the
+7 < 2 // pick clicked here. Plays run one at a time on the one shared store.
 5 < 2 // arrive over /ws and redraw in place.
 6 < 1 import {createMergeableStore} from 'tinybase';
 7 < 1 import {createRoot} from 'react-dom/client';
@@ -22,7 +29,8 @@
 16 < 1 
 17 < 1 type Tool = {name: string; inputSchema?: {properties?: Record<string, Record<string, unknown>>}; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 18 < 1 type Piece = {versions: Record<string, Spec>; approved?: Spec};
-19 < 1 type Pieces = Record<string, Piece>;
+20 > 1 type Pieces = {screen: Piece};
+19 < 2 type Pieces = Record<string, Piece>;
 20 < 1 type Story = {id: string; steps: {tool: string; args?: Record<string, unknown>; layer?: string}[]};
 21 < 1 
 22 < 1 declare global {
@@ -91,8 +99,10 @@
 84 < 1   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});
 85 < 1 }
 86 < 1 
-88 > 1 function choose(piece: string, v: string) {
-89 < 1   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece, chose: v})});
+89 > 1 function choose(v: string) {
+90 < 1   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece: 'screen', chose: v})});
+88 > 2 function choose(piece: string, v: string) {
+89 < 2   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece, chose: v})});
 87 < 2 function choose(v: string) {
 88 < 2   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', chose: v})});
 89 < 1 }
@@ -102,14 +112,19 @@
 93 < 1 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 94 < 1 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
 95 < 1 
-97 > 1 // The picks still standing once `next` replaces `prev`: a piece whose versions
-98 < 1 // changed was re-arranged, so its earlier click no longer names what is drawn.
-99 < 1 const kept = (picks: Record<string, string>, prev: Pieces, next: Pieces) =>
-100 < 1   Object.fromEntries(Object.entries(picks).filter(([name]) => same(prev[name]?.versions ?? {}, next[name]?.versions ?? {})));
+98 > 1 // The pick still standing once `next` replaces `prev`: versions that changed
+99 < 1 // were re-arranged, so the earlier click no longer names what is drawn.
+100 < 1 const kept = (pick: string | null, prev: Pieces, next: Pieces) =>
+101 < 1   same(prev.screen?.versions ?? {}, next.screen?.versions ?? {}) ? pick : null;
+97 > 2 // The picks still standing once `next` replaces `prev`: a piece whose versions
+98 < 2 // changed was re-arranged, so its earlier click no longer names what is drawn.
+99 < 2 const kept = (picks: Record<string, string>, prev: Pieces, next: Pieces) =>
+100 < 2   Object.fromEntries(Object.entries(picks).filter(([name]) => same(prev[name]?.versions ?? {}, next[name]?.versions ?? {})));
 101 < 1 
 96 < 1 function Page() {
 97 < 1   const [pieces, setPieces] = useState<Pieces>(initial);
-98 < 1   const [picked, setPicked] = useState<Record<string, string>>({});
+99 > 1   const [picked, setPicked] = useState<string | null>(null);
+98 < 2   const [picked, setPicked] = useState<Record<string, string>>({});
 100 > 1   const shown = useRef<Pieces>(initial);
 99 < 1   useEffect(() => {
 100 < 1     let ws: WebSocket | null = null;
@@ -135,46 +150,71 @@
 113 < 1     return () => { stopped = true; ws?.close(); };
 114 < 1   }, []);
 115 < 1 
+117 > 1   const screen: Piece = pieces.screen ?? {versions: {}};
 116 < 1   if (compare) {
 117 < 1     return (
-118 < 1       <>
-119 < 1         {Object.entries(pieces).map(([name, p]) => (
-120 < 1           <div key={name} className="preview-compare" data-compare={name}>
-121 < 1             {letters(p).map((v) => {
-122 < 1               const chosen = (picked[name] ?? recorded(p)) === v;
-123 < 1               const box = sandbox(`${name}\u0000${v}`);
-124 < 1               return (
-125 < 1                 <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
-126 < 1                   <div className="preview-version-head">
-127 < 1                     <span>{v}</span>
-128 < 1                     <button
-129 < 1                       type="button"
-130 < 1                       className="preview-choose"
-131 < 1                       aria-pressed={chosen}
-133 > 1                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(name, v); }}
+119 > 1       <div className="preview-compare" data-compare="screen">
+120 < 1         {letters(screen).map((v) => {
+121 < 1           const chosen = (picked ?? recorded(screen)) === v;
+122 < 1           const box = sandbox(v);
+123 < 1           return (
+124 < 1             <section key={v} data-piece="screen" data-version={v} data-chosen={chosen ? '' : undefined}>
+125 < 1               <div className="preview-version-head">
+126 < 1                 <span>{v}</span>
+127 < 1                 <button
+128 < 1                   type="button"
+129 < 1                   className="preview-choose"
+130 < 1                   aria-pressed={chosen}
+131 < 1                   onClick={() => { setPicked(v); choose(v); }}
+132 < 1                 >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
+133 < 1               </div>
+134 < 1               <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
+135 < 1                 <Renderer spec={screen.versions[v]} registry={registry} />
+136 < 1               </JSONUIProvider>
+137 < 1             </section>
+138 < 1           );
+139 < 1         })}
+140 < 1       </div>
+118 < 2       <>
+119 < 2         {Object.entries(pieces).map(([name, p]) => (
+120 < 2           <div key={name} className="preview-compare" data-compare={name}>
+121 < 2             {letters(p).map((v) => {
+122 < 2               const chosen = (picked[name] ?? recorded(p)) === v;
+123 < 2               const box = sandbox(`${name}\u0000${v}`);
+124 < 2               return (
+125 < 2                 <section key={v} data-piece={name} data-version={v} data-chosen={chosen ? '' : undefined}>
+126 < 2                   <div className="preview-version-head">
+127 < 2                     <span>{v}</span>
+128 < 2                     <button
+129 < 2                       type="button"
+130 < 2                       className="preview-choose"
+131 < 2                       aria-pressed={chosen}
+133 > 2                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(name, v); }}
 132 < 2                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
-133 < 1                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
-134 < 1                   </div>
-136 > 1                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
+133 < 2                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
+134 < 2                   </div>
+136 > 2                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
 135 < 2                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools}>
-136 < 1                     <Renderer spec={p.versions[v]} registry={registry} />
-137 < 1                   </JSONUIProvider>
-138 < 1                 </section>
-139 < 1               );
-140 < 1             })}
-141 < 1           </div>
-142 < 1         ))}
-143 < 1       </>
+136 < 2                     <Renderer spec={p.versions[v]} registry={registry} />
+137 < 2                   </JSONUIProvider>
+138 < 2                 </section>
+139 < 2               );
+140 < 2             })}
+141 < 2           </div>
+142 < 2         ))}
+143 < 2       </>
 144 < 1     );
 145 < 1   }
+147 > 1   const spec = screen.approved ?? (asked ? screen.versions?.[asked] : undefined) ?? screen.versions?.A;
 146 < 1   return (
 147 < 1     <div className="preview-single">
-148 < 1       {Object.entries(pieces).map(([name, p]) => {
-149 < 1         const spec = p.approved ?? (asked ? p.versions?.[asked] : undefined) ?? p.versions?.A;
-150 < 1         return spec ? (
-151 < 1           <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
-152 < 1         ) : null;
-153 < 1       })}
+149 > 1       {spec ? <section data-piece="screen"><Renderer spec={spec} registry={registry} /></section> : null}
+148 < 2       {Object.entries(pieces).map(([name, p]) => {
+149 < 2         const spec = p.approved ?? (asked ? p.versions?.[asked] : undefined) ?? p.versions?.A;
+150 < 2         return spec ? (
+151 < 2           <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
+152 < 2         ) : null;
+153 < 2       })}
 154 < 1     </div>
 155 < 1   );
 156 < 1 }

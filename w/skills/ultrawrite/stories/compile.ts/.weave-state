@@ -132,12 +132,21 @@
 119 < 1 // The screen the operator approved for a piece while planning, committed with the bundle.
 120 < 1 const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
 121 < 1 const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
+123 > 1 // The one page the operator approved, when the bundle has one: every piece's actions live in it.
+124 < 1 const approvedScreenPath = (b: Bundle) => join(b.dir, 'screens', 'screen.json');
+125 < 1 const SCREEN = 'client/src/screen.json';
 122 < 1 
 123 < 1 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
 124 < 1 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
 126 > 1 // draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
 127 < 1 // told to add a part, and every screen task may add one in the open.
-128 < 1 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null): string {
+130 > 1 // onePage: the app draws one page, client/src/screen.json, that every piece's builder writes into.
+131 < 1 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null, onePage = false): string {
+132 < 1   const one = screens && onePage;
+129 > 2 // page: the app draws one page, client/src/screen.json, that every piece's builder writes into.
+130 < 2 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null, page = false): string {
+131 < 2   page = screens && page;
+128 < 2 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null): string {
 125 < 2 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true): string {
 126 < 1   const {page, cards} = b;
 127 < 1   const sentences = new Map(page.stories.map((s) => [s.id, s.sentence]));
@@ -167,13 +176,25 @@
 149 < 1     out.push('', `### Task ${i + 1}: The ${c.piece} piece`, '',
 150 < 1       `**Piece:** ${c.piece}`,
 151 < 1       `**Depends-on-pieces:** ${(c.depends_on ?? []).join(', ') || 'none'}`,
-152 < 1       '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+154 > 1       '**Files:**', one ? `- Modify: \`${SCREEN}\`` : `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+153 > 2       '**Files:**', page ? `- Modify: \`${SCREEN}\`` : `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+152 < 2       '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
 154 > 1       ...(lacking.length ? PART_FILES.map((f) => `- Modify: \`${f}\``) : []),
 153 < 1       `**Purpose:** ${c.purpose}`,
-154 < 1       ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
-155 < 1         + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
-156 < 1         + ' and `$bindState` writes only under `/draft/`.'
-158 > 1         + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')
+156 > 1       ...(screens ? [(one
+155 > 2       ...(screens ? [(page
+156 < 1         ? `**Screen:** the page is one json-render spec, \`${SCREEN}\`, shared by every piece's builder, over the catalog`
+157 < 1           + ' in `client/src/screens/catalog.ts`: this piece\'s actions live in it beside the other pieces\','
+158 < 1           + ' each running from an element\'s `action` prop, and `$bindState` writes only under `/draft/`.'
+159 < 1           + (existsSync(approvedScreenPath(b)) ? ' It starts as the page the operator approved while planning: keep its arrangement and its names.' : '')
+160 < 1         : `**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
+161 < 1           + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
+162 < 1           + ' and `$bindState` writes only under `/draft/`.'
+163 < 1           + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : ''))
+154 < 2       ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
+155 < 2         + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
+156 < 2         + ' and `$bindState` writes only under `/draft/`.'
+158 > 2         + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')
 159 < 1         + ' ' + GROW
 160 < 1         + (lacking.length ? ` No part draws ${lacking.map((r) => `a ${r}`).join(' or ')} yet, and this task's stories expect one: add it.` : '')] : []),
 157 < 2         + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')] : []),
@@ -222,6 +243,9 @@
 196 < 1   let text: string;
 198 > 1   // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
 199 < 1   const screens = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts'));
+200 < 1   // ...and one page every piece writes into when the app or the bundle has it; else a screen per piece.
+202 > 1   const onePage = screens && (existsSync(join(app, SCREEN)) || existsSync(approvedScreenPath(b)));
+201 < 2   const page = screens && (existsSync(join(app, SCREEN)) || existsSync(approvedScreenPath(b)));
 197 < 1   const exportPath = join(app, 'stories', 'probes.jsonl');
 198 < 1   const older: Line[] = existsSync(exportPath)
 199 < 1     ? readFileSync(exportPath, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
@@ -229,7 +253,9 @@
 201 < 1   const guards = older.filter((l) => l.plan !== planId);
 202 < 1   try {
 203 < 1     mine = probesOf(b, (await import(storeDst)) as StoreModule);
-206 > 1     text = compilePlan(b, planId, mine, guards, screens, draws);
+208 > 1     text = compilePlan(b, planId, mine, guards, screens, draws, onePage);
+207 > 2     text = compilePlan(b, planId, mine, guards, screens, draws, page);
+206 > 2     text = compilePlan(b, planId, mine, guards, screens, draws);
 205 > 2     text = compilePlan(b, planId, mine, guards, screens);
 204 < 2     text = compilePlan(b, planId, mine, guards, existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')));
 205 < 1   } catch (e) {
@@ -242,7 +268,10 @@
 212 < 1   mkdirSync(dirname(resolve(v.out)), {recursive: true});
 213 < 1   writeFileSync(v.out, text);
 215 > 1   if (screens) writePageOrder(b, app);
-214 < 1   // Each approved screen becomes the builder's starting spec for its piece.
+216 < 1   // The approved page becomes the builders' starting spec; each approved piece screen, its piece's (the old flow).
+218 > 1   if (onePage && existsSync(approvedScreenPath(b))) copyFileSync(approvedScreenPath(b), join(app, SCREEN));
+217 < 2   if (page && existsSync(approvedScreenPath(b))) copyFileSync(approvedScreenPath(b), join(app, SCREEN));
+214 < 2   // Each approved screen becomes the builder's starting spec for its piece.
 215 < 1   for (const c of b.cards) {
 217 > 1     if (!screens || !approved(b, c.piece)) continue;
 216 < 2     if (!approved(b, c.piece)) continue;

@@ -1,15 +1,20 @@
 0 < 1 #!/usr/bin/env bun
 1 < 1 // Write the starting app a stories-v1 launch builds on: the template (given
-2 < 1 // code), the bundle's store module at client/src/store.js, and one
-3 < 1 // json-render spec per piece at client/src/pieces/<piece>.json: an empty
-4 < 1 // column that runs no action, so the screens check stays red on it until a
-6 > 1 // builder writes the screen. The page finds the specs itself at build time and
-7 < 1 // draws them in the build order client/src/screens/order.json gives.
+3 > 1 // code), the bundle's store module at client/src/store.js, and the page's one
+4 < 1 // json-render screen at client/src/screen.json: an empty column that runs no
+5 < 1 // action, so the screens check stays red on it until a builder writes the
+6 < 1 // screen. The page reads it itself at build time.
+2 < 2 // code), the bundle's store module at client/src/store.js, and one
+3 < 2 // json-render spec per piece at client/src/pieces/<piece>.json: an empty
+4 < 2 // column that runs no action, so the screens check stays red on it until a
+6 > 2 // builder writes the screen. The page finds the specs itself at build time and
+7 < 2 // draws them in the build order client/src/screens/order.json gives.
 5 < 2 // builder writes the screen. The page finds the specs itself at build time.
 6 < 1 // Refuses a directory that holds anything but .git.
 7 < 1 //
 8 < 1 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
-9 < 1 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
+10 > 1 import {copyFileSync, cpSync, existsSync, readdirSync, writeFileSync} from 'node:fs';
+9 < 2 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 10 < 1 import {join, resolve} from 'node:path';
 12 > 1 import {loadBundle, writePageOrder} from './bundle';
 11 < 2 import {loadBundle} from './bundle';
@@ -34,12 +39,14 @@
 30 < 1   cpSync(TEMPLATE, dst, {recursive: true});
 31 < 1   copyFileSync(join(b.dir, 'store.js'), join(dst, STORE));
 32 < 1   const pieces = b.cards.map((c) => c.piece);
-33 < 1   const pdir = join(dst, 'client', 'src', 'pieces');
-34 < 1   mkdirSync(pdir, {recursive: true});
-35 < 1   for (const p of pieces) {
-36 < 1     const spec = {root: p, elements: {[p]: {type: 'Stack', props: {}, children: []}}};
-37 < 1     writeFileSync(join(pdir, `${p}.json`), JSON.stringify(spec, null, 2) + '\n');
-38 < 1   }
+34 > 1   const screen = {root: 'page', elements: {page: {type: 'Stack', props: {gap: 4}, children: []}}};
+35 < 1   writeFileSync(join(dst, 'client', 'src', 'screen.json'), JSON.stringify(screen, null, 2) + '\n');
+33 < 2   const pdir = join(dst, 'client', 'src', 'pieces');
+34 < 2   mkdirSync(pdir, {recursive: true});
+35 < 2   for (const p of pieces) {
+36 < 2     const spec = {root: p, elements: {[p]: {type: 'Stack', props: {}, children: []}}};
+37 < 2     writeFileSync(join(pdir, `${p}.json`), JSON.stringify(spec, null, 2) + '\n');
+38 < 2   }
 40 > 1   writePageOrder(b, dst);
 39 < 1   console.log(`SCAFFOLDED ${dst}: pieces ${pieces.join(', ')}`);
 40 < 1   return 0;

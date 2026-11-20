@@ -1,6 +1,10 @@
-0 < 1 """Jev's screen arranger (skills/ultrawrite/stories/arrange.ts) on a bundle beyond the todo
-1 < 1 example (#1524): row controls carry their typed args, row text is templated from the row,
-2 < 1 and every card action and seen control gets one. A fake evaluator stands in for Jev, so no
+1 > 1 """Jev's page arranger (skills/ultrawrite/stories/arrange.ts): the whole page from the cards
+2 < 1 and the store alone, never a story's `ui` or `see`. Row controls carry their typed args and sit
+3 < 1 in the one list of their table, whichever piece owns them; their words come from the card's
+4 < 1 `label` and `x-label`, row cells templated in (#1524). A fake evaluator stands in for Jev, so no
+0 < 2 """Jev's screen arranger (skills/ultrawrite/stories/arrange.ts) on a bundle beyond the todo
+1 < 2 example (#1524): row controls carry their typed args, row text is templated from the row,
+2 < 2 and every card action and seen control gets one. A fake evaluator stands in for Jev, so no
 3 < 1 test reaches the network. Needs bun and an offline-installable app."""
 4 < 1 import hashlib
 5 < 1 import json
@@ -46,15 +50,23 @@
 45 < 1     return dst
 46 < 1 
 47 < 1 
-48 < 1 def _bundle(tmp_path, edit):
-49 < 1     """A copy of the todo-tags bundle, its page.json passed through edit(page)."""
+49 > 1 def _bundle(tmp_path, edit, name="page.json", src=TAGS):
+50 < 1     """A copy of a bundle (todo-tags by default), its page.json (or another file) passed through edit."""
+48 < 2 def _bundle(tmp_path, edit):
+49 < 2     """A copy of the todo-tags bundle, its page.json passed through edit(page)."""
 50 < 1     b = str(tmp_path / "b")
-51 < 1     shutil.copytree(TAGS, b)
-52 < 1     with open(os.path.join(b, "page.json")) as f:
-53 < 1         page = json.load(f)
-54 < 1     page = edit(page) or page
-55 < 1     with open(os.path.join(b, "page.json"), "w") as f:
-56 < 1         json.dump(page, f)
+52 > 1     shutil.copytree(src, b)
+53 < 1     with open(os.path.join(b, name)) as f:
+54 < 1         doc = json.load(f)
+55 < 1     doc = edit(doc) or doc
+56 < 1     with open(os.path.join(b, name), "w") as f:
+57 < 1         json.dump(doc, f)
+51 < 2     shutil.copytree(TAGS, b)
+52 < 2     with open(os.path.join(b, "page.json")) as f:
+53 < 2         page = json.load(f)
+54 < 2     page = edit(page) or page
+55 < 2     with open(os.path.join(b, "page.json"), "w") as f:
+56 < 2         json.dump(page, f)
 57 < 1     return b
 37 < 1 
 38 < 1 
@@ -79,21 +91,28 @@
 57 < 1 
 58 < 1 @pytest.fixture(scope="module")
 59 < 1 def tagged(app):
-60 < 1     """Every version of each todo-tags piece, arranged by the fake evaluator."""
+61 > 1     """Every version of the todo-tags page, arranged by the fake evaluator."""
+60 < 2     """Every version of each todo-tags piece, arranged by the fake evaluator."""
 61 < 1     return run_js("const r = await arrange({bundle, app, evaluate: fake}); console.log(JSON.stringify(r));",
 62 < 1                   bundle=TAGS, app=app)
 63 < 1 
 64 < 1 
-65 < 1 def check_versions(app, piece, pred):
-66 < 1     """[version, does the predicate hold] for each version of a piece."""
+66 > 1 def check_versions(app, pred, bundle=TAGS):
+67 < 1     """[version, does the predicate hold] for each version of the page."""
+65 < 2 def check_versions(app, piece, pred):
+66 < 2     """[version, does the predicate hold] for each version of a piece."""
 67 < 1     return run_js(
-68 < 1         "const r = await arrange({bundle, app, piece, evaluate: fake});\n"
-69 < 1         "console.log(JSON.stringify(Object.entries(r.versions[piece] ?? {}).map(([v, s]) => [v, (%s)(s)])));" % pred,
-70 < 1         bundle=TAGS, app=app, piece=piece)
+69 > 1         "const r = await arrange({bundle, app, evaluate: fake});\n"
+70 < 1         "console.log(JSON.stringify(Object.entries(r.versions).map(([v, s]) => [v, (%s)(s)])));" % pred,
+71 < 1         bundle=bundle, app=app)
+68 < 2         "const r = await arrange({bundle, app, piece, evaluate: fake});\n"
+69 < 2         "console.log(JSON.stringify(Object.entries(r.versions[piece] ?? {}).map(([v, s]) => [v, (%s)(s)])));" % pred,
+70 < 2         bundle=TAGS, app=app, piece=piece)
 71 < 1 
 72 < 1 
 73 < 1 def test_tag_row_button_carries_the_typed_name(app):
-74 < 1     got = check_versions(app, "tag", """(s) =>
+75 > 1     got = check_versions(app, """(s) =>
+74 < 2     got = check_versions(app, "tag", """(s) =>
 75 < 1       inRepeat(s, "todos", (e) => e.type === "ActionButton" && e.props.action === "addTag"
 76 < 1         && canon(e.props.args) === canon({todoId: {$item: "id"}, name: {$state: "/draft/name"}})
 77 < 1         && canon(e.props.label) === canon({$template: "Add tag to ${text}"}))
@@ -103,68 +122,125 @@
 81 < 1 
 82 < 1 
 83 < 1 def test_todo_versions_draw_the_complete_checkbox(app):
-84 < 1     got = check_versions(app, "todo", """(s) =>
+85 > 1     got = check_versions(app, """(s) =>
+84 < 2     got = check_versions(app, "todo", """(s) =>
 85 < 1       inRepeat(s, "todos", (e) => e.type === "ActionCheckbox" && e.props.action === "completeTodo"
 86 < 1         && canon(e.props.label) === canon({$item: "text"}) && canon(e.props.checked) === canon({$item: "completed"})
 87 < 1         && canon(e.props.args) === canon({id: {$item: "id"}}))""")
 88 < 1     assert got and all(ok for _, ok in got), "no completeTodo checkbox: %s" % got
 89 < 1 
 90 < 1 
+92 > 1 def test_pieces_on_one_table_share_one_list(tagged):
+93 < 1     for v, s in tagged["versions"].items():
+94 < 1         els = s["elements"]
+95 < 1         lists = [i for i, e in els.items() if (e.get("repeat") or {}).get("statePath") == "/tables/todos"]
+96 < 1         assert len(lists) == 1, (v, lists)
+97 < 1         under, todo = set(), [lists[0]]
+98 < 1         while todo:
+99 < 1             for c in els[todo.pop()].get("children", []):
+100 < 1                 under.add(c)
+101 < 1                 todo.append(c)
+102 < 1         acts = sorted(els[i]["props"].get("action") for i in under if els[i]["props"].get("action"))
+103 < 1         assert acts == ["addTag", "completeTodo", "deleteTodo"], (v, acts)
+104 < 1 
+105 < 1 
 91 < 1 def test_no_fixed_row_text(tagged):
 92 < 1     fixed = []
-93 < 1     for piece, versions in tagged["versions"].items():
-94 < 1         for v, s in versions.items():
-95 < 1             for id_, e in s["elements"].items():
+94 > 1     for v, s in tagged["versions"].items():
+95 < 1         for id_, e in s["elements"].items():
+96 < 1             for key in ("label", "name"):
+97 < 1                 x = e["props"].get(key)
+98 < 1                 text = x.get("$template") if isinstance(x, dict) else x
+99 < 1                 if isinstance(text, str) and "buy milk" in text:
+100 < 1                     fixed.append("%s %s: %s" % (v, id_, text))
+93 < 2     for piece, versions in tagged["versions"].items():
+94 < 2         for v, s in versions.items():
+95 < 2             for id_, e in s["elements"].items():
 96 < 2                 if e["props"].get("action") == "removeTag":
 97 < 2                     continue
-98 < 1                 for key in ("label", "name"):
-99 < 1                     x = e["props"].get(key)
-100 < 1                     text = x.get("$template") if isinstance(x, dict) else x
-101 < 1                     if isinstance(text, str) and "buy milk" in text:
-102 < 1                         fixed.append("%s %s %s: %s" % (piece, v, id_, text))
+98 < 2                 for key in ("label", "name"):
+99 < 2                     x = e["props"].get(key)
+100 < 2                     text = x.get("$template") if isinstance(x, dict) else x
+101 < 2                     if isinstance(text, str) and "buy milk" in text:
+102 < 2                         fixed.append("%s %s %s: %s" % (piece, v, id_, text))
 103 < 1     assert not fixed, fixed
 104 < 1 
 105 < 1 
-107 > 1 def test_versions_pass_screens_and_stories(app, tagged, tmp_path):
-108 < 1     app = _copy(app, tmp_path)
+108 > 1 def test_the_stories_ui_and_see_are_never_read(app, tagged, tmp_path):
+109 < 1     def strip(page):
+110 < 1         for story in page["stories"]:
+111 < 1             for step in story["steps"]:
+112 < 1                 step.pop("ui", None)
+113 < 1                 step.pop("see", None)
+114 < 1     b = _bundle(tmp_path, strip)
+115 < 1     got = run_js("const r = await arrange({bundle, app, evaluate: fake}); console.log(JSON.stringify(r));", bundle=b, app=app)
+116 < 1     assert got["versions"] == tagged["versions"]
+107 > 2 def test_versions_pass_screens_and_stories(app, tagged, tmp_path):
+108 < 2     app = _copy(app, tmp_path)
 106 < 2 def test_versions_pass_screens_and_stories(app, tagged):
-107 < 1     for p in ("todo", "tag"):
-108 < 1         with open(os.path.join(app, "client/src/pieces/%s.json" % p), "w") as f:
-109 < 1             json.dump(tagged["versions"][p]["A"], f, indent=2)
-110 < 1     r = subprocess.run(["bun", os.path.join(ROOT, "factory/stack/tinyapp/screens.ts"), "--bundle", TAGS, "--copy", app],
-111 < 1                        capture_output=True, text=True, timeout=120)
-112 < 1     assert (r.returncode, r.stdout.splitlines()[-1:]) == (0, ["SCREENS ok: todo, tag"]), r.stdout
-113 < 1     plan = os.path.join(app, ".ultrapowers/plan.md")
-114 < 1     os.makedirs(os.path.dirname(plan), exist_ok=True)
-115 < 1     subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), TAGS, "--app", app, "--plan-id", "p1",
-116 < 1                     "--date", "2026-10-01", "--out", plan], check=True, capture_output=True, text=True, timeout=120)
-117 < 1     for clause in ("S1.1", "S2.2"):
-118 < 1         r = subprocess.run(["bun", os.path.join(ROOT, "factory/stack/tinyapp/check.ts"), "--plan", plan,
-119 < 1                             "--clause", clause, "--copy", app], capture_output=True, text=True, timeout=300)
-120 < 1         if r.returncode == 2:
-121 < 1             pytest.skip("check.ts could not run: " + (r.stdout + r.stderr).strip()[-300:])
-122 < 1         assert r.returncode == 0, "%s: %s" % (clause, (r.stdout + r.stderr)[-2000:])
+107 < 2     for p in ("todo", "tag"):
+108 < 2         with open(os.path.join(app, "client/src/pieces/%s.json" % p), "w") as f:
+109 < 2             json.dump(tagged["versions"][p]["A"], f, indent=2)
+110 < 2     r = subprocess.run(["bun", os.path.join(ROOT, "factory/stack/tinyapp/screens.ts"), "--bundle", TAGS, "--copy", app],
+111 < 2                        capture_output=True, text=True, timeout=120)
+112 < 2     assert (r.returncode, r.stdout.splitlines()[-1:]) == (0, ["SCREENS ok: todo, tag"]), r.stdout
+113 < 2     plan = os.path.join(app, ".ultrapowers/plan.md")
+114 < 2     os.makedirs(os.path.dirname(plan), exist_ok=True)
+115 < 2     subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), TAGS, "--app", app, "--plan-id", "p1",
+116 < 2                     "--date", "2026-10-01", "--out", plan], check=True, capture_output=True, text=True, timeout=120)
+117 < 2     for clause in ("S1.1", "S2.2"):
+118 < 2         r = subprocess.run(["bun", os.path.join(ROOT, "factory/stack/tinyapp/check.ts"), "--plan", plan,
+119 < 2                             "--clause", clause, "--copy", app], capture_output=True, text=True, timeout=300)
+120 < 2         if r.returncode == 2:
+121 < 2             pytest.skip("check.ts could not run: " + (r.stdout + r.stderr).strip()[-300:])
+122 < 2         assert r.returncode == 0, "%s: %s" % (clause, (r.stdout + r.stderr)[-2000:])
 123 < 1 
 124 < 1 
-125 < 1 def test_an_unseen_unnamed_action_still_gets_a_control(app, tmp_path):
-126 < 1     b = str(tmp_path / "b")
-127 < 1     shutil.copytree(TAGS, b)
-128 < 1     with open(os.path.join(b, "page.json")) as f:
-129 < 1         page = json.load(f)
-130 < 1     del page["stories"][0]["steps"][0]["see"]
-131 < 1     with open(os.path.join(b, "page.json"), "w") as f:
-132 < 1         json.dump(page, f)
+126 > 1 def test_an_unlabelled_action_is_named_by_its_description(app, tmp_path):
+127 < 1     def unlabel(cards):
+128 < 1         a = next(x for x in cards[0]["actions"] if x["name"] == "completeTodo")
+129 < 1         del a["label"], a["control"]
+130 < 1     b = _bundle(tmp_path, unlabel, "cards.json")
+125 < 2 def test_an_unseen_unnamed_action_still_gets_a_control(app, tmp_path):
+126 < 2     b = str(tmp_path / "b")
+127 < 2     shutil.copytree(TAGS, b)
+128 < 2     with open(os.path.join(b, "page.json")) as f:
+129 < 2         page = json.load(f)
+130 < 2     del page["stories"][0]["steps"][0]["see"]
+131 < 2     with open(os.path.join(b, "page.json"), "w") as f:
+132 < 2         json.dump(page, f)
 133 < 1     got = run_js(
-134 < 1         "const r = await arrange({bundle, app, piece: 'todo', evaluate: fake});\n"
-135 < 1         "console.log(JSON.stringify(Object.entries(r.versions.todo ?? {}).map(([v, s]) => "
+135 > 1         "const r = await arrange({bundle, app, evaluate: fake});\n"
+136 < 1         "console.log(JSON.stringify(Object.entries(r.versions).map(([v, s]) => "
+134 < 2         "const r = await arrange({bundle, app, piece: 'todo', evaluate: fake});\n"
+135 < 2         "console.log(JSON.stringify(Object.entries(r.versions.todo ?? {}).map(([v, s]) => "
 136 < 1         "[v, Object.values(s.elements).filter((e) => e.props.action === 'completeTodo').map((e) => [e.type, e.props.label])])));",
 137 < 1         bundle=b, app=app)
 138 < 1     assert got and all(controls == [["ActionButton", "Mark this todo as done."]] for _, controls in got), "got %s" % got
 139 < 1 
 140 < 1 
+142 > 1 def test_the_card_words_name_the_controls(app, tmp_path):
+143 < 1     def words(cards):
+144 < 1         a = next(x for x in cards[0]["actions"] if x["name"] == "addTodo")
+145 < 1         a["label"] = "Put on list"
+146 < 1         a["inputSchema"]["properties"]["text"]["x-label"] = "Thing to do"
+147 < 1         d = next(x for x in cards[0]["actions"] if x["name"] == "deleteTodo")
+148 < 1         d["label"] = "Bin ${text} now"
+149 < 1     b = _bundle(tmp_path, words, "cards.json")
+150 < 1     got = check_versions(app, """(s) => { const es = Object.values(s.elements);
+151 < 1       return es.some((e) => e.type === "ActionButton" && e.props.action === "addTodo" && e.props.label === "Put on list")
+152 < 1         && es.some((e) => e.type === "DraftInput" && e.props.label === "Thing to do")
+153 < 1         && inRepeat(s, "todos", (e) => e.props.action === "deleteTodo" && canon(e.props.label) === canon({$template: "Bin ${text} now"})); }""", b)
+154 < 1     assert got and all(ok for _, ok in got), got
+155 < 1 
+156 < 1 
 141 < 1 @pytest.mark.parametrize("bundle,want", [
-142 < 1     (TODO, "040d8fe268559fbe272c8b724065ca1b626678589b3bb97679000a9c29a2319a"),
-143 < 1     (SHOPPING, "6895c5754ea6fcfbf31c29b560351308e5afad4b564f46c07c89e380dbfdaab7"),
+144 > 1     (TODO, "4358a8efbb1640edaf63462a38c3a3cf61ad7013093b7d11fafcb21679a6535c"),
+145 < 1     (SHOPPING, "b2e4a2e76241992820eec192d2deba531987d58e69452e749374ea26e094922f"),
+143 > 2     (TODO, "TODO_HASH"),
+144 < 2     (SHOPPING, "SHOPPING_HASH"),
+142 < 2     (TODO, "040d8fe268559fbe272c8b724065ca1b626678589b3bb97679000a9c29a2319a"),
+143 < 2     (SHOPPING, "6895c5754ea6fcfbf31c29b560351308e5afad4b564f46c07c89e380dbfdaab7"),
 144 < 1 ])
 145 < 1 def test_todo_and_shopping_output_unchanged(bun, tmp_path_factory, bundle, want):
 146 < 1     a = _app(tmp_path_factory, bundle, "guard")
@@ -172,25 +248,25 @@
 148 < 1                bundle=bundle, app=a)
 149 < 1     assert r["dropped"] == {}
 150 < 1     assert hashlib.sha256(r["versions"].encode()).hexdigest() == want
-151 < 1 
-152 < 1 
-153 < 1 def test_a_typed_row_action_with_no_click_still_gets_a_button(app, tmp_path):
-154 < 1     b = str(tmp_path / "b")
-155 < 1     shutil.copytree(TAGS, b)
-156 < 1     with open(os.path.join(b, "page.json")) as f:
-157 < 1         page = json.load(f)
-158 < 1     for story in page["stories"]:
-159 < 1         for step in story["steps"]:
-160 < 1             if step["tool"] == "addTag" and "ui" in step:
-161 < 1                 step["ui"] = [u for u in step["ui"] if "click" not in u]
-162 < 1     with open(os.path.join(b, "page.json"), "w") as f:
-163 < 1         json.dump(page, f)
-164 < 1     got = run_js(
-165 < 1         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
-166 < 1         "console.log(JSON.stringify(Object.entries(r.versions.tag ?? {}).map(([v, s]) => [v, inRepeat(s, 'todos', (e) => "
-167 < 1         "e.type === 'ActionButton' && e.props.action === 'addTag' && canon(e.props.args?.name) === canon({$state: '/draft/name'}))])));",
-168 < 1         bundle=b, app=app)
-169 < 1     assert got and all(ok for _, ok in got), "no addTag button reading the typed name: %s" % got
+151 < 2 
+152 < 2 
+153 < 2 def test_a_typed_row_action_with_no_click_still_gets_a_button(app, tmp_path):
+154 < 2     b = str(tmp_path / "b")
+155 < 2     shutil.copytree(TAGS, b)
+156 < 2     with open(os.path.join(b, "page.json")) as f:
+157 < 2         page = json.load(f)
+158 < 2     for story in page["stories"]:
+159 < 2         for step in story["steps"]:
+160 < 2             if step["tool"] == "addTag" and "ui" in step:
+161 < 2                 step["ui"] = [u for u in step["ui"] if "click" not in u]
+162 < 2     with open(os.path.join(b, "page.json"), "w") as f:
+163 < 2         json.dump(page, f)
+164 < 2     got = run_js(
+165 < 2         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+166 < 2         "console.log(JSON.stringify(Object.entries(r.versions.tag ?? {}).map(([v, s]) => [v, inRepeat(s, 'todos', (e) => "
+167 < 2         "e.type === 'ActionButton' && e.props.action === 'addTag' && canon(e.props.args?.name) === canon({$state: '/draft/name'}))])));",
+168 < 2         bundle=b, app=app)
+169 < 2     assert got and all(ok for _, ok in got), "no addTag button reading the typed name: %s" % got
 170 < 1 
 171 < 1 
 172 < 1 REMOVE_LABEL = {"$computed": "format", "args": {
@@ -203,7 +279,8 @@
 179 < 1 def test_remove_tag_names_its_own_todo(app, tagged):
 180 < 1     """The Remove button reads the tag's todo through lookup, and on two todos each tag's
 181 < 1     label names its own todo, resolved by json-render with the template's functions (#1524)."""
-182 < 1     labels = [e["props"]["label"] for versions in tagged["versions"].values() for s in versions.values()
+183 > 1     labels = [e["props"]["label"] for s in tagged["versions"].values()
+182 < 2     labels = [e["props"]["label"] for versions in tagged["versions"].values() for s in versions.values()
 183 < 1               for e in s["elements"].values() if e["props"].get("action") == "removeTag"]
 184 < 1     assert labels and all(l == REMOVE_LABEL for l in labels), labels
 185 < 1     got = run_js(
@@ -220,48 +297,66 @@
 196 < 1 def test_dropped_versions_leave_no_file(bun, tmp_path):
 197 < 1     screens = str(tmp_path / "screens")
 198 < 1     os.makedirs(screens)
-199 < 1     for f in ("todo.json", "todo.A.json", "todo.B.json", "todo.C.json", "tag.B.json"):
+200 > 1     for f in ("screen.json", "screen.A.json", "screen.B.json", "screen.C.json", "todo.B.json"):
+199 < 2     for f in ("todo.json", "todo.A.json", "todo.B.json", "todo.C.json", "tag.B.json"):
 200 < 1         with open(os.path.join(screens, f), "w") as fh:
 201 < 1             fh.write("{}\n")
-202 < 1     run_js("writeVersions(screens, 'todo', {A: {root: 'r', elements: {}}}); console.log('1');", screens=screens)
-203 < 1     assert sorted(os.listdir(screens)) == ["tag.B.json", "todo.A.json", "todo.json"]
+203 > 1     run_js("writeVersions(screens, {A: {root: 'r', elements: {}}}); console.log('1');", screens=screens)
+204 < 1     assert sorted(os.listdir(screens)) == ["screen.A.json", "screen.json", "todo.B.json"]
+205 < 1 
+206 < 1 
+207 < 1 def test_pick_copies_the_version_and_piece_is_refused(app, tmp_path):
+208 < 1     b = _bundle(tmp_path, lambda page: None)
+209 < 1     os.makedirs(os.path.join(b, "screens"))
+210 < 1     with open(os.path.join(b, "screens/screen.B.json"), "w") as f:
+211 < 1         f.write('{"root": "x",  "elements": {}}\n')
+212 < 1     r = subprocess.run(["bun", ARRANGE, b, "--app", app, "--pick", "B"], capture_output=True, text=True, timeout=120)
+213 < 1     assert r.returncode == 0, r.stdout + r.stderr
+214 < 1     with open(os.path.join(b, "screens/screen.json")) as f:
+215 < 1         assert f.read() == '{"root": "x",  "elements": {}}\n'
+216 < 1     r = subprocess.run(["bun", ARRANGE, b, "--app", app, "--piece", "todo", "--pick", "B"], capture_output=True, text=True, timeout=120)
+217 < 1     assert r.returncode == 2 and r.stdout.startswith("usage:"), r.stdout
+202 < 2     run_js("writeVersions(screens, 'todo', {A: {root: 'r', elements: {}}}); console.log('1');", screens=screens)
+203 < 2     assert sorted(os.listdir(screens)) == ["tag.B.json", "todo.A.json", "todo.json"]
 204 < 1 
 205 < 1 
 206 < 1 def test_reshape_refuses_a_screen_missing_a_required_control(app):
 207 < 1     got = run_js(
-208 < 1         "const r = await arrange({bundle, app, piece: 'todo', evaluate: fake});\n"
+209 > 1         "const r = await arrange({bundle, app, evaluate: fake});\n"
+208 < 2         "const r = await arrange({bundle, app, piece: 'todo', evaluate: fake});\n"
 209 < 1         "let done = false;\n"
 210 < 1         "const drop = async ({questions}) => { const crit = questions.next.criteria;\n"
 211 < 1         "  const gone = Object.keys(crit).find((k) => k.startsWith('remove:') && crit[k].includes('(The list of'));\n"
 212 < 1         "  const c = done || !gone ? 'finish' : gone; done = true;\n"
 213 < 1         "  return {answers: {next: {choice: c, confidence: 0.9}, ...(questions.parent ? {parent: {choice: Object.keys(questions.parent.criteria)[0]}} : {})}}; };\n"
-214 < 1         "try { await reshape({bundle, app, piece: 'todo', spec: r.versions.todo.A, notes: ['drop the list'], evaluate: drop}); console.log(JSON.stringify('kept')); }\n"
+215 > 1         "try { await reshape({bundle, app, spec: r.versions.A, notes: ['drop the list'], evaluate: drop}); console.log(JSON.stringify('kept')); }\n"
+214 < 2         "try { await reshape({bundle, app, piece: 'todo', spec: r.versions.todo.A, notes: ['drop the list'], evaluate: drop}); console.log(JSON.stringify('kept')); }\n"
 215 < 1         "catch (e) { console.log(JSON.stringify([e.constructor.name, e.message.split(' ').slice(0, 7).join(' ')])); }",
 216 < 1         bundle=TAGS, app=app)
 217 < 1     assert got == ["CouldNotRun", "the reshaped screen left out The list"], got
-218 < 1 
-219 < 1 
-220 < 1 def test_a_row_label_never_cuts_a_row_id_out(app, tmp_path):
-221 < 1     b = _bundle(tmp_path, lambda page: json.loads(json.dumps(page).replace("Remove shop from buy milk", "Remove shop from buy milk 0")))
-222 < 1     got = run_js(
-223 < 1         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
-224 < 1         "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
-225 < 1         ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label?.args?.template)))]));",
-226 < 1         bundle=b, app=app)
-227 < 1     assert got == ["Remove ${name} from ${todoId.text} 0"], got
-228 < 1 
-229 < 1 
-230 < 1 def test_a_seen_name_is_never_matched_by_a_row_id(app, tmp_path):
-231 < 1     def edit(page):
-232 < 1         page["stories"] = [s for s in page["stories"] if s["id"] not in ("S3", "S7")]
-233 < 1         page["stories"][1]["steps"][1]["see"] = [{"role": "button", "name": "Remove tag 0", "count": 1}]
-234 < 1     b = _bundle(tmp_path, edit)
-235 < 1     got = run_js(
-236 < 1         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
-237 < 1         "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
-238 < 1         ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label)))]));",
-239 < 1         bundle=b, app=app)
-240 < 1     assert got == ["Take this tag off its todo."], got
+218 < 2 
+219 < 2 
+220 < 2 def test_a_row_label_never_cuts_a_row_id_out(app, tmp_path):
+221 < 2     b = _bundle(tmp_path, lambda page: json.loads(json.dumps(page).replace("Remove shop from buy milk", "Remove shop from buy milk 0")))
+222 < 2     got = run_js(
+223 < 2         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+224 < 2         "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
+225 < 2         ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label?.args?.template)))]));",
+226 < 2         bundle=b, app=app)
+227 < 2     assert got == ["Remove ${name} from ${todoId.text} 0"], got
+228 < 2 
+229 < 2 
+230 < 2 def test_a_seen_name_is_never_matched_by_a_row_id(app, tmp_path):
+231 < 2     def edit(page):
+232 < 2         page["stories"] = [s for s in page["stories"] if s["id"] not in ("S3", "S7")]
+233 < 2         page["stories"][1]["steps"][1]["see"] = [{"role": "button", "name": "Remove tag 0", "count": 1}]
+234 < 2     b = _bundle(tmp_path, edit)
+235 < 2     got = run_js(
+236 < 2         "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+237 < 2         "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
+238 < 2         ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label)))]));",
+239 < 2         bundle=b, app=app)
+240 < 2     assert got == ["Take this tag off its todo."], got
 241 < 1 
 242 < 1 
 243 < 1 TAG_ALL = """  },
@@ -284,8 +379,10 @@
 260 < 1 
 261 < 1 @pytest.fixture(scope="module")
 262 < 1 def tag_all(app, tmp_path_factory):
-263 < 1     """The tag piece with two more actions: tagAll types a name, as addTag does, and
-264 < 1     clearTags (no args) empties the tags, the second of the piece's two lists."""
+264 > 1     """The todo-tags page with two more tag actions, on its card alone: tagAll types a name,
+265 < 1     as addTag does, and clearTags (no args) empties the tags, the second of the page's two lists."""
+263 < 2     """The tag piece with two more actions: tagAll types a name, as addTag does, and
+264 < 2     clearTags (no args) empties the tags, the second of the piece's two lists."""
 265 < 1     tmp = tmp_path_factory.mktemp("tagall")
 266 < 1     a = _copy(app, tmp)
 267 < 1     store = os.path.join(a, "client/src/store.js")
@@ -295,30 +392,40 @@
 271 < 1     with open(store, "w") as f:
 272 < 1         f.write(text.replace("  }\n]\n", TAG_ALL))
 273 < 1 
-274 < 1     def edit(page):
-275 < 1         page["stories"] += [
-276 < 1             {"id": "S8", "sentence": "You tag every todo home.", "steps": [
-277 < 1                 {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
-278 < 1                 {"tool": "tagAll", "args": {"name": "home"}, "layer": "ui", "ui": [
-279 < 1                     {"type": {"role": "textbox", "name": "Tag every todo", "text": "home"}},
-280 < 1                     {"click": {"role": "button", "name": "Tag all"}}]}]},
-281 < 1             {"id": "S9", "sentence": "You clear the tags.", "steps": [
-282 < 1                 {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
-283 < 1                 {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"},
-284 < 1                 {"tool": "clearTags", "args": {}, "layer": "ui", "ui": [{"click": {"role": "button", "name": "Clear tags"}}]}]}]
-285 < 1     b = _bundle(tmp, edit)
-286 < 1     with open(os.path.join(b, "cards.json")) as f:
-287 < 1         cards = json.load(f)
-288 < 1     tag = next(c for c in cards if c["piece"] == "tag")
-289 < 1     tag["actions"] += [
-290 < 1         {"name": "tagAll", "description": "Tag every todo with a word.",
-291 < 1          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
-292 < 1         {"name": "clearTags", "description": "Take every tag off every todo.", "inputSchema": {"type": "object", "properties": {}}}]
-293 < 1     with open(os.path.join(b, "cards.json"), "w") as f:
-294 < 1         json.dump(cards, f)
-295 < 1     r = run_js("const r = await arrange({bundle, app, piece: 'tag', evaluate: fake}); console.log(JSON.stringify(r));", bundle=b, app=a)
-296 < 1     assert r["dropped"] == {} and r["versions"]["tag"], r["dropped"]
-297 < 1     return r["versions"]["tag"]
+275 > 1     def edit(cards):
+276 < 1         tag = next(c for c in cards if c["piece"] == "tag")
+277 < 1         tag["actions"] += [
+278 < 1             {"name": "tagAll", "description": "Tag every todo with a word.", "label": "Tag all",
+279 < 1              "inputSchema": {"type": "object", "properties": {"name": {"type": "string", "x-label": "Tag every todo"}}, "required": ["name"]}},
+280 < 1             {"name": "clearTags", "description": "Take every tag off every todo.", "label": "Clear tags", "inputSchema": {"type": "object", "properties": {}}}]
+281 < 1     b = _bundle(tmp, edit, "cards.json")
+282 < 1     r = run_js("const r = await arrange({bundle, app, evaluate: fake}); console.log(JSON.stringify(r));", bundle=b, app=a)
+283 < 1     assert r["dropped"] == {} and r["versions"], r["dropped"]
+284 < 1     return r["versions"]
+274 < 2     def edit(page):
+275 < 2         page["stories"] += [
+276 < 2             {"id": "S8", "sentence": "You tag every todo home.", "steps": [
+277 < 2                 {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+278 < 2                 {"tool": "tagAll", "args": {"name": "home"}, "layer": "ui", "ui": [
+279 < 2                     {"type": {"role": "textbox", "name": "Tag every todo", "text": "home"}},
+280 < 2                     {"click": {"role": "button", "name": "Tag all"}}]}]},
+281 < 2             {"id": "S9", "sentence": "You clear the tags.", "steps": [
+282 < 2                 {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+283 < 2                 {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"},
+284 < 2                 {"tool": "clearTags", "args": {}, "layer": "ui", "ui": [{"click": {"role": "button", "name": "Clear tags"}}]}]}]
+285 < 2     b = _bundle(tmp, edit)
+286 < 2     with open(os.path.join(b, "cards.json")) as f:
+287 < 2         cards = json.load(f)
+288 < 2     tag = next(c for c in cards if c["piece"] == "tag")
+289 < 2     tag["actions"] += [
+290 < 2         {"name": "tagAll", "description": "Tag every todo with a word.",
+291 < 2          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+292 < 2         {"name": "clearTags", "description": "Take every tag off every todo.", "inputSchema": {"type": "object", "properties": {}}}]
+293 < 2     with open(os.path.join(b, "cards.json"), "w") as f:
+294 < 2         json.dump(cards, f)
+295 < 2     r = run_js("const r = await arrange({bundle, app, piece: 'tag', evaluate: fake}); console.log(JSON.stringify(r));", bundle=b, app=a)
+296 < 2     assert r["dropped"] == {} and r["versions"]["tag"], r["dropped"]
+297 < 2     return r["versions"]["tag"]
 298 < 1 
 299 < 1 
 300 < 1 def test_two_actions_typing_one_field_keep_their_own_drafts(tag_all):
@@ -327,7 +434,8 @@
 303 < 1         boxes = sorted(e["props"]["value"]["$bindState"] for e in els if e["type"] == "DraftInput")
 304 < 1         reads = sorted((e["props"]["action"], e["props"]["args"]["name"]["$state"]) for e in els
 305 < 1                        if e["type"] == "ActionButton" and "name" in (e["props"].get("args") or {}))
-306 < 1         assert (boxes, reads) == (["/draft/addTag.name", "/draft/tagAll.name"],
+307 > 1         assert (boxes, reads) == (["/draft/addTag.name", "/draft/tagAll.name", "/draft/text"],
+306 < 2         assert (boxes, reads) == (["/draft/addTag.name", "/draft/tagAll.name"],
 307 < 1                                   [("addTag", "/draft/addTag.name"), ("tagAll", "/draft/tagAll.name")]), v
 308 < 1 
 309 < 1 
@@ -341,19 +449,19 @@
 317 < 1         tags = next(i for i, e in els.items() if (e.get("repeat") or {}).get("statePath") == "/tables/tags")
 318 < 1         kids = els[parent[tags]]["children"]
 319 < 1         assert mover in kids and abs(kids.index(mover) - kids.index(tags)) == 1, (v, kids)
-320 < 1 
-321 < 1 
-322 < 1 def test_compile_copies_no_screen_into_an_app_without_the_catalog(app, tmp_path):
-323 < 1     a = _copy(app, tmp_path)
-324 < 1     os.remove(os.path.join(a, "client/src/screens/catalog.ts"))
-325 < 1     shutil.rmtree(os.path.join(a, "client/src/pieces"))
-326 < 1     b = _bundle(tmp_path, lambda page: None)
-327 < 1     os.makedirs(os.path.join(b, "screens"), exist_ok=True)
-328 < 1     with open(os.path.join(b, "screens/todo.json"), "w") as f:
-329 < 1         f.write('{"root": "r", "elements": {}}\n')
-330 < 1     r = subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), b, "--app", a, "--plan-id", "p1",
-331 < 1                         "--date", "2026-10-01", "--out", os.path.join(a, ".ultrapowers/plan.md")],
-332 < 1                        capture_output=True, text=True, timeout=120)
-333 < 1     assert r.returncode == 0, r.stdout + r.stderr
-334 < 1     assert not os.path.exists(os.path.join(a, "client/src/pieces/todo.json"))
+320 < 2 
+321 < 2 
+322 < 2 def test_compile_copies_no_screen_into_an_app_without_the_catalog(app, tmp_path):
+323 < 2     a = _copy(app, tmp_path)
+324 < 2     os.remove(os.path.join(a, "client/src/screens/catalog.ts"))
+325 < 2     shutil.rmtree(os.path.join(a, "client/src/pieces"))
+326 < 2     b = _bundle(tmp_path, lambda page: None)
+327 < 2     os.makedirs(os.path.join(b, "screens"), exist_ok=True)
+328 < 2     with open(os.path.join(b, "screens/todo.json"), "w") as f:
+329 < 2         f.write('{"root": "r", "elements": {}}\n')
+330 < 2     r = subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), b, "--app", a, "--plan-id", "p1",
+331 < 2                         "--date", "2026-10-01", "--out", os.path.join(a, ".ultrapowers/plan.md")],
+332 < 2                        capture_output=True, text=True, timeout=120)
+333 < 2     assert r.returncode == 0, r.stdout + r.stderr
+334 < 2     assert not os.path.exists(os.path.join(a, "client/src/pieces/todo.json"))
 335 < 1 

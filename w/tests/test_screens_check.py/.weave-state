@@ -11,17 +11,22 @@
 9 < 1 SCREENS = os.path.join(ROOT, "factory/stack/tinyapp/screens.ts")
 10 < 1 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
 11 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+13 > 1 SCREEN = "client/src/screen.json"  # the one page the scaffold writes
 12 < 1 
 13 < 1 MISSING = ["SCREENS todo: no element runs addTodo", "SCREENS todo: no element runs completeTodo",
 14 < 1            "SCREENS todo: no element runs deleteTodo"]
 15 < 1 CASES = [
 16 < 1     ("todo.json", 0, ["SCREENS ok: todo"]),
 17 < 1     ("todo_buttons_outside.json", 1, MISSING + ["SCREENS exit 1: 3 finding(s)"]),
-18 < 1     ("todo_root_missing.json", 1, ['SCREENS todo: root "nope" is no element',
-19 < 1                                     'SCREENS todo: form: child "ghost" is no element'] + MISSING
+19 > 1     ("todo_root_missing.json", 1, ['SCREENS screen: root "nope" is no element',
+20 < 1                                     'SCREENS screen: form: child "ghost" is no element'] + MISSING
+18 < 2     ("todo_root_missing.json", 1, ['SCREENS todo: root "nope" is no element',
+19 < 2                                     'SCREENS todo: form: child "ghost" is no element'] + MISSING
 20 < 1      + ["SCREENS exit 1: 5 finding(s)"]),
-21 < 1     ("todo_props_missing.json", 1, ["SCREENS todo: add: ActionButton needs prop label",
-22 < 1                                      "SCREENS todo: heading: Heading needs prop text",
+22 > 1     ("todo_props_missing.json", 1, ["SCREENS screen: add: ActionButton needs prop label",
+23 < 1                                      "SCREENS screen: heading: Heading needs prop text",
+21 < 2     ("todo_props_missing.json", 1, ["SCREENS todo: add: ActionButton needs prop label",
+22 < 2                                      "SCREENS todo: heading: Heading needs prop text",
 23 < 1                                      "SCREENS exit 1: 2 finding(s)"]),
 24 < 1     ("todo_root_hidden.json", 1, MISSING + ["SCREENS exit 1: 3 finding(s)"]),
 25 < 1 ]
@@ -42,14 +47,49 @@
 40 < 1 
 41 < 1 @pytest.mark.parametrize("fixture,want_exit,want_lines", CASES)
 42 < 1 def test_screens_check(app, fixture, want_exit, want_lines):
-43 < 1     shutil.copyfile(os.path.join(FIX, fixture), os.path.join(app, "client/src/pieces/todo.json"))
+44 > 1     shutil.copyfile(os.path.join(FIX, fixture), os.path.join(app, SCREEN))
+43 < 2     shutil.copyfile(os.path.join(FIX, fixture), os.path.join(app, "client/src/pieces/todo.json"))
 44 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", app],
 45 < 1                        capture_output=True, text=True, timeout=120)
 46 < 1     assert (r.returncode, r.stdout.splitlines()) == (want_exit, want_lines)
 47 < 1 
 48 < 1 
+50 > 1 def _copy(app, tmp_path):
+51 < 1     """A copy of the app sharing its node_modules."""
+52 < 1     a = str(tmp_path / "app")
+53 < 1     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
+54 < 1     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
+55 < 1     return a
+56 < 1 
+57 < 1 
+58 < 1 def test_an_app_without_the_one_page_is_checked_per_piece(app, tmp_path):
+59 < 1     a = _copy(app, tmp_path)
+60 < 1     os.remove(os.path.join(a, SCREEN))
+61 < 1     os.makedirs(os.path.join(a, "client/src/pieces"), exist_ok=True)
+62 < 1     piece = os.path.join(a, "client/src/pieces/todo.json")
+63 < 1     shutil.copyfile(os.path.join(FIX, "todo_root_missing.json"), piece)
+64 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", a], capture_output=True, text=True, timeout=120)
+65 < 1     assert (r.returncode, r.stdout.splitlines()) == (1, ['SCREENS todo: root "nope" is no element',
+66 < 1                                                          'SCREENS todo: form: child "ghost" is no element',
+67 < 1                                                          "SCREENS todo: no element runs addTodo",
+68 < 1                                                          "SCREENS todo: no element runs completeTodo",
+69 < 1                                                          "SCREENS todo: no element runs deleteTodo",
+70 < 1                                                          "SCREENS exit 1: 5 finding(s)"])
+71 < 1     shutil.copyfile(os.path.join(FIX, "todo.json"), piece)
+72 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", a], capture_output=True, text=True, timeout=120)
+73 < 1     assert (r.returncode, r.stdout.splitlines()) == (0, ["SCREENS ok: todo"])
+74 < 1 
+75 < 1 
+76 < 1 def test_a_piece_whose_action_no_element_runs_is_named(app):
+77 < 1     spec = _todo()
+78 < 1     del spec["elements"]["delete"]
+79 < 1     spec["elements"]["row"]["children"].remove("delete")
+80 < 1     assert _screens(app, spec) == (1, ["SCREENS todo: no element runs deleteTodo", "SCREENS exit 1: 1 finding(s)"])
+81 < 1 
+82 < 1 
 49 < 1 def _screens(app, spec):
-50 < 1     with open(os.path.join(app, "client/src/pieces/todo.json"), "w") as f:
+51 > 1     with open(os.path.join(app, SCREEN), "w") as f:
+50 < 2     with open(os.path.join(app, "client/src/pieces/todo.json"), "w") as f:
 51 < 1         json.dump(spec, f)
 52 < 1     r = subprocess.run(["bun", SCREENS, "--bundle", TODO, "--copy", app], capture_output=True, text=True, timeout=120)
 53 < 1     return r.returncode, r.stdout.splitlines()
@@ -64,28 +104,32 @@
 62 < 1     spec = _todo()
 63 < 1     spec["elements"]["new"]["props"]["value"] = {"$bindItem": "text"}
 64 < 1     code, lines = _screens(app, spec)
-65 < 1     assert code == 1 and "SCREENS todo: new: $bindItem text is outside /draft/" in lines, lines
+66 > 1     assert code == 1 and "SCREENS screen: new: $bindItem text is outside /draft/" in lines, lines
+65 < 2     assert code == 1 and "SCREENS todo: new: $bindItem text is outside /draft/" in lines, lines
 66 < 1 
 67 < 1 
 68 < 1 def test_validate_form_without_a_state_path_writes_outside_draft(app):
 69 < 1     spec = _todo()
 70 < 1     spec["elements"]["add"]["on"]["press"] = [spec["elements"]["add"]["on"]["press"], {"action": "validateForm"}]
 71 < 1     code, lines = _screens(app, spec)
-72 < 1     assert (code, lines) == (1, ["SCREENS todo: add: on validateForm writes /formValidation, which is outside /draft/",
+73 > 1     assert (code, lines) == (1, ["SCREENS screen: add: on validateForm writes /formValidation, which is outside /draft/",
+72 < 2     assert (code, lines) == (1, ["SCREENS todo: add: on validateForm writes /formValidation, which is outside /draft/",
 73 < 1                                  "SCREENS exit 1: 1 finding(s)"])
 74 < 1 
 75 < 1 
 76 < 1 def test_a_props_issue_with_no_path_names_the_element(app, tmp_path):
-77 < 1     a = str(tmp_path / "app")
-78 < 1     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
-79 < 1     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
+78 > 1     a = _copy(app, tmp_path)
+77 < 2     a = str(tmp_path / "app")
+78 < 2     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
+79 < 2     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
 80 < 1     with open(os.path.join(a, "client/src/screens/catalog.ts"), "a") as f:
 81 < 1         f.write("\ncomponents.Separator.props = components.Separator.props.refine(() => false, {message: 'never'})\n")
 82 < 1     spec = _todo()
 83 < 1     spec["elements"]["sep"] = {"type": "Separator", "props": {}, "children": []}
 84 < 1     spec["elements"][spec["root"]]["children"].append("sep")
 85 < 1     code, lines = _screens(a, spec)
-86 < 1     assert code == 1 and "SCREENS todo: sep: Separator props: never" in lines, lines
+87 > 1     assert code == 1 and "SCREENS screen: sep: Separator props: never" in lines, lines
+86 < 2     assert code == 1 and "SCREENS todo: sep: Separator props: never" in lines, lines
 87 < 1     assert not [l for l in lines if "undefined" in l], lines
 88 < 1 
 89 < 1 
@@ -94,7 +138,8 @@
 92 < 1     (home / "factory/stack/tinyapp").mkdir(parents=True)
 93 < 1     shutil.copyfile(SCREENS, home / "factory/stack/tinyapp/screens.ts")
 94 < 1     os.symlink(os.path.join(ROOT, "skills"), home / "skills")
-95 < 1     shutil.copyfile(os.path.join(FIX, "todo.json"), os.path.join(app, "client/src/pieces/todo.json"))
+96 > 1     shutil.copyfile(os.path.join(FIX, "todo.json"), os.path.join(app, SCREEN))
+95 < 2     shutil.copyfile(os.path.join(FIX, "todo.json"), os.path.join(app, "client/src/pieces/todo.json"))
 96 < 1     r = subprocess.run(["bun", str(home / "factory/stack/tinyapp/screens.ts"), "--plan",
 97 < 1                         os.path.join(ROOT, "evals/fixtures/stories/todo/.ultrapowers/plan.md"), "--copy", app],
 98 < 1                        capture_output=True, text=True, timeout=120)

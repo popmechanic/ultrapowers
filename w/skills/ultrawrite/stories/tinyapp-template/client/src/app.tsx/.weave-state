@@ -6,8 +6,14 @@
 5 < 1 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
 6 < 1 // reads Cloudflare Access; every action gets it as run's third argument.
 7 < 1 // The page is public and read-only unless it is /staff: there it draws only
-8 < 1 // the pieces whose spec says "public": true and reads the saved snapshot (/public.json) every 5 s;
-9 < 1 // at /staff it draws every piece, offers WebMCP tools and syncs.
+9 > 1 // the subtrees whose root element ids the screen lists in "public" (none when
+10 < 1 // absent) and reads the saved snapshot (/public.json) every 5 s;
+11 < 1 // at /staff it draws the whole screen, offers WebMCP tools and syncs.
+12 < 1 // An app built before the one screen (no screen.json, a client/src/pieces/
+13 < 1 // directory) still draws every piece in its own section, signed out only the
+14 < 1 // pieces whose spec says "public": true.
+8 < 2 // the pieces whose spec says "public": true and reads the saved snapshot (/public.json) every 5 s;
+9 < 2 // at /staff it draws every piece, offers WebMCP tools and syncs.
 10 < 1 import {createMergeableStore} from 'tinybase';
 11 < 1 import {createWsSynchronizer} from 'tinybase/synchronizers/synchronizer-ws-client';
 12 < 1 import {TOOLS, makeStore} from './store.js';
@@ -18,7 +24,8 @@
 17 < 1 import {registry} from './screens/registry';
 19 > 1 import {functions} from './screens/functions';
 18 < 1 import {tinybaseState} from './screens/state';
-19 < 1 import {pieceSpecs} from './screens/pieces' with {type: 'macro'};
+20 > 1 import {pieceSpecs, screenSpec} from './screens/pieces' with {type: 'macro'};
+19 < 2 import {pieceSpecs} from './screens/pieces' with {type: 'macro'};
 20 < 1 
 21 < 1 type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 22 < 1 
@@ -40,13 +47,25 @@
 38 < 1 window.__TINYAPP__ = hook;
 39 < 1 
 41 > 1 const state = tinybaseState(store, () => ({staff, who: hook.who}));
+42 < 1 type Screen = Spec & {public?: string[]};
+43 < 1 // Signed out, the screen's root keeps its type and props but holds only the
+44 < 1 // public subtrees, so one Renderer still draws the page.
+45 < 1 function shown(screen: Screen): Spec {
+47 > 1   if (staff || screen.public?.includes(screen.root)) return screen;
+46 < 2   if (staff) return screen;
+47 < 1   const root = screen.elements[screen.root];
+48 < 1   const ids = (screen.public ?? []).filter((id) => id in screen.elements);
+49 < 1   return {...screen, elements: {...screen.elements, [screen.root]: {...root, children: ids}}} as Spec;
+50 < 1 }
+51 < 1 const screen = screenSpec() as Screen | null;
 40 < 1 const pieces = Object.entries(pieceSpecs() as Record<string, Spec & {public?: boolean}>)
 41 < 1   .filter(([, spec]) => staff || spec.public === true);
 42 < 1 createRoot(document.getElementById('app')!).render(
 45 > 1   <JSONUIProvider registry={registry} store={state} handlers={tools} functions={functions}>
 44 > 2   <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools} functions={functions}>
 43 < 2   <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools}>
-44 < 1     {pieces.map(([name, spec]) => (
+45 > 1     {screen ? <Renderer spec={shown(screen)} registry={registry} /> : pieces.map(([name, spec]) => (
+44 < 2     {pieces.map(([name, spec]) => (
 45 < 1       <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
 46 < 1     ))}
 47 < 1   </JSONUIProvider>,

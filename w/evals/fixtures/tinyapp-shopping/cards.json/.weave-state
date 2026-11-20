@@ -1,0 +1,106 @@
+0 < 1 [
+1 < 1  {
+2 < 1   "piece": "list",
+3 < 1   "concept": "list",
+4 < 1   "purpose": "Keep one shopping list the household shares, so whoever shops buys what is needed.",
+5 < 1   "depends_on": [],
+6 < 1   "state": {
+7 < 1    "tables": {
+8 < 1     "items": [
+9 < 1      "name",
+10 < 1      "qty",
+11 < 1      "line",
+12 < 1      "bought"
+13 < 1     ]
+14 < 1    },
+15 < 1    "values": []
+16 < 1   },
+17 < 1   "actions": [
+18 < 1    {
+19 < 1     "name": "addItem",
+20 < 1     "description": "Add an item to buy, with how many (one when left blank).",
+22 > 1     "label": "Add",
+21 < 1     "inputSchema": {
+22 < 1      "type": "object",
+23 < 1      "properties": {
+24 < 1       "name": {
+26 > 1        "type": "string",
+27 < 1        "x-label": "Item"
+25 < 2        "type": "string"
+26 < 1       },
+27 < 1       "qty": {
+29 > 1        "type": "string",
+30 < 1        "x-label": "How many"
+28 < 2        "type": "string"
+29 < 1       }
+30 < 1      },
+31 < 1      "required": [
+32 < 1       "name"
+33 < 1      ]
+34 < 1     },
+35 < 1     "refuses": [
+36 < 1      "blank name",
+37 < 1      "a quantity that is not a whole number from 1 to 99"
+38 < 1     ]
+39 < 1    },
+40 < 1    {
+41 < 1     "name": "tickItem",
+42 < 1     "description": "Tick this item off, or untick it if it is already ticked.",
+44 > 1     "label": "${qty} ${name}",
+45 < 1     "control": "checkbox",
+43 < 1     "inputSchema": {
+44 < 1      "type": "object",
+45 < 1      "properties": {
+46 < 1       "id": {
+47 < 1        "type": "string",
+48 < 1        "x-row-of": "items"
+49 < 1       }
+50 < 1      },
+51 < 1      "required": [
+52 < 1       "id"
+53 < 1      ]
+54 < 1     },
+55 < 1     "refuses": [
+56 < 1      "an item that does not exist"
+57 < 1     ]
+58 < 1    },
+59 < 1    {
+60 < 1     "name": "removeItem",
+61 < 1     "description": "Remove this item from the list.",
+63 > 1     "label": "Remove ${qty} ${name}",
+62 < 1     "inputSchema": {
+63 < 1      "type": "object",
+64 < 1      "properties": {
+65 < 1       "id": {
+66 < 1        "type": "string",
+67 < 1        "x-row-of": "items"
+68 < 1       }
+69 < 1      },
+70 < 1      "required": [
+71 < 1       "id"
+72 < 1      ]
+73 < 1     },
+74 < 1     "refuses": [
+75 < 1      "an item that does not exist"
+76 < 1     ]
+77 < 1    },
+78 < 1    {
+79 < 1     "name": "clearTicked",
+80 < 1     "description": "Remove every ticked item from the list.",
+82 > 1     "label": "Clear ticked",
+81 < 1     "inputSchema": {
+82 < 1      "type": "object",
+83 < 1      "properties": {}
+84 < 1     },
+85 < 1     "refuses": [
+86 < 1      "nothing ticked"
+87 < 1     ]
+88 < 1    }
+89 < 1   ],
+90 < 1   "main_story": "S2",
+91 < 1   "near_miss": "a list where ticking an item deletes it, so a shopper who ticks by mistake loses it",
+92 < 1   "misfits": [
+93 < 1    "a list each person keeps alone, so the shopper never sees what others added"
+94 < 1   ]
+95 < 1  }
+96 < 1 ]

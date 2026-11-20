@@ -30,7 +30,8 @@
 28 < 1 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
 29 < 1 bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
 30 < 1 bun skills/ultrawrite/stories/product.ts check|render|record <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks
-31 < 1 bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <p>] [--pick <V> | --reshape --note <text>…]   # Jev arranges each piece's screen (versions A–C into <bundle>/screens/), a pick, or a reshape from notes
+32 > 1 bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>…]   # Jev arranges the whole page from the cards (versions A–C into <bundle>/screens/screen.<V>.json), a pick to screens/screen.json, or a reshape from notes
+31 < 2 bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <p>] [--pick <V> | --reshape --note <text>…]   # Jev arranges each piece's screen (versions A–C into <bundle>/screens/), a pick, or a reshape from notes
 32 < 1 bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]   # the real screen for the Browser pane, redrawn as specs change; Comment mode notes go to .ultrapowers/feedback.jsonl
 33 < 1 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 34 < 1 bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)

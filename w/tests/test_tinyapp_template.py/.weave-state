@@ -71,8 +71,21 @@
 70 < 1     assert json.loads(r.stdout.strip().splitlines()[-1]) == {"who": "a@b.c", "heard": 1}
 71 < 1 
 72 < 1 
+74 > 1 def test_scaffold_writes_one_empty_screen(tmp_path):
+75 < 1     """The page draws one screen file: scaffold writes an empty one and no per-piece specs."""
+76 < 1     if not shutil.which("bun"):
+77 < 1         pytest.skip("bun is not installed")
+78 < 1     app = str(tmp_path / "app")
+79 < 1     subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), TODO, app], check=True, capture_output=True, text=True)
+80 < 1     with open(os.path.join(app, "client/src/screen.json")) as f:
+81 < 1         assert json.load(f) == {"root": "page", "elements": {"page": {"type": "Stack", "props": {"gap": 4}, "children": []}}}
+82 < 1     assert not os.path.exists(os.path.join(app, "client/src/pieces"))
+83 < 1 
+84 < 1 
 73 < 1 def test_the_page_draws_pieces_in_build_order(tmp_path):
-74 < 1     """todo-tags' cards are todo then tag: the page draws them so, not by file name (#1491)."""
+75 > 1     """An app built before the one screen: todo-tags' cards are todo then tag, so its
+76 < 1     hand-made piece specs are drawn so, not by file name (#1491)."""
+74 < 2     """todo-tags' cards are todo then tag: the page draws them so, not by file name (#1491)."""
 75 < 1     if not shutil.which("bun"):
 76 < 1         pytest.skip("bun is not installed")
 77 < 1     app = str(tmp_path / "app")
@@ -80,8 +93,17 @@
 79 < 1                    check=True, capture_output=True, text=True)
 80 < 1     with open(os.path.join(app, "client/src/screens/order.json")) as f:
 81 < 1         assert json.load(f) == {"pieces": ["todo", "tag"]}
-82 < 1     r = subprocess.run(["bun", "-e", "import {pieceSpecs} from './client/src/screens/pieces.ts';"
-83 < 1                         "console.log(JSON.stringify(Object.keys(pieceSpecs())))"], cwd=app, capture_output=True, text=True, timeout=60)
+83 > 1     os.remove(os.path.join(app, "client/src/screen.json"))
+84 < 1     os.makedirs(os.path.join(app, "client/src/pieces"))
+85 < 1     for p in ("tag", "todo"):
+86 < 1         with open(os.path.join(app, f"client/src/pieces/{p}.json"), "w") as f:
+87 < 1             json.dump({"root": p, "elements": {p: {"type": "Stack", "props": {}, "children": []}}}, f)
+88 < 1     r = subprocess.run(["bun", "-e", "import {pieceSpecs, screenSpec} from './client/src/screens/pieces.ts';"
+89 < 1                         "console.log(JSON.stringify([screenSpec(), Object.keys(pieceSpecs())]))"],
+90 < 1                        cwd=app, capture_output=True, text=True, timeout=60)
+82 < 2     r = subprocess.run(["bun", "-e", "import {pieceSpecs} from './client/src/screens/pieces.ts';"
+83 < 2                         "console.log(JSON.stringify(Object.keys(pieceSpecs())))"], cwd=app, capture_output=True, text=True, timeout=60)
 84 < 1     assert r.returncode == 0, r.stderr
-85 < 1     assert json.loads(r.stdout) == ["todo", "tag"]
+86 > 1     assert json.loads(r.stdout) == [None, ["todo", "tag"]]
+85 < 2     assert json.loads(r.stdout) == ["todo", "tag"]
 86 < 1 

@@ -1,0 +1,49 @@
+0 < 1 [
+1 < 1   {
+2 < 1     "piece": "todo", "concept": "todo",
+3 < 1     "catalog": "todo",
+4 < 1     "purpose": "Remember the things you mean to do until you have done them.",
+5 < 1     "depends_on": [],
+6 < 1     "state": {"tables": {"todos": ["text", "completed"]}, "values": []},
+7 < 1     "actions": [
+9 > 1       {"name": "addTodo", "description": "Add a todo with this text; it starts not done.", "label": "Add",
+10 < 1        "inputSchema": {"type": "object", "properties": {"text": {"type": "string", "x-label": "New todo"}}, "required": ["text"]},
+8 < 2       {"name": "addTodo", "description": "Add a todo with this text; it starts not done.",
+9 < 2        "inputSchema": {"type": "object", "properties": {"text": {"type": "string"}}, "required": ["text"]},
+10 < 1        "refuses": ["blank text"]},
+12 > 1       {"name": "completeTodo", "description": "Mark this todo as done.", "label": "${text}", "control": "checkbox",
+11 < 2       {"name": "completeTodo", "description": "Mark this todo as done.",
+12 < 1        "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
+13 < 1        "refuses": ["a todo that does not exist"]},
+15 > 1       {"name": "deleteTodo", "description": "Remove this todo from the list, and its tags with it.", "label": "Delete ${text}",
+14 < 2       {"name": "deleteTodo", "description": "Remove this todo from the list, and its tags with it.",
+15 < 1        "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "todos"}}, "required": ["id"]},
+16 < 1        "refuses": ["a todo that does not exist"]}
+17 < 1     ],
+18 < 1     "main_story": "S2",
+19 < 1     "near_miss": "a list where ticking a todo deletes it, so you can never see what you finished",
+20 < 1     "misfits": ["a long list with no way to clear the finished todos"]
+21 < 1   },
+22 < 1   {
+23 < 1     "piece": "tag", "concept": "tag",
+24 < 1     "catalog": "tag",
+25 < 1     "purpose": "Group todos by a word you choose, so you can see which belong together.",
+26 < 1     "depends_on": [],
+27 < 1     "state": {"tables": {"tags": ["todoId", "name"]}, "values": []},
+28 < 1     "actions": [
+30 > 1       {"name": "addTag", "description": "Tag this todo with a word.", "label": "Add tag to ${text}",
+31 < 1        "inputSchema": {"type": "object", "properties": {"todoId": {"type": "string", "x-row-of": "todos"}, "name": {"type": "string", "x-label": "Tag for ${text}"}}, "required": ["todoId", "name"]},
+29 < 2       {"name": "addTag", "description": "Tag this todo with a word.",
+30 < 2        "inputSchema": {"type": "object", "properties": {"todoId": {"type": "string", "x-row-of": "todos"}, "name": {"type": "string"}}, "required": ["todoId", "name"]},
+31 < 1        "refuses": ["blank tag", "a todo that does not exist", "the same tag twice on one todo"]},
+33 > 1       {"name": "removeTag", "description": "Take this tag off its todo.", "label": "Remove ${name} from ${todoId.text}",
+32 < 2       {"name": "removeTag", "description": "Take this tag off its todo.",
+33 < 1        "inputSchema": {"type": "object", "properties": {"id": {"type": "string", "x-row-of": "tags"}}, "required": ["id"]},
+34 < 1        "refuses": ["a tag that does not exist"]}
+35 < 1     ],
+36 < 1     "main_story": "S2",
+37 < 1     "near_miss": "a tag you can only set when the todo is made, so you can never regroup a todo",
+38 < 1     "misfits": ["a tag with a typo cannot be renamed, only removed and added again"]
+39 < 1   }
+40 < 1 ]
+41 < 1 

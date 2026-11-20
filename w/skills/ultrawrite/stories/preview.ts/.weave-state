@@ -2,8 +2,11 @@
 1 < 1 // The preview server: draws a bundle's screens with a scaffolded TinyApp's own
 2 < 1 // kit (registry, state, store, 1st-Pouf through Tailwind; nothing from a CDN)
 3 < 1 // and pushes every change under <bundle>/screens/ to the open pages over a
-4 < 1 // websocket so they redraw in place. /compare shows every version side by
-5 < 1 // side; picks and notes come back on POST /feedback as JSON lines. GET
+5 > 1 // websocket so they redraw in place. The bundle has one whole-page screen
+6 < 1 // (screens/screen.<V>.json, approved screens/screen.json); /compare shows its
+7 < 1 // versions side by side; picks and notes come back on POST /feedback as JSON lines. GET
+4 < 2 // websocket so they redraw in place. /compare shows every version side by
+5 < 2 // side; picks and notes come back on POST /feedback as JSON lines. GET
 6 < 1 // /play?story=<id> has the open page play that story on the screen and answers
 8 > 1 // the report it posts back to POST /played. Only this page talks to it (#1530):
 9 < 1 // every request must name the server's own host, and the data routes refuse a
@@ -16,7 +19,8 @@
 12 < 1 
 13 < 1 const PAGE = join(import.meta.dir, 'preview');
 14 < 1 const NEEDS = ['client/src/screens/catalog.ts', 'client/src/store.js', 'node_modules/bun-plugin-tailwind'];
-15 < 1 const VERSION = /^(.+)\.([A-Z])\.json$/;
+16 > 1 const VERSION = /^screen\.([A-Z])\.json$/;
+15 < 2 const VERSION = /^(.+)\.([A-Z])\.json$/;
 16 < 1 const PLAY_WAIT = 20_000;
 17 < 1 
 18 < 1 type Rec = Record<string, unknown>;
@@ -68,24 +72,32 @@
 39 < 1   return null;
 40 < 1 }
 41 < 1 
-42 < 1 function readSpecs(screens: string, pieces: string[]): Rec {
-43 < 1   const out: Record<string, {versions: Rec; approved?: unknown}> = {};
-44 < 1   for (const p of pieces) out[p] = {versions: {}};
+43 > 1 /** The one whole-page screen: its versions from screen.<V>.json, its approved
+44 < 1  *  spec from screen.json when there is one. Nothing else under screens/ counts. */
+45 < 1 function readSpecs(screens: string): Rec {
+46 < 1   const screen: {versions: Rec; approved?: unknown} = {versions: {}};
+42 < 2 function readSpecs(screens: string, pieces: string[]): Rec {
+43 < 2   const out: Record<string, {versions: Rec; approved?: unknown}> = {};
+44 < 2   for (const p of pieces) out[p] = {versions: {}};
 45 < 1   const names = existsSync(screens) ? readdirSync(screens).sort() : [];
 46 < 1   const read = (n: string) => {
 47 < 1     try { return JSON.parse(readFileSync(join(screens, n), 'utf8')); } catch { return undefined; }
 48 < 1   };
 49 < 1   for (const n of names) {
 50 < 1     const m = VERSION.exec(n);
-51 < 1     if (m && out[m[1]]) {
+52 > 1     if (m || n === 'screen.json') {
+51 < 2     if (m && out[m[1]]) {
 52 < 1       const spec = read(n);
-53 < 1       if (spec !== undefined) out[m[1]].versions[m[2]] = spec;
-54 < 1     } else if (n.endsWith('.json') && out[n.slice(0, -5)]) {
-55 < 1       const spec = read(n);
-56 < 1       if (spec !== undefined) out[n.slice(0, -5)].approved = spec;
+54 > 1       if (spec === undefined) continue;
+55 < 1       if (m) screen.versions[m[1]] = spec; else screen.approved = spec;
+53 < 2       if (spec !== undefined) out[m[1]].versions[m[2]] = spec;
+54 < 2     } else if (n.endsWith('.json') && out[n.slice(0, -5)]) {
+55 < 2       const spec = read(n);
+56 < 2       if (spec !== undefined) out[n.slice(0, -5)].approved = spec;
 57 < 1     }
 58 < 1   }
-59 < 1   return out;
+60 > 1   return {screen};
+59 < 2   return out;
 60 < 1 }
 61 < 1 
 62 < 1 async function main(argv: string[]): Promise<number> {
@@ -113,10 +125,10 @@
 84 < 1     }
 85 < 1   }
 86 < 1   let page: {title?: string; stories?: unknown[]};
-87 < 1   let pieces: string[];
+87 < 2   let pieces: string[];
 88 < 1   try {
 89 < 1     page = JSON.parse(readFileSync(join(bundle, 'page.json'), 'utf8'));
-90 < 1     pieces = (JSON.parse(readFileSync(join(bundle, 'cards.json'), 'utf8')) as {piece: string}[]).map((c) => c.piece);
+90 < 2     pieces = (JSON.parse(readFileSync(join(bundle, 'cards.json'), 'utf8')) as {piece: string}[]).map((c) => c.piece);
 91 < 1   } catch (e) {
 92 < 1     console.log(`PREVIEW could not run: ${bundleArg} is not a bundle (${(e as Error).message})`);
 93 < 1     return 2;
@@ -162,7 +174,8 @@
 131 < 1       if (path === '/bundle' && req.method === 'GET') {
 132 < 1         return Response.json({title: page.title ?? '', stories: page.stories ?? []});
 133 < 1       }
-134 < 1       if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens, pieces));
+135 > 1       if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens));
+134 < 2       if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens, pieces));
 135 < 1       if (path === '/play' && req.method === 'GET') {
 136 < 1         const story = url.searchParams.get('story') ?? '';
 137 < 1         if (!singles.size) {
@@ -231,7 +244,8 @@
 197 < 1     if (timer) clearTimeout(timer);
 198 < 1     timer = setTimeout(() => {
 199 < 1       timer = null;
-200 < 1       server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens, pieces)}));
+201 > 1       server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens)}));
+200 < 2       server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens, pieces)}));
 201 < 1     }, 50);
 202 < 1   });
 203 < 1 

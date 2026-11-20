@@ -1,0 +1,226 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // Read each story's clicks and checks off the picked screen.
+2 < 1 //
+3 < 1 //   bun skills/ultrawrite/stories/storyui.ts <bundle> --app <dir>
+4 < 1 //
+5 < 1 // The stories keep their sentences, tools, args and layers; this writes the
+6 < 1 // on-screen half. Each story is replayed through the bundle's store module, and
+7 < 1 // each `ui`-layer step gets its gestures (`ui`: the draft boxes it types into,
+8 < 1 // then the control that runs its tool, in its row when it sits in a list) and
+9 < 1 // what is drawn after it (`see`: every named element with its count, and each
+10 < 1 // one that left with count 0). Names are read the way the browser and the checker
+11 < 1 // read them: the part's role and naming props from the app's draws.json, each
+12 < 1 // prop resolved by json-render against the state the page holds.
+13 < 1 import {copyFileSync, existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+14 < 1 import {join, resolve} from 'node:path';
+15 < 1 import {parseArgs} from 'node:util';
+16 < 1 import {Aliases, type Content, type See, type UiStep} from '../../../factory/stack/tinyapp/probe';
+17 < 1 import {loadBundle, type Step} from './bundle';
+18 < 1 import {drawsPath, readDraws, type Draws} from './parts';
+19 < 1 
+20 < 1 type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
+21 < 1 type StoreModule = {TOOLS: Tool[]; makeStore: () => {getContent: () => Content}};
+22 < 1 type El = {type: string; props?: Record<string, unknown>; children?: string[]; visible?: unknown; repeat?: {statePath: unknown; key?: string}; on?: Record<string, unknown>};
+23 < 1 type Screen = {root: string; elements: Record<string, El>};
+24 < 1 type Core = {
+25 < 1   resolvePropValue: (v: unknown, ctx: Ctx) => unknown;
+26 < 1   evaluateVisibility: (c: unknown, ctx: Ctx) => boolean;
+27 < 1   splitRepeatVisibility: (c: unknown) => {container: unknown; itemFilter: unknown};
+28 < 1 };
+29 < 1 type Ctx = {stateModel: Record<string, unknown>; repeatItem?: unknown; repeatIndex?: number; repeatBasePath?: string; functions?: Record<string, unknown>};
+30 < 1 // One element as drawn: its spec, the context it resolves in, its role and name (null when it names nothing).
+31 < 1 type Drawn = {el: El; ctx: Ctx; role: string | null; name: string};
+32 < 1 
+33 < 1 class CannotRun extends Error {}
+34 < 1 
+35 < 1 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
+36 < 1 const text = (v: unknown) => (v === undefined || v === null ? '' : String(v));
+37 < 1 
+38 < 1 function getPath(state: unknown, path: string): unknown {
+39 < 1   let cur = state;
+40 < 1   for (const seg of path.split('/').filter(Boolean)) cur = isObj(cur) || Array.isArray(cur) ? (cur as Record<string, unknown>)[seg] : undefined;
+41 < 1   return cur;
+42 < 1 }
+43 < 1 
+44 < 1 /** Every element the screen draws against `state`, in document order. */
+45 < 1 function drawAll(screen: Screen, draws: Draws, core: Core, functions: Record<string, unknown>, state: Record<string, unknown>): Drawn[] {
+46 < 1   const out: Drawn[] = [];
+47 < 1   const walk = (key: string, ctx: Ctx) => {
+48 < 1     const el = screen.elements[key];
+49 < 1     if (!el) return;
+50 < 1     const vis = el.repeat !== undefined && ctx.repeatBasePath === undefined ? core.splitRepeatVisibility(el.visible) : {container: el.visible, itemFilter: undefined};
+51 < 1     if (vis.container !== undefined && !core.evaluateVisibility(vis.container, ctx)) return;
+52 < 1     const part = draws[el.type];
+53 < 1     const role = part?.role ?? null;
+54 < 1     let name = '';
+55 < 1     if (role) {
+56 < 1       for (const p of part?.name ?? []) {
+57 < 1         name = text(core.resolvePropValue(el.props?.[p], ctx)).trim();
+58 < 1         if (name) break;
+59 < 1       }
+60 < 1     }
+61 < 1     out.push({el, ctx, role, name});
+62 < 1     if (!el.repeat) {
+63 < 1       for (const c of el.children ?? []) walk(c, ctx);
+64 < 1       return;
+65 < 1     }
+66 < 1     const sp = el.repeat.statePath;
+67 < 1     const path = typeof sp === 'string' ? sp
+68 < 1       : isObj(sp) && typeof sp.$item === 'string' && ctx.repeatBasePath !== undefined ? `${ctx.repeatBasePath}/${sp.$item}` : undefined;
+69 < 1     if (path === undefined) return;
+70 < 1     const items = getPath(state, path);
+71 < 1     (Array.isArray(items) ? items : []).forEach((item, index) => {
+72 < 1       const inner: Ctx = {...ctx, repeatItem: item, repeatIndex: index, repeatBasePath: `${path}/${index}`};
+73 < 1       if (vis.itemFilter !== undefined && !core.evaluateVisibility(vis.itemFilter, inner)) return;
+74 < 1       for (const c of el.children ?? []) walk(c, inner);
+75 < 1     });
+76 < 1   };
+77 < 1   walk(screen.root, {stateModel: state, functions});
+78 < 1   return out;
+79 < 1 }
+80 < 1 
+81 < 1 /** The named elements drawn, with their counts, in first-drawn order. */
+82 < 1 function seen(drawn: Drawn[]): See[] {
+83 < 1   const out: See[] = [];
+84 < 1   for (const d of drawn) {
+85 < 1     if (!d.role || !d.name) continue;
+86 < 1     const s = out.find((x) => x.role === d.role && x.name === d.name);
+87 < 1     if (s) s.count = (s.count ?? 0) + 1;
+88 < 1     else out.push({role: d.role, name: d.name, count: 1});
+89 < 1   }
+90 < 1   return out;
+91 < 1 }
+92 < 1 
+93 < 1 // The draft input a `$bindState` value writes: `/draft/<input>` or `/draft/<tool>.<input>`.
+94 < 1 function draftInput(v: unknown, tool: string): string | null {
+95 < 1   if (!isObj(v) || typeof v.$bindState !== 'string') return null;
+96 < 1   const m = /^\/draft\/(.+)$/.exec(v.$bindState);
+97 < 1   if (!m) return null;
+98 < 1   return m[1].startsWith(`${tool}.`) ? m[1].slice(tool.length + 1) : m[1].includes('.') ? null : m[1];
+99 < 1 }
+100 < 1 
+101 < 1 function setPath(obj: Record<string, unknown>, path: string, value: unknown) {
+102 < 1   const segs = path.split('/').filter(Boolean);
+103 < 1   let cur = obj;
+104 < 1   segs.slice(0, -1).forEach((s) => {
+105 < 1     if (!isObj(cur[s])) cur[s] = {};
+106 < 1     cur = cur[s] as Record<string, unknown>;
+107 < 1   });
+108 < 1   if (segs.length) cur[segs[segs.length - 1]] = value;
+109 < 1 }
+110 < 1 
+111 < 1 /** The number of `ui`-layer steps filled. */
+112 < 1 export async function storyUi(bundleDir: string, appDir: string): Promise<number> {
+113 < 1   const b = loadBundle(bundleDir);
+114 < 1   const app = resolve(appDir);
+115 < 1   const screenFile = join(b.dir, 'screens', 'screen.json');
+116 < 1   if (!existsSync(screenFile)) throw new CannotRun(`${screenFile} does not exist; pick a screen first`);
+117 < 1   const screen = JSON.parse(readFileSync(screenFile, 'utf8')) as Screen;
+118 < 1   if (!isObj(screen) || typeof screen.root !== 'string' || !isObj(screen.elements)) throw new CannotRun(`${screenFile} is not a screen spec`);
+119 < 1   const draws = readDraws(drawsPath(app));
+120 < 1   if (!draws) throw new CannotRun(`${drawsPath(app)} does not exist`);
+121 < 1   if (!existsSync(join(app, 'node_modules', 'tinybase'))) throw new CannotRun(`run bun install in ${app} first; the store module imports tinybase from there`);
+122 < 1   let core: Core;
+123 < 1   let functions: Record<string, unknown> = {};
+124 < 1   try {
+125 < 1     core = (await import(Bun.resolveSync('@json-render/core', app))) as Core;
+126 < 1     const fnFile = join(app, 'client', 'src', 'screens', 'functions.ts');
+127 < 1     if (existsSync(fnFile)) functions = ((await import(fnFile)) as {functions?: Record<string, unknown>}).functions ?? {};
+128 < 1   } catch (e) {
+129 < 1     throw new CannotRun(`the app's json-render or functions would not load: ${(e as Error).message}`);
+130 < 1   }
+131 < 1   // The bundle's store module, imported from inside the app so tinybase resolves.
+132 < 1   const tmp = join(app, 'client', 'src', `.storyui-${process.pid}.js`);
+133 < 1   let mod: StoreModule;
+134 < 1   try {
+135 < 1     copyFileSync(join(b.dir, 'store.js'), tmp);
+136 < 1     mod = (await import(tmp)) as StoreModule;
+137 < 1   } catch (e) {
+138 < 1     throw new CannotRun(`the store module would not load: ${(e as Error).message}`);
+139 < 1   } finally {
+140 < 1     rmSync(tmp, {force: true});
+141 < 1   }
+142 < 1   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
+143 < 1 
+144 < 1   let filled = 0;
+145 < 1   for (const s of b.page.stories) {
+146 < 1     const store = mod.makeStore();
+147 < 1     const aliases = new Aliases();
+148 < 1     let who: string | null | undefined;
+149 < 1     let draft: Record<string, unknown> = {};
+150 < 1     const pageState = (): Record<string, unknown> => {
+151 < 1       const [tables, values] = store.getContent();
+152 < 1       aliases.learn([tables, values]);
+153 < 1       const rows = Object.fromEntries(Object.entries(tables).map(([t, r]) => [t, Object.entries(r).map(([id, cells]) => ({id, ...cells}))]));
+154 < 1       return {tables: rows, values, draft: structuredClone(draft), session: {staff: true, who: who ?? null}};
+155 < 1     };
+156 < 1     s.steps.forEach((st: Step, i) => {
+157 < 1       if (st.as !== undefined) who = st.as;
+158 < 1       const tool = tools.get(st.tool);
+159 < 1       if (!tool) throw new Error(`story ${s.id} step ${i + 1}: the store module has no tool ${st.tool}`);
+160 < 1       const args = st.args ?? {};
+161 < 1       const props = (isObj(tool.inputSchema) && isObj(tool.inputSchema.properties) ? tool.inputSchema.properties : {}) as Record<string, Record<string, unknown>>;
+162 < 1       const rowArgs = Object.keys(args).filter((k) => typeof props[k]?.['x-row-of'] === 'string');
+163 < 1       const real = aliases.args(args, tool.inputSchema);
+164 < 1       const beforeState = pageState();
+165 < 1       const before = st.layer === 'ui' ? drawAll(screen, draws, core, functions, beforeState) : [];
+166 < 1       tool.run(store, real, who ?? null);
+167 < 1       if (st.layer !== 'ui') {
+168 < 1         pageState();
+169 < 1         return;
+170 < 1       }
+171 < 1       const ui: UiStep[] = [];
+172 < 1       for (const d of before) {
+173 < 1         if (d.el.type !== 'DraftInput' || !d.role || !d.name) continue;
+174 < 1         const input = draftInput(d.el.props?.value, st.tool);
+175 < 1         if (!input || !(input in args) || rowArgs.includes(input)) continue;
+176 < 1         const typed = text(args[input]);
+177 < 1         if (typed === '') continue;
+178 < 1         ui.push({type: {role: d.role, name: d.name, text: typed}});
+180 > 1         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
+179 < 2         setPath(draft, ((d.el.props!.value as Record<string, string>).$bindState).slice('/draft/'.length).replace(/^/, '/'), typed);
+180 < 1       }
+181 < 1       // The control that runs the tool: in the row the step's row arg names, when it sits in a list.
+182 < 1       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);
+183 < 1       const inRow = (d: Drawn) => rowArgs.length > 0 && isObj(d.ctx.repeatItem)
+184 < 1         && rowArgs.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
+185 < 1       const control = controls.find(inRow) ?? controls.find((d) => d.ctx.repeatBasePath === undefined) ?? controls[0];
+186 < 1       if (control) {
+187 < 1         ui.push({click: {role: control.role!, name: control.name}});
+188 < 1         // A press that clears its draft box clears it on the page too.
+189 < 1         const press = control.el.on?.press;
+190 < 1         for (const a of Array.isArray(press) ? press : press ? [press] : []) {
+191 < 1           if (isObj(a) && a.action === 'setState' && isObj(a.params) && typeof a.params.statePath === 'string' && a.params.statePath.startsWith('/draft/')) {
+192 < 1             setPath(draft, a.params.statePath.slice('/draft'.length), a.params.value);
+193 < 1           }
+194 < 1         }
+195 < 1       }
+196 < 1       const after = seen(drawAll(screen, draws, core, functions, pageState()));
+197 < 1       const gone = seen(before).filter((x) => !after.some((y) => y.role === x.role && y.name === x.name)).map((x) => ({...x, count: 0}));
+198 < 1       st.ui = ui;
+199 < 1       st.see = [...after, ...gone];
+200 < 1       filled++;
+201 < 1     });
+202 < 1   }
+203 < 1   writeFileSync(join(b.dir, 'page.json'), JSON.stringify(b.page, null, 2) + '\n');
+204 < 1   return filled;
+205 < 1 }
+206 < 1 
+207 < 1 async function main(): Promise<number> {
+208 < 1   const {values: v, positionals} = parseArgs({allowPositionals: true, options: {app: {type: 'string'}}});
+209 < 1   if (positionals.length !== 1 || !v.app) {
+210 < 1     console.error('usage: storyui.ts <bundle> --app <dir>');
+211 < 1     return 2;
+212 < 1   }
+213 < 1   try {
+214 < 1     const n = await storyUi(positionals[0], v.app);
+215 < 1     console.log(`STORYUI ${n} step(s)`);
+216 < 1     return 0;
+217 < 1   } catch (e) {
+218 < 1     console.log(`STORYUI could not run: ${(e as Error).message}`);
+219 < 1     return 2;
+220 < 1   }
+221 < 1 }
+222 < 1 
+223 < 1 if (import.meta.main) process.exit(await main());
+224 < 1 

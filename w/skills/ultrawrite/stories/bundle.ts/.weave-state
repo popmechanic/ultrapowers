@@ -37,7 +37,12 @@
 34 < 1   subproject?: string;
 35 < 1   waivers?: {piece: string; action: string; refuses: string; arg: string; reason: string}[];
 36 < 1 };
-37 < 1 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
+38 > 1 // An action's words on the page: `label` its control's (in a row, `${cell}` names a cell of
+39 < 1 // that row and `${col.cell}` a cell of the row column `col` names), an input property's
+40 < 1 // `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
+41 < 1 // table's boolean column.
+42 < 1 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]; label?: string; control?: 'checkbox'};
+37 < 2 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
 38 < 1 export type Card = {
 39 < 1   piece: string;
 40 < 1   purpose: string;

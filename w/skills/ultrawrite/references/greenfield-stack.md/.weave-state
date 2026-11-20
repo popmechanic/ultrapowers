@@ -173,9 +173,12 @@
 164 < 1 (operator, 2026-10-01; this replaces the 2026-09-16 Tailwind + shadcn styling
 165 < 1 experiment).
 166 < 1 
-167 < 1 - **The spec.** Each piece's screen is `client/src/pieces/<piece>.json`, a
-168 < 1   json-render spec — `{root, elements}`, plus `"public": true` for a piece a
-169 < 1   signed-out visitor sees on `/` — over the catalog in
+168 > 1 - **The spec.** The page is one screen, `client/src/screen.json`, a
+169 < 1   json-render spec — `{root, elements, public?}`, where `public` lists the
+170 < 1   element ids whose subtrees a signed-out visitor sees on `/` — over the catalog in
+167 < 2 - **The spec.** Each piece's screen is `client/src/pieces/<piece>.json`, a
+168 < 2   json-render spec — `{root, elements}`, plus `"public": true` for a piece a
+169 < 2   signed-out visitor sees on `/` — over the catalog in
 170 < 1   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
 171 < 1   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
 173 > 1   React 19; a builder writes specs, and a part only when a story needs one.
@@ -191,9 +194,12 @@
 183 < 1   closed to a run, and potluck-2 run-1 (2026-11-20) ended a draft on a status label no
 184 < 1   part could draw.
 172 < 2   React 19; a builder writes specs, not components.
-173 < 1 - **Where a spec starts.** A piece's spec starts as the screen the operator
-174 < 1   approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
-175 < 1   in), else the scaffold's empty column; the builder edits it from there.
+174 > 1 - **Where the spec starts.** The screen starts as the whole page the operator
+175 < 1   picked while planning (`<bundle>/screens/screen.json`, which compile copies
+176 < 1   in), else the scaffold's empty column; every piece's builder edits it from there.
+173 < 2 - **Where a spec starts.** A piece's spec starts as the screen the operator
+174 < 2   approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
+175 < 2   in), else the scaffold's empty column; the builder edits it from there.
 177 > 1 - **The reads.** A row shows its own cells; a row naming another table's row (a tag's
 178 < 1   `todoId`) reads that row's text through the `$computed` functions `lookup` and `format` in
 179 < 1   `client/src/screens/functions.ts`, which every renderer is given (#1524).

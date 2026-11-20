@@ -16,7 +16,8 @@
 15 < 1 export const checkerArgv = (planPath, clause) =>
 16 < 1   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 17 < 1 
-18 < 1 // A task that writes its piece's json-render screen also runs the browser-free screens check,
+19 > 1 // A task that writes its piece's json-render screen (its own, or the one page client/src/screen.json) also runs the browser-free screens check,
+18 < 2 // A task that writes its piece's json-render screen also runs the browser-free screens check,
 19 < 1 // last and with no clause (the engine pairs facts[i] with clauses[i]).
 20 < 1 const SCREENS = join(REPO, 'factory', 'stack', 'tinyapp', 'screens.ts');
 21 < 1 export const screensArgv = (planPath, piece) =>
@@ -27,7 +28,9 @@
 26 < 1   const tasks = parsed.tasks.map((t) => {
 27 < 1     if (!t.probes.length) throw new Error(`plan task ${t.id} (${t.piece}) has no probes: a task with nothing to check cannot finish`);
 28 < 1     const files = t.files || [];
-29 < 1     const screens = t.piece && files.includes(`client/src/pieces/${t.piece}.json`) ? [screensArgv(abs, t.piece)] : [];
+30 > 1     const screens = t.piece && (files.includes(`client/src/pieces/${t.piece}.json`) || files.includes('client/src/screen.json'))
+31 < 1       ? [screensArgv(abs, t.piece)] : [];
+29 < 2     const screens = t.piece && files.includes(`client/src/pieces/${t.piece}.json`) ? [screensArgv(abs, t.piece)] : [];
 30 < 1     return {
 31 < 1       id: t.id, title: t.title, body: t.body ?? '', files,
 32 < 1       depends_on: t.depends_on || [],

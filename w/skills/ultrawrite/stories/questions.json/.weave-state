@@ -387,9 +387,11 @@
 377 < 1       }
 378 < 1     },
 379 < 1     "authoring_arrange": {
-380 < 1       "when": "At arrange.ts, once per card and version while a plan is drafted, and once per reshape from the notes pinned on an approved screen",
+381 > 1       "when": "At arrange.ts, once per version of the whole page while a plan is drafted, before any story names a control, and once per reshape from the notes pinned on the approved page",
+380 < 2       "when": "At arrange.ts, once per card and version while a plan is drafted, and once per reshape from the notes pinned on an approved screen",
 381 < 1       "reader": "skills/ultrawrite/stories/arrange.ts",
-382 < 1       "rollback": "flag off: the builder writes each screen from the stories alone",
+383 > 1       "rollback": "flag off: the builder writes the page from the cards alone",
+382 < 2       "rollback": "flag off: the builder writes each screen from the stories alone",
 383 < 1       "state": [
 384 < 1         "user_request",
 385 < 1         "context",
@@ -397,13 +399,18 @@
 387 < 1         "already_built",
 388 < 1         "selected_elements"
 389 < 1       ],
-390 < 1       "provenance": "operator decisions 2026-10-01",
+391 > 1       "provenance": "operator decisions 2026-10-01; whole page 2026-11-20",
+390 < 2       "provenance": "operator decisions 2026-10-01",
 391 < 1       "calibrated": false,
-392 < 1       "guidance": "Use only the controls and text offered; every control the stories name belongs on the screen.",
+393 > 1       "guidance": "Use only the controls and text offered; every control offered belongs on the page.",
+392 < 2       "guidance": "Use only the controls and text offered; every control the stories name belongs on the screen.",
 393 < 1       "versions": {
-394 < 1         "A": "A single calm column: what it is at the top, then the controls, then any list.",
-395 < 1         "B": "Everything grouped in one card, each text box side by side with its button.",
-396 < 1         "C": "Lists first and largest, the controls that add to them below."
+395 > 1         "A": "One calm column for the whole page: what it is at the top, then the controls, then the lists.",
+396 < 1         "B": "The whole page grouped in cards, each text box side by side with its button.",
+397 < 1         "C": "The lists first and largest on the page, the controls that add to them below."
+394 < 2         "A": "A single calm column: what it is at the top, then the controls, then any list.",
+395 < 2         "B": "Everything grouped in one card, each text box side by side with its button.",
+396 < 2         "C": "Lists first and largest, the controls that add to them below."
 397 < 1       }
 398 < 1     }
 399 < 1   }

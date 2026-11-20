@@ -23,7 +23,8 @@
 20 < 1 ID_BULLET_RE = re.compile(r'^- ([SLN]\d+):\s*(.+)$')
 21 < 1 STORE_RE = re.compile(r'^`([^`]+)`\s+sha256:([0-9a-f]{64})$')
 22 < 1 ACTION_RE = re.compile(r'^- `([^`]+)`')
-23 < 1 FILE_RE = re.compile(r'^- Create:\s*`([^`]+)`$')
+24 > 1 FILE_RE = re.compile(r'^- (?:Create|Modify):\s*`([^`]+)`$')
+23 < 2 FILE_RE = re.compile(r'^- Create:\s*`([^`]+)`$')
 24 < 1 
 25 < 1 
 26 < 1 def _blocks(lines):

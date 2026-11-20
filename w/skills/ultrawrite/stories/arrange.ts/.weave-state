@@ -1,19 +1,30 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // Jev arranges each piece's screen from what the app can do. The candidates come
-2 < 1 // from the bundle by code: every control a story's `ui` step names (a bound
-3 < 1 // DraftInput, a bound ActionButton, a list of a table's rows), a few containers,
-4 < 1 // the page title and the card's purpose. Jev only chooses and places them, through
-5 < 1 // json-render's composer, once per version of questions.json's authoring_arrange.
+2 > 1 // Jev arranges the whole page from what the app can do, before any story names a
+3 < 1 // control. The candidates come from the cards and the store by code, never from a
+4 < 1 // story's `ui` or `see`: each card action's control (a bound ActionButton or
+5 < 1 // ActionCheckbox, its words the action's `label`), each string input's DraftInput (its
+6 < 1 // words the input's `x-label`), one list per table its row actions work on, a few
+7 < 1 // containers, the page title and each card's purpose. Jev only chooses and places them,
+8 < 1 // through json-render's composer, once per version of questions.json's authoring_arrange.
+1 < 2 // Jev arranges each piece's screen from what the app can do. The candidates come
+2 < 2 // from the bundle by code: every control a story's `ui` step names (a bound
+3 < 2 // DraftInput, a bound ActionButton, a list of a table's rows), a few containers,
+4 < 2 // the page title and the card's purpose. Jev only chooses and places them, through
+5 < 2 // json-render's composer, once per version of questions.json's authoring_arrange.
 6 < 1 // The kit is the installed TinyApp's: its catalog and store, and the composer copied
 7 < 1 // to <app>/.preview/json-render/ so it shares the app's zod.
 8 < 1 //
-9 < 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <piece>]
-10 < 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --pick <V>
-11 < 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --reshape --note <text> [--note <text>...]
+10 > 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir>              writes screens/screen.<V>.json
+11 < 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --pick <V>   copies it to screens/screen.json
+12 < 1 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --reshape --note <text> [--note <text>...]
+9 < 2 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--piece <piece>]
+10 < 2 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --pick <V>
+11 < 2 //   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --piece <p> --reshape --note <text> [--note <text>...]
 13 > 1 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 12 < 2 import {copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 13 < 1 import {join, resolve} from 'node:path';
-14 < 1 import {loadBundle, type Bundle, type Card} from './bundle';
+15 > 1 import {loadBundle, type Action, type Bundle} from './bundle';
+14 < 2 import {loadBundle, type Bundle, type Card} from './bundle';
 15 < 1 import {composeEvaluator, loadQuestions} from './jev';
 16 < 1 
 17 < 1 type Json = Record<string, unknown>;
@@ -60,214 +71,290 @@
 57 < 1   return s;
 58 < 1 }
 59 < 1 
-60 < 1 /** The row argument of an action: the input property carrying x-row-of, with its table. */
-61 < 1 function rowArg(tool: Tool | undefined): {arg: string; table: string} | null {
-62 < 1   for (const [k, p] of Object.entries(tool?.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') return {arg: k, table: p['x-row-of']};
-63 < 1   return null;
-64 < 1 }
-65 < 1 
-67 > 1 /** A row that a cell of this row names: the cell (a column some action takes as a row of
-68 < 1  *  `table`), that table, and the named row's cells. */
-69 < 1 type Join = {cell: string; table: string; cells: Json};
-70 < 1 
-66 < 1 /** A row control's name with the row's string cells put back as expressions: the
-68 > 1  *  one cell it equals, or every cell it holds, longest first. Text left over that a
-69 < 1  *  joined row's cell holds is read from that row by `lookup` (#1524), the whole label
-71 > 1  *  then put together by `format`. A cell `skip` names (an id, or a column naming a row)
-72 < 1  *  is never cut out of the text: it is a key, left to the joins. */
-73 < 1 function fromRow(name: string, row: Json, joins: Join[] = [], skip: (column: string) => boolean = () => false): unknown {
-74 < 1   const strings = (o: Json) => Object.entries(o).filter(([k, v]) => typeof v === 'string' && v !== '' && !skip(k)) as [string, string][];
+60 < 2 /** The row argument of an action: the input property carrying x-row-of, with its table. */
+61 < 2 function rowArg(tool: Tool | undefined): {arg: string; table: string} | null {
+62 < 2   for (const [k, p] of Object.entries(tool?.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') return {arg: k, table: p['x-row-of']};
+63 < 2   return null;
+64 < 2 }
+65 < 2 
+68 > 1 /** A control's words, read off its card: plain text, or for a control in a row, with
+69 < 1  *  `${cell}` naming a cell of that row and `${col.cell}` a cell of the row that column
+70 < 1  *  `col` names, read by `lookup` (#1524) and put together by `format`. */
+71 < 1 function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unknown {
+72 < 1   const tokens = inRow ? [...label.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]) : [];
+73 < 1   if (!tokens.length) return label;
+74 < 1   const whole = tokens.length === 1 && label === '${' + tokens[0] + '}';
+75 < 1   if (tokens.every((t) => !t.includes('.'))) return whole ? {$item: tokens[0]} : {$template: label};
+76 < 1   const lookup = (t: string) => {
+77 < 1     const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
+78 < 1     const table = rowOf.get(by);
+79 < 1     if (!table) throw new CouldNotRun(`the words "${label}" name ${by}, which names no table's row`);
+80 < 1     return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
+81 < 1   };
+82 < 1   if (whole) return lookup(tokens[0]);
+83 < 1   const args: Json = {template: label};
+84 < 1   for (const t of tokens) args[t] ??= t.includes('.') ? lookup(t) : {$item: t};
+67 > 2 /** A row that a cell of this row names: the cell (a column some action takes as a row of
+68 < 2  *  `table`), that table, and the named row's cells. */
+69 < 2 type Join = {cell: string; table: string; cells: Json};
+70 < 2 
+66 < 2 /** A row control's name with the row's string cells put back as expressions: the
+68 > 2  *  one cell it equals, or every cell it holds, longest first. Text left over that a
+69 < 2  *  joined row's cell holds is read from that row by `lookup` (#1524), the whole label
+71 > 2  *  then put together by `format`. A cell `skip` names (an id, or a column naming a row)
+72 < 2  *  is never cut out of the text: it is a key, left to the joins. */
+73 < 2 function fromRow(name: string, row: Json, joins: Join[] = [], skip: (column: string) => boolean = () => false): unknown {
+74 < 2   const strings = (o: Json) => Object.entries(o).filter(([k, v]) => typeof v === 'string' && v !== '' && !skip(k)) as [string, string][];
 70 < 2  *  then put together by `format`. */
 71 < 2 function fromRow(name: string, row: Json, joins: Join[] = []): unknown {
 72 < 2   const strings = (o: Json) => Object.entries(o).filter(([, v]) => typeof v === 'string' && v !== '') as [string, string][];
-73 < 1   const cells = strings(row);
+73 < 2   const cells = strings(row);
 67 < 2  *  one cell it equals, or every cell it holds, longest first. */
 68 < 2 function fromRow(name: string, row: Json): unknown {
 69 < 2   const cells = Object.entries(row).filter(([, v]) => typeof v === 'string' && v !== '') as [string, string][];
-70 < 1   const exact = cells.find(([, v]) => v === name);
-71 < 1   if (exact) return {$item: exact[0]};
-72 < 1   // Text and inserted expressions alternate; only text is searched, so no cell lands inside a ${...}.
-74 > 1   type Part = {text: string; cell?: string; join?: {by: string; table: string; column: string}};
-75 < 1   let parts: Part[] = [{text: name}];
-76 < 1   const cut = (v: string, part: Omit<Part, 'text'>) =>
-77 < 1     (parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', ...part}, {text: t}] : [{text: t}])))));
-78 < 1   for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length)) cut(v, {cell: k});
-79 < 1   const joined = joins.flatMap((j) => strings(j.cells).map(([column, v]) => ({v, by: j.cell, table: j.table, column})));
-80 < 1   for (const j of joined.sort((a, b) => b.v.length - a.v.length)) cut(j.v, {cell: `${j.by}.${j.column}`, join: j});
+70 < 2   const exact = cells.find(([, v]) => v === name);
+71 < 2   if (exact) return {$item: exact[0]};
+72 < 2   // Text and inserted expressions alternate; only text is searched, so no cell lands inside a ${...}.
+74 > 2   type Part = {text: string; cell?: string; join?: {by: string; table: string; column: string}};
+75 < 2   let parts: Part[] = [{text: name}];
+76 < 2   const cut = (v: string, part: Omit<Part, 'text'>) =>
+77 < 2     (parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', ...part}, {text: t}] : [{text: t}])))));
+78 < 2   for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length)) cut(v, {cell: k});
+79 < 2   const joined = joins.flatMap((j) => strings(j.cells).map(([column, v]) => ({v, by: j.cell, table: j.table, column})));
+80 < 2   for (const j of joined.sort((a, b) => b.v.length - a.v.length)) cut(j.v, {cell: `${j.by}.${j.column}`, join: j});
 73 < 2   let parts: {text: string; cell?: string}[] = [{text: name}];
 74 < 2   for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length))
 75 < 2     parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', cell: k}, {text: t}] : [{text: t}]))));
-76 < 1   if (!parts.some((p) => p.cell !== undefined)) return name;
-78 > 1   const template = parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('');
-79 < 1   if (!parts.some((p) => p.join)) return {$template: template};
-80 < 1   const lookup = (j: NonNullable<Part['join']>) => ({$computed: 'lookup', args: {rows: {$state: LIST(j.table)}, id: {$item: j.by}, column: j.column}});
-81 < 1   const used = parts.filter((p) => p.cell !== undefined);
-82 < 1   if (used.length === 1 && used[0].join && template === '${' + used[0].cell + '}') return lookup(used[0].join);
-83 < 1   const args: Json = {template};
-84 < 1   for (const p of used) args[p.cell!] = p.join ? lookup(p.join) : {$item: p.cell};
+76 < 2   if (!parts.some((p) => p.cell !== undefined)) return name;
+78 > 2   const template = parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('');
+79 < 2   if (!parts.some((p) => p.join)) return {$template: template};
+80 < 2   const lookup = (j: NonNullable<Part['join']>) => ({$computed: 'lookup', args: {rows: {$state: LIST(j.table)}, id: {$item: j.by}, column: j.column}});
+81 < 2   const used = parts.filter((p) => p.cell !== undefined);
+82 < 2   if (used.length === 1 && used[0].join && template === '${' + used[0].cell + '}') return lookup(used[0].join);
+83 < 2   const args: Json = {template};
+84 < 2   for (const p of used) args[p.cell!] = p.join ? lookup(p.join) : {$item: p.cell};
 85 < 1   return {$computed: 'format', args};
 77 < 2   return {$template: parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('')};
 78 < 1 }
 79 < 1 
-80 < 1 /** Every candidate for one card, walking each story on a fresh store. A text box typed
-81 < 1  *  for a row action sits in that row; after the walk, each control a story sees but never
-82 < 1  *  uses, and each card action still without one, gets a control of its own. */
-83 < 1 function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
+82 > 2 type CardAction = Action;
+81 > 2 type CardAction = Card['actions'][number] & {label?: string; control?: string};
+82 < 1 type Props = Record<string, {type?: string; 'x-row-of'?: string; 'x-label'?: string}>;
+84 > 1 const propsOf = (a: Action): Props => ((a.inputSchema as {properties?: Props})?.properties ?? {});
+83 < 2 const propsOf = (a: CardAction): Props => ((a.inputSchema as {properties?: Props})?.properties ?? {});
+84 < 1 
+85 < 1 /** Every candidate for the whole page, from the cards and the store alone: each card's
+86 < 1  *  actions, a row action (an input carrying x-row-of) a control inside the one list of its
+87 < 1  *  table, whichever piece owns it, any other action a control outside the lists, and each
+88 < 1  *  string input that is not a row a text box writing /draft/<input>. */
+89 < 1 function candidatesFor(b: Bundle, kit: Kit): Pieces {
+80 < 2 /** Every candidate for one card, walking each story on a fresh store. A text box typed
+81 < 2  *  for a row action sits in that row; after the walk, each control a story sees but never
+82 < 2  *  uses, and each card action still without one, gets a control of its own. */
+83 < 2 function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
 84 < 1   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
-85 < 1   const mine = new Set(card.actions.map((a) => a.name));
-86 < 1   const describe = (name: string) => tools.get(name)?.description ?? card.actions.find((a) => a.name === name)?.description ?? '';
-87 < 1   const drafts = new Map<string, {k: string; name: string; example?: string}[]>();
-88 < 1   const rowDrafts = new Map<string, string[]>();
-89 < 1   const buttons: {name: string; action: string}[] = [];
-90 < 1   const lists = new Map<string, {table: string; controls: RowControl[]}>();
-91 < 1   const named = new Set<string>();
-93 > 1   const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json; joins: Join[]}[] = [];
+88 > 1   const actions = b.cards.flatMap((c) => c.actions);
+87 > 2   const actions = b.cards.flatMap((c) => c.actions as Action[]);
+86 > 2   const actions = b.cards.flatMap((c) => c.actions as CardAction[]);
+88 > 1   const describe = (a: Action) => tools.get(a.name)?.description ?? a.description ?? '';
+87 < 2   const describe = (a: CardAction) => tools.get(a.name)?.description ?? a.description ?? '';
+85 < 2   const mine = new Set(card.actions.map((a) => a.name));
+86 < 2   const describe = (name: string) => tools.get(name)?.description ?? card.actions.find((a) => a.name === name)?.description ?? '';
+87 < 2   const drafts = new Map<string, {k: string; name: string; example?: string}[]>();
+88 < 2   const rowDrafts = new Map<string, string[]>();
+89 < 2   const buttons: {name: string; action: string}[] = [];
+90 < 2   const lists = new Map<string, {table: string; controls: RowControl[]}>();
+91 < 2   const named = new Set<string>();
+93 > 2   const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json; joins: Join[]}[] = [];
 94 < 1   // a column some action takes as a row of a table, by name: a tag's todoId names a todo
 95 < 1   const rowOf = new Map<string, string>();
-96 < 1   for (const t of kit.TOOLS) for (const [k, p] of Object.entries(t.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
-98 > 1   const isKey = (column: string) => column === 'id' || rowOf.has(column);
-97 < 1   const joinsOf = (store: any, table: string, cells: Json): Join[] =>
-98 < 1     Object.entries(cells).flatMap(([k, v]) => {
-99 < 1       const other = rowOf.get(k);
-100 < 1       const named = other && other !== table && typeof v === 'string' ? store.getRow(other, v) : undefined;
-101 < 1       return named && Object.keys(named).length ? [{cell: k, table: other!, cells: named as Json}] : [];
-102 < 1     });
+97 > 1   for (const a of actions) for (const [k, p] of Object.entries(propsOf(a))) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
+99 > 1   const rowArgOf = (a: Action) => {
+98 < 2   const rowArgOf = (a: CardAction) => {
+99 < 1     const e = Object.entries(propsOf(a)).find(([, p]) => typeof p['x-row-of'] === 'string');
+100 < 1     return e ? {arg: e[0], table: e[1]['x-row-of']!} : null;
+101 < 1   };
+103 > 1   const textsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => p.type === 'string' && typeof p['x-row-of'] !== 'string').map(([k, p]) => ({k, label: p['x-label'] ?? k}));
+102 < 2   const textsOf = (a: CardAction) => Object.entries(propsOf(a)).filter(([, p]) => p.type === 'string' && typeof p['x-row-of'] !== 'string').map(([k, p]) => ({k, label: p['x-label'] ?? k}));
+96 < 2   for (const t of kit.TOOLS) for (const [k, p] of Object.entries(t.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
+98 > 2   const isKey = (column: string) => column === 'id' || rowOf.has(column);
+97 < 2   const joinsOf = (store: any, table: string, cells: Json): Join[] =>
+98 < 2     Object.entries(cells).flatMap(([k, v]) => {
+99 < 2       const other = rowOf.get(k);
+100 < 2       const named = other && other !== table && typeof v === 'string' ? store.getRow(other, v) : undefined;
+101 < 2       return named && Object.keys(named).length ? [{cell: k, table: other!, cells: named as Json}] : [];
+102 < 2     });
 92 < 2   const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json}[] = [];
 94 > 1   // makeStore gives the same schema every time
 95 < 1   const schema: Record<string, Record<string, {type?: string}>> = JSON.parse(kit.makeStore().getTablesSchemaJson?.() ?? '{}');
-96 < 1   // the tables each action changed when the stories ran it
+97 > 1   // An input two actions type into gets a draft of its own per action; any other keeps /draft/<input>.
+98 < 1   const typers = new Map<string, Set<string>>();
+99 < 1   for (const a of actions) for (const {k} of textsOf(a)) typers.set(k, (typers.get(k) ?? new Set()).add(a.name));
+100 < 1   const draftKey = (action: string, k: string) => ((typers.get(k)?.size ?? 0) > 1 ? `${action}.${k}` : k);
+101 < 1   const lists = new Map<string, {table: string; controls: RowControl[]}>();
+96 < 2   // the tables each action changed when the stories ran it
 97 < 1   const writes = new Map<string, string[]>();
 93 < 2   let schema: Record<string, Record<string, {type?: string}>> = {};
-94 < 1   const listOf = (table: string) => {
-95 < 1     const l = lists.get(table) ?? {table, controls: []};
-96 < 1     lists.set(table, l);
-97 < 1     return l;
-98 < 1   };
-100 > 1   const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string, joins: Join[] = []): RowControl => {
-102 > 1     const control: RowControl = {type, name, action, arg, label: fromRow(name, cells, joins, isKey), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
+95 > 1   const fields = new Map<string, string[]>();
+96 < 1   const required: Candidate[] = [];
+97 < 1   let buttons = 0;
+98 < 1   for (const card of b.cards)
+101 > 1     for (const a of card.actions) {
+100 > 2     for (const a of card.actions as Action[]) {
+99 < 2     for (const a of card.actions as CardAction[]) {
+100 < 1       const row = rowArgOf(a);
+101 < 1       const texts = textsOf(a);
+102 < 1       const words = a.label ?? a.description;
+103 < 1       const args: Json = Object.fromEntries(texts.map(({k}) => [k, {$state: `/draft/${draftKey(a.name, k)}`}]));
+104 < 1       if (row) {
+105 < 1         const l = lists.get(row.table) ?? {table: row.table, controls: []};
+106 < 1         lists.set(row.table, l);
+107 < 1         for (const {k, label} of texts)
+108 < 1           l.controls.push({type: 'DraftInput', name: label, action: a.name, arg: row.arg, draft: draftKey(a.name, k), label: wordsOf(label, rowOf, true), description: `a text box "${label}", where you type the ${k} for ${a.name}`});
+109 < 1         const type = a.control === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
+110 < 1         const control: RowControl = {type, name: words, action: a.name, arg: row.arg, label: wordsOf(words, rowOf, true), args: {[row.arg]: {$item: 'id'}, ...args}, description: `${type === 'ActionCheckbox' ? 'a checkbox' : 'a button'} "${words}" (${describe(a)})`};
+111 < 1         if (type === 'ActionCheckbox') {
+112 < 1           const flag = Object.keys(schema[row.table] ?? {}).find((c) => schema[row.table][c]?.type === 'boolean');
+113 < 1           if (flag) control.checked = {$item: flag};
+94 < 2   const listOf = (table: string) => {
+95 < 2     const l = lists.get(table) ?? {table, controls: []};
+96 < 2     lists.set(table, l);
+97 < 2     return l;
+98 < 2   };
+100 > 2   const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string, joins: Join[] = []): RowControl => {
+102 > 2     const control: RowControl = {type, name, action, arg, label: fromRow(name, cells, joins, isKey), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
 101 < 2     const control: RowControl = {type, name, action, arg, label: fromRow(name, cells, joins), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
 99 < 2   const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string): RowControl => {
 100 < 2     const control: RowControl = {type, name, action, arg, label: fromRow(name, cells), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
-101 < 1     if (type === 'ActionCheckbox') {
-102 < 1       const flag = Object.keys(schema[table] ?? {}).find((c) => schema[table][c]?.type === 'boolean');
-103 < 1       if (flag) control.checked = {$item: flag};
-104 < 1     }
-105 < 1     return control;
-106 < 1   };
-107 < 1   for (const story of b.page.stories) {
-108 < 1     const store = kit.makeStore();
+101 < 2     if (type === 'ActionCheckbox') {
+102 < 2       const flag = Object.keys(schema[table] ?? {}).find((c) => schema[table][c]?.type === 'boolean');
+103 < 2       if (flag) control.checked = {$item: flag};
+104 < 2     }
+105 < 2     return control;
+106 < 2   };
+107 < 2   for (const story of b.page.stories) {
+108 < 2     const store = kit.makeStore();
 109 < 2     schema = JSON.parse(store.getTablesSchemaJson?.() ?? '{}');
-110 < 1     for (const step of story.steps) {
-111 < 1       const tool = tools.get(step.tool);
-112 < 1       const args = (step.args ?? {}) as Json;
-113 < 1       for (const u of step.ui ?? []) named.add('type' in u ? u.type.name : u.click.name);
-114 < 1       if (mine.has(step.tool)) {
-115 < 1         const row = rowArg(tool);
-116 < 1         const cells = (row ? store.getRow(row.table, String(args[row.arg])) ?? {} : {}) as Json;
-118 > 1         const joins = row ? joinsOf(store, row.table, cells) : [];
-117 < 1         for (const u of step.ui ?? []) {
-118 < 1           if ('type' in u && u.type.role === 'textbox') {
-119 < 1             const k = Object.keys(args).find((x) => args[x] === u.type.text);
-120 < 1             if (!k) continue;
-121 < 1             const text = typeof u.type.text === 'string' && u.type.text !== '' ? u.type.text : undefined;
-122 < 1             if (row) {
-123 < 1               const l = listOf(row.table);
-124 < 1               const had = l.controls.find((c) => c.type === 'DraftInput' && c.action === step.tool && c.draft === k);
-125 < 1               if (had) {
-126 < 1                 if (had.example === undefined && text !== undefined) had.example = text;
-127 < 1                 continue;
-128 < 1               }
-131 > 1               const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells, joins, isKey), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
+110 < 2     for (const step of story.steps) {
+111 < 2       const tool = tools.get(step.tool);
+112 < 2       const args = (step.args ?? {}) as Json;
+113 < 2       for (const u of step.ui ?? []) named.add('type' in u ? u.type.name : u.click.name);
+114 < 2       if (mine.has(step.tool)) {
+115 < 2         const row = rowArg(tool);
+116 < 2         const cells = (row ? store.getRow(row.table, String(args[row.arg])) ?? {} : {}) as Json;
+118 > 2         const joins = row ? joinsOf(store, row.table, cells) : [];
+117 < 2         for (const u of step.ui ?? []) {
+118 < 2           if ('type' in u && u.type.role === 'textbox') {
+119 < 2             const k = Object.keys(args).find((x) => args[x] === u.type.text);
+120 < 2             if (!k) continue;
+121 < 2             const text = typeof u.type.text === 'string' && u.type.text !== '' ? u.type.text : undefined;
+122 < 2             if (row) {
+123 < 2               const l = listOf(row.table);
+124 < 2               const had = l.controls.find((c) => c.type === 'DraftInput' && c.action === step.tool && c.draft === k);
+125 < 2               if (had) {
+126 < 2                 if (had.example === undefined && text !== undefined) had.example = text;
+127 < 2                 continue;
+128 < 2               }
+131 > 2               const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells, joins, isKey), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
 130 > 2               const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells, joins), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
 129 < 2               const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
-130 < 1               const button = l.controls.findIndex((c) => c.type === 'ActionButton' && c.action === step.tool);
-131 < 1               l.controls.splice(button < 0 ? l.controls.length : button, 0, control);
-132 < 1               rowDrafts.set(step.tool, [...(rowDrafts.get(step.tool) ?? []), k]);
-133 < 1               continue;
-134 < 1             }
-135 < 1             const list = drafts.get(step.tool) ?? [];
-136 < 1             const had = list.find((d) => d.k === k);
-137 < 1             if (!had) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
-138 < 1             else if (had.example === undefined && text !== undefined) had.example = text;
-139 < 1             drafts.set(step.tool, list);
-140 < 1           } else if ('click' in u && (u.click.role === 'button' || u.click.role === 'checkbox')) {
-141 < 1             const name = u.click.name;
-142 < 1             if (!row) {
-143 < 1               if (u.click.role === 'button' && !buttons.some((x) => x.name === name && x.action === step.tool)) buttons.push({name, action: step.tool});
-144 < 1               continue;
-145 < 1             }
-146 < 1             const l = listOf(row.table);
-147 < 1             const type = u.click.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
-148 < 1             if (l.controls.some((c) => c.type === type && c.action === step.tool)) continue;
-150 > 1             l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role, joins));
+130 < 2               const button = l.controls.findIndex((c) => c.type === 'ActionButton' && c.action === step.tool);
+131 < 2               l.controls.splice(button < 0 ? l.controls.length : button, 0, control);
+132 < 2               rowDrafts.set(step.tool, [...(rowDrafts.get(step.tool) ?? []), k]);
+133 < 2               continue;
+134 < 2             }
+135 < 2             const list = drafts.get(step.tool) ?? [];
+136 < 2             const had = list.find((d) => d.k === k);
+137 < 2             if (!had) list.push({k, name: u.type.name, ...(text === undefined ? {} : {example: text})});
+138 < 2             else if (had.example === undefined && text !== undefined) had.example = text;
+139 < 2             drafts.set(step.tool, list);
+140 < 2           } else if ('click' in u && (u.click.role === 'button' || u.click.role === 'checkbox')) {
+141 < 2             const name = u.click.name;
+142 < 2             if (!row) {
+143 < 2               if (u.click.role === 'button' && !buttons.some((x) => x.name === name && x.action === step.tool)) buttons.push({name, action: step.tool});
+144 < 2               continue;
+145 < 2             }
+146 < 2             const l = listOf(row.table);
+147 < 2             const type = u.click.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
+148 < 2             if (l.controls.some((c) => c.type === type && c.action === step.tool)) continue;
+150 > 2             l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role, joins));
 149 < 2             l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role));
-150 < 1           }
+150 < 2           }
 151 < 1         }
-152 < 1       }
-154 > 1       const before = store.getTables() as Record<string, unknown>;
-153 < 1       tool?.run(store, args, step.as ?? null);
-155 > 1       const after = store.getTables() as Record<string, unknown>;
-156 < 1       for (const t of new Set([...Object.keys(before), ...Object.keys(after)]))
-157 < 1         if (JSON.stringify(before[t]) !== JSON.stringify(after[t]) && !(writes.get(step.tool) ?? []).includes(t)) writes.set(step.tool, [...(writes.get(step.tool) ?? []), t]);
-154 < 1       for (const see of step.see ?? []) {
-155 < 1         if ((see.role !== 'button' && see.role !== 'checkbox') || !((see.count ?? 0) > 0) || seen.some((x) => x.name === see.name)) continue;
-156 < 1         let best: {table: string; cells: Json; length: number} | undefined;
-157 < 1         for (const [table, rows] of Object.entries(store.getTables() as Record<string, Record<string, Json>>))
-158 < 1           for (const cells of Object.values(rows))
-160 > 1             for (const [k, v] of Object.entries(cells))
-161 < 1               if (!isKey(k) && typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
+153 > 1         l.controls.push(control);
+152 < 2       }
+154 > 2       const before = store.getTables() as Record<string, unknown>;
+153 < 2       tool?.run(store, args, step.as ?? null);
+155 > 2       const after = store.getTables() as Record<string, unknown>;
+156 < 2       for (const t of new Set([...Object.keys(before), ...Object.keys(after)]))
+157 < 2         if (JSON.stringify(before[t]) !== JSON.stringify(after[t]) && !(writes.get(step.tool) ?? []).includes(t)) writes.set(step.tool, [...(writes.get(step.tool) ?? []), t]);
+154 < 2       for (const see of step.see ?? []) {
+155 < 2         if ((see.role !== 'button' && see.role !== 'checkbox') || !((see.count ?? 0) > 0) || seen.some((x) => x.name === see.name)) continue;
+156 < 2         let best: {table: string; cells: Json; length: number} | undefined;
+157 < 2         for (const [table, rows] of Object.entries(store.getTables() as Record<string, Record<string, Json>>))
+158 < 2           for (const cells of Object.values(rows))
+160 > 2             for (const [k, v] of Object.entries(cells))
+161 < 2               if (!isKey(k) && typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
 159 < 2             for (const v of Object.values(cells))
 160 < 2               if (typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
-162 > 1         if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells, joins: joinsOf(store, best.table, best.cells)});
+162 > 2         if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells, joins: joinsOf(store, best.table, best.cells)});
 161 < 2         if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells});
-162 < 1       }
-163 < 1     }
-164 < 1   }
-165 < 1   const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.type !== 'DraftInput' && c.action === action));
-166 < 1   for (const t of seen) {
-167 < 1     if (named.has(t.name)) continue;
-168 < 1     const action = card.actions.find((a) => {
-169 < 1       const row = rowArg(tools.get(a.name));
-170 < 1       return row?.table === t.table && Object.keys(tools.get(a.name)?.inputSchema?.properties ?? {}).length === 1 && !controlled(a.name);
-171 < 1     });
-172 < 1     if (!action) continue;
-173 < 1     const row = rowArg(tools.get(action.name))!;
-175 > 1     listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role, t.joins));
+162 < 2       }
+163 < 2     }
+164 < 2   }
+165 < 2   const controlled = (action: string) => buttons.some((x) => x.action === action) || [...lists.values()].some((l) => l.controls.some((c) => c.type !== 'DraftInput' && c.action === action));
+166 < 2   for (const t of seen) {
+167 < 2     if (named.has(t.name)) continue;
+168 < 2     const action = card.actions.find((a) => {
+169 < 2       const row = rowArg(tools.get(a.name));
+170 < 2       return row?.table === t.table && Object.keys(tools.get(a.name)?.inputSchema?.properties ?? {}).length === 1 && !controlled(a.name);
+171 < 2     });
+172 < 2     if (!action) continue;
+173 < 2     const row = rowArg(tools.get(action.name))!;
+175 > 2     listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role, t.joins));
 174 < 2     listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role));
-175 < 1   }
-176 < 1   for (const a of card.actions) {
-177 < 1     if (controlled(a.name)) continue;
-178 < 1     const row = rowArg(tools.get(a.name));
-179 < 1     if (row) listOf(row.table).controls.push(rowControl('ActionButton', a.description, a.name, row.arg, row.table, {}, 'button'));
-180 < 1     else buttons.push({name: a.description, action: a.name});
-181 < 1   }
-183 > 1   // A field two actions type into gets a draft of its own per action; any other keeps /draft/<field>.
-184 < 1   const typers = new Map<string, Set<string>>();
-185 < 1   for (const [action, ks] of [...[...drafts].map(([a, ds]) => [a, ds.map((d) => d.k)] as const), ...rowDrafts]) for (const k of ks) typers.set(k, (typers.get(k) ?? new Set()).add(action));
-186 < 1   const draftKey = (action: string, k: string) => ((typers.get(k)?.size ?? 0) > 1 ? `${action}.${k}` : k);
-182 < 1   for (const l of lists.values())
-183 < 1     for (const c of l.controls) {
-185 > 1       if (c.type === 'DraftInput') {
-186 < 1         c.draft = draftKey(c.action, c.draft!);
+175 < 2   }
+176 < 2   for (const a of card.actions) {
+177 < 2     if (controlled(a.name)) continue;
+178 < 2     const row = rowArg(tools.get(a.name));
+179 < 2     if (row) listOf(row.table).controls.push(rowControl('ActionButton', a.description, a.name, row.arg, row.table, {}, 'button'));
+180 < 2     else buttons.push({name: a.description, action: a.name});
+181 < 2   }
+183 > 2   // A field two actions type into gets a draft of its own per action; any other keeps /draft/<field>.
+184 < 2   const typers = new Map<string, Set<string>>();
+185 < 2   for (const [action, ks] of [...[...drafts].map(([a, ds]) => [a, ds.map((d) => d.k)] as const), ...rowDrafts]) for (const k of ks) typers.set(k, (typers.get(k) ?? new Set()).add(action));
+186 < 2   const draftKey = (action: string, k: string) => ((typers.get(k)?.size ?? 0) > 1 ? `${action}.${k}` : k);
+182 < 2   for (const l of lists.values())
+183 < 2     for (const c of l.controls) {
+185 > 2       if (c.type === 'DraftInput') {
+186 < 2         c.draft = draftKey(c.action, c.draft!);
 187 < 1         continue;
 188 < 1       }
 184 < 2       if (c.type === 'DraftInput') continue;
-185 < 1       c.args = {[c.arg]: {$item: 'id'}};
-187 > 1       if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${draftKey(c.action, k)}`};
+186 > 1       for (const {k, label} of texts)
+187 < 1         required.push({id: `input_${a.name}_${k}`, root: false, description: `The text box "${label}", where you type the ${k} for ${a.name}: ${describe(a)}`, element: {type: 'DraftInput', props: {label, value: {$bindState: `/draft/${draftKey(a.name, k)}`}}}});
+188 < 1       if (texts.length) fields.set(a.name, texts.map(({k}) => draftKey(a.name, k)));
+189 < 1       // a whole-list action changes the tables of its card
+190 < 1       writes.set(a.name, Object.keys(card.state?.tables ?? {}));
+191 < 1       const props: Json = {label: words, action: a.name};
+192 < 1       if (texts.length) props.args = args;
+193 < 1       required.push({id: `button_${buttons++}`, root: false, description: `The button "${words}": ${describe(a)}`, element: {type: 'ActionButton', props}});
+185 < 2       c.args = {[c.arg]: {$item: 'id'}};
+187 > 2       if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${draftKey(c.action, k)}`};
 186 < 2       if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${k}`};
 187 < 1     }
-188 < 1   const required: Candidate[] = [];
-189 < 1   for (const [action, ds] of drafts)
-190 < 1     for (const d of ds)
-192 > 1       required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, ...(d.example === undefined ? {} : {placeholder: d.example}), value: {$bindState: `/draft/${draftKey(action, d.k)}`}}}});
+188 < 2   const required: Candidate[] = [];
+189 < 2   for (const [action, ds] of drafts)
+190 < 2     for (const d of ds)
+192 > 2       required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, ...(d.example === undefined ? {} : {placeholder: d.example}), value: {$bindState: `/draft/${draftKey(action, d.k)}`}}}});
 191 < 2       required.push({id: `input_${action}_${d.k}`, root: false, description: `The text box "${d.name}", where you type the ${d.k} for ${action}: ${describe(action)}`, element: {type: 'DraftInput', props: {label: d.name, ...(d.example === undefined ? {} : {placeholder: d.example}), value: {$bindState: `/draft/${d.k}`}}}});
-192 < 1   for (const [i, x] of buttons.entries()) {
-193 < 1     const ds = drafts.get(x.action) ?? [];
-194 < 1     const props: Json = {label: x.name, action: x.action};
-196 > 1     if (ds.length) props.args = Object.fromEntries(ds.map((d) => [d.k, {$state: `/draft/${draftKey(x.action, d.k)}`}]));
+192 < 2   for (const [i, x] of buttons.entries()) {
+193 < 2     const ds = drafts.get(x.action) ?? [];
+194 < 2     const props: Json = {label: x.name, action: x.action};
+196 > 2     if (ds.length) props.args = Object.fromEntries(ds.map((d) => [d.k, {$state: `/draft/${draftKey(x.action, d.k)}`}]));
 195 < 2     if (ds.length) props.args = Object.fromEntries(ds.map((d) => [d.k, {$state: `/draft/${d.k}`}]));
-196 < 1     required.push({id: `button_${i}`, root: false, description: `The button "${x.name}": ${describe(x.action)}`, element: {type: 'ActionButton', props}});
-197 < 1   }
+196 < 2     required.push({id: `button_${i}`, root: false, description: `The button "${x.name}": ${describe(x.action)}`, element: {type: 'ActionButton', props}});
+197 < 2   }
 198 < 1   for (const l of lists.values())
 199 < 1     required.push({id: `list_${l.table}`, root: false, description: `The list of ${l.table}, one line per entry, each with ${l.controls.map((c) => c.description).join(', ')}`, element: {type: 'Separator', props: {}, visible: {$state: LIST(l.table)}}});
 200 < 1   const candidates: Candidate[] = [
@@ -275,10 +362,11 @@
 202 < 1     {id: 'stack', maxUses: 3, description: 'A column: its children one above the other', element: {type: 'Stack', props: {gap: 3}}},
 203 < 1     {id: 'row', maxUses: 3, root: false, description: 'A row: its children side by side', element: {type: 'Row', props: {gap: 2, align: 'center'}}},
 204 < 1     {id: 'title', root: false, description: `The page title "${b.page.title}" as a heading`, element: {type: 'Heading', props: {text: b.page.title, level: 1}}},
-205 < 1     {id: 'purpose', root: false, description: `What it is for, in muted text: "${card.purpose}"`, element: {type: 'Text', props: {text: card.purpose, muted: true}}},
+206 > 1     ...b.cards.map((c): Candidate => ({id: `purpose_${c.piece}`, root: false, description: `What the ${c.piece} piece is for, in muted text: "${c.purpose}"`, element: {type: 'Text', props: {text: c.purpose, muted: true}}})),
+205 < 2     {id: 'purpose', root: false, description: `What it is for, in muted text: "${card.purpose}"`, element: {type: 'Text', props: {text: card.purpose, muted: true}}},
 206 < 1     ...required,
 207 < 1   ];
-209 > 1   const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => draftKey(action, d.k))]));
+209 > 2   const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => draftKey(action, d.k))]));
 210 < 1   return {candidates, required, lists, fields, writes};
 208 < 2   const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => d.k)]));
 209 < 2   return {candidates, required, lists, fields};
@@ -356,7 +444,8 @@
 279 < 1 }
 280 < 1 
 281 < 1 /** The order a person uses the screen, by code (#1510). An action's text boxes, in the
-282 < 1  *  order the stories type into them, sit directly before its button, gathered where the
+283 > 1  *  order its card lists the inputs, sit directly before its button, gathered where the
+282 < 2  *  order the stories type into them, sit directly before its button, gathered where the
 284 > 1  *  first box sits. A whole-list button (no args) sits just below its list (the list of
 285 < 1  *  the one table its action changed; with one list on the screen, that one), unless it,
 286 < 1  *  or the wrapper holding only it, is already right beside the list. Anything already in
@@ -433,15 +522,17 @@
 346 < 1   return done;
 347 < 1 }
 348 < 1 
-349 < 1 function cardsOf(b: Bundle, piece?: string): Card[] {
-350 < 1   const cards = b.cards.filter((c) => !piece || c.piece === piece);
-351 < 1   if (!cards.length) throw new CouldNotRun(`the bundle has no piece ${piece}`);
-352 < 1   return cards;
-353 < 1 }
-354 < 1 
+349 < 2 function cardsOf(b: Bundle, piece?: string): Card[] {
+350 < 2   const cards = b.cards.filter((c) => !piece || c.piece === piece);
+351 < 2   if (!cards.length) throw new CouldNotRun(`the bundle has no piece ${piece}`);
+352 < 2   return cards;
+353 < 2 }
+354 < 2 
 355 < 1 const contextOf = (b: Bundle) => ({app: b.page.title, stories: b.page.stories.map((s) => s.sentence)});
 356 < 1 
-357 < 1 export async function arrange(opts: {bundle: string; app: string; piece?: string; evaluate: Evaluator}) {
+358 > 1 /** The whole page in each version of authoring_arrange: every version kept, or dropped with why. */
+359 < 1 export async function arrange(opts: {bundle: string; app: string; evaluate: Evaluator}): Promise<{versions: Record<string, Spec>; dropped: Record<string, string>; calls: number}> {
+357 < 2 export async function arrange(opts: {bundle: string; app: string; piece?: string; evaluate: Evaluator}) {
 358 < 1   const b = loadBundle(opts.bundle);
 359 < 1   const kit = await loadKit(opts.app);
 360 < 1   const set = arrangeSet();
@@ -450,39 +541,60 @@
 363 < 1     calls++;
 364 < 1     return opts.evaluate(r);
 365 < 1   };
-366 < 1   const versions: Record<string, Record<string, Spec>> = {};
-367 < 1   const dropped: Record<string, Record<string, string>> = {};
-368 < 1   for (const card of cardsOf(b, opts.piece)) {
-370 > 1     const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
+367 > 1   const versions: Record<string, Spec> = {};
+368 < 1   const dropped: Record<string, string> = {};
+369 < 1   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
+370 < 1   const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
+371 < 1   const results = await Promise.all(
+372 < 1     Object.entries(set.versions).map(async ([v, sentence]) => {
+373 < 1       const prompt = [...b.page.summary, ...b.cards.map((c) => c.purpose), sentence].join(' ');
+374 < 1       let {spec} = await lastSpec(kit.compose({...common, prompt}));
+375 < 1       let left = missing(spec, required);
+376 < 1       if (spec && left.length) {
+377 < 1         spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
+378 < 1         left = missing(spec, required);
+379 < 1       }
+380 < 1       return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
+381 < 1     }),
+382 < 1   );
+383 < 1   for (const [v, r] of results) {
+384 < 1     if ('spec' in r) versions[v] = r.spec;
+385 < 1     else dropped[v] = r.why;
+366 < 2   const versions: Record<string, Record<string, Spec>> = {};
+367 < 2   const dropped: Record<string, Record<string, string>> = {};
+368 < 2   for (const card of cardsOf(b, opts.piece)) {
+370 > 2     const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
 369 < 2     const {candidates, required, lists, fields} = candidatesFor(b, card, kit);
-370 < 1     const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
-371 < 1     const results = await Promise.all(
-372 < 1       Object.entries(set.versions).map(async ([v, sentence]) => {
-373 < 1         const prompt = [...b.page.summary, card.purpose, sentence].join(' ');
-374 < 1         let {spec} = await lastSpec(kit.compose({...common, prompt}));
-375 < 1         let left = missing(spec, required);
-376 < 1         if (spec && left.length) {
-377 < 1           spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
-378 < 1           left = missing(spec, required);
-379 < 1         }
-381 > 1         return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
+370 < 2     const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
+371 < 2     const results = await Promise.all(
+372 < 2       Object.entries(set.versions).map(async ([v, sentence]) => {
+373 < 2         const prompt = [...b.page.summary, card.purpose, sentence].join(' ');
+374 < 2         let {spec} = await lastSpec(kit.compose({...common, prompt}));
+375 < 2         let left = missing(spec, required);
+376 < 2         if (spec && left.length) {
+377 < 2           spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
+378 < 2           left = missing(spec, required);
+379 < 2         }
+381 > 2         return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
 380 < 2         return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields)}] as const;
-381 < 1       }),
-382 < 1     );
-383 < 1     for (const [v, r] of results) {
-384 < 1       if ('spec' in r) (versions[card.piece] ??= {})[v] = r.spec;
-385 < 1       else (dropped[card.piece] ??= {})[v] = r.why;
-386 < 1     }
+381 < 2       }),
+382 < 2     );
+383 < 2     for (const [v, r] of results) {
+384 < 2       if ('spec' in r) (versions[card.piece] ??= {})[v] = r.spec;
+385 < 2       else (dropped[card.piece] ??= {})[v] = r.why;
+386 < 2     }
 387 < 1   }
 388 < 1   return {versions, dropped, calls};
 389 < 1 }
 390 < 1 
-391 < 1 export async function reshape(opts: {bundle: string; app: string; piece: string; spec: Spec; notes: string[]; evaluate: Evaluator}) {
+392 > 1 export async function reshape(opts: {bundle: string; app: string; spec: Spec; notes: string[]; evaluate: Evaluator}) {
+391 < 2 export async function reshape(opts: {bundle: string; app: string; piece: string; spec: Spec; notes: string[]; evaluate: Evaluator}) {
 392 < 1   const b = loadBundle(opts.bundle);
 393 < 1   const kit = await loadKit(opts.app);
 394 < 1   const set = arrangeSet();
-395 < 1   const [card] = cardsOf(b, opts.piece);
-397 > 1   const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
+396 > 1   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
+395 < 2   const [card] = cardsOf(b, opts.piece);
+397 > 2   const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
 396 < 2   const {candidates, lists, fields} = candidatesFor(b, card, kit);
 397 < 1   const initialSpec = collapse(opts.spec);
 398 < 1   const out = await lastSpec(
@@ -504,20 +616,26 @@
 411 < 2   return {spec: expand(out.spec, lists, b.page.title, fields), steps: out.steps.map((s) => s.description)};
 412 < 1 }
 413 < 1 
-414 < 1 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--piece <piece>] [--pick <V> | --reshape --note <text>...]';
+415 > 1 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>...]';
+414 < 2 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--piece <piece>] [--pick <V> | --reshape --note <text>...]';
 415 < 1 const write = (path: string, spec: Spec) => writeFileSync(path, JSON.stringify(spec, null, 2) + '\n');
 417 > 1 
-418 < 1 /** A piece's kept versions as <screens>/<piece>.<V>.json, and any other version of it, left
+419 > 1 /** The page's kept versions as <screens>/screen.<V>.json, and any other version, left
+418 < 2 /** A piece's kept versions as <screens>/<piece>.<V>.json, and any other version of it, left
 419 < 1  *  from an earlier arrange, gone, so /compare shows only these. The approved
-420 < 1  *  <piece>.json stays. */
-421 < 1 export function writeVersions(screens: string, piece: string, kept: Record<string, Spec>) {
+421 > 1  *  screen.json stays. */
+422 < 1 export function writeVersions(screens: string, kept: Record<string, Spec>) {
+420 < 2  *  <piece>.json stays. */
+421 < 2 export function writeVersions(screens: string, piece: string, kept: Record<string, Spec>) {
 422 < 1   if (Object.keys(kept).length) mkdirSync(screens, {recursive: true});
 423 < 1   if (existsSync(screens))
 424 < 1     for (const f of readdirSync(screens)) {
-425 < 1       const v = f.startsWith(`${piece}.`) && f.endsWith('.json') ? f.slice(piece.length + 1, -'.json'.length) : '';
+426 > 1       const v = f.startsWith('screen.') && f.endsWith('.json') ? f.slice('screen.'.length, -'.json'.length) : '';
+425 < 2       const v = f.startsWith(`${piece}.`) && f.endsWith('.json') ? f.slice(piece.length + 1, -'.json'.length) : '';
 426 < 1       if (v && !v.includes('.') && !Object.hasOwn(kept, v)) rmSync(join(screens, f));
 427 < 1     }
-428 < 1   for (const [v, spec] of Object.entries(kept)) write(join(screens, `${piece}.${v}.json`), spec);
+429 > 1   for (const [v, spec] of Object.entries(kept)) write(join(screens, `screen.${v}.json`), spec);
+428 < 2   for (const [v, spec] of Object.entries(kept)) write(join(screens, `${piece}.${v}.json`), spec);
 429 < 1 }
 416 < 1 
 417 < 1 async function main(argv: string[]): Promise<number> {
@@ -529,52 +647,69 @@
 423 < 1     const a = argv[i];
 424 < 1     if (a === '--reshape') reshaping = true;
 425 < 1     else if (a === '--note' && i + 1 < argv.length) notes.push(argv[++i]);
-426 < 1     else if (['--app', '--piece', '--pick'].includes(a) && i + 1 < argv.length) flags[a.slice(2)] = argv[++i];
+427 > 1     else if (['--app', '--pick'].includes(a) && i + 1 < argv.length) flags[a.slice(2)] = argv[++i];
+426 < 2     else if (['--app', '--piece', '--pick'].includes(a) && i + 1 < argv.length) flags[a.slice(2)] = argv[++i];
 427 < 1     else if (a.startsWith('--')) return usage();
 428 < 1     else pos.push(a);
 429 < 1   }
-430 < 1   if (pos.length !== 1 || !flags.app || (flags.pick && reshaping) || ((flags.pick || reshaping) && !flags.piece) || (reshaping && !notes.length) || (notes.length && !reshaping))
-431 < 1     return usage();
+431 > 1   if (pos.length !== 1 || !flags.app || (flags.pick && reshaping) || (reshaping && !notes.length) || (notes.length && !reshaping)) return usage();
+430 < 2   if (pos.length !== 1 || !flags.app || (flags.pick && reshaping) || ((flags.pick || reshaping) && !flags.piece) || (reshaping && !notes.length) || (notes.length && !reshaping))
+431 < 2     return usage();
 432 < 1   const bundle = resolve(pos[0]);
 433 < 1   const app = resolve(flags.app);
 434 < 1   const screens = join(bundle, 'screens');
+436 > 1   const file = join(screens, 'screen.json');
 435 < 1   try {
 436 < 1     for (const f of [join(app, 'client', 'src', 'screens', 'catalog.ts'), join(app, 'client', 'src', 'store.js')])
 437 < 1       if (!existsSync(f)) throw new CouldNotRun(`no ${f}`);
 438 < 1     if (flags.pick) {
-439 < 1       const from = join(screens, `${flags.piece}.${flags.pick}.json`);
-440 < 1       if (!existsSync(from)) throw new CouldNotRun(`no version ${flags.pick} of ${flags.piece} at ${from}`);
-441 < 1       copyFileSync(from, join(screens, `${flags.piece}.json`));
-442 < 1       console.log(`ARRANGE picked ${flags.piece} ${flags.pick}`);
+440 > 1       if (!/^[A-Za-z0-9_-]+$/.test(flags.pick)) return usage();
+441 < 1       const from = join(screens, `screen.${flags.pick}.json`);
+442 < 1       if (!existsSync(from)) throw new CouldNotRun(`no version ${flags.pick} at ${from}`);
+443 < 1       copyFileSync(from, file);
+444 < 1       console.log(`ARRANGE picked ${flags.pick}`);
+439 < 2       const from = join(screens, `${flags.piece}.${flags.pick}.json`);
+440 < 2       if (!existsSync(from)) throw new CouldNotRun(`no version ${flags.pick} of ${flags.piece} at ${from}`);
+441 < 2       copyFileSync(from, join(screens, `${flags.piece}.json`));
+442 < 2       console.log(`ARRANGE picked ${flags.piece} ${flags.pick}`);
 443 < 1       return 0;
 444 < 1     }
 445 < 1     if (reshaping) {
-446 < 1       const file = join(screens, `${flags.piece}.json`);
+446 < 2       const file = join(screens, `${flags.piece}.json`);
 447 < 1       if (!existsSync(file)) throw new CouldNotRun(`no approved screen at ${file}`);
 448 < 1       const spec = JSON.parse(readFileSync(file, 'utf8'));
-449 < 1       const out = await reshape({bundle, app, piece: flags.piece, spec, notes, evaluate: composeEvaluator()}).catch(fail);
+450 > 1       const out = await reshape({bundle, app, spec, notes, evaluate: composeEvaluator()}).catch(fail);
+449 < 2       const out = await reshape({bundle, app, piece: flags.piece, spec, notes, evaluate: composeEvaluator()}).catch(fail);
 450 < 1       write(file, out.spec);
-451 < 1       for (const s of out.steps) console.log(`ARRANGE ${flags.piece}: ${s}`);
-452 < 1       console.log(`ARRANGE reshaped ${flags.piece}: ${out.steps.length} steps`);
+452 > 1       for (const s of out.steps) console.log(`ARRANGE: ${s}`);
+453 < 1       console.log(`ARRANGE reshaped: ${out.steps.length} steps`);
+451 < 2       for (const s of out.steps) console.log(`ARRANGE ${flags.piece}: ${s}`);
+452 < 2       console.log(`ARRANGE reshaped ${flags.piece}: ${out.steps.length} steps`);
 453 < 1       return 0;
 454 < 1     }
 455 < 1     const started = performance.now();
-456 < 1     const r = await arrange({bundle, app, piece: flags.piece, evaluate: composeEvaluator()}).catch(fail);
-457 < 1     const empty: string[] = [];
-458 < 1     for (const card of cardsOf(loadBundle(bundle), flags.piece)) {
-459 < 1       const kept = r.versions[card.piece] ?? {};
-461 > 1       writeVersions(screens, card.piece, kept);
-462 < 1       for (const [v, spec] of Object.entries(kept)) console.log(`ARRANGE ${card.piece} ${v}: ${Object.keys(spec.elements).length} elements`);
+457 > 1     const r = await arrange({bundle, app, evaluate: composeEvaluator()}).catch(fail);
+458 < 1     writeVersions(screens, r.versions);
+459 < 1     for (const [v, spec] of Object.entries(r.versions)) console.log(`ARRANGE ${v}: ${Object.keys(spec.elements).length} elements`);
+460 < 1     for (const [v, why] of Object.entries(r.dropped)) console.log(`ARRANGE ${v}: dropped, ${why}`);
+461 < 1     if (!Object.keys(r.versions).length) {
+462 < 1       console.log('ARRANGE exit 1: the page kept no version');
+456 < 2     const r = await arrange({bundle, app, piece: flags.piece, evaluate: composeEvaluator()}).catch(fail);
+457 < 2     const empty: string[] = [];
+458 < 2     for (const card of cardsOf(loadBundle(bundle), flags.piece)) {
+459 < 2       const kept = r.versions[card.piece] ?? {};
+461 > 2       writeVersions(screens, card.piece, kept);
+462 < 2       for (const [v, spec] of Object.entries(kept)) console.log(`ARRANGE ${card.piece} ${v}: ${Object.keys(spec.elements).length} elements`);
 460 < 2       if (Object.keys(kept).length) mkdirSync(screens, {recursive: true});
 461 < 2       for (const [v, spec] of Object.entries(kept)) {
 462 < 2         write(join(screens, `${card.piece}.${v}.json`), spec);
 463 < 2         console.log(`ARRANGE ${card.piece} ${v}: ${Object.keys(spec.elements).length} elements`);
 464 < 2       }
-465 < 1       for (const [v, why] of Object.entries(r.dropped[card.piece] ?? {})) console.log(`ARRANGE ${card.piece} ${v}: dropped, ${why}`);
-466 < 1       if (!Object.keys(kept).length) empty.push(card.piece);
-467 < 1     }
-468 < 1     if (empty.length) {
-469 < 1       console.log(`ARRANGE exit 1: ${empty.join(', ')} kept no version`);
+465 < 2       for (const [v, why] of Object.entries(r.dropped[card.piece] ?? {})) console.log(`ARRANGE ${card.piece} ${v}: dropped, ${why}`);
+466 < 2       if (!Object.keys(kept).length) empty.push(card.piece);
+467 < 2     }
+468 < 2     if (empty.length) {
+469 < 2       console.log(`ARRANGE exit 1: ${empty.join(', ')} kept no version`);
 470 < 1       return 1;
 471 < 1     }
 472 < 1     console.log(`ARRANGE ok: ${r.calls} Jev calls, ${Math.round(performance.now() - started)} ms`);
