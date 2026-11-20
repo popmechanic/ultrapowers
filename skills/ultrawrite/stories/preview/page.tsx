@@ -10,6 +10,7 @@ import {useEffect, useState} from 'react';
 import {JSONUIProvider, Renderer} from '@json-render/react';
 import type {Spec} from '@json-render/core';
 import {registry} from '../../client/src/screens/registry';
+import {functions} from '../../client/src/screens/functions';
 import {tinybaseState} from '../../client/src/screens/state';
 import {TOOLS, makeStore} from '../../client/src/store.js';
 import {mountComment} from './comment';
@@ -133,7 +134,7 @@ function Page() {
                       onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
                   </div>
-                  <JSONUIProvider registry={registry} store={box.state} handlers={box.tools}>
+                  <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>
                     <Renderer spec={p.versions[v]} registry={registry} />
                   </JSONUIProvider>
                 </section>
@@ -157,7 +158,7 @@ function Page() {
 }
 
 createRoot(document.getElementById('app')!).render(
-  <JSONUIProvider registry={registry} store={tinybaseState(store, viewer)} handlers={tools}>
+  <JSONUIProvider registry={registry} store={tinybaseState(store, viewer)} handlers={tools} functions={functions}>
     <Page />
   </JSONUIProvider>,
 );

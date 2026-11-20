@@ -64,18 +64,36 @@ function rowArg(tool: Tool | undefined): {arg: string; table: string} | null {
   return null;
 }
 
+/** A row that a cell of this row names: the cell (a column some action takes as a row of
+ *  `table`), that table, and the named row's cells. */
+type Join = {cell: string; table: string; cells: Json};
+
 /** A row control's name with the row's string cells put back as expressions: the
- *  one cell it equals, or every cell it holds, longest first. */
-function fromRow(name: string, row: Json): unknown {
-  const cells = Object.entries(row).filter(([, v]) => typeof v === 'string' && v !== '') as [string, string][];
+ *  one cell it equals, or every cell it holds, longest first. Text left over that a
+ *  joined row's cell holds is read from that row by `lookup` (#1524), the whole label
+ *  then put together by `format`. */
+function fromRow(name: string, row: Json, joins: Join[] = []): unknown {
+  const strings = (o: Json) => Object.entries(o).filter(([, v]) => typeof v === 'string' && v !== '') as [string, string][];
+  const cells = strings(row);
   const exact = cells.find(([, v]) => v === name);
   if (exact) return {$item: exact[0]};
   // Text and inserted expressions alternate; only text is searched, so no cell lands inside a ${...}.
-  let parts: {text: string; cell?: string}[] = [{text: name}];
-  for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length))
-    parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', cell: k}, {text: t}] : [{text: t}]))));
+  type Part = {text: string; cell?: string; join?: {by: string; table: string; column: string}};
+  let parts: Part[] = [{text: name}];
+  const cut = (v: string, part: Omit<Part, 'text'>) =>
+    (parts = parts.flatMap((p) => (p.cell !== undefined ? [p] : p.text.split(v).flatMap((t, i) => (i ? [{text: '', ...part}, {text: t}] : [{text: t}])))));
+  for (const [k, v] of [...cells].sort(([, a], [, b]) => b.length - a.length)) cut(v, {cell: k});
+  const joined = joins.flatMap((j) => strings(j.cells).map(([column, v]) => ({v, by: j.cell, table: j.table, column})));
+  for (const j of joined.sort((a, b) => b.v.length - a.v.length)) cut(j.v, {cell: `${j.by}.${j.column}`, join: j});
   if (!parts.some((p) => p.cell !== undefined)) return name;
-  return {$template: parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('')};
+  const template = parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('');
+  if (!parts.some((p) => p.join)) return {$template: template};
+  const lookup = (j: NonNullable<Part['join']>) => ({$computed: 'lookup', args: {rows: {$state: LIST(j.table)}, id: {$item: j.by}, column: j.column}});
+  const used = parts.filter((p) => p.cell !== undefined);
+  if (used.length === 1 && used[0].join && template === '${' + used[0].cell + '}') return lookup(used[0].join);
+  const args: Json = {template};
+  for (const p of used) args[p.cell!] = p.join ? lookup(p.join) : {$item: p.cell};
+  return {$computed: 'format', args};
 }
 
 /** Every candidate for one card, walking each story on a fresh store. A text box typed
@@ -90,15 +108,24 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
   const buttons: {name: string; action: string}[] = [];
   const lists = new Map<string, {table: string; controls: RowControl[]}>();
   const named = new Set<string>();
-  const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json}[] = [];
+  const seen: {role: 'button' | 'checkbox'; name: string; table: string; cells: Json; joins: Join[]}[] = [];
+  // a column some action takes as a row of a table, by name: a tag's todoId names a todo
+  const rowOf = new Map<string, string>();
+  for (const t of kit.TOOLS) for (const [k, p] of Object.entries(t.inputSchema?.properties ?? {})) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
+  const joinsOf = (store: any, table: string, cells: Json): Join[] =>
+    Object.entries(cells).flatMap(([k, v]) => {
+      const other = rowOf.get(k);
+      const named = other && other !== table && typeof v === 'string' ? store.getRow(other, v) : undefined;
+      return named && Object.keys(named).length ? [{cell: k, table: other!, cells: named as Json}] : [];
+    });
   let schema: Record<string, Record<string, {type?: string}>> = {};
   const listOf = (table: string) => {
     const l = lists.get(table) ?? {table, controls: []};
     lists.set(table, l);
     return l;
   };
-  const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string): RowControl => {
-    const control: RowControl = {type, name, action, arg, label: fromRow(name, cells), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
+  const rowControl = (type: 'ActionCheckbox' | 'ActionButton', name: string, action: string, arg: string, table: string, cells: Json, role: string, joins: Join[] = []): RowControl => {
+    const control: RowControl = {type, name, action, arg, label: fromRow(name, cells, joins), description: `${role === 'checkbox' ? 'a checkbox' : 'a button'} "${name}" (${describe(action)})`};
     if (type === 'ActionCheckbox') {
       const flag = Object.keys(schema[table] ?? {}).find((c) => schema[table][c]?.type === 'boolean');
       if (flag) control.checked = {$item: flag};
@@ -115,6 +142,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
       if (mine.has(step.tool)) {
         const row = rowArg(tool);
         const cells = (row ? store.getRow(row.table, String(args[row.arg])) ?? {} : {}) as Json;
+        const joins = row ? joinsOf(store, row.table, cells) : [];
         for (const u of step.ui ?? []) {
           if ('type' in u && u.type.role === 'textbox') {
             const k = Object.keys(args).find((x) => args[x] === u.type.text);
@@ -127,7 +155,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
                 if (had.example === undefined && text !== undefined) had.example = text;
                 continue;
               }
-              const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
+              const control: RowControl = {type: 'DraftInput', name: u.type.name, action: step.tool, arg: row.arg, draft: k, label: fromRow(u.type.name, cells, joins), ...(text === undefined ? {} : {example: text}), description: `a text box "${u.type.name}", where you type the ${k} for ${step.tool}`};
               const button = l.controls.findIndex((c) => c.type === 'ActionButton' && c.action === step.tool);
               l.controls.splice(button < 0 ? l.controls.length : button, 0, control);
               rowDrafts.set(step.tool, [...(rowDrafts.get(step.tool) ?? []), k]);
@@ -147,7 +175,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
             const l = listOf(row.table);
             const type = u.click.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton';
             if (l.controls.some((c) => c.type === type && c.action === step.tool)) continue;
-            l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role));
+            l.controls.push(rowControl(type, name, step.tool, row.arg, row.table, cells, u.click.role, joins));
           }
         }
       }
@@ -159,7 +187,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
           for (const cells of Object.values(rows))
             for (const v of Object.values(cells))
               if (typeof v === 'string' && v !== '' && see.name.includes(v) && v.length > (best?.length ?? 0)) best = {table, cells, length: v.length};
-        if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells});
+        if (best) seen.push({role: see.role, name: see.name, table: best.table, cells: best.cells, joins: joinsOf(store, best.table, best.cells)});
       }
     }
   }
@@ -172,7 +200,7 @@ function candidatesFor(b: Bundle, card: Card, kit: Kit): Pieces {
     });
     if (!action) continue;
     const row = rowArg(tools.get(action.name))!;
-    listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role));
+    listOf(t.table).controls.push(rowControl(t.role === 'checkbox' ? 'ActionCheckbox' : 'ActionButton', t.name, action.name, row.arg, t.table, t.cells, t.role, t.joins));
   }
   for (const a of card.actions) {
     if (controlled(a.name)) continue;

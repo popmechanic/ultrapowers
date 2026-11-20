@@ -94,8 +94,6 @@ def test_no_fixed_row_text(tagged):
     for piece, versions in tagged["versions"].items():
         for v, s in versions.items():
             for id_, e in s["elements"].items():
-                if e["props"].get("action") == "removeTag":
-                    continue
                 for key in ("label", "name"):
                     x = e["props"].get(key)
                     text = x.get("$template") if isinstance(x, dict) else x
@@ -168,3 +166,27 @@ def test_a_typed_row_action_with_no_click_still_gets_a_button(app, tmp_path):
         "e.type === 'ActionButton' && e.props.action === 'addTag' && canon(e.props.args?.name) === canon({$state: '/draft/name'}))])));",
         bundle=b, app=app)
     assert got and all(ok for _, ok in got), "no addTag button reading the typed name: %s" % got
+
+
+REMOVE_LABEL = {"$computed": "format", "args": {
+    "template": "Remove ${name} from ${todoId.text}",
+    "name": {"$item": "name"},
+    "todoId.text": {"$computed": "lookup", "args": {"rows": {"$state": "/tables/todos"}, "id": {"$item": "todoId"}, "column": "text"}},
+}}
+
+
+def test_remove_tag_names_its_own_todo(app, tagged):
+    """The Remove button reads the tag's todo through lookup, and on two todos each tag's
+    label names its own todo, resolved by json-render with the template's functions (#1524)."""
+    labels = [e["props"]["label"] for versions in tagged["versions"].values() for s in versions.values()
+              for e in s["elements"].values() if e["props"].get("action") == "removeTag"]
+    assert labels and all(l == REMOVE_LABEL for l in labels), labels
+    got = run_js(
+        "const {resolvePropValue} = await import(app + '/node_modules/@json-render/core/dist/index.mjs');\n"
+        "const {functions} = await import(app + '/client/src/screens/functions.ts');\n"
+        "const state = {tables: {todos: [{id: '0', text: 'buy milk'}, {id: '1', text: 'walk dog'}],\n"
+        "  tags: [{id: '0', todoId: '0', name: 'shop'}, {id: '1', todoId: '1', name: 'pets'}]}};\n"
+        "console.log(JSON.stringify(state.tables.tags.map((item, i) => resolvePropValue(label,\n"
+        "  {stateModel: state, repeatItem: item, repeatIndex: i, repeatBasePath: '/tables/tags/' + i, functions}))));",
+        app=app, label=REMOVE_LABEL)
+    assert got == ["Remove shop from buy milk", "Remove pets from walk dog"], got

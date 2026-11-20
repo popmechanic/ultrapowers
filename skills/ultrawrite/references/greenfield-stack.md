@@ -174,6 +174,9 @@ experiment).
 - **Where a spec starts.** A piece's spec starts as the screen the operator
   approved while planning (`<bundle>/screens/<piece>.json`, which compile copies
   in), else the scaffold's empty column; the builder edits it from there.
+- **The reads.** A row shows its own cells; a row naming another table's row (a tag's
+  `todoId`) reads that row's text through the `$computed` functions `lookup` and `format` in
+  `client/src/screens/functions.ts`, which every renderer is given (#1524).
 - **The writes.** Saved data changes only through card actions, run from an
   element's `action` prop. `$bindState` and json-render's built-in state
   actions write only under `/draft/`.
