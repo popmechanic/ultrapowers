@@ -94,7 +94,8 @@ const MAX_RELEASE = 3
 // wait for a rise was 2.0 min; run-252 ran 229.7 min past its last; over 110 runs it never fired.
 const STALL_MIN = Number(POLICY_FLOCK?.stall?.minutes ?? 20)
 if (!Number.isFinite(STALL_MIN) || STALL_MIN <= 0) { console.error('engine: flock.stall.minutes is a number of minutes above 0'); process.exit(2) }
-const STALL_MS = STALL_MIN * 60000
+// test seam: a scripted run's `@stall_ms` stands in for the policy's minutes, so a sim can read the stop
+const STALL_MS = (SCRIPT && Number(SCRIPT['@stall_ms'])) || STALL_MIN * 60000
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
 const T0 = Date.now()
@@ -1081,6 +1082,9 @@ async function settle () {
           `\n\nFix each that is still wrong. Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.`
         await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths, body })
         ev('loose-task', { snap: r.snap, paths, body }); log('loose-ends task for', paths.join(','))
+        // the cleanup adds no facts, so the green count cannot rise during it: it gets its own window
+        // from now, not the rest of the one that began at the first green (#1531)
+        lastRise = now()
         continue
       }
     }
