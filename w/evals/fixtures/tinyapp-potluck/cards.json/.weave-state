@@ -1,0 +1,131 @@
+0 < 1 [
+1 < 1  {
+2 < 1   "piece": "guest",
+3 < 1   "concept": "guest",
+4 < 1   "purpose": "The host keeps the list of who is invited and who is coming.",
+5 < 1   "depends_on": [],
+6 < 1   "state": {
+7 < 1    "tables": {
+8 < 1     "guests": [
+9 < 1      "name",
+10 < 1      "answer"
+11 < 1     ]
+12 < 1    },
+13 < 1    "values": []
+14 < 1   },
+15 < 1   "actions": [
+16 < 1    {
+17 < 1     "name": "addGuest",
+18 < 1     "description": "Invite a guest by name; they have not answered yet.",
+19 < 1     "label": "Invite",
+20 < 1     "inputSchema": {
+21 < 1      "type": "object",
+22 < 1      "properties": {
+23 < 1       "name": {
+24 < 1        "type": "string",
+25 < 1        "x-label": "Guest name"
+26 < 1       }
+27 < 1      },
+28 < 1      "required": [
+29 < 1       "name"
+30 < 1      ]
+31 < 1     },
+32 < 1     "refuses": [
+33 < 1      "blank guest name",
+34 < 1      "a guest already on the list"
+35 < 1     ]
+36 < 1    },
+37 < 1    {
+38 < 1     "name": "sayYes",
+39 < 1     "description": "Mark this guest as coming.",
+40 < 1     "label": "${name} is coming",
+41 < 1     "inputSchema": {
+42 < 1      "type": "object",
+43 < 1      "properties": {
+44 < 1       "guestId": {
+45 < 1        "type": "string",
+46 < 1        "x-row-of": "guests"
+47 < 1       }
+48 < 1      },
+49 < 1      "required": [
+50 < 1       "guestId"
+51 < 1      ]
+52 < 1     },
+53 < 1     "refuses": [
+54 < 1      "a guest who does not exist"
+55 < 1     ]
+56 < 1    }
+57 < 1   ]
+58 < 1  },
+59 < 1  {
+60 < 1   "piece": "dish",
+61 < 1   "concept": "dish",
+62 < 1   "purpose": "Each dish the party needs, and who is bringing it.",
+63 < 1   "depends_on": [
+64 < 1    "guest"
+65 < 1   ],
+66 < 1   "state": {
+67 < 1    "tables": {
+68 < 1     "dishes": [
+69 < 1      "name",
+70 < 1      "guestId"
+71 < 1     ]
+72 < 1    },
+73 < 1    "values": []
+74 < 1   },
+75 < 1   "actions": [
+76 < 1    {
+77 < 1     "name": "addDish",
+78 < 1     "description": "List a dish the party needs; nobody is bringing it yet.",
+79 < 1     "label": "Add dish",
+80 < 1     "inputSchema": {
+81 < 1      "type": "object",
+82 < 1      "properties": {
+83 < 1       "name": {
+84 < 1        "type": "string",
+85 < 1        "x-label": "Dish"
+86 < 1       }
+87 < 1      },
+88 < 1      "required": [
+89 < 1       "name"
+90 < 1      ]
+91 < 1     },
+92 < 1     "refuses": [
+93 < 1      "blank dish name"
+94 < 1     ]
+95 < 1    },
+96 < 1    {
+97 < 1     "name": "bringDish",
+98 < 1     "description": "Have this guest, who is coming, bring this dish nobody is bringing yet.",
+99 < 1     "label": "Who's bringing ${name}?",
+100 < 1     "inputSchema": {
+101 < 1      "type": "object",
+102 < 1      "properties": {
+103 < 1       "dishId": {
+104 < 1        "type": "string",
+105 < 1        "x-row-of": "dishes"
+106 < 1       },
+107 < 1       "guestId": {
+108 < 1        "type": "string",
+109 < 1        "x-row-of": "guests",
+110 < 1        "x-where": {
+111 < 1         "answer": "yes"
+112 < 1        }
+113 < 1       }
+114 < 1      },
+115 < 1      "required": [
+116 < 1       "dishId",
+117 < 1       "guestId"
+118 < 1      ]
+119 < 1     },
+120 < 1     "refuses": [
+121 < 1      "a dish someone is already bringing",
+122 < 1      "a guest who has not said yes",
+123 < 1      "a dish that does not exist",
+124 < 1      "a guest who does not exist"
+125 < 1     ]
+126 < 1    }
+127 < 1   ]
+128 < 1  }
+129 < 1 ]
+130 < 1 

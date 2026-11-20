@@ -1,0 +1,152 @@
+0 < 1 /** Draws each catalog entry with the 1st-Pouf component it is named for.
+1 < 1  *
+3 > 1  * ActionButton, ActionCheckbox and ActionSelect run their card action through the page's
+2 < 2  * ActionButton and ActionCheckbox run their card action through the page's
+3 < 1  * handler (`useActions().handlers[action]`, which answers true or false) and
+4 < 1  * emit only on true, so a spec's `on` draft writes run after the action
+5 < 1  * succeeded. Actions take `args` rather than an `on` binding because inside
+6 < 1  * action params json-render 0.21.0 resolves `$item` to a state path, while
+7 < 1  * inside props it resolves to the item's value.
+8 < 1  */
+9 < 1 import { defineRegistry, useActions, useBoundProp } from '@json-render/react'
+10 < 1 import { useState } from 'react'
+11 < 1 import {
+12 < 1   Badge,
+13 < 1   Button,
+14 < 1   Card,
+15 < 1   Checkbox,
+16 < 1   Empty,
+17 < 1   Eyebrow,
+18 < 1   Field,
+19 < 1   Grid,
+20 < 1   Heading,
+21 < 1   Input,
+22 < 1   Row,
+24 > 1   Select,
+23 < 1   Separator,
+24 < 1   Stack,
+25 < 1   Text,
+26 < 1 } from '../pouf'
+27 < 1 import { baseCatalog } from './catalog'
+28 < 1 import { asExample } from './example'
+29 < 1 
+30 < 1 const u = <T,>(v: T | null | undefined): T | undefined => v ?? undefined
+31 < 1 
+32 < 1 function useRun(action: string, args: Record<string, unknown> | null | undefined) {
+33 < 1   const { handlers } = useActions()
+34 < 1   const [busy, setBusy] = useState(false)
+36 > 1   const run = async (more: Record<string, unknown> = {}): Promise<boolean> => {
+35 < 2   const run = async (): Promise<boolean> => {
+36 < 1     const handler = handlers[action]
+37 < 1     if (!handler) return false
+38 < 1     setBusy(true)
+39 < 1     try {
+41 > 1       return (await handler({ ...(args ?? {}), ...more })) === true
+40 < 2       return (await handler(args ?? {})) === true
+41 < 1     } finally {
+42 < 1       setBusy(false)
+43 < 1     }
+44 < 1   }
+45 < 1   return { run, busy }
+46 < 1 }
+47 < 1 
+48 < 1 export const { registry } = defineRegistry(baseCatalog, {
+49 < 1   components: {
+50 < 1     Stack: ({ props, children }) => <Stack gap={u(props.gap)}>{children}</Stack>,
+51 < 1     Row: ({ props, children }) => (
+52 < 1       <Row gap={u(props.gap)} align={u(props.align)} justify={u(props.justify)} wrap={u(props.wrap)}>
+53 < 1         {children}
+54 < 1       </Row>
+55 < 1     ),
+56 < 1     Grid: ({ props, children }) => (
+57 < 1       <Grid cols={u(props.cols)} gap={u(props.gap)}>
+58 < 1         {children}
+59 < 1       </Grid>
+60 < 1     ),
+61 < 1     Card: ({ props, children }) => (
+62 < 1       <Card variant={u(props.variant)} motion={u(props.motion)}>
+63 < 1         {children}
+64 < 1       </Card>
+65 < 1     ),
+66 < 1     Heading: ({ props }) => <Heading level={u(props.level)}>{props.text}</Heading>,
+67 < 1     Eyebrow: ({ props }) => <Eyebrow>{props.text}</Eyebrow>,
+68 < 1     Text: ({ props }) => (
+69 < 1       <Text
+70 < 1         size={u(props.size)}
+71 < 1         muted={u(props.muted)}
+72 < 1         num={u(props.num)}
+73 < 1         mono={u(props.mono)}
+74 < 1         truncate={u(props.truncate)}
+75 < 1       >
+76 < 1         {props.text}
+77 < 1       </Text>
+78 < 1     ),
+79 < 1     Badge: ({ props }) => <Badge tone={u(props.tone)}>{props.text}</Badge>,
+80 < 1     Empty: ({ props }) => <Empty title={props.title}>{u(props.text)}</Empty>,
+81 < 1     Separator: () => <Separator />,
+82 < 1     ActionButton: ({ props, emit }) => {
+83 < 1       const { run, busy } = useRun(props.action, props.args)
+84 < 1       return (
+85 < 1         <Button
+86 < 1           tone={u(props.tone)}
+87 < 1           variant={u(props.variant)}
+88 < 1           size={u(props.size)}
+89 < 1           label={u(props.name)}
+90 < 1           loading={busy}
+91 < 1           onClick={async () => {
+92 < 1             if (await run()) emit('press')
+93 < 1           }}
+94 < 1         >
+95 < 1           {props.label}
+96 < 1         </Button>
+97 < 1       )
+98 < 1     },
+99 < 1     ActionCheckbox: ({ props, emit }) => {
+100 < 1       const { run, busy } = useRun(props.action, props.args)
+101 < 1       return (
+102 < 1         <Checkbox
+103 < 1           label={props.label}
+104 < 1           checked={!!props.checked}
+105 < 1           disabled={busy}
+106 < 1           onChange={async () => {
+107 < 1             if (await run()) emit('change')
+108 < 1           }}
+109 < 1         />
+110 < 1       )
+111 < 1     },
+113 > 1     ActionSelect: ({ props, emit }) => {
+114 < 1       const { run, busy } = useRun(props.action, props.args)
+115 < 1       const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
+116 < 1       return (
+117 < 1         <Select
+118 < 1           label={props.label}
+119 < 1           placeholder={u(props.placeholder)}
+120 < 1           value={props.value ?? ''}
+121 < 1           options={options}
+122 < 1           disabled={busy}
+123 < 1           onChange={async (v) => {
+124 < 1             if (await run({ [props.pick]: v })) emit('change')
+125 < 1           }}
+126 < 1         />
+127 < 1       )
+128 < 1     },
+112 < 1     DraftInput: ({ props, bindings }) => {
+113 < 1       const [value, setValue] = useBoundProp<string>(u(props.value), bindings?.value)
+114 < 1       return (
+115 < 1         <Field label={props.label}>
+116 < 1           {(id, describedBy) => (
+117 < 1             <Input
+118 < 1               id={id}
+119 < 1               describedBy={describedBy}
+120 < 1               label={props.label}
+121 < 1               placeholder={asExample(props.placeholder)}
+122 < 1               value={value ?? ''}
+123 < 1               onChange={setValue}
+124 < 1             />
+125 < 1           )}
+126 < 1         </Field>
+127 < 1       )
+128 < 1     },
+129 < 1   },
+130 < 1 })
+131 < 1 

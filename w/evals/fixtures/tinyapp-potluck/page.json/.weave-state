@@ -1,0 +1,125 @@
+0 < 1 {
+1 < 1  "title": "Potluck",
+2 < 1  "kind": "behaviour",
+3 < 1  "summary": [
+4 < 1   "A potluck the host plans with the guests.",
+5 < 1   "It exists so every dish the party needs is brought by someone who is actually coming.",
+6 < 1   "The host invites guests, marks who is coming, lists the dishes, and picks a coming guest to bring each one."
+7 < 1  ],
+8 < 1  "store": "client/src/store.js",
+9 < 1  "stories": [
+10 < 1   {
+11 < 1    "id": "S1",
+12 < 1    "sentence": "Ann is coming and salad is listed; you pick Ann for salad, and Ann is bringing it.",
+13 < 1    "steps": [
+14 < 1     {
+15 < 1      "tool": "addGuest",
+16 < 1      "args": {
+17 < 1       "name": "Ann"
+18 < 1      },
+19 < 1      "layer": "store"
+20 < 1     },
+21 < 1     {
+22 < 1      "tool": "sayYes",
+23 < 1      "args": {
+24 < 1       "guestId": "0"
+25 < 1      },
+26 < 1      "layer": "store"
+27 < 1     },
+28 < 1     {
+29 < 1      "tool": "addDish",
+30 < 1      "args": {
+31 < 1       "name": "salad"
+32 < 1      },
+33 < 1      "layer": "store"
+34 < 1     },
+35 < 1     {
+36 < 1      "tool": "bringDish",
+37 < 1      "args": {
+38 < 1       "dishId": "0",
+39 < 1       "guestId": "0"
+40 < 1      },
+41 < 1      "layer": "ui",
+42 < 1      "ui": [
+43 < 1       {
+44 < 1        "select": {
+45 < 1         "role": "combobox",
+46 < 1         "name": "Who's bringing salad?",
+47 < 1         "option": "Ann"
+48 < 1        }
+49 < 1       }
+50 < 1      ]
+51 < 1     }
+52 < 1    ]
+53 < 1   },
+54 < 1   {
+55 < 1    "id": "S2",
+56 < 1    "sentence": "Ann is bringing salad and Ben is coming; you pick Ben for salad, and Ann still brings it.",
+57 < 1    "steps": [
+58 < 1     {
+59 < 1      "tool": "addGuest",
+60 < 1      "args": {
+61 < 1       "name": "Ann"
+62 < 1      },
+63 < 1      "layer": "store"
+64 < 1     },
+65 < 1     {
+66 < 1      "tool": "addGuest",
+67 < 1      "args": {
+68 < 1       "name": "Ben"
+69 < 1      },
+70 < 1      "layer": "store"
+71 < 1     },
+72 < 1     {
+73 < 1      "tool": "sayYes",
+74 < 1      "args": {
+75 < 1       "guestId": "0"
+76 < 1      },
+77 < 1      "layer": "store"
+78 < 1     },
+79 < 1     {
+80 < 1      "tool": "sayYes",
+81 < 1      "args": {
+82 < 1       "guestId": "1"
+83 < 1      },
+84 < 1      "layer": "store"
+85 < 1     },
+86 < 1     {
+87 < 1      "tool": "addDish",
+88 < 1      "args": {
+89 < 1       "name": "salad"
+90 < 1      },
+91 < 1      "layer": "store"
+92 < 1     },
+93 < 1     {
+94 < 1      "tool": "bringDish",
+95 < 1      "args": {
+96 < 1       "dishId": "0",
+97 < 1       "guestId": "0"
+98 < 1      },
+99 < 1      "layer": "store"
+100 < 1     },
+101 < 1     {
+102 < 1      "tool": "bringDish",
+103 < 1      "args": {
+104 < 1       "dishId": "0",
+105 < 1       "guestId": "1"
+106 < 1      },
+107 < 1      "layer": "ui",
+108 < 1      "refused": "a dish someone is already bringing",
+109 < 1      "ui": [
+110 < 1       {
+111 < 1        "select": {
+112 < 1         "role": "combobox",
+113 < 1         "name": "Who's bringing salad?",
+114 < 1         "option": "Ben"
+115 < 1        }
+116 < 1       }
+117 < 1      ]
+118 < 1     }
+119 < 1    ]
+120 < 1   }
+121 < 1  ],
+122 < 1  "links": []
+123 < 1 }
+124 < 1 

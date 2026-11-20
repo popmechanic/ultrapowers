@@ -1,0 +1,151 @@
+0 < 1 /** The screens catalog: which 1st-Pouf pieces a screen may name, and their props.
+1 < 1  *
+2 < 1  * A screen is a json-render spec over this catalog. Its props mirror each
+3 < 1  * 1st-Pouf component's own variant props, so the registry hands them straight
+4 < 1  * through and `tsc` refuses a value 1st-Pouf would not accept.
+5 < 1  *
+6 < 1  * This file imports no React and no 1st-Pouf, so it loads in Bun with no DOM.
+7 < 1  */
+8 < 1 import { defineCatalog } from '@json-render/core'
+9 < 1 import { schema } from '@json-render/react/schema'
+10 < 1 import { z } from 'zod'
+11 < 1 
+12 < 1 const tone = z.enum(['pink', 'purple', 'blue', 'mint', 'yellow', 'orange', 'up', 'down', 'warn', 'info', 'idle'])
+13 < 1 const gap = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5), z.literal(6)])
+14 < 1 
+15 < 1 export const components = {
+16 < 1   Stack: {
+17 < 1     props: z.object({ gap: gap.nullish() }),
+18 < 1     slots: ['default'],
+19 < 1     description: 'A vertical stack of children.',
+20 < 1   },
+21 < 1   Row: {
+22 < 1     props: z.object({
+23 < 1       gap: gap.nullish(),
+24 < 1       align: z.enum(['center', 'top']).nullish(),
+25 < 1       justify: z.enum(['start', 'center', 'between', 'end']).nullish(),
+26 < 1       wrap: z.boolean().nullish(),
+27 < 1     }),
+28 < 1     slots: ['default'],
+29 < 1     description: 'A horizontal row of children.',
+30 < 1   },
+31 < 1   Grid: {
+32 < 1     props: z.object({
+33 < 1       cols: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal('sidebar')]).nullish(),
+34 < 1       gap: gap.nullish(),
+35 < 1     }),
+36 < 1     slots: ['default'],
+37 < 1     description: 'A grid of children; one column on narrow screens.',
+38 < 1   },
+39 < 1   Card: {
+40 < 1     props: z.object({
+41 < 1       variant: z.enum(['default', 'flush', 'tight']).nullish(),
+42 < 1       motion: z.enum(['none', 'lift', 'tilt-left', 'tilt-right']).nullish(),
+43 < 1     }),
+44 < 1     slots: ['default'],
+45 < 1     description: 'A puffy surface holding its children.',
+46 < 1   },
+47 < 1   Heading: {
+48 < 1     props: z.object({
+49 < 1       text: z.string(),
+50 < 1       level: z.union([z.literal(1), z.literal(2), z.literal(3)]).nullish(),
+51 < 1     }),
+52 < 1     slots: [],
+53 < 1     description: 'A heading, level 1 to 3.',
+54 < 1   },
+55 < 1   Eyebrow: {
+56 < 1     props: z.object({ text: z.string() }),
+57 < 1     slots: [],
+58 < 1     description: 'A small uppercase label above a section.',
+59 < 1   },
+60 < 1   Text: {
+61 < 1     props: z.object({
+62 < 1       text: z.string(),
+63 < 1       size: z.enum(['sm', 'md']).nullish(),
+64 < 1       muted: z.boolean().nullish(),
+65 < 1       num: z.boolean().nullish(),
+66 < 1       mono: z.boolean().nullish(),
+67 < 1       truncate: z.boolean().nullish(),
+68 < 1     }),
+69 < 1     slots: [],
+70 < 1     description: 'A run of body text.',
+71 < 1   },
+72 < 1   Badge: {
+73 < 1     props: z.object({ text: z.string(), tone: tone.nullish() }),
+74 < 1     slots: [],
+75 < 1     description: 'A small toned pill label.',
+76 < 1   },
+77 < 1   Empty: {
+78 < 1     props: z.object({ title: z.string(), text: z.string().nullish() }),
+79 < 1     slots: [],
+80 < 1     description: 'What a list shows when it has nothing in it.',
+81 < 1   },
+82 < 1   Separator: {
+83 < 1     props: z.object({}),
+84 < 1     slots: [],
+85 < 1     description: 'A thin horizontal rule.',
+86 < 1   },
+87 < 1   ActionButton: {
+88 < 1     props: z.object({
+89 < 1       label: z.string(),
+90 < 1       name: z.string().nullish(),
+91 < 1       action: z.string(),
+92 < 1       args: z.record(z.string(), z.unknown()).nullish(),
+93 < 1       tone: tone.nullish(),
+94 < 1       variant: z.enum(['solid', 'quiet']).nullish(),
+95 < 1       size: z.enum(['sm', 'md', 'lg']).nullish(),
+96 < 1     }),
+97 < 1     slots: [],
+98 < 1     description:
+99 < 1       'A button that runs the app action `action` with `args`; only when it succeeds does it emit "press". `name` is its accessible name when the label alone is not enough.',
+100 < 1   },
+101 < 1   ActionCheckbox: {
+102 < 1     props: z.object({
+103 < 1       label: z.string(),
+104 < 1       checked: z.boolean().nullish(),
+105 < 1       action: z.string(),
+106 < 1       args: z.record(z.string(), z.unknown()).nullish(),
+107 < 1     }),
+108 < 1     slots: [],
+109 < 1     description:
+110 < 1       'A checkbox showing `checked`; toggling it runs the app action `action` with `args`, and only when it succeeds does it emit "change".',
+111 < 1   },
+113 > 1   ActionSelect: {
+114 < 1     props: z.object({
+115 < 1       label: z.string(),
+116 < 1       action: z.string(),
+117 < 1       args: z.record(z.string(), z.unknown()).nullish(),
+118 < 1       pick: z.string(),
+119 < 1       options: z.array(z.record(z.string(), z.unknown())),
+120 < 1       optionLabel: z.string(),
+121 < 1       value: z.string().nullish(),
+122 < 1       placeholder: z.string().nullish(),
+123 < 1     }),
+124 < 1     slots: [],
+125 < 1     description:
+126 < 1       'A picker over the rows `options`, each shown by its `optionLabel` cell, showing the row whose id is `value`; choosing one runs the app action `action` with `args` plus `{[pick]: <the row\'s id>}`, and only when it succeeds does it emit "change".',
+127 < 1   },
+112 < 1   DraftInput: {
+113 < 1     props: z.object({
+114 < 1       label: z.string(),
+115 < 1       value: z.string().nullish(),
+116 < 1       placeholder: z.string().nullish(),
+117 < 1     }),
+118 < 1     slots: [],
+119 < 1     description: 'A text input whose `value` is bound with $bindState to a path under /draft/.',
+120 < 1   },
+121 < 1 }
+122 < 1 
+123 < 1 /** json-render's built-in actions; a screen may use them to write under /draft/ only. */
+124 < 1 export const BUILT_IN = ['setState', 'pushState', 'removeState', 'validateForm']
+125 < 1 
+126 < 1 /** The catalog for a store whose actions are `tools`, in their order. */
+127 < 1 export function catalogFor(tools: { name: string; description: string }[]) {
+128 < 1   const actions: Record<string, { params: z.ZodType; description: string }> = {}
+129 < 1   for (const t of tools) actions[t.name] = { params: z.record(z.string(), z.unknown()), description: t.description }
+130 < 1   return defineCatalog(schema, { components, actions })
+131 < 1 }
+132 < 1 
+133 < 1 /** The catalog with no actions, which the registry draws. */
+134 < 1 export const baseCatalog = defineCatalog(schema, { components, actions: {} })
+135 < 1 

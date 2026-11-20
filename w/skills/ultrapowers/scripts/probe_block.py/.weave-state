@@ -1,0 +1,127 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 """A state probe, as a stories-v1 plan carries it: one fenced ```probe block
+2 < 1 holding one JSON object. The grammar is closed, and code decides every check.
+3 < 1 
+4 < 1     {"clause": "S1.2", "layer": "store" | "ui" | "saved",
+5 < 1      "as"?: email | null,                               who is signed in for `do`
+6 < 1      "given": [{"tool": name, "args": {...}, "as"?: email | null}, ...],
+7 < 1      "do":    [{"tool": name, "args": {...}}]            (store, saved)
+8 < 1             | [{"click" | "type" | "key": {...}}, ...]   (ui),
+9 < 1      "expect": [check, ...],
+10 < 1      "see": [{"role": r, "name": n, "count"?: k}, ...],
+11 < 1      "judge": null | "a sentence Jev reads over the before/after state",
+12 < 1      "holds_before": bool}
+13 < 1 
+14 < 1 A check is exactly one of:
+15 < 1     {"table": t, "row": r, "cell": c, "eq": v}         the cell holds v
+16 < 1     {"table": t, "row": r, "cell": c, "absent": true}  the cell is not set
+17 < 1     {"table": t, "row": r, "absent": true}             the row is gone
+18 < 1     {"value": k, "eq": v} | {"value": k, "absent": true}
+19 < 1     {"unchanged": true}                                nothing changed
+20 < 1 `as` sets who is signed in on the page (the page hook's `who`) before that
+21 < 1 call, and it stays so until the next `as`; absent, the page's own sign-in
+22 < 1 stands (none, on the checker). Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
+23 < 1 (factory/stack/tinyapp/probe.ts); this module reads the shape only."""
+24 < 1 import json
+25 < 1 
+26 < 1 LAYERS = ("store", "ui", "saved")
+28 > 1 UI_FORMS = ("click", "type", "key", "select")
+27 < 2 UI_FORMS = ("click", "type", "key")
+28 < 1 PROBE_KEYS = {"clause", "layer", "as", "given", "do", "expect", "see", "judge", "holds_before"}
+29 < 1 
+30 < 1 
+31 < 1 def is_who(x):
+32 < 1     """A signed-in email, or None for nobody signed in."""
+33 < 1     return x is None or (isinstance(x, str) and x != "")
+34 < 1 
+35 < 1 
+36 < 1 def is_tool_call(x):
+37 < 1     return (isinstance(x, dict) and set(x) in ({"tool", "args"}, {"tool", "args", "as"})
+38 < 1             and isinstance(x["tool"], str) and x["tool"] != ""
+39 < 1             and isinstance(x["args"], dict) and is_who(x.get("as")))
+40 < 1 
+41 < 1 
+42 < 1 def is_ui_call(x):
+43 < 1     return (isinstance(x, dict) and len(x) == 1 and next(iter(x)) in UI_FORMS
+44 < 1             and isinstance(next(iter(x.values())), dict))
+45 < 1 
+46 < 1 
+47 < 1 def is_check(c):
+48 < 1     if not isinstance(c, dict):
+49 < 1         return False
+50 < 1     keys = set(c)
+51 < 1     if keys == {"unchanged"}:
+52 < 1         return c["unchanged"] is True
+53 < 1     if keys == {"value", "eq"}:
+54 < 1         return isinstance(c["value"], str)
+55 < 1     if keys == {"value", "absent"}:
+56 < 1         return isinstance(c["value"], str) and c["absent"] is True
+57 < 1     if keys in ({"table", "row", "absent"}, {"table", "row", "cell", "absent"}):
+58 < 1         return (c["absent"] is True
+59 < 1                 and all(isinstance(c[k], str) for k in keys - {"absent"}))
+60 < 1     if keys == {"table", "row", "cell", "eq"}:
+61 < 1         return all(isinstance(c[k], str) for k in ("table", "row", "cell"))
+62 < 1     return False
+63 < 1 
+64 < 1 
+65 < 1 def _is_see(s):
+66 < 1     return (isinstance(s, dict) and set(s) <= {"role", "name", "count"}
+67 < 1             and isinstance(s.get("role"), str) and isinstance(s.get("name"), str)
+68 < 1             and isinstance(s.get("count", 0), int))
+69 < 1 
+70 < 1 
+71 < 1 def validate_probe(p):
+72 < 1     """Every way `p` leaves the grammar, one plain sentence each; [] when valid."""
+73 < 1     if not isinstance(p, dict):
+74 < 1         return ["probe: must be a JSON object"]
+75 < 1     where = "probe %s" % p.get("clause", "?")
+76 < 1     errs = []
+77 < 1     extra = set(p) - PROBE_KEYS
+78 < 1     if extra:
+79 < 1         errs.append("%s: unknown keys %s" % (where, ", ".join(sorted(extra))))
+80 < 1     if not isinstance(p.get("clause"), str) or not p.get("clause"):
+81 < 1         errs.append("%s: clause must name the story step, e.g. S1.2" % where)
+82 < 1     if p.get("layer") not in LAYERS:
+83 < 1         errs.append("%s: layer must be store, ui or saved" % where)
+84 < 1     if not is_who(p.get("as")):
+85 < 1         errs.append("%s: as must be an email or null" % where)
+86 < 1     given = p.get("given", [])
+87 < 1     if not isinstance(given, list) or not all(is_tool_call(g) for g in given):
+88 < 1         errs.append("%s: given must be a list of {tool, args, as?} calls" % where)
+89 < 1     do = p.get("do")
+90 < 1     if not isinstance(do, list) or not do:
+91 < 1         errs.append("%s: do must be a non-empty list" % where)
+92 < 1     elif p.get("layer") == "ui":
+93 < 1         if not all(is_ui_call(d) for d in do):
+95 > 1             errs.append("%s: a ui probe's do is click/type/key/select steps" % where)
+94 < 2             errs.append("%s: a ui probe's do is click/type/key steps" % where)
+95 < 1     elif not (len(do) == 1 and is_tool_call(do[0]) and "as" not in do[0]):
+96 < 1         errs.append("%s: a store or saved probe's do is one {tool, args} call" % where)
+97 < 1     expect = p.get("expect")
+98 < 1     if not isinstance(expect, list) or not expect or not all(is_check(c) for c in expect):
+99 < 1         errs.append("%s: expect must be a non-empty list of closed checks" % where)
+100 < 1     see = p.get("see", [])
+101 < 1     if not isinstance(see, list) or not all(_is_see(s) for s in see):
+102 < 1         errs.append("%s: see must be a list of {role, name, count?}" % where)
+103 < 1     if p.get("judge") is not None and not isinstance(p.get("judge"), str):
+104 < 1         errs.append("%s: judge must be a sentence or null" % where)
+105 < 1     if not isinstance(p.get("holds_before", False), bool):
+106 < 1         errs.append("%s: holds_before must be true or false" % where)
+107 < 1     return errs
+108 < 1 
+109 < 1 
+110 < 1 def parse_probe_text(text):
+111 < 1     """`(probe, errors)` for one fence's body."""
+112 < 1     try:
+113 < 1         p = json.loads(text)
+114 < 1     except ValueError as exc:
+115 < 1         return None, ["probe: not JSON: %s" % exc]
+116 < 1     return p, validate_probe(p)
+117 < 1 
+118 < 1 
+119 < 1 def tools_of(p):
+120 < 1     """Every tool name the probe calls, in `given` and in a tool-form `do`."""
+121 < 1     names = {g["tool"] for g in p.get("given", []) if is_tool_call(g)}
+122 < 1     names |= {d["tool"] for d in p.get("do", []) if is_tool_call(d)}
+123 < 1     return names
+124 < 1 

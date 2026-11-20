@@ -23,5 +23,18 @@
 22 < 1 const format: ComputedFunction = ({ template, ...args }) =>
 23 < 1   text(template).replace(/\$\{([^}]+)\}/g, (_m, name: string) => text(args[name]))
 24 < 1 
-25 < 1 export const functions: Record<string, ComputedFunction> = { lookup, format }
+26 > 1 /** The rows of `rows`, in order, whose every `where` cell equals theirs (a picker's options). */
+27 < 1 const rowsWhere: ComputedFunction = ({ rows, where }) => {
+28 < 1   if (!Array.isArray(rows)) return []
+29 < 1   const want = where && typeof where === 'object' ? (where as Record<string, unknown>) : {}
+30 < 1   return rows.filter(
+31 < 1     (r) =>
+32 < 1       r &&
+33 < 1       typeof r === 'object' &&
+34 < 1       Object.keys(want).every((k) => String((r as Record<string, unknown>)[k] ?? '') === String(want[k])),
+35 < 1   )
+36 < 1 }
+25 < 2 export const functions: Record<string, ComputedFunction> = { lookup, format }
 26 < 1 
+27 < 1 export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere }
+28 < 1 

@@ -32,6 +32,8 @@
 31 < 1 type Drawn = {el: El; ctx: Ctx; role: string | null; name: string};
 32 < 1 
 33 < 1 class CannotRun extends Error {}
+35 > 1 // A story whose pick the page's picker does not offer: it cannot be played on the page.
+36 < 1 class NotOffered extends Error {}
 34 < 1 
 35 < 1 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 36 < 1 const text = (v: unknown) => (v === undefined || v === null ? '' : String(v));
@@ -180,12 +182,34 @@
 180 > 1         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
 179 < 2         setPath(draft, ((d.el.props!.value as Record<string, string>).$bindState).slice('/draft/'.length).replace(/^/, '/'), typed);
 180 < 1       }
-181 < 1       // The control that runs the tool: in the row the step's row arg names, when it sits in a list.
+182 > 1       // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
+181 < 2       // The control that runs the tool: in the row the step's row arg names, when it sits in a list.
 182 < 1       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);
-183 < 1       const inRow = (d: Drawn) => rowArgs.length > 0 && isObj(d.ctx.repeatItem)
-184 < 1         && rowArgs.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
+184 > 1       const pickOf = (d: Drawn) => (d.el.type === 'ActionSelect' && typeof d.el.props?.pick === 'string' ? d.el.props.pick : null);
+185 < 1       const inRow = (d: Drawn) => {
+186 < 1         const keys = rowArgs.filter((k) => k !== pickOf(d));
+187 < 1         return keys.length > 0 && isObj(d.ctx.repeatItem) && keys.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
+188 < 1       };
+183 < 2       const inRow = (d: Drawn) => rowArgs.length > 0 && isObj(d.ctx.repeatItem)
+184 < 2         && rowArgs.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
 185 < 1       const control = controls.find(inRow) ?? controls.find((d) => d.ctx.repeatBasePath === undefined) ?? controls[0];
-186 < 1       if (control) {
+187 > 1       const pick = control ? pickOf(control) : null;
+188 < 1       if (control && pick !== null) {
+189 < 1         // A picker: choose the offered row whose id is the step's pick.
+190 < 1         const p = control.el.props!;
+191 < 1         const label = typeof p.optionLabel === 'string' ? p.optionLabel : 'name';
+192 < 1         const options = core.resolvePropValue(p.options, control.ctx);
+193 < 1         const row = (Array.isArray(options) ? options : []).find((r) => isObj(r) && r.id === real[pick]) as Record<string, unknown> | undefined;
+194 < 1         if (!row) {
+195 < 1           const table = props[pick]?.['x-row-of'];
+196 < 1           const rows = typeof table === 'string' ? (beforeState.tables as Record<string, Record<string, unknown>[]>)[table] : undefined;
+197 < 1           const cell = rows?.find((r) => r.id === real[pick])?.[label];
+198 < 1           const option = cell === undefined || cell === null || cell === '' ? text(args[pick]) : String(cell);
+199 < 1           throw new NotOffered(`STORYUI ${s.id} step ${i + 1}: the picker "${control.name}" does not offer ${option}`);
+200 < 1         }
+201 < 1         ui.push({select: {role: control.role!, name: control.name, option: String(row[label])}});
+202 < 1       } else if (control) {
+186 < 2       if (control) {
 187 < 1         ui.push({click: {role: control.role!, name: control.name}});
 188 < 1         // A press that clears its draft box clears it on the page too.
 189 < 1         const press = control.el.on?.press;
@@ -217,6 +241,10 @@
 215 < 1     console.log(`STORYUI ${n} step(s)`);
 216 < 1     return 0;
 217 < 1   } catch (e) {
+219 > 1     if (e instanceof NotOffered) {
+220 < 1       console.log(e.message);
+221 < 1       return 1;
+222 < 1     }
 218 < 1     console.log(`STORYUI could not run: ${(e as Error).message}`);
 219 < 1     return 2;
 220 < 1   }

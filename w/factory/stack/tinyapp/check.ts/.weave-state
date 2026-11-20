@@ -1,0 +1,296 @@
+0 < 1 #!/usr/bin/env bun
+1 < 1 // The state-probe checker: does this story step come true in this copy of the
+2 < 1 // app? Builds the page to a temp dir, serves it on loopback, starts celld on a
+3 < 1 // temp copy of the server, sets the scene through the page's own actions,
+4 < 1 // checks the ending is not already true, does the step by role and name,
+5 < 1 // checks the store and the screen, restarts celld and reads the store back in
+6 < 1 // a fresh browser. Exit 0 pass, 1 a finding about the app, 2 could not run.
+7 < 1 import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync} from 'node:fs';
+8 < 1 import {tmpdir} from 'node:os';
+9 < 1 import {basename, dirname, join, resolve} from 'node:path';
+10 < 1 import {launchBrowser, type Browser, type Page} from './browser';
+11 < 1 import {startCelld, EnvError, type Celld} from './celld';
+12 < 1 import {Aliases, failing, hollow, probeFromPlan, type Content, type Probe, type ToolCall, type UiStep} from './probe';
+13 < 1 import {stepDiff, type DiffEntry} from './diff';
+14 < 1 
+15 < 1 type Stage = 'ok' | 'build' | 'load' | 'given' | 'before' | 'do' | 'after' | 'see' | 'saved' | 'env';
+16 < 1 type Result = {
+17 < 1   clause: string; exit: 0 | 1 | 2; stage: Stage; message: string; did: unknown[];
+18 < 1   before?: Content; after?: Content; saved?: Content; screen_text?: string;
+19 < 1   diff?: DiffEntry[];
+20 < 1 };
+21 < 1 
+22 < 1 class Finding extends Error {
+23 < 1   constructor(public stage: Stage, message: string) { super(message); }
+24 < 1 }
+25 < 1 
+26 < 1 const arg = (name: string, fallback?: string) => {
+27 < 1   const i = process.argv.indexOf('--' + name);
+28 < 1   return i > 0 ? process.argv[i + 1] : fallback;
+29 < 1 };
+30 < 1 
+31 < 1 const PLAN = arg('plan');
+32 < 1 const CLAUSE = arg('clause');
+33 < 1 const COPY = resolve(arg('copy', '.')!);
+34 < 1 const BUDGET_MS = Number(arg('budget-ms', '45000'));
+35 < 1 const READ = 'JSON.stringify(window.__TINYAPP__.store.getContent())';
+36 < 1 const DEADLINE = Date.now() + BUDGET_MS;
+37 < 1 const cleanups: (() => Promise<unknown>)[] = [];
+38 < 1 const ctx: Partial<Result> = {};
+39 < 1 
+40 < 1 // Past the budget, main stops waiting on the run, but the run is still going:
+41 < 1 // it must start nothing more, and whatever it is starting right now must be
+42 < 1 // owned before cleanup, or a celld or a browser outlives the check.
+43 < 1 let aborted = false;
+44 < 1 const starting = new Set<Promise<unknown>>();
+45 < 1 
+46 < 1 class Aborted extends Error {}
+47 < 1 
+48 < 1 const alive = () => {
+49 < 1   if (aborted) throw new Aborted('past the budget');
+50 < 1 };
+51 < 1 
+52 < 1 /** Starts a process-backed thing and registers its stop before anything else runs. */
+53 < 1 const own = <T>(start: () => Promise<T>, stop: (t: T) => Promise<unknown>): Promise<T> => {
+54 < 1   alive();
+55 < 1   const p = start().then((t) => {
+56 < 1     cleanups.push(() => stop(t));
+57 < 1     alive();
+58 < 1     return t;
+59 < 1   });
+60 < 1   starting.add(p);
+61 < 1   p.catch(() => {}).finally(() => starting.delete(p));
+62 < 1   return p;
+63 < 1 };
+64 < 1 
+65 < 1 const waitFor = async (page: Page, expr: string, ms: number) => {
+66 < 1   const end = Date.now() + ms;
+67 < 1   while (Date.now() < end) {
+68 < 1     if (await page.evaluate(`!!(${expr})`).catch(() => false)) return true;
+69 < 1     await Bun.sleep(50);
+70 < 1   }
+71 < 1   return false;
+72 < 1 };
+73 < 1 
+74 < 1 const read = async (page: Page) => JSON.parse((await page.evaluate(READ)) as string) as Content;
+75 < 1 
+76 < 1 const toAction = (d: UiStep) => {
+77 < 1   if ('click' in d) return {click: {role: d.click.role, name: d.click.name}};
+78 < 1   if ('type' in d) return {type: [{role: d.type.role, name: d.type.name}, d.type.text] as [{role: string; name: string}, string]};
+80 > 1   if ('select' in d) return {select: [{role: d.select.role, name: d.select.name}, d.select.option] as [{role: string; name: string}, string]};
+79 < 1   return {key: [{role: d.key.role, name: d.key.name}, d.key.key] as [{role: string; name: string}, string]};
+80 < 1 };
+81 < 1 
+82 < 1 const locatorWords = (d: UiStep) => {
+83 < 1   const l = Object.values(d)[0] as {role: string; name: string};
+84 < 1   return `${l.role} named "${l.name}"`;
+85 < 1 };
+86 < 1 
+87 < 1 async function build(): Promise<string> {
+88 < 1   const out = mkdtempSync(join(tmpdir(), 'tinyapp-page-'));
+89 < 1   cleanups.push(async () => rmSync(out, {recursive: true, force: true}));
+90 < 1   // Spawned, not spawnSync: a synchronous build would hold the budget timer.
+91 < 1   const cmd = existsSync(join(COPY, 'scripts', 'build-client.ts'))
+92 < 1     ? [process.execPath, 'scripts/build-client.ts', out]
+93 < 1     : [process.execPath, 'build', './client/index.html', '--outdir', out];
+94 < 1   const proc = Bun.spawn(cmd,
+95 < 1     {cwd: COPY, stdout: 'pipe', stderr: 'pipe'});
+96 < 1   cleanups.push(async () => { proc.kill('SIGKILL'); await proc.exited; });
+97 < 1   const [stdout, stderr, code] = await Promise.all([
+98 < 1     new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+99 < 1   alive();
+100 < 1   if (code !== 0) {
+101 < 1     throw new Finding('build', 'the page does not build:\n' + (stdout + stderr).slice(-800));
+102 < 1   }
+103 < 1   return out;
+104 < 1 }
+105 < 1 
+106 < 1 function serve(dist: string) {
+107 < 1   const server = Bun.serve({
+108 < 1     hostname: '127.0.0.1',
+109 < 1     port: 0,
+110 < 1     fetch(req) {
+111 < 1       const p = new URL(req.url).pathname;
+112 < 1       const f = join(dist, p === '/' ? 'index.html' : p.slice(1));
+113 < 1       return new Response(Bun.file(existsSync(f) ? f : join(dist, 'index.html')));
+114 < 1     },
+115 < 1   });
+116 < 1   cleanups.push(async () => server.stop(true));
+117 < 1   return `http://127.0.0.1:${server.port}`;
+118 < 1 }
+119 < 1 
+120 < 1 async function browser(): Promise<Browser> {
+121 < 1   try {
+122 < 1     return await own(() => launchBrowser(), (b) => b.close());
+123 < 1   } catch (e) {
+124 < 1     throw e instanceof Aborted ? e : new EnvError(String((e as Error).message));
+125 < 1   }
+126 < 1 }
+127 < 1 
+128 < 1 const celldAt = (opts: {dir?: string; clean?: boolean} = {}) =>
+129 < 1   own(() => startCelld(COPY, {...opts, readyMs: Math.max(1000, Math.min(20000, DEADLINE - Date.now()))}),
+130 < 1     (c) => c.stop());
+131 < 1 
+132 < 1 async function open(b: Browser, origin: string, celld: Celld): Promise<Page> {
+133 < 1   const page = await b.openUrl!({
+134 < 1     url: origin + '/', origin, clock: new Date().toISOString(),
+135 < 1     prelude: `window.__TINYAPP_SYNC__ = ${JSON.stringify(celld.ws)};`,
+136 < 1     allow: [celld.url, celld.ws],
+137 < 1   });
+138 < 1   if (!(await waitFor(page, 'window.__TINYAPP__ && window.__TINYAPP__.synced === true', 10000))) {
+139 < 1     throw new Finding('load', 'the page never finished loading and syncing (window.__TINYAPP__.synced stayed false)');
+140 < 1   }
+141 < 1   return page;
+142 < 1 }
+143 < 1 
+144 < 1 // Who is signed in: the page hook's `who`, which the page passes to every action.
+145 < 1 const signIn = (page: Page, who: string | null) =>
+146 < 1   page.evaluate(`window.__TINYAPP__.who = ${JSON.stringify(who)}; true`);
+147 < 1 
+148 < 1 async function callTool(page: Page, aliases: Aliases, schemas: Record<string, unknown>, g: ToolCall, stage: Stage) {
+149 < 1   if (g.as !== undefined) await signIn(page, g.as);
+150 < 1   const args = aliases.args(g.args, schemas[g.tool]);
+151 < 1   const ok = await page.evaluate(`window.__TINYAPP__.tools[${JSON.stringify(g.tool)}](${JSON.stringify(args)})`)
+152 < 1     .catch((e) => String(e));
+153 < 1   if (ok !== true) throw new Finding(stage, `${g.tool}(${JSON.stringify(g.args)}) was refused${ok === false ? '' : ': ' + ok}`);
+154 < 1   aliases.learn(await read(page));
+155 < 1 }
+156 < 1 
+157 < 1 async function run(probe: Probe): Promise<Result> {
+158 < 1   ctx.did = probe.do;
+159 < 1   const dist = await build();
+160 < 1   const origin = serve(dist);
+161 < 1   let celld = await celldAt();
+162 < 1   const first = await browser();
+163 < 1   const page = await open(first, origin, celld);
+164 < 1   const aliases = new Aliases();
+165 < 1   const schemas = JSON.parse((await page.evaluate('JSON.stringify(window.__TINYAPP__.schemas)')) as string);
+166 < 1 
+167 < 1   for (const g of probe.given) await callTool(page, aliases, schemas, g, 'given');
+168 < 1   aliases.learn(await read(page));
+169 < 1   ctx.before = aliases.rename(await read(page));
+170 < 1   if (hollow(probe, ctx.before)) {
+171 < 1     throw new Finding('before', 'hollow: every check already holds before the step, so the step proves nothing');
+172 < 1   }
+173 < 1 
+174 < 1   if (probe.as !== undefined) await signIn(page, probe.as);
+175 < 1   for (const d of probe.do) {
+176 < 1     if ('tool' in d) { await callTool(page, aliases, schemas, d as ToolCall, 'do'); continue; }
+177 < 1     try {
+178 < 1       await page.act(toAction(d as UiStep) as never);
+180 > 1     } catch (e) {
+181 < 1       const s = d as UiStep;
+182 < 1       if ('select' in s && String((e as Error)?.message).startsWith('act: no option')) {
+183 < 1         throw new Finding('do', `there is no option ${JSON.stringify(s.select.option)} in the ${locatorWords(s)} on the screen to use`);
+184 < 1       }
+185 < 1       throw new Finding('do', `there is no ${locatorWords(s)} on the screen to use`);
+179 < 2     } catch {
+180 < 2       throw new Finding('do', `there is no ${locatorWords(d as UiStep)} on the screen to use`);
+181 < 1     }
+182 < 1   }
+183 < 1 
+184 < 1   const settle = async (p: Page, ms: number) => {
+185 < 1     const end = Date.now() + ms;
+186 < 1     for (;;) {
+187 < 1       aliases.learn(await read(p));
+188 < 1       const now = aliases.rename(await read(p));
+189 < 1       const bad = failing(probe, now, ctx.before);
+190 < 1       if (!bad.length || Date.now() > end) return {now, bad};
+191 < 1       await Bun.sleep(100);
+192 < 1     }
+193 < 1   };
+194 < 1   const after = await settle(page, 3000);
+195 < 1   ctx.after = after.now;
+196 < 1   ctx.diff = stepDiff(ctx.before, ctx.after);
+197 < 1   if (after.bad.length) throw new Finding('after', 'after the step: ' + after.bad.join('; '));
+198 < 1 
+199 < 1   for (const s of probe.see ?? []) {
+200 < 1     const n = await page.count({role: s.role, name: s.name});
+201 < 1     const want = s.count ?? 1;
+202 < 1     if (s.count === undefined ? n < 1 : n !== want) {
+203 < 1       throw new Finding('see', `expected ${want} ${s.role} named "${s.name}" on the screen, saw ${n}`);
+204 < 1     }
+205 < 1   }
+206 < 1   ctx.screen_text = String(await page.evaluate('document.body.innerText'));
+207 < 1 
+208 < 1   await page.close();
+209 < 1   alive();
+210 < 1   await celld.stop(true);
+211 < 1   // Its cleanup stays registered: stopping a stopped celld is a no-op, and the
+212 < 1   // restarted one's own cleanup, which runs first, removes the shared dir.
+213 < 1   celld = await celldAt({dir: celld.dir, clean: false});
+214 < 1   const second = await browser();
+215 < 1   const fresh = await open(second, origin, celld).catch((e) => {
+216 < 1     throw e instanceof Finding ? new Finding('saved', 'after a server restart the page did not load: ' + e.message) : e;
+217 < 1   });
+218 < 1   const end = Date.now() + 10000;
+219 < 1   let bad: string[] = [];
+220 < 1   for (;;) {
+221 < 1     // the same aliases: the saved rows are the rows made before the restart
+222 < 1     const renamed = aliases.rename(await read(fresh));
+223 < 1     ctx.saved = renamed;
+224 < 1     bad = failing(probe, renamed, ctx.before);
+225 < 1     if (!bad.length || Date.now() > end) break;
+226 < 1     await Bun.sleep(200);
+227 < 1   }
+228 < 1   if (bad.length) throw new Finding('saved', 'after a server restart, in a fresh browser: ' + bad.join('; '));
+229 < 1   return {clause: CLAUSE!, exit: 0, stage: 'ok', message: 'every check holds after the step and after a restart', did: probe.do, ...ctx} as Result;
+230 < 1 }
+231 < 1 
+232 < 1 function write(r: Result) {
+233 < 1   // A guard clause's id (e.g. `G:p0/S2.3`) carries a `/`; a result file is one
+234 < 1   // path segment, so every `/` in the clause becomes `_`.
+235 < 1   const safeClause = r.clause.replace(/\//g, '_');
+236 < 1   const out = arg('out') ?? (process.env.FLOCK_CHECK_OUT ? join(process.env.FLOCK_CHECK_OUT, `${safeClause}@${basename(COPY)}.json`) : undefined);
+237 < 1   if (out) { mkdirSync(dirname(out), {recursive: true}); writeFileSync(out, JSON.stringify(r)); }
+238 < 1   console.log(`CHECK ${r.clause} exit ${r.exit} at ${r.stage}: ${r.message}`);
+239 < 1   if (process.argv.includes('--json')) console.log(JSON.stringify(r));
+240 < 1 }
+241 < 1 
+242 < 1 async function cleanup() {
+243 < 1   for (let c = cleanups.pop(); c; c = cleanups.pop()) await c().catch(() => {});
+244 < 1 }
+245 < 1 
+246 < 1 async function main() {
+247 < 1   if (!PLAN || !CLAUSE) { console.log('usage: check.ts --plan <plan.md> --clause <id> [--copy <dir>] [--out <file>] [--budget-ms <n>] [--json]'); process.exit(2); }
+248 < 1   const clause = CLAUSE;
+249 < 1   let probe: Probe | undefined;
+250 < 1   const failed = (e: unknown): Result => e instanceof Finding
+251 < 1     ? {clause, exit: 1, stage: e.stage, message: e.message, did: probe?.do ?? [], ...ctx} as Result
+252 < 1     : {clause, exit: 2, stage: 'env', message: String((e as Error)?.message ?? e), did: probe?.do ?? [], ...ctx} as Result;
+253 < 1   let timer: ReturnType<typeof setTimeout> | undefined;
+254 < 1   let resolveStopped!: (r: Result) => void;
+255 < 1   const stopped = new Promise<Result>((res) => { resolveStopped = res; });
+256 < 1   // The budget timeout and a SIGTERM/SIGINT (the Flock's 60 s runFacts timeout
+257 < 1   // sends SIGTERM) both stop the run the same way: mark aborted so in-flight
+258 < 1   // starts are owned before cleanup, then resolve the race with an exit-2 env
+259 < 1   // finding, never leaving a celld or browser running past the process.
+260 < 1   const stopWith = (message: string) => {
+261 < 1     aborted = true;
+262 < 1     resolveStopped({clause, exit: 2, stage: 'env', message, did: probe?.do ?? [], ...ctx} as Result);
+263 < 1   };
+264 < 1   timer = setTimeout(() => stopWith(`the check ran past its ${BUDGET_MS} ms budget`), BUDGET_MS);
+265 < 1   const onSignal = () => stopWith('the check was stopped');
+266 < 1   process.on('SIGTERM', onSignal);
+267 < 1   process.on('SIGINT', onSignal);
+268 < 1   const work = (async () => {
+269 < 1     probe = probeFromPlan(readFileSync(PLAN, 'utf8'), clause);
+270 < 1     return run(probe);
+271 < 1   })().catch(failed);
+272 < 1   const r = await Promise.race([work, stopped]);
+273 < 1   clearTimeout(timer);
+274 < 1   process.off('SIGTERM', onSignal);
+275 < 1   process.off('SIGINT', onSignal);
+276 < 1   if (aborted) {
+277 < 1     // Whatever the run was starting when the budget ran out is owned once it
+278 < 1     // settles; each start is itself bounded by the budget (readyMs) or a
+279 < 1     // fixed launch timeout.
+280 < 1     while (starting.size) await Promise.allSettled([...starting]);
+281 < 1   }
+282 < 1   await cleanup();
+283 < 1   write(r);
+284 < 1   process.exit(r.exit);
+285 < 1 }
+286 < 1 
+287 < 1 await main();
+288 < 1 

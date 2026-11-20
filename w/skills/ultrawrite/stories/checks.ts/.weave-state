@@ -5,7 +5,8 @@
 2 < 2 import {KINDS, conceptsOf, type Bundle} from './bundle';
 3 < 1 import {checkProduct} from './product';
 4 < 1 
-5 < 1 const GESTURES = new Set(['click', 'type', 'key']);
+6 > 1 const GESTURES = new Set(['click', 'type', 'key', 'select']);
+5 < 2 const GESTURES = new Set(['click', 'type', 'key']);
 6 < 1 const isGesture = (g: unknown) =>
 7 < 1   !!g && typeof g === 'object' && Object.keys(g).length === 1 && GESTURES.has(Object.keys(g)[0]);
 8 < 1 const named = (text: string, word: string) => text.split(word).length - 1;
@@ -81,7 +82,8 @@
 61 < 1       if (!owner.has(st.tool)) refusals.push(`${where}: tool ${st.tool} is no piece's action`);
 62 < 1       if (!['store', 'ui', 'saved'].includes(st.layer)) refusals.push(`${where}: layer must be store, ui or saved`);
 63 < 1       if (st.layer === 'ui' && !(Array.isArray(st.ui) && st.ui.length && st.ui.every(isGesture))) {
-64 < 1         refusals.push(`${where}: a ui step needs ui = a list of click/type/key gestures`);
+65 > 1         refusals.push(`${where}: a ui step needs ui = a list of click/type/key/select gestures`);
+64 < 2         refusals.push(`${where}: a ui step needs ui = a list of click/type/key gestures`);
 65 < 1       }
 66 < 1       if (st.layer !== 'ui' && st.ui !== undefined) refusals.push(`${where}: only a ui step carries ui`);
 67 < 1       if (st.as !== undefined && !(st.as === null || (typeof st.as === 'string' && st.as !== ''))) {

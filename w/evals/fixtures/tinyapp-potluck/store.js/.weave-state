@@ -1,0 +1,71 @@
+0 < 1 import { createStore } from 'tinybase'
+1 < 1 
+2 < 1 // The potluck's store module. Every action is a WebMCP-shaped tool:
+3 < 1 // a name, the piece it belongs to, a plain description, a typed input
+4 < 1 // schema, and run(store, args) -> true when it changed the store.
+5 < 1 // A guest's `answer` is '' until they say yes; a dish's `guestId` is ''
+6 < 1 // until someone is bringing it.
+7 < 1 export const TOOLS = [
+8 < 1   {
+9 < 1     name: 'addGuest',
+10 < 1     piece: 'guest',
+11 < 1     description: 'Invite a guest by name; they have not answered yet.',
+12 < 1     inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+13 < 1     run: (store, { name }) => {
+14 < 1       const clean = String(name ?? '').trim()
+15 < 1       if (clean === '') return false
+16 < 1       const listed = store.getRowIds('guests').some((id) => String(store.getCell('guests', id, 'name')).toLowerCase() === clean.toLowerCase())
+17 < 1       if (listed) return false
+18 < 1       store.addRow('guests', { name: clean, answer: '' })
+19 < 1       return true
+20 < 1     }
+21 < 1   },
+22 < 1   {
+23 < 1     name: 'sayYes',
+24 < 1     piece: 'guest',
+25 < 1     description: 'Mark this guest as coming.',
+26 < 1     inputSchema: { type: 'object', properties: { guestId: { type: 'string', 'x-row-of': 'guests' } }, required: ['guestId'] },
+27 < 1     run: (store, { guestId }) => {
+28 < 1       if (!store.hasRow('guests', guestId)) return false
+29 < 1       store.setCell('guests', guestId, 'answer', 'yes')
+30 < 1       return true
+31 < 1     }
+32 < 1   },
+33 < 1   {
+34 < 1     name: 'addDish',
+35 < 1     piece: 'dish',
+36 < 1     description: 'List a dish the party needs; nobody is bringing it yet.',
+37 < 1     inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+38 < 1     run: (store, { name }) => {
+39 < 1       const clean = String(name ?? '').trim()
+40 < 1       if (clean === '') return false
+41 < 1       store.addRow('dishes', { name: clean, guestId: '' })
+42 < 1       return true
+43 < 1     }
+44 < 1   },
+45 < 1   {
+46 < 1     name: 'bringDish',
+47 < 1     piece: 'dish',
+48 < 1     description: 'Have this guest, who is coming, bring this dish nobody is bringing yet.',
+49 < 1     inputSchema: {
+50 < 1       type: 'object',
+51 < 1       properties: { dishId: { type: 'string', 'x-row-of': 'dishes' }, guestId: { type: 'string', 'x-row-of': 'guests' } },
+52 < 1       required: ['dishId', 'guestId']
+53 < 1     },
+54 < 1     run: (store, { dishId, guestId }) => {
+55 < 1       if (!store.hasRow('dishes', dishId) || !store.hasRow('guests', guestId)) return false
+56 < 1       if (store.getCell('dishes', dishId, 'guestId') !== '') return false
+57 < 1       if (store.getCell('guests', guestId, 'answer') !== 'yes') return false
+58 < 1       store.setCell('dishes', dishId, 'guestId', guestId)
+59 < 1       return true
+60 < 1     }
+61 < 1   }
+62 < 1 ]
+63 < 1 
+64 < 1 export function makeStore () {
+65 < 1   return createStore().setTablesSchema({
+66 < 1     guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
+67 < 1     dishes: { name: { type: 'string' }, guestId: { type: 'string', default: '' } }
+68 < 1   })
+69 < 1 }
+70 < 1 

@@ -18,6 +18,8 @@
 11 < 1 import {dirname, join, resolve, sep} from 'node:path';
 12 < 1 
 13 < 1 const PAGE = join(import.meta.dir, 'preview');
+15 > 1 // The probe core story play maps row aliases with; staged over the page's re-export.
+16 < 1 const PROBE = join(import.meta.dir, '..', '..', '..', 'factory', 'stack', 'tinyapp', 'probe.ts');
 14 < 1 const NEEDS = ['client/src/screens/catalog.ts', 'client/src/store.js', 'node_modules/bun-plugin-tailwind'];
 16 > 1 const VERSION = /^screen\.([A-Z])\.json$/;
 15 < 2 const VERSION = /^(.+)\.([A-Z])\.json$/;
@@ -141,6 +143,7 @@
 100 < 1   rmSync(dist, {recursive: true, force: true});
 101 < 1   mkdirSync(pageDir, {recursive: true});
 102 < 1   cpSync(PAGE, pageDir, {recursive: true});
+104 > 1   cpSync(PROBE, join(pageDir, 'probe.ts'));
 103 < 1   const tailwind = (await import(join(app, 'node_modules', 'bun-plugin-tailwind'))).default;
 104 < 1   const built = await Bun.build({entrypoints: [join(pageDir, 'index.html')], outdir: dist, plugins: [tailwind]})
 105 < 1     .catch((e: unknown) => ({success: false, logs: [e]}));

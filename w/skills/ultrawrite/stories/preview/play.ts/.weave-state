@@ -1,11 +1,18 @@
 0 < 1 // Story play: before the sign question, each story plays out on the approved
 1 < 1 // screen where the operator can watch. Steps off the ui layer run their tool;
 2 < 1 // a ui step types and clicks through the elements its `ui` entries name, each
-3 < 1 // outlined while it acts, then counts every `see` entry by role and name.
+4 > 1 // outlined while it acts, then counts every `see` entry by role and name. A
+5 < 1 // `select` entry opens its combobox and clicks the option in the listbox,
+6 < 1 // which renders in a portal outside #app. Store-step args name rows by alias,
+7 < 1 // as check.ts reads them, mapped to the store's own ids before each run.
+3 < 2 // outlined while it acts, then counts every `see` entry by role and name.
 4 < 1 import {find, nameOf, roleOf, targetOf} from './names';
+7 > 1 import {Aliases, type Content} from './probe';
+6 > 2 import {Aliases, type Content} from '../../../../factory/stack/tinyapp/probe';
 5 < 1 
 6 < 1 type Target = {role: string; name: string};
-7 < 1 type UiEntry = {type?: Target & {text: string}; click?: Target};
+8 > 1 type UiEntry = {type?: Target & {text: string}; click?: Target; select?: Target & {option: string}};
+7 < 2 type UiEntry = {type?: Target & {text: string}; click?: Target};
 8 < 1 type See = Target & {count: number};
 9 < 1 export type PlayStep = {tool: string; args?: Record<string, unknown>; layer?: string; ui?: UiEntry[]; see?: See[]};
 10 < 1 export type PlayStory = {id: string; steps?: PlayStep[]};
@@ -28,25 +35,65 @@
 27 < 1   el.dispatchEvent(new Event('input', {bubbles: true}));
 28 < 1 }
 29 < 1 
+31 > 1 /** Outline `el` while `job` runs on it. */
+32 < 1 async function outlined(el: Element, job: (html: HTMLElement) => void) {
+33 < 1   const html = el as HTMLElement;
+34 < 1   const before = html.style.outline;
+35 < 1   html.style.outline = '3px solid #e8590c';
+36 < 1   try {
+37 < 1     await pause(GAP);
+38 < 1     job(html);
+39 < 1     await pause(GAP);
+40 < 1   } finally {
+41 < 1     html.style.outline = before;
+42 < 1   }
+43 < 1 }
+44 < 1 
+45 < 1 /** The element of `role` named `name` anywhere in the document, waited for up to `ms`. */
+47 > 1 async function appearing(role: string, name: string, ms: number): Promise<Element | null> {
+46 < 2 async function await_(role: string, name: string, ms: number): Promise<Element | null> {
+47 < 1   const end = Date.now() + ms;
+48 < 1   for (;;) {
+49 < 1     const el = find(role, name, document);
+50 < 1     if (el || Date.now() >= end) return el;
+51 < 1     await pause(50);
+52 < 1   }
+53 < 1 }
+54 < 1 
 30 < 1 async function act(entry: UiEntry, misses: string[]) {
-31 < 1   const target = entry.type ?? entry.click;
+32 > 1   const target = entry.type ?? entry.click ?? entry.select;
+31 < 2   const target = entry.type ?? entry.click;
 32 < 1   if (!target) return;
 33 < 1   const el = find(target.role, target.name, root());
 34 < 1   if (!el) {
 35 < 1     misses.push(`no ${targetOf(target.role, target.name)}`);
 36 < 1     return;
 37 < 1   }
-38 < 1   const html = el as HTMLElement;
-39 < 1   const before = html.style.outline;
-40 < 1   html.style.outline = '3px solid #e8590c';
-41 < 1   try {
-42 < 1     await pause(GAP);
+39 > 1   if (entry.select) {
+40 < 1     const {option, name} = entry.select;
+41 < 1     await outlined(el, (html) => html.click());
+43 > 1     const opt = await appearing('option', option, 1000);
+42 < 2     const opt = await await_('option', option, 1000);
+43 < 1     if (!opt) {
+44 < 1       misses.push(`no option "${option}" in combobox "${name}"`);
+45 < 1       return;
+46 < 1     }
+47 < 1     await outlined(opt, (html) => html.click());
+48 < 1     return;
+49 < 1   }
+50 < 1   await outlined(el, (html) => {
+38 < 2   const html = el as HTMLElement;
+39 < 2   const before = html.style.outline;
+40 < 2   html.style.outline = '3px solid #e8590c';
+41 < 2   try {
+42 < 2     await pause(GAP);
 43 < 1     if (entry.type) setValue(el, entry.type.text);
 44 < 1     else html.click();
-45 < 1     await pause(GAP);
-46 < 1   } finally {
-47 < 1     html.style.outline = before;
-48 < 1   }
+46 > 1   });
+45 < 2     await pause(GAP);
+46 < 2   } finally {
+47 < 2     html.style.outline = before;
+48 < 2   }
 49 < 1 }
 50 < 1 
 52 > 1 let turn: Promise<unknown> = Promise.resolve();
@@ -60,16 +107,26 @@
 60 < 1 }
 61 < 1 
 51 < 1 /** Play one story on the screen as drawn; misses name what was not as the story says. */
-52 < 1 export async function play(story: PlayStory, store: {delTables: () => unknown}, tools: Tools): Promise<{ok: boolean; misses: string[]}> {
+53 > 1 export async function play(
+54 < 1   story: PlayStory,
+55 < 1   store: {delTables: () => unknown; getContent: () => Content},
+56 < 1   tools: Tools,
+57 < 1   schemas: Record<string, unknown> = {},
+58 < 1 ): Promise<{ok: boolean; misses: string[]}> {
+52 < 2 export async function play(story: PlayStory, store: {delTables: () => unknown}, tools: Tools): Promise<{ok: boolean; misses: string[]}> {
 53 < 1   const misses: string[] = [];
 54 < 1   const preview = window.__PREVIEW__;
 55 < 1   if (preview) preview.playing = true;
 56 < 1   try {
 57 < 1     store.delTables();
+59 > 1     const aliases = new Aliases();
+60 < 1     aliases.learn(store.getContent());
 58 < 1     await pause(GAP);
 59 < 1     for (const step of story.steps ?? []) {
 60 < 1       if (step.layer !== 'ui') {
-61 < 1         try { tools[step.tool]?.(step.args ?? {}); } catch { /* a refused step changes nothing */ }
+62 > 1         try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch { /* a refused step changes nothing */ }
+63 < 1         aliases.learn(store.getContent());
+61 < 2         try { tools[step.tool]?.(step.args ?? {}); } catch { /* a refused step changes nothing */ }
 62 < 1         await pause(GAP);
 63 < 1         continue;
 64 < 1       }
@@ -79,6 +136,7 @@
 68 < 1         const n = count(s.role, s.name);
 69 < 1         if (n !== s.count) misses.push(`${targetOf(s.role, s.name)} seen ${n}, wanted ${s.count}`);
 70 < 1       }
+72 > 1       aliases.learn(store.getContent());
 71 < 1     }
 72 < 1   } finally {
 73 < 1     if (preview) preview.playing = false;

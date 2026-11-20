@@ -44,6 +44,7 @@
 30 < 1 const bind = (s: unknown) => Object.fromEntries(list.map((t) => [t.name, (args: Record<string, unknown>) => t.run(s, args, null)]));
 31 < 1 const store = createMergeableStore().setTablesSchema(schema);
 32 < 1 const tools = bind(store);
+34 > 1 const schemas = Object.fromEntries(list.map((t) => [t.name, t.inputSchema]));
 33 < 1 window.__PREVIEW__ = {store, tools, playing: false};
 34 < 1 
 35 < 1 const takesRow = (t: Tool | undefined) =>
@@ -93,7 +94,8 @@
 79 < 1 async function playOne(id: string) {
 80 < 1   const story = (bundle.stories ?? []).find((s) => s.id === id);
 81 < 1   const report = story
-83 > 1     ? await inTurn(() => play(story, store, tools)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+84 > 1     ? await inTurn(() => play(story, store, tools, schemas)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+83 > 2     ? await inTurn(() => play(story, store, tools)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
 82 < 2     ? await play(story, store, tools).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
 83 < 1     : {ok: false, misses: [`no story ${id}`]};
 84 < 1   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});

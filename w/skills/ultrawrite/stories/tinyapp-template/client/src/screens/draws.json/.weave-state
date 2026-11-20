@@ -13,6 +13,7 @@
 12 < 1     "Separator": {"role": null},
 13 < 1     "ActionButton": {"role": "button", "name": ["name", "label"]},
 14 < 1     "ActionCheckbox": {"role": "checkbox", "name": ["label"]},
+16 > 1     "ActionSelect": {"role": "combobox", "name": ["label"]},
 15 < 1     "DraftInput": {"role": "textbox", "name": ["label"]}
 16 < 1   }
 17 < 1 }
