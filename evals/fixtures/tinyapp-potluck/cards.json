@@ -1,0 +1,130 @@
+[
+ {
+  "piece": "guest",
+  "concept": "guest",
+  "purpose": "The host keeps the list of who is invited and who is coming.",
+  "depends_on": [],
+  "state": {
+   "tables": {
+    "guests": [
+     "name",
+     "answer"
+    ]
+   },
+   "values": []
+  },
+  "actions": [
+   {
+    "name": "addGuest",
+    "description": "Invite a guest by name; they have not answered yet.",
+    "label": "Invite",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "x-label": "Guest name"
+      }
+     },
+     "required": [
+      "name"
+     ]
+    },
+    "refuses": [
+     "blank guest name",
+     "a guest already on the list"
+    ]
+   },
+   {
+    "name": "sayYes",
+    "description": "Mark this guest as coming.",
+    "label": "${name} is coming",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "guestId": {
+       "type": "string",
+       "x-row-of": "guests"
+      }
+     },
+     "required": [
+      "guestId"
+     ]
+    },
+    "refuses": [
+     "a guest who does not exist"
+    ]
+   }
+  ]
+ },
+ {
+  "piece": "dish",
+  "concept": "dish",
+  "purpose": "Each dish the party needs, and who is bringing it.",
+  "depends_on": [
+   "guest"
+  ],
+  "state": {
+   "tables": {
+    "dishes": [
+     "name",
+     "guestId"
+    ]
+   },
+   "values": []
+  },
+  "actions": [
+   {
+    "name": "addDish",
+    "description": "List a dish the party needs; nobody is bringing it yet.",
+    "label": "Add dish",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "name": {
+       "type": "string",
+       "x-label": "Dish"
+      }
+     },
+     "required": [
+      "name"
+     ]
+    },
+    "refuses": [
+     "blank dish name"
+    ]
+   },
+   {
+    "name": "bringDish",
+    "description": "Have this guest, who is coming, bring this dish nobody is bringing yet.",
+    "label": "Who's bringing ${name}?",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "dishId": {
+       "type": "string",
+       "x-row-of": "dishes"
+      },
+      "guestId": {
+       "type": "string",
+       "x-row-of": "guests",
+       "x-where": {
+        "answer": "yes"
+       }
+      }
+     },
+     "required": [
+      "dishId",
+      "guestId"
+     ]
+    },
+    "refuses": [
+     "a dish someone is already bringing",
+     "a guest who has not said yes",
+     "a dish that does not exist",
+     "a guest who does not exist"
+    ]
+   }
+  ]
+ }
+]

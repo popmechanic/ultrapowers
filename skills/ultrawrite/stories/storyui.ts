@@ -32,6 +32,8 @@ type Ctx = {stateModel: Record<string, unknown>; repeatItem?: unknown; repeatInd
 type Drawn = {el: El; ctx: Ctx; role: string | null; name: string};
 
 class CannotRun extends Error {}
+// A story whose pick the page's picker does not offer: it cannot be played on the page.
+class NotOffered extends Error {}
 
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v: unknown) => (v === undefined || v === null ? '' : String(v));
@@ -179,12 +181,30 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
         ui.push({type: {role: d.role, name: d.name, text: typed}});
         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
       }
-      // The control that runs the tool: in the row the step's row arg names, when it sits in a list.
+      // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);
-      const inRow = (d: Drawn) => rowArgs.length > 0 && isObj(d.ctx.repeatItem)
-        && rowArgs.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
+      const pickOf = (d: Drawn) => (d.el.type === 'ActionSelect' && typeof d.el.props?.pick === 'string' ? d.el.props.pick : null);
+      const inRow = (d: Drawn) => {
+        const keys = rowArgs.filter((k) => k !== pickOf(d));
+        return keys.length > 0 && isObj(d.ctx.repeatItem) && keys.some((k) => (d.ctx.repeatItem as Record<string, unknown>).id === real[k]);
+      };
       const control = controls.find(inRow) ?? controls.find((d) => d.ctx.repeatBasePath === undefined) ?? controls[0];
-      if (control) {
+      const pick = control ? pickOf(control) : null;
+      if (control && pick !== null) {
+        // A picker: choose the offered row whose id is the step's pick.
+        const p = control.el.props!;
+        const label = typeof p.optionLabel === 'string' ? p.optionLabel : 'name';
+        const options = core.resolvePropValue(p.options, control.ctx);
+        const row = (Array.isArray(options) ? options : []).find((r) => isObj(r) && r.id === real[pick]) as Record<string, unknown> | undefined;
+        if (!row) {
+          const table = props[pick]?.['x-row-of'];
+          const rows = typeof table === 'string' ? (beforeState.tables as Record<string, Record<string, unknown>[]>)[table] : undefined;
+          const cell = rows?.find((r) => r.id === real[pick])?.[label];
+          const option = cell === undefined || cell === null || cell === '' ? text(args[pick]) : String(cell);
+          throw new NotOffered(`STORYUI ${s.id} step ${i + 1}: the picker "${control.name}" does not offer ${option}`);
+        }
+        ui.push({select: {role: control.role!, name: control.name, option: String(row[label])}});
+      } else if (control) {
         ui.push({click: {role: control.role!, name: control.name}});
         // A press that clears its draft box clears it on the page too.
         const press = control.el.on?.press;
@@ -216,6 +236,10 @@ async function main(): Promise<number> {
     console.log(`STORYUI ${n} step(s)`);
     return 0;
   } catch (e) {
+    if (e instanceof NotOffered) {
+      console.log(e.message);
+      return 1;
+    }
     console.log(`STORYUI could not run: ${(e as Error).message}`);
     return 2;
   }

@@ -33,6 +33,7 @@ const schema = JSON.parse(makeStore().getTablesSchemaJson());
 const bind = (s: unknown) => Object.fromEntries(list.map((t) => [t.name, (args: Record<string, unknown>) => t.run(s, args, null)]));
 const store = createMergeableStore().setTablesSchema(schema);
 const tools = bind(store);
+const schemas = Object.fromEntries(list.map((t) => [t.name, t.inputSchema]));
 window.__PREVIEW__ = {store, tools, playing: false};
 
 const takesRow = (t: Tool | undefined) =>
@@ -82,7 +83,7 @@ const letters = (p: Piece) => Object.keys(p.versions ?? {}).sort();
 async function playOne(id: string) {
   const story = (bundle.stories ?? []).find((s) => s.id === id);
   const report = story
-    ? await inTurn(() => play(story, store, tools)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+    ? await inTurn(() => play(story, store, tools, schemas)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
     : {ok: false, misses: [`no story ${id}`]};
   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});
 }

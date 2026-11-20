@@ -28,7 +28,8 @@ export type Locator = {role: string; name: string};
 export type Action =
   | {click: Locator}
   | {type: [Locator, string]}
-  | {key: [Locator, string]};
+  | {key: [Locator, string]}
+  | {select: [Locator, string]};
 
 /** Where the fleet image keeps its headless shell. */
 const DEFAULT_BINARY = '/headless-shell/headless-shell';
@@ -57,6 +58,9 @@ const CALL_TIMEOUT_MS = 30_000;
 
 /** How long `close()` waits for a polite `Browser.close` before it kills. */
 const EXIT_GRACE_MS = 2_000;
+
+/** How long a picker's option may take to appear once the picker is pressed. */
+const SELECT_OPEN_MS = 2_000;
 
 /** One open page: act on it, read from it, close it. */
 export interface Page {
@@ -422,6 +426,50 @@ const pageOn = (
     return answer.result?.value;
   };
 
+  /** A mouse press and release at the node's centre, or `click()` when it has no box. */
+  const clickNode = async (node: NodeRef): Promise<void> => {
+    // A box below the fold is off the viewport, and a mouse event aimed at
+    // it lands on nothing — so the element is scrolled into view first.
+    await connection
+      .send('DOM.scrollIntoViewIfNeeded', {...node}, sessionId)
+      .catch(() => undefined);
+    const centre = await centreOf(connection, sessionId, node);
+    if (centre === null) {
+      await clickInPage(connection, sessionId, node);
+      return;
+    }
+    const {x, y} = centre;
+    for (const type of ['mousePressed', 'mouseReleased'] as const) {
+      await connection.send(
+        'Input.dispatchMouseEvent',
+        {type, x, y, button: 'left', clickCount: 1},
+        sessionId,
+      );
+    }
+  };
+
+  /**
+   * The first shown element of role `option` named `name`, waiting up to `ms`
+   * for it. Ignored nodes are passed over: a picker may keep a hidden native
+   * `<select>` whose options carry the same names.
+   */
+  const optionFor = async (name: string, ms: number): Promise<NodeRef | undefined> => {
+    const end = Date.now() + ms;
+    for (;;) {
+      await connection.send('Accessibility.enable', {}, sessionId);
+      const found = (await connection.send('Accessibility.queryAXTree', {
+        nodeId: await rootOf(connection, sessionId),
+        role: 'option',
+        accessibleName: name,
+      }, sessionId)) as {nodes?: {backendDOMNodeId?: number; ignored?: boolean}[]};
+      const backendNodeId = (found.nodes ?? []).find(
+        (n) => !n.ignored && (n.backendDOMNodeId ?? 0) !== 0)?.backendDOMNodeId;
+      if (backendNodeId !== undefined) return {backendNodeId};
+      if (Date.now() > end) return undefined;
+      await after(50);
+    }
+  };
+
   return {
     evaluate,
 
@@ -439,25 +487,36 @@ const pageOn = (
     act: async (action: Action): Promise<void> => {
       live();
       if ('click' in action) {
-        const node = await nodeFor(connection, sessionId, action.click);
-        // A box below the fold is off the viewport, and a mouse event aimed at
-        // it lands on nothing — so the element is scrolled into view first.
-        await connection
-          .send('DOM.scrollIntoViewIfNeeded', {...node}, sessionId)
-          .catch(() => undefined);
-        const centre = await centreOf(connection, sessionId, node);
-        if (centre === null) {
-          await clickInPage(connection, sessionId, node);
-          return;
+        await clickNode(await nodeFor(connection, sessionId, action.click));
+        return;
+      }
+
+      if ('select' in action) {
+        // A Radix Select opens on a mouse pointerdown and picks on a pointerup;
+        // its listbox is rendered in a portal a frame or more after the press,
+        // so the option is looked for until it shows up.
+        const [locator, option] = action.select;
+        const combobox = await nodeFor(connection, sessionId, locator);
+        await clickNode(combobox);
+        let found = await optionFor(option, SELECT_OPEN_MS);
+        if (found === undefined) {
+          // The keyboard path, for a picker the mouse did not open.
+          await connection.send('DOM.focus', {...combobox}, sessionId).catch(() => undefined);
+          for (const type of ['keyDown', 'keyUp'] as const) {
+            await connection.send(
+              'Input.dispatchKeyEvent',
+              {type, key: 'ArrowDown', code: 'ArrowDown', windowsVirtualKeyCode: 40},
+              sessionId,
+            );
+          }
+          found = await optionFor(option, SELECT_OPEN_MS);
         }
-        const {x, y} = centre;
-        for (const type of ['mousePressed', 'mouseReleased'] as const) {
-          await connection.send(
-            'Input.dispatchMouseEvent',
-            {type, x, y, button: 'left', clickCount: 1},
-            sessionId,
+        if (found === undefined) {
+          throw new Error(
+            `act: no option ${JSON.stringify(option)} in combobox ${JSON.stringify(locator.name)}`,
           );
         }
+        await clickNode(found);
         return;
       }
 

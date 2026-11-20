@@ -1,0 +1,227 @@
+{
+ "root": "page",
+ "elements": {
+  "page": {
+   "type": "Stack",
+   "props": {
+    "gap": 3
+   },
+   "children": [
+    "title",
+    "guestForm",
+    "guests",
+    "dishForm",
+    "dishes"
+   ]
+  },
+  "title": {
+   "type": "Heading",
+   "props": {
+    "text": "Potluck",
+    "level": 1
+   },
+   "children": []
+  },
+  "guestForm": {
+   "type": "Row",
+   "props": {
+    "gap": 2,
+    "align": "center"
+   },
+   "children": [
+    "guestName",
+    "invite"
+   ]
+  },
+  "guestName": {
+   "type": "DraftInput",
+   "props": {
+    "label": "Guest name",
+    "value": {
+     "$bindState": "/draft/addGuest.name"
+    }
+   },
+   "children": []
+  },
+  "invite": {
+   "type": "ActionButton",
+   "props": {
+    "label": "Invite",
+    "action": "addGuest",
+    "args": {
+     "name": {
+      "$state": "/draft/addGuest.name"
+     }
+    }
+   },
+   "on": {
+    "press": {
+     "action": "setState",
+     "params": {
+      "statePath": "/draft/addGuest.name",
+      "value": ""
+     }
+    }
+   },
+   "children": []
+  },
+  "guests": {
+   "type": "Stack",
+   "props": {
+    "gap": 2
+   },
+   "repeat": {
+    "statePath": "/tables/guests",
+    "key": "id"
+   },
+   "children": [
+    "guestRow"
+   ]
+  },
+  "guestRow": {
+   "type": "Row",
+   "props": {
+    "gap": 2,
+    "align": "center",
+    "justify": "between"
+   },
+   "children": [
+    "guestText",
+    "yes"
+   ]
+  },
+  "guestText": {
+   "type": "Text",
+   "props": {
+    "text": {
+     "$item": "name"
+    }
+   },
+   "children": []
+  },
+  "yes": {
+   "type": "ActionButton",
+   "props": {
+    "label": {
+     "$template": "${name} is coming"
+    },
+    "action": "sayYes",
+    "args": {
+     "guestId": {
+      "$item": "id"
+     }
+    }
+   },
+   "children": []
+  },
+  "dishForm": {
+   "type": "Row",
+   "props": {
+    "gap": 2,
+    "align": "center"
+   },
+   "children": [
+    "dishName",
+    "addDish"
+   ]
+  },
+  "dishName": {
+   "type": "DraftInput",
+   "props": {
+    "label": "Dish",
+    "value": {
+     "$bindState": "/draft/addDish.name"
+    }
+   },
+   "children": []
+  },
+  "addDish": {
+   "type": "ActionButton",
+   "props": {
+    "label": "Add dish",
+    "action": "addDish",
+    "args": {
+     "name": {
+      "$state": "/draft/addDish.name"
+     }
+    }
+   },
+   "on": {
+    "press": {
+     "action": "setState",
+     "params": {
+      "statePath": "/draft/addDish.name",
+      "value": ""
+     }
+    }
+   },
+   "children": []
+  },
+  "dishes": {
+   "type": "Stack",
+   "props": {
+    "gap": 2
+   },
+   "repeat": {
+    "statePath": "/tables/dishes",
+    "key": "id"
+   },
+   "children": [
+    "dishRow"
+   ]
+  },
+  "dishRow": {
+   "type": "Row",
+   "props": {
+    "gap": 2,
+    "align": "center",
+    "justify": "between"
+   },
+   "children": [
+    "dishText",
+    "bring"
+   ]
+  },
+  "dishText": {
+   "type": "Text",
+   "props": {
+    "text": {
+     "$item": "name"
+    }
+   },
+   "children": []
+  },
+  "bring": {
+   "type": "ActionSelect",
+   "props": {
+    "label": {
+     "$template": "Who's bringing ${name}?"
+    },
+    "action": "bringDish",
+    "args": {
+     "dishId": {
+      "$item": "id"
+     }
+    },
+    "pick": "guestId",
+    "options": {
+     "$computed": "rowsWhere",
+     "args": {
+      "rows": {
+       "$state": "/tables/guests"
+      },
+      "where": {
+       "answer": "yes"
+      }
+     }
+    },
+    "optionLabel": "name",
+    "value": {
+     "$item": "guestId"
+    },
+    "placeholder": "Nobody yet"
+   },
+   "children": []
+  }
+ }
+}

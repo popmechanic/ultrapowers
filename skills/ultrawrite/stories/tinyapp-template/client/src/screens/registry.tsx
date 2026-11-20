@@ -1,6 +1,6 @@
 /** Draws each catalog entry with the 1st-Pouf component it is named for.
  *
- * ActionButton and ActionCheckbox run their card action through the page's
+ * ActionButton, ActionCheckbox and ActionSelect run their card action through the page's
  * handler (`useActions().handlers[action]`, which answers true or false) and
  * emit only on true, so a spec's `on` draft writes run after the action
  * succeeded. Actions take `args` rather than an `on` binding because inside
@@ -21,6 +21,7 @@ import {
   Heading,
   Input,
   Row,
+  Select,
   Separator,
   Stack,
   Text,
@@ -33,12 +34,12 @@ const u = <T,>(v: T | null | undefined): T | undefined => v ?? undefined
 function useRun(action: string, args: Record<string, unknown> | null | undefined) {
   const { handlers } = useActions()
   const [busy, setBusy] = useState(false)
-  const run = async (): Promise<boolean> => {
+  const run = async (more: Record<string, unknown> = {}): Promise<boolean> => {
     const handler = handlers[action]
     if (!handler) return false
     setBusy(true)
     try {
-      return (await handler(args ?? {})) === true
+      return (await handler({ ...(args ?? {}), ...more })) === true
     } finally {
       setBusy(false)
     }
@@ -106,6 +107,22 @@ export const { registry } = defineRegistry(baseCatalog, {
           disabled={busy}
           onChange={async () => {
             if (await run()) emit('change')
+          }}
+        />
+      )
+    },
+    ActionSelect: ({ props, emit }) => {
+      const { run, busy } = useRun(props.action, props.args)
+      const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
+      return (
+        <Select
+          label={props.label}
+          placeholder={u(props.placeholder)}
+          value={props.value ?? ''}
+          options={options}
+          disabled={busy}
+          onChange={async (v) => {
+            if (await run({ [props.pick]: v })) emit('change')
           }}
         />
       )

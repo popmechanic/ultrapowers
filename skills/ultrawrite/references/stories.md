@@ -32,7 +32,14 @@ again at the PR smoke.
    - `cards.json`, each card with its `concept`, or several with `concepts`: one per
      map line its screen covers. Each action carries its `label` (the button's
      words) and each input its `x-label` (the text box's name); the page is
-     arranged from these.
+     arranged from these. An action whose inputs take rows of two tables (two
+     `x-row-of`, as Potluck's `bringDish(dishId, guestId)`) is drawn as a picker
+     in the list of the first input's table, choosing a row of the second. Put
+     `x-where` on the picked input (`"x-where": {"answer": "yes"}`) to narrow
+     what the picker offers to the rows whose cells match. A refusal the picker
+     makes impossible (it rejects a row the picker never offers) gets no story:
+     waive it in `page.json` `waivers` with `"reason": "unreachable-from-screen"`
+     and `arg` the picked input (`guestId`).
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:
    - every card's main story

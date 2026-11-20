@@ -4,7 +4,7 @@ import {KINDS, conceptsOf, type Bundle, type Card} from './bundle';
 import {TEMPLATE_DRAWS, readDraws, undrawn, type Draws} from './parts';
 import {checkProduct} from './product';
 
-const GESTURES = new Set(['click', 'type', 'key']);
+const GESTURES = new Set(['click', 'type', 'key', 'select']);
 const isGesture = (g: unknown) =>
   !!g && typeof g === 'object' && Object.keys(g).length === 1 && GESTURES.has(Object.keys(g)[0]);
 const named = (text: string, word: string) => text.split(word).length - 1;
@@ -79,7 +79,7 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
       if (!owner.has(st.tool)) refusals.push(`${where}: tool ${st.tool} is no piece's action`);
       if (!['store', 'ui', 'saved'].includes(st.layer)) refusals.push(`${where}: layer must be store, ui or saved`);
       if (st.layer === 'ui' && !(Array.isArray(st.ui) && st.ui.length && st.ui.every(isGesture))) {
-        refusals.push(`${where}: a ui step needs ui = a list of click/type/key gestures`);
+        refusals.push(`${where}: a ui step needs ui = a list of click/type/key/select gestures`);
       }
       if (st.layer !== 'ui' && st.ui !== undefined) refusals.push(`${where}: only a ui step carries ui`);
       if (st.as !== undefined && !(st.as === null || (typeof st.as === 'string' && st.as !== ''))) {

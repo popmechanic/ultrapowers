@@ -25,7 +25,7 @@ stands (none, on the checker). Deciding a check (holds, hollow, the diff a step 
 import json
 
 LAYERS = ("store", "ui", "saved")
-UI_FORMS = ("click", "type", "key")
+UI_FORMS = ("click", "type", "key", "select")
 PROBE_KEYS = {"clause", "layer", "as", "given", "do", "expect", "see", "judge", "holds_before"}
 
 
@@ -92,7 +92,7 @@ def validate_probe(p):
         errs.append("%s: do must be a non-empty list" % where)
     elif p.get("layer") == "ui":
         if not all(is_ui_call(d) for d in do):
-            errs.append("%s: a ui probe's do is click/type/key steps" % where)
+            errs.append("%s: a ui probe's do is click/type/key/select steps" % where)
     elif not (len(do) == 1 and is_tool_call(do[0]) and "as" not in do[0]):
         errs.append("%s: a store or saved probe's do is one {tool, args} call" % where)
     expect = p.get("expect")

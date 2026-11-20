@@ -1,11 +1,15 @@
 // Story play: before the sign question, each story plays out on the approved
 // screen where the operator can watch. Steps off the ui layer run their tool;
 // a ui step types and clicks through the elements its `ui` entries name, each
-// outlined while it acts, then counts every `see` entry by role and name.
+// outlined while it acts, then counts every `see` entry by role and name. A
+// `select` entry opens its combobox and clicks the option in the listbox,
+// which renders in a portal outside #app. Store-step args name rows by alias,
+// as check.ts reads them, mapped to the store's own ids before each run.
 import {find, nameOf, roleOf, targetOf} from './names';
+import {Aliases, type Content} from './probe';
 
 type Target = {role: string; name: string};
-type UiEntry = {type?: Target & {text: string}; click?: Target};
+type UiEntry = {type?: Target & {text: string}; click?: Target; select?: Target & {option: string}};
 type See = Target & {count: number};
 export type PlayStep = {tool: string; args?: Record<string, unknown>; layer?: string; ui?: UiEntry[]; see?: See[]};
 export type PlayStory = {id: string; steps?: PlayStep[]};
@@ -28,25 +32,53 @@ function setValue(el: Element, text: string) {
   el.dispatchEvent(new Event('input', {bubbles: true}));
 }
 
+/** Outline `el` while `job` runs on it. */
+async function outlined(el: Element, job: (html: HTMLElement) => void) {
+  const html = el as HTMLElement;
+  const before = html.style.outline;
+  html.style.outline = '3px solid #e8590c';
+  try {
+    await pause(GAP);
+    job(html);
+    await pause(GAP);
+  } finally {
+    html.style.outline = before;
+  }
+}
+
+/** The element of `role` named `name` anywhere in the document, waited for up to `ms`. */
+async function appearing(role: string, name: string, ms: number): Promise<Element | null> {
+  const end = Date.now() + ms;
+  for (;;) {
+    const el = find(role, name, document);
+    if (el || Date.now() >= end) return el;
+    await pause(50);
+  }
+}
+
 async function act(entry: UiEntry, misses: string[]) {
-  const target = entry.type ?? entry.click;
+  const target = entry.type ?? entry.click ?? entry.select;
   if (!target) return;
   const el = find(target.role, target.name, root());
   if (!el) {
     misses.push(`no ${targetOf(target.role, target.name)}`);
     return;
   }
-  const html = el as HTMLElement;
-  const before = html.style.outline;
-  html.style.outline = '3px solid #e8590c';
-  try {
-    await pause(GAP);
+  if (entry.select) {
+    const {option, name} = entry.select;
+    await outlined(el, (html) => html.click());
+    const opt = await appearing('option', option, 1000);
+    if (!opt) {
+      misses.push(`no option "${option}" in combobox "${name}"`);
+      return;
+    }
+    await outlined(opt, (html) => html.click());
+    return;
+  }
+  await outlined(el, (html) => {
     if (entry.type) setValue(el, entry.type.text);
     else html.click();
-    await pause(GAP);
-  } finally {
-    html.style.outline = before;
-  }
+  });
 }
 
 let turn: Promise<unknown> = Promise.resolve();
@@ -60,16 +92,24 @@ export function inTurn<T>(job: () => Promise<T>): Promise<T> {
 }
 
 /** Play one story on the screen as drawn; misses name what was not as the story says. */
-export async function play(story: PlayStory, store: {delTables: () => unknown}, tools: Tools): Promise<{ok: boolean; misses: string[]}> {
+export async function play(
+  story: PlayStory,
+  store: {delTables: () => unknown; getContent: () => Content},
+  tools: Tools,
+  schemas: Record<string, unknown> = {},
+): Promise<{ok: boolean; misses: string[]}> {
   const misses: string[] = [];
   const preview = window.__PREVIEW__;
   if (preview) preview.playing = true;
   try {
     store.delTables();
+    const aliases = new Aliases();
+    aliases.learn(store.getContent());
     await pause(GAP);
     for (const step of story.steps ?? []) {
       if (step.layer !== 'ui') {
-        try { tools[step.tool]?.(step.args ?? {}); } catch { /* a refused step changes nothing */ }
+        try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch { /* a refused step changes nothing */ }
+        aliases.learn(store.getContent());
         await pause(GAP);
         continue;
       }
@@ -79,6 +119,7 @@ export async function play(story: PlayStory, store: {delTables: () => unknown}, 
         const n = count(s.role, s.name);
         if (n !== s.count) misses.push(`${targetOf(s.role, s.name)} seen ${n}, wanted ${s.count}`);
       }
+      aliases.learn(store.getContent());
     }
   } finally {
     if (preview) preview.playing = false;
