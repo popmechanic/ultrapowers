@@ -125,6 +125,13 @@
   border: 1px solid rgba(58, 46, 92, 0.4);
   border-radius: 6px;
 }
+.preview-comment-error {
+  font: 12px/1.4 system-ui, sans-serif;
+  color: #b3261e;
+}
+.preview-comment-error[hidden] {
+  display: none;
+}
 .preview-comment-form-actions {
   display: flex;
   justify-content: flex-end;

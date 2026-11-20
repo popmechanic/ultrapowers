@@ -7,26 +7,87 @@ const PANE = { id: "intent-tray", title: "Intent tray", rows: 10 };
 const FEEDBACK = ".ultrapowers/feedback.jsonl";
 const FENCE = "`".repeat(3);
 
+const GONE_KEPT = 500; // ids of notes sent, cleared or dropped, kept so no session brings them back
+
 let screen = null; // { name, stage, versions, url }
 let pick = null;
-let notes = []; // { kind, target?, note }
+let piece = null; // the piece a preview's pick was for, when it named one
+let notes = []; // { id, kind, target?, note }
+let gone = []; // ids of notes that left the tray, newest last
 let offset = 0; // bytes of the feedback file already taken (always ends at a newline)
+let mark = ""; // the feedback file's first whole line when `offset` was taken: a new one is a new file
 let cwd = "";
+let sending = false;
+const changed = new Set(); // "screen", "pick": set here since the last save, so this session's value wins
 
 // One tray per working directory: sessions in other repos never see this one.
 function trayKey() {
   return `tray:${cwd.replace(/\/+$/, "")}`;
 }
 
+let made = 0;
+function newId() {
+  made += 1;
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${made}`;
+}
+
+// A note stored before notes carried ids gets one from its content, the same in every session.
+function withId(n) {
+  return typeof n.id === "string" ? n : { ...n, id: `v0:${JSON.stringify(record(n))}` };
+}
+
+function notesOf(v) {
+  return Array.isArray(v) ? v.filter((n) => n && typeof n === "object").map(withId) : [];
+}
+
+// Fold in what other sessions in this repo stored: their notes join ours (none
+// that any session sent, cleared or dropped), and their screen and pick stand
+// unless this session changed its own since it last saved.
+function merge(held) {
+  if (!held || typeof held !== "object") return;
+  const left = new Set([...(Array.isArray(held.gone) ? held.gone.map(String) : []), ...gone]);
+  gone = [...left].slice(-GONE_KEPT);
+  if (!changed.has("screen")) screen = held.screen || null;
+  if (!changed.has("pick")) {
+    pick = held.pick != null ? held.pick : null;
+    piece = held.piece != null ? held.piece : null;
+  }
+  const byId = new Map();
+  for (const n of [...notesOf(held.notes), ...notes]) if (!left.has(n.id) && !byId.has(n.id)) byId.set(n.id, n);
+  notes = [...byId.values()];
+  if (held.mark === mark && Number(held.offset) > offset) offset = Number(held.offset);
+}
+
+// Store the tray merged with what is stored, so two sessions in one repo keep each other's notes.
 async function save($) {
-  await $.store.set(trayKey(), { screen, pick, notes, offset });
+  merge(await $.store.get(trayKey()));
+  changed.clear();
+  await $.store.set(trayKey(), { screen, pick, piece, notes, gone, offset, mark });
   $.ui.invalidate();
 }
 
+function drop(ids) {
+  const out = new Set(ids);
+  if (!out.size) return;
+  notes = notes.filter((n) => !out.has(n.id));
+  gone = [...gone.filter((id) => !out.has(id)), ...out].slice(-GONE_KEPT);
+}
+
+function setScreen(next) {
+  screen = next;
+  changed.add("screen");
+}
+
+function setPick(version, of = null) {
+  pick = version;
+  piece = version == null ? null : of;
+  changed.add("pick");
+}
+
 function empty() {
-  screen = null;
-  pick = null;
-  notes = [];
+  setScreen(null);
+  setPick(null);
+  drop(notes.map((n) => n.id));
 }
 
 function hasContent() {
@@ -50,6 +111,8 @@ function parseNote(text) {
   return { kind: "element", target, note };
 }
 
+const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
 function record(n) {
   return n.kind === "view"
     ? { kind: "view", note: n.note }
@@ -59,33 +122,51 @@ function record(n) {
 async function addNote($, text) {
   const n = parseNote(text);
   if (!n) return;
-  notes.push(n);
+  notes.push({ id: newId(), ...n });
   await save($);
 }
 
 async function choose($, version) {
-  pick = version;
+  setPick(version);
   await save($);
 }
 
+function pickRecord() {
+  const r = { kind: "pick", screen: screen ? screen.name : "" };
+  if (piece != null) r.piece = piece;
+  r.chose = pick;
+  return r;
+}
+
+// One Send at a time; what arrives while it is out stays for the next one.
 async function send($) {
-  const recs = [];
-  if (pick != null) recs.push({ kind: "pick", screen: screen ? screen.name : "", chose: pick });
-  for (const n of notes) recs.push(record(n));
-  if (!recs.length) return;
-  const name = screen ? screen.name : "the screen";
-  const text =
-    `Feedback from the intent tray on ${name}:\n\n` +
-    `${FENCE}json\n${JSON.stringify(recs)}\n${FENCE}`;
-  let entered;
+  if (sending) return;
+  sending = true;
   try {
-    entered = await $.prompt.submit({ text });
-  } catch {
-    return; // the tray keeps its notes
+    await save($); // take in what other sessions sent or dropped
+    const sent = { screen, pick, piece, ids: notes.map((n) => n.id) };
+    const recs = [];
+    if (pick != null) recs.push(pickRecord());
+    for (const n of notes) recs.push(record(n));
+    if (!recs.length) return;
+    const name = screen ? screen.name : "the screen";
+    const text =
+      `Feedback from the intent tray on ${name}:\n\n` +
+      `${FENCE}json\n${JSON.stringify(recs)}\n${FENCE}`;
+    let entered;
+    try {
+      entered = await $.prompt.submit({ text });
+    } catch {
+      return; // the tray keeps its notes
+    }
+    if (!entered || entered.drop != null) return;
+    if (same(screen, sent.screen)) setScreen(null);
+    if (pick === sent.pick && piece === sent.piece) setPick(null);
+    drop(sent.ids);
+    await save($);
+  } finally {
+    sending = false;
   }
-  if (!entered || entered.drop != null) return;
-  empty();
-  await save($);
 }
 
 async function clear($) {
@@ -109,20 +190,25 @@ async function wholeLines($) {
   return bytes.subarray(0, bytes.lastIndexOf(10) + 1);
 }
 
+// The first whole line: it names which file an offset was taken in.
+function markOf(bytes) {
+  const end = bytes.indexOf(10);
+  return end < 0 ? "" : new TextDecoder().decode(bytes.subarray(0, end));
+}
+
 async function readFeedback($) {
-  const held = await $.store.get(trayKey());
-  const stored = held && typeof held === "object" ? Number(held.offset) : 0;
-  if (stored > offset) offset = stored; // another session in this repo took them
-  let size;
-  try {
-    size = (await $.fs.stat(feedbackPath())).size;
-  } catch {
-    return;
-  }
-  if (size < offset) offset = 0; // the file was replaced
-  if (size === offset) return;
   const bytes = await wholeLines($);
-  if (!bytes || bytes.length <= offset) return;
+  if (!bytes) return;
+  const now = markOf(bytes);
+  if (now !== mark || bytes.length < offset) {
+    mark = now; // the file was replaced: its lines are all new
+    offset = 0;
+  }
+  const held = await $.store.get(trayKey());
+  if (held && typeof held === "object" && held.mark === mark && Number(held.offset) > offset) {
+    offset = Number(held.offset); // another session in this repo took them
+  }
+  if (bytes.length <= offset) return;
   const lines = new TextDecoder().decode(bytes.subarray(offset)).split("\n").filter((l) => l.trim());
   for (const line of lines) {
     let r;
@@ -133,19 +219,30 @@ async function readFeedback($) {
     }
     if (!r || typeof r !== "object") continue;
     if (r.kind === "pick") {
-      if (r.chose != null) pick = String(r.chose);
+      // {kind, piece, chose} from the preview; a line without a piece is from before #1532.
+      if (r.chose != null) setPick(String(r.chose), r.piece != null ? String(r.piece) : null);
     } else if (r.note != null && String(r.note).trim()) {
       const note = String(r.note);
+      const id = newId();
       if (r.target != null && String(r.target).trim()) {
         const kind = r.kind === "region" || r.kind === "view" ? r.kind : "element";
-        notes.push(kind === "view" ? { kind, note } : { kind, target: String(r.target), note });
+        notes.push(kind === "view" ? { id, kind, note } : { id, kind, target: String(r.target), note });
       } else {
-        notes.push({ kind: "view", note });
+        notes.push({ id, kind: "view", note });
       }
     }
   }
   offset = bytes.length;
   await save($);
+}
+
+// The Desktop app offers no $.process, so there the tray draws no Open screen button.
+function canRun($) {
+  try {
+    return "process" in $ && Boolean($.process);
+  } catch {
+    return false;
+  }
 }
 
 // Run one command to its end; true when it exits 0, false when it fails or cannot start.
@@ -182,7 +279,7 @@ function drawPane($, e) {
     ? `${screen.name}${screen.stage ? ` (${screen.stage})` : ""}`
     : "No screen shown";
   const top = [
-    Text({ key: "screen", children: [head + (pick != null ? `  picked: ${pick}` : "")] }),
+    Text({ key: "screen", children: [head + (pick != null ? `  picked: ${piece != null ? `${piece} ` : ""}${pick}` : "")] }),
     ...versions.map((v, i) =>
       Button({
         key: `pick-${v}`,
@@ -191,7 +288,7 @@ function drawPane($, e) {
         children: [pick === v ? `[${v}]` : v],
       })
     ),
-    ...(screen && screen.url
+    ...(screen && screen.url && canRun($)
       ? [Button({ key: "open-screen", onPress: () => openScreen($), children: ["Open screen"] })]
       : []),
   ];
@@ -204,7 +301,7 @@ function drawPane($, e) {
         Button({
           key: `drop-${i}`,
           onPress: async () => {
-            notes.splice(i, 1);
+            drop([n.id]);
             await save($);
           },
           children: ["x"],
@@ -252,7 +349,7 @@ function drawBand($, e) {
       Button({ key: "band-note", hotkey: "n", onPress: () => openTray($), children: ["Add note"] }),
       Button({ key: "band-send", hotkey: "s", onPress: () => send($), children: ["Send"] }),
       Button({ key: "band-clear", hotkey: "c", onPress: () => clear($), children: ["Clear"] }),
-      ...(screen && screen.url
+      ...(screen && screen.url && canRun($)
         ? [Button({ key: "band-open", onPress: () => openScreen($), children: ["Open screen"] })]
         : []),
     ],
@@ -265,13 +362,24 @@ export function register(on) {
     const saved = await $.store.get(trayKey());
     if (!saved || typeof saved !== "object") {
       // Lines written before this repo's first session are history.
-      offset = (await wholeLines($))?.length ?? 0;
+      const bytes = await wholeLines($);
+      offset = bytes?.length ?? 0;
+      mark = bytes ? markOf(bytes) : "";
       await save($);
     } else {
       screen = saved.screen || null;
       pick = saved.pick != null ? saved.pick : null;
-      notes = Array.isArray(saved.notes) ? saved.notes : [];
+      piece = saved.piece != null ? saved.piece : null;
+      notes = notesOf(saved.notes);
+      gone = Array.isArray(saved.gone) ? saved.gone.map(String).slice(-GONE_KEPT) : [];
       offset = Number(saved.offset) || 0;
+      if (typeof saved.mark === "string") {
+        mark = saved.mark;
+      } else {
+        // Stored before the mark: the offset was taken in the file that is there now.
+        const bytes = await wholeLines($);
+        mark = bytes ? markOf(bytes) : "";
+      }
     }
     await $.command.register({ name: "tray", description: "Open the intent tray", immediate: true });
     await $.command.register({
@@ -321,7 +429,7 @@ export function register(on) {
     const asked = input.url != null ? String(input.url) : e.url != null ? String(e.url) : "";
     const url = LOCAL_URL.test(asked) ? asked : "";
     empty();
-    screen = { name, stage, versions: raw.map(String), url };
+    setScreen({ name, stage, versions: raw.map(String), url });
     await save($);
     await $.ui.open(PANE);
     return {

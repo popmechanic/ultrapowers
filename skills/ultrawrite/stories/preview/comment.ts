@@ -2,7 +2,8 @@
 // "Comment". While the mode is on (and no story plays), hovering a named
 // element inside #app outlines it and labels it with its target; a click on it
 // or a dragged box over the page opens a note form instead of running the
-// page's own action. A pinned note posts to /feedback and leaves a numbered pin.
+// page's own action. A pinned note posts to /feedback and, once the server has
+// kept it, leaves a numbered pin; a refused post keeps the form open with why.
 import {named, nameOf, roleOf, targetOf} from './names';
 
 type Box = {left: number; top: number; right: number; bottom: number};
@@ -63,8 +64,9 @@ export function mountComment(): void {
     cancel.textContent = 'Cancel';
     const submit = make('button', 'preview-comment-button', {type: 'submit'});
     submit.textContent = 'Pin note';
+    const error = make('div', 'preview-comment-error', {role: 'alert', hidden: ''});
     actions.append(cancel, submit);
-    f.append(label, text, actions);
+    f.append(label, text, error, actions);
     if (note.kind === 'view') {
       f.classList.add('preview-comment-form-view');
     } else {
@@ -72,14 +74,28 @@ export function mountComment(): void {
       f.style.top = `${Math.min(note.at.bottom + 8, innerHeight - 160)}px`;
     }
     cancel.addEventListener('click', closeForm);
-    f.addEventListener('submit', (e) => {
+    f.addEventListener('submit', async (e) => {
       e.preventDefault();
       const body = text.value.trim();
-      if (!body) return;
+      if (!body || submit.disabled) return;
       const record = note.kind === 'view'
         ? {kind: 'view', note: body}
         : {kind: note.kind, target: note.target, note: body};
-      void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(record)});
+      submit.disabled = true;
+      error.hidden = true;
+      let failed = '';
+      try {
+        const r = await fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify(record)});
+        if (!r.ok) failed = `Not saved (${r.status}). Try again.`;
+      } catch {
+        failed = 'Not saved: the preview server did not answer. Try again.';
+      }
+      submit.disabled = false;
+      if (failed) {
+        error.textContent = failed;
+        error.hidden = false;
+        return;
+      }
       if (note.kind !== 'view') {
         const n = String(++pins);
         const pin = make('div', 'preview-comment-pin', {'data-pin': n});
@@ -88,7 +104,7 @@ export function mountComment(): void {
         pin.style.top = `${note.at.top + scrollY}px`;
         document.body.append(pin);
       }
-      closeForm();
+      if (form === f) closeForm(); // another form opened while the post was out stays
     });
     form = f;
     document.body.append(f);

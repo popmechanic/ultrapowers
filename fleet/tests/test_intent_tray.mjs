@@ -23,6 +23,11 @@
  *   (g) a second repo's feedback is read from its own offset
  *   (h) two sessions in one repo take a feedback line once
  *   (i) a dropped or failed submit keeps the tray
+ *   (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+ *   (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+ *   (l) two sessions in one repo keep each other's notes; a sent note stays gone
+ *   (m) a replaced feedback file is read from its start
+ *   (n) a preview pick names its piece, and a pick without one still reads
  */
 
 import assert from 'node:assert/strict'
@@ -107,8 +112,8 @@ function elements() {
 
 /** One host: a store (shared between sessions when passed in), a file system
  *  of absolute path → text, and how `prompt.submit` answers. */
-function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
-  const h = { store, files, submits: [], opens: [], ticks: [], submit }
+function host({ store = new Map(), files = new Map(), submit = 'ok', process = false } = {}) {
+  const h = { store, files, submits: [], opens: [], ticks: [], spawns: [], submit }
   const missing = (p) => Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
   h.$ = strict({
     store: strict({
@@ -156,6 +161,7 @@ function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
         onlyKeys(o, ['text', 'context'], 'prompt.submit')
         assert.equal(typeof o.text, 'string', 'prompt.submit: text')
         h.submits.push(o.text)
+        if (typeof h.submit === 'function') return h.submit(o)
         if (h.submit === 'throw') throw new Error('submit refused')
         if (h.submit === 'drop') return { drop: 'a hook refused it' }
         return { text: o.text }
@@ -184,6 +190,18 @@ function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
         return { cancel() {} }
       },
     }, '.clock'),
+    ...(process
+      ? {
+          process: strict({
+            spawn: (o) => {
+              onlyKeys(o, ['argv', 'cwd', 'env'], 'process.spawn')
+              assert.ok(Array.isArray(o.argv) && o.argv.every((a) => typeof a === 'string'), 'process.spawn: argv')
+              h.spawns.push(o.argv)
+              return { async *[Symbol.asyncIterator]() {}, result: Promise.resolve({ code: 0 }) }
+            },
+          }, '.process'),
+        }
+      : {}),
   }, '')
   return h
 }
@@ -369,6 +387,98 @@ for (const mode of ['drop', 'throw']) {
   h.submit = 'ok'
   await press(s, 'band', 'band-send')
   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
+}
+
+// (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+{
+  const url = 'http://127.0.0.1:4100/compare'
+  const desk = await session(host(), '/work/a')
+  await desk.show({ name: 'Todo list', versions: ['A'], url })
+  assert.equal(find(await desk.band(), 'band-open'), undefined, '(j) no $.process: the band has no Open screen')
+  assert.equal(find(await desk.pane(), 'open-screen'), undefined, '(j) no $.process: the pane has no Open screen')
+  const h = host({ process: true })
+  const cli = await session(h, '/work/a')
+  await cli.show({ name: 'Todo list', versions: ['A'], url })
+  assert.ok(find(await cli.pane(), 'open-screen'), '(j) with $.process the pane has Open screen')
+  await press(cli, 'band', 'band-open')
+  assert.deepEqual(h.spawns, [['open', url]], '(j) Open screen opens the preview url')
+}
+
+// (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+{
+  let enter
+  const h = host({ submit: (o) => new Promise((done) => { enter = () => done({ text: o.text }) }) })
+  const s = await session(h, '/work/a')
+  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+  await press(s, 'pane', 'pick-B')
+  await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
+  const out = press(s, 'band', 'band-send')
+  await new Promise((r) => setImmediate(r))
+  assert.equal(h.submits.length, 1, '(k) the first Send is out')
+  await press(s, 'band', 'band-send')
+  assert.equal(h.submits.length, 1, '(k) a second Send while the first is out submits nothing')
+  h.files.set(feed('/work/a'), line({ kind: 'element', target: 'button "Add"', note: 'too small' }))
+  await s.tick()
+  enter()
+  await out
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(k) the sent screen and pick are cleared, the late note stays')
+  const left = await s.pane()
+  assert.equal(String(find(left, 'text-0').props.children[0]), '[element] button "Add": too small', '(k) the note that came in meanwhile stays')
+  assert.doesNotMatch(h.submits[0], /too small/, '(k) the late note was not in the first Send')
+  h.submit = 'ok'
+  await press(s, 'pane', 'send')
+  assert.equal(h.submits.length, 2, '(k) the next Send goes')
+  assert.match(h.submits[1], /too small/, '(k) and carries the late note')
+}
+
+// (l) two sessions in one repo keep each other's notes; a sent note stays gone
+{
+  const store = new Map()
+  const files = new Map()
+  const ha = host({ store, files })
+  const a = await session(ha, '/work/a')
+  const b = await session(host({ store, files }), '/work/a')
+  await find(await a.pane(), 'view-note').props.onSubmit('from a')
+  await find(await b.pane(), 'view-note').props.onSubmit('from b')
+  const held = JSON.parse(store.get('tray:/work/a'))
+  assert.deepEqual(held.notes.map((n) => n.note), ['from a', 'from b'], '(l) the second session kept the first one\'s note')
+  await press(a, 'band', 'band-send')
+  assert.match(ha.submits[0], /from a/, '(l) Send carries the first note')
+  assert.match(ha.submits[0], /from b/, '(l) and the other session\'s note')
+  await find(await b.pane(), 'view-note').props.onSubmit('later')
+  const after = JSON.parse(store.get('tray:/work/a'))
+  assert.deepEqual(after.notes.map((n) => n.note), ['later'], '(l) a sent note does not come back from a session that held it')
+  assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(l) the other session drops the sent notes too')
+}
+
+// (m) a replaced feedback file is read from its start
+{
+  const h = host()
+  const s = await session(h, '/work/a')
+  h.files.set(feed('/work/a'), line({ note: 'first file' }))
+  await s.tick()
+  await press(s, 'band', 'band-send')
+  h.files.set(feed('/work/a'), line({ note: 'second file, longer than the first' }) + line({ note: 'and more' }))
+  await s.tick()
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 2 items', '(m) a new, longer file is taken from its first line')
+  await press(s, 'band', 'band-send')
+  assert.match(h.submits[1], /second file/, '(m) its first line is read')
+}
+
+// (n) a preview pick names its piece, and a pick without one still reads
+{
+  const h = host()
+  const s = await session(h, '/work/a')
+  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+  h.files.set(feed('/work/a'), line({ kind: 'pick', piece: 'todo', chose: 'B' }))
+  await s.tick()
+  assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'Todo list  picked: todo B', '(n) the pane names the piece')
+  await press(s, 'band', 'band-send')
+  assert.match(h.submits[0], /\{"kind":"pick","screen":"Todo list","piece":"todo","chose":"B"\}/, '(n) the pick is sent with its piece')
+  h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + line({ kind: 'pick', chose: 'A' }))
+  await s.tick()
+  await press(s, 'band', 'band-send')
+  assert.match(h.submits[1], /\{"kind":"pick","screen":"","chose":"A"\}/, '(n) an old pick with no piece still reads')
 }
 
 console.log('ALL TESTS PASSED')
