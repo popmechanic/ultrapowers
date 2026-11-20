@@ -1,5 +1,5 @@
-"""The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): a pick names
-its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
+"""The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): /specs answers
+the one whole-page screen, a pick names its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
 a time, and the page names elements the way the browser checker does. The server legs need bun
 and an offline-installable app; the naming leg needs the checker's own browser."""
 import json
@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STORIES = os.path.join(ROOT, "skills/ultrawrite/stories")
 PREVIEW = os.path.join(STORIES, "preview.ts")
 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+SPEC = os.path.join(ROOT, "evals/fixtures/tinyapp-todo/todo.json")
 
 
 @pytest.fixture(scope="module")
@@ -69,6 +70,16 @@ def server(bun, tmp_path_factory):
     app = str(base / "app")
     bundle = str(base / "bundle")
     shutil.copytree(TODO, bundle)
+    with open(SPEC) as f:
+        spec = json.load(f)
+    other = json.loads(json.dumps(spec))
+    other["elements"]["add"]["props"]["label"] = "Add it"
+    screens = os.path.join(bundle, "screens")
+    os.makedirs(screens, exist_ok=True)
+    # A per-piece file from before the whole-page screen: /specs must not read it.
+    for name, s in [("screen.A.json", spec), ("screen.B.json", other), ("screen.json", other), ("todo.A.json", spec)]:
+        with open(os.path.join(screens, name), "w") as f:
+            json.dump(s, f)
     subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), bundle, app],
                    check=True, capture_output=True, text=True)
     r = subprocess.run(["bun", "install", "--offline"], cwd=app, capture_output=True, text=True, timeout=300)
@@ -90,7 +101,7 @@ def server(bun, tmp_path_factory):
                 url = line.split(" ", 1)[1].strip().rstrip("/")
                 break
         assert url, "the preview did not start (the page did not build?):\n" + "".join(lines)[-2000:]
-        yield {"url": url, "feedback": feedback}
+        yield {"url": url, "feedback": feedback, "specs": {"A": spec, "B": other}, "approved": other}
     finally:
         proc.kill()
         proc.wait(timeout=10)
@@ -107,12 +118,19 @@ def request(url, body=None):
         return e.code
 
 
+def test_specs_answers_the_one_whole_page_screen(server):
+    with urllib.request.urlopen(server["url"] + "/specs", timeout=30) as r:
+        got = json.load(r)
+    assert list(got) == ["screen"]
+    assert got["screen"] == {"versions": server["specs"], "approved": server["approved"]}
+
+
 def test_the_server_writes_a_pick_with_its_piece(server):
-    assert request(server["url"] + "/feedback", {"kind": "pick", "piece": "todo", "chose": "B"}) == 204
+    assert request(server["url"] + "/feedback", {"kind": "pick", "piece": "screen", "chose": "B"}) == 204
     assert request(server["url"] + "/feedback", {"kind": "pick", "chose": "A"}) == 204
     assert request(server["url"] + "/feedback", {"kind": "pick", "chose": "A", "screen": "x"}) == 400
     with open(server["feedback"]) as f:
-        assert f.read().splitlines() == ['{"kind":"pick","piece":"todo","chose":"B"}', '{"kind":"pick","chose":"A"}']
+        assert f.read().splitlines() == ['{"kind":"pick","piece":"screen","chose":"B"}', '{"kind":"pick","chose":"A"}']
 
 
 def test_a_malformed_path_answers_400(server):

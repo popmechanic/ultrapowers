@@ -35,7 +35,11 @@ export type Page = {
   subproject?: string;
   waivers?: {piece: string; action: string; refuses: string; arg: string; reason: string}[];
 };
-export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
+// An action's words on the page: `label` its control's (in a row, `${cell}` names a cell of
+// that row and `${col.cell}` a cell of the row column `col` names), an input property's
+// `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
+// table's boolean column.
+export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]; label?: string; control?: 'checkbox'};
 export type Card = {
   piece: string;
   purpose: string;

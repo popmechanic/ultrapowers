@@ -6,8 +6,12 @@
 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
 // reads Cloudflare Access; every action gets it as run's third argument.
 // The page is public and read-only unless it is /staff: there it draws only
-// the pieces whose spec says "public": true and reads the saved snapshot (/public.json) every 5 s;
-// at /staff it draws every piece, offers WebMCP tools and syncs.
+// the subtrees whose root element ids the screen lists in "public" (none when
+// absent) and reads the saved snapshot (/public.json) every 5 s;
+// at /staff it draws the whole screen, offers WebMCP tools and syncs.
+// An app built before the one screen (no screen.json, a client/src/pieces/
+// directory) still draws every piece in its own section, signed out only the
+// pieces whose spec says "public": true.
 import {createMergeableStore} from 'tinybase';
 import {createWsSynchronizer} from 'tinybase/synchronizers/synchronizer-ws-client';
 import {TOOLS, makeStore} from './store.js';
@@ -18,7 +22,7 @@ import type {Spec} from '@json-render/core';
 import {registry} from './screens/registry';
 import {functions} from './screens/functions';
 import {tinybaseState} from './screens/state';
-import {pieceSpecs} from './screens/pieces' with {type: 'macro'};
+import {pieceSpecs, screenSpec} from './screens/pieces' with {type: 'macro'};
 
 type Tool = {name: string; description: string; inputSchema: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 
@@ -40,11 +44,21 @@ const staff = isStaff(location.pathname, window.__TINYAPP_SYNC__);
 window.__TINYAPP__ = hook;
 
 const state = tinybaseState(store, () => ({staff, who: hook.who}));
+type Screen = Spec & {public?: string[]};
+// Signed out, the screen's root keeps its type and props but holds only the
+// public subtrees, so one Renderer still draws the page.
+function shown(screen: Screen): Spec {
+  if (staff || screen.public?.includes(screen.root)) return screen;
+  const root = screen.elements[screen.root];
+  const ids = (screen.public ?? []).filter((id) => id in screen.elements);
+  return {...screen, elements: {...screen.elements, [screen.root]: {...root, children: ids}}} as Spec;
+}
+const screen = screenSpec() as Screen | null;
 const pieces = Object.entries(pieceSpecs() as Record<string, Spec & {public?: boolean}>)
   .filter(([, spec]) => staff || spec.public === true);
 createRoot(document.getElementById('app')!).render(
   <JSONUIProvider registry={registry} store={state} handlers={tools} functions={functions}>
-    {pieces.map(([name, spec]) => (
+    {screen ? <Renderer spec={shown(screen)} registry={registry} /> : pieces.map(([name, spec]) => (
       <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
     ))}
   </JSONUIProvider>,

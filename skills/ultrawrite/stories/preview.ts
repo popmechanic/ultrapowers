@@ -2,8 +2,9 @@
 // The preview server: draws a bundle's screens with a scaffolded TinyApp's own
 // kit (registry, state, store, 1st-Pouf through Tailwind; nothing from a CDN)
 // and pushes every change under <bundle>/screens/ to the open pages over a
-// websocket so they redraw in place. /compare shows every version side by
-// side; picks and notes come back on POST /feedback as JSON lines. GET
+// websocket so they redraw in place. The bundle has one whole-page screen
+// (screens/screen.<V>.json, approved screens/screen.json); /compare shows its
+// versions side by side; picks and notes come back on POST /feedback as JSON lines. GET
 // /play?story=<id> has the open page play that story on the screen and answers
 // the report it posts back to POST /played. Only this page talks to it (#1530):
 // every request must name the server's own host, and the data routes refuse a
@@ -15,7 +16,7 @@ import {dirname, join, resolve, sep} from 'node:path';
 
 const PAGE = join(import.meta.dir, 'preview');
 const NEEDS = ['client/src/screens/catalog.ts', 'client/src/store.js', 'node_modules/bun-plugin-tailwind'];
-const VERSION = /^(.+)\.([A-Z])\.json$/;
+const VERSION = /^screen\.([A-Z])\.json$/;
 const PLAY_WAIT = 20_000;
 
 type Rec = Record<string, unknown>;
@@ -65,24 +66,23 @@ export function feedbackRecord(body: unknown): Rec | null {
   return null;
 }
 
-function readSpecs(screens: string, pieces: string[]): Rec {
-  const out: Record<string, {versions: Rec; approved?: unknown}> = {};
-  for (const p of pieces) out[p] = {versions: {}};
+/** The one whole-page screen: its versions from screen.<V>.json, its approved
+ *  spec from screen.json when there is one. Nothing else under screens/ counts. */
+function readSpecs(screens: string): Rec {
+  const screen: {versions: Rec; approved?: unknown} = {versions: {}};
   const names = existsSync(screens) ? readdirSync(screens).sort() : [];
   const read = (n: string) => {
     try { return JSON.parse(readFileSync(join(screens, n), 'utf8')); } catch { return undefined; }
   };
   for (const n of names) {
     const m = VERSION.exec(n);
-    if (m && out[m[1]]) {
+    if (m || n === 'screen.json') {
       const spec = read(n);
-      if (spec !== undefined) out[m[1]].versions[m[2]] = spec;
-    } else if (n.endsWith('.json') && out[n.slice(0, -5)]) {
-      const spec = read(n);
-      if (spec !== undefined) out[n.slice(0, -5)].approved = spec;
+      if (spec === undefined) continue;
+      if (m) screen.versions[m[1]] = spec; else screen.approved = spec;
     }
   }
-  return out;
+  return {screen};
 }
 
 async function main(argv: string[]): Promise<number> {
@@ -110,10 +110,8 @@ async function main(argv: string[]): Promise<number> {
     }
   }
   let page: {title?: string; stories?: unknown[]};
-  let pieces: string[];
   try {
     page = JSON.parse(readFileSync(join(bundle, 'page.json'), 'utf8'));
-    pieces = (JSON.parse(readFileSync(join(bundle, 'cards.json'), 'utf8')) as {piece: string}[]).map((c) => c.piece);
   } catch (e) {
     console.log(`PREVIEW could not run: ${bundleArg} is not a bundle (${(e as Error).message})`);
     return 2;
@@ -159,7 +157,7 @@ async function main(argv: string[]): Promise<number> {
       if (path === '/bundle' && req.method === 'GET') {
         return Response.json({title: page.title ?? '', stories: page.stories ?? []});
       }
-      if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens, pieces));
+      if (path === '/specs' && req.method === 'GET') return Response.json(readSpecs(screens));
       if (path === '/play' && req.method === 'GET') {
         const story = url.searchParams.get('story') ?? '';
         if (!singles.size) {
@@ -227,7 +225,7 @@ async function main(argv: string[]): Promise<number> {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = null;
-      server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens, pieces)}));
+      server.publish('specs', JSON.stringify({type: 'specs', pieces: readSpecs(screens)}));
     }, 50);
   });
 

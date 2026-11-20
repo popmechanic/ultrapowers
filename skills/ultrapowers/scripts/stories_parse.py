@@ -21,7 +21,7 @@ TASK_RE = re.compile(r'^### Task (\d+):\s*(.+)$')
 ID_BULLET_RE = re.compile(r'^- ([SLN]\d+):\s*(.+)$')
 STORE_RE = re.compile(r'^`([^`]+)`\s+sha256:([0-9a-f]{64})$')
 ACTION_RE = re.compile(r'^- `([^`]+)`')
-FILE_RE = re.compile(r'^- Create:\s*`([^`]+)`$')
+FILE_RE = re.compile(r'^- (?:Create|Modify):\s*`([^`]+)`$')
 
 
 def _blocks(lines):

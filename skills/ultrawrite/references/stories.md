@@ -7,8 +7,8 @@ A TinyApp plan is not written; it is compiled from a bundle the author drafts
 after enriching the ask with the operator, who then signs it in one question. Specs:
 `docs/superpowers/specs/2026-09-28-coarse-input-planning-design.md` and
 `docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`. Before signing,
-the operator sees each piece's real screen, picks one of Jev's versions of it,
-pins notes on it, and watches each story play on it; the real app is judged
+the operator sees the whole page as the real screen, picks one of Jev's versions of it,
+pins notes on it, and watches each story, its clicks and checks read off that page, play on it; the real app is judged
 again at the PR smoke.
 
 1. **Read the notebook first:** `bun <plugin-root>/skills/ultrawrite/stories/notebook.ts show`.
@@ -24,13 +24,15 @@ again at the PR smoke.
    wherever one fits:
    - `page.json`: its title, kind, three summary sentences, `subproject`, links as
      sentences (run inside the trigger's `store.transaction`), numbers, and stories,
-     each with its `steps`. A step is `{tool, args, layer}` (`store`, `ui` or
-     `saved`); a `ui` step adds `ui` (click/type/key by role and name) and `see`.
-     The accessible names you choose are the builder's contract. A step's
-     `"as": "<email>"` (or `null`) sets who is signed in from that step on.
+     each a sentence with its `steps`. A step is `{tool, args, layer}` (`store`, `ui`
+     or `saved`); leave out a `ui` step's on-screen half (`ui` and `see`): step 7
+     reads it off the picked page. A step's `"as": "<email>"` (or `null`) sets who
+     is signed in from that step on.
    - To deploy when the run lands, `page.json` carries `publish`: `{"deploy": "bun install && bun run deploy", "verify": "curl -fsS \"$ULTRA_PUBLISH_URL/health\""}` (`server/wrangler.jsonc` names the Worker; the account is a `CLOUDFLARE_ACCOUNT_ID=` prefix in the app's `deploy` script, since celld refuses `account_id` in the config; see `references/greenfield-stack.md`).
    - `cards.json`, each card with its `concept`, or several with `concepts`: one per
-     map line its screen covers.
+     map line its screen covers. Each action carries its `label` (the button's
+     words) and each input its `x-label` (the text box's name); the page is
+     arranged from these.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:
    - every card's main story
@@ -53,12 +55,12 @@ again at the PR smoke.
    - Fix every code refusal.
    - Act on every `JEV flag` yourself.
    - `DOUBT:` lines (at most three, highest first) go into the sign question.
-7. **See it — the real screen, before signing:**
+7. **See it — the whole page, designed first, before signing:**
    1. Scaffold into a scratch app and `bun install` there:
       `bun <plugin-root>/skills/ultrawrite/stories/scaffold.ts <bundle> <scratch>/app`.
    2. `bun <plugin-root>/skills/ultrawrite/stories/arrange.ts <bundle> --app <scratch>/app` has
-      Jev arrange each piece's screen into versions A, B and C at
-      `<bundle>/screens/<piece>.<V>.json`. Jev only chooses and places the
+      Jev arrange the whole page, every piece on it, into versions A, B and C at
+      `<bundle>/screens/screen.<V>.json`. Jev only chooses and places the
       bundle's own controls and text (under a second per run on the todo bundle,
       n=5 runs, 2026-10-01).
    3. Start `bun <plugin-root>/skills/ultrawrite/stories/preview.ts <bundle> --app <scratch>/app`
@@ -74,25 +76,30 @@ again at the PR smoke.
       screen** button runs the same open command and the operator picks and
       sends notes from the tray; otherwise ask
       the pick as one AskUserQuestion with a screenshot of `/compare`.
-   5. Record the pick with `arrange.ts <bundle> --app <scratch>/app --piece <p> --pick <V>`:
-      it writes the approved screen, `<bundle>/screens/<piece>.json`, and the
+   5. Record the pick with `arrange.ts <bundle> --app <scratch>/app --pick <V>`:
+      it writes the approved page, `<bundle>/screens/screen.json`, and the
       page redraws in place.
    6. The operator pins notes in Comment mode: a floating Comment button; click
       one element or drag a box, type a note, and a numbered pin stays (About
       this view covers the whole screen). Notes reach
       `.ultrapowers/feedback.jsonl` and the tray. Apply them with
-      `arrange.ts <bundle> --app <scratch>/app --piece <p> --reshape --note '<target>: <note>' …`.
+      `arrange.ts <bundle> --app <scratch>/app --reshape --note '<target>: <note>' …`.
       A note the composer cannot satisfy is yours to apply by hand to the spec;
       then `bun factory/stack/tinyapp/screens.ts --bundle <bundle> --copy <scratch>/app`
       re-checks it.
-   7. Play each story on the approved screen while the operator watches:
+   7. Fill the stories' on-screen steps from the picked page:
+      `bun <plugin-root>/skills/ultrawrite/stories/storyui.ts <bundle> --app <scratch>/app`
+      writes every `ui` step's gestures (`ui`: the boxes it types into, then the
+      control that runs its tool) and what is drawn after it (`see`), read the way
+      the checker reads them. Run it again after any later reshape.
+   8. Play each story on the approved screen while the operator watches:
       `curl -s 'http://127.0.0.1:<port>/play?story=<id>'` answers
       `{"story","ok","misses"}`. Fix a miss before signing. `/play` needs the preview's `/` page
       open (the single screen): the `/compare` page never plays a story, and
       the server then answers at once with the page to open.
 
-   Compile later copies each approved screen into the app as the builder's
-   starting spec.
+   Compile later copies the picked `screens/screen.json` into the app's
+   `client/src/screen.json`, the one page every piece's builder edits.
 8. **Touch 1, sign:** render `product.md`
    (`bun <plugin-root>/skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`)
    and ask one AskUserQuestion call:

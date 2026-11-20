@@ -2,7 +2,8 @@
 // The screens checker: does every screen of this copy read as a json-render
 // spec over its catalog, and does it run each of its piece's card actions?
 // Browser-free: it imports the copy's catalog and store modules in Bun and
-// reads client/src/pieces/<piece>.json. Exit 0 pass, 1 findings about the app,
+// reads client/src/screen.json, the one page every piece's actions live in, or
+// client/src/pieces/<piece>.json in an app built before it. Exit 0 pass, 1 findings about the app,
 // 2 could not run. It writes nothing.
 import {createHash} from 'node:crypto';
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
@@ -11,6 +12,8 @@ import {join, resolve} from 'node:path';
 
 const REPO = join(import.meta.dir, '..', '..', '..');
 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
+// The app's one page, when it has one: a json-render spec every piece's builder writes into.
+const SCREEN = join('client', 'src', 'screen.json');
 const EXPRESSIONS = ['$state', '$item', '$index', '$bindState', '$bindItem', '$template', '$cond', '$computed'];
 
 const arg = (name: string, fallback?: string) => {
@@ -78,19 +81,26 @@ function bindings(v: unknown, out: string[] = []): string[] {
 
 type Loaded = Awaited<ReturnType<typeof load>>;
 
-function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): string[] {
-  const file = join(copy, 'client', 'src', 'pieces', `${piece}.json`);
-  if (!existsSync(file)) return [`no screen at client/src/pieces/${piece}.json`];
-  let spec: any;
-  try { spec = JSON.parse(readFileSync(file, 'utf8')); } catch (e) {
-    return [`client/src/pieces/${piece}.json is not JSON: ${(e as Error).message}`];
+/** Read one spec file of the copy: the spec, or the finding that it cannot be read. */
+function readSpec(copy: string, rel: string): {spec?: unknown; found: string[]} {
+  const file = join(copy, rel);
+  if (!existsSync(file)) return {found: [`no screen at ${rel}`]};
+  try { return {spec: JSON.parse(readFileSync(file, 'utf8')), found: []}; } catch (e) {
+    return {found: [`${rel} is not JSON: ${(e as Error).message}`]};
   }
+}
+
+/** A spec's findings (root, children, props against the catalog, draft-only writes) and the
+ *  card actions its reachable elements run. */
+function checkSpec(spec: any, c: Loaded, screen = false): {found: string[]; run: Set<string>} {
   const found: string[] = [];
   const v = c.catalog.validate(spec);
   if (!v.success) {
     for (const i of v.error?.issues ?? []) found.push(`${(i.path ?? []).join('.') || '(spec)'}: ${i.message}`);
   }
-  if (isObj(spec) && 'public' in spec && typeof spec.public !== 'boolean') found.push(`public cannot be ${JSON.stringify(spec.public)}`);
+  // screen.json lists the element ids anyone may see; a per-piece spec says true or false.
+  const publicOk = (p: unknown) => screen ? Array.isArray(p) && p.every((id) => typeof id === 'string') : typeof p === 'boolean';
+  if (isObj(spec) && 'public' in spec && !publicOk(spec.public)) found.push(`public cannot be ${JSON.stringify(spec.public)}`);
   const run = new Set<string>();
   const elements = isObj(spec) && isObj(spec.elements) ? spec.elements : {};
   const kids = (el: Record<string, unknown>): unknown[] =>
@@ -148,6 +158,14 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
     }
     for (const b of bindings(props)) found.push(`${key}: ${b} is outside /draft/`);
   }
+  return {found, run};
+}
+
+/** The per-piece flow: client/src/pieces/<piece>.json is that piece's own screen. */
+function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): string[] {
+  const r = readSpec(copy, join('client', 'src', 'pieces', `${piece}.json`));
+  if (r.found.length) return r.found;
+  const {found, run} = checkSpec(r.spec, c);
   for (const a of actions) if (!run.has(a)) found.push(`no element runs ${a}`);
   return found;
 }
@@ -202,8 +220,18 @@ async function main(): Promise<number> {
   const names = only ? [only] : [...pieces.keys()];
   let n = 0;
   for (const f of checkParts(copy, c.components)) { console.log(`SCREENS parts: ${f}`); n++; }
-  for (const piece of names) {
-    for (const f of checkPiece(copy, piece, pieces.get(piece)!, c)) { console.log(`SCREENS ${piece}: ${f}`); n++; }
+  if (existsSync(join(copy, SCREEN))) {
+    // The screen flow: one page holds every piece's actions, read once.
+    const r = readSpec(copy, SCREEN);
+    const {found, run} = r.found.length ? {found: r.found, run: new Set<string>()} : checkSpec(r.spec, c, true);
+    for (const f of found) { console.log(`SCREENS screen: ${f}`); n++; }
+    for (const piece of names) {
+      for (const a of pieces.get(piece)!) if (!run.has(a)) { console.log(`SCREENS ${piece}: no element runs ${a}`); n++; }
+    }
+  } else {
+    for (const piece of names) {
+      for (const f of checkPiece(copy, piece, pieces.get(piece)!, c)) { console.log(`SCREENS ${piece}: ${f}`); n++; }
+    }
   }
   if (n) { console.log(`SCREENS exit 1: ${n} finding(s)`); return 1; }
   console.log(`SCREENS ok: ${names.join(', ')}`);

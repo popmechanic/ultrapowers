@@ -117,3 +117,22 @@ def test_the_task_needing_a_part_is_told_to_add_it():
     assert "No part draws" not in tag and "- Modify:" not in tag
     for t in (todo, tag):
         assert "When a story needs something no part draws, add a part" in t
+
+
+# The one page (client/src/screen.json): every piece's task modifies it, and none names a piece's own screen.
+def test_with_one_page_every_task_modifies_it():
+    got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, null, true);"
+                      "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")
+    assert len(got) == 2
+    for t in got:
+        assert "- Modify: `client/src/screen.json`" in t
+        assert "client/src/pieces/" not in t
+        assert "one json-render spec, `client/src/screen.json`, shared by every piece's builder" in t
+
+
+def test_without_one_page_each_piece_creates_its_own_screen():
+    got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, null);"
+                      "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")
+    assert "- Create: `client/src/pieces/todo.json`" in got[0]
+    assert "- Create: `client/src/pieces/tag.json`" in got[1]
+    assert not [t for t in got if "client/src/screen.json" in t]
