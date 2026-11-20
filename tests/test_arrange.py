@@ -344,7 +344,7 @@ def test_compile_copies_no_screen_into_an_app_without_the_catalog(app, tmp_path)
     os.remove(os.path.join(a, "client/src/screens/catalog.ts"))
     shutil.rmtree(os.path.join(a, "client/src/pieces"))
     b = _bundle(tmp_path, lambda page: None)
-    os.makedirs(os.path.join(b, "screens"))
+    os.makedirs(os.path.join(b, "screens"), exist_ok=True)
     with open(os.path.join(b, "screens/todo.json"), "w") as f:
         f.write('{"root": "r", "elements": {}}\n')
     r = subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), b, "--app", a, "--plan-id", "p1",
