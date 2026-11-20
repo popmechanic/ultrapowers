@@ -201,6 +201,26 @@ test('loose', async () => {
   t.done()
 })
 
+// loose-window  the run is green early (task 2's fact holds at base) but its builder is held, so the
+//               cleanup opens about 3 s after the first green and takes 2.5 s: past a 4 s window counted
+//               from the first green, inside one counted from when it opened. The cleanup lands; no
+//               no-progress stop, no fallback (#1531)
+test('loose-window', async () => {
+  const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'NOTE pending\n' })
+  const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'x WIPE z\n' }, 2: { 'b.txt': 'NOTE\n' }, 'L:loose': { 'a.txt': 'x WIPE page z\n' },
+    '@stall_ms': 4000, '@hold_ms': { 2: 2000, 'L:loose': 2500 },
+    '@beliefs': [{ task: '1', about: 'app', path: 'a.txt', claim: 'a.txt wipes every folder', stale: 'x WIPE z' }] } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const first = r.of('edge').find((x) => x.green), opened = r.of('loose-task')[0]
+  assert(first && opened && Date.parse(opened.ts) - Date.parse(first.ts) >= 1500, `expected the cleanup to open well after the first green, saw green ${first?.ts} and loose-task ${opened?.ts}`)
+  assert(r.of('stall:no-progress').length === 0 && r.of('loose:fallback').length === 0, `expected no stop and no fallback, saw ${JSON.stringify(r.rows.filter((x) => /^stall:|^loose:fallback/.test(x.kind)))}`)
+  const end = r.of('terminal').at(-1)
+  assert(end?.pr === 'ready' && end.snap !== opened.snap && r.code === 0, `expected a ready run past the pre-cleanup snapshot ${opened.snap}, saw ${JSON.stringify(r.of('terminal'))} exit ${r.code}`)
+  assert(t.git('show', 'HEAD:a.txt') === 'x WIPE page z', `the landed a.txt reads ${JSON.stringify(t.git('show', 'HEAD:a.txt'))}`)
+  t.done()
+})
+
 // loose-stalled  the script names no files for L:loose, so its builder ends without publishing and the run deadlocks with its last edge the
 //                pre-cleanup snapshot: the draft lands that snapshot ready, once, and the PR body says the cleanup was dropped (#1521)
 test('loose-stalled', async () => {
