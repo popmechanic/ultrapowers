@@ -49,6 +49,16 @@ async function act(entry: UiEntry, misses: string[]) {
   }
 }
 
+let turn: Promise<unknown> = Promise.resolve();
+
+/** Run `job` once every job queued before it has ended, whatever their outcome:
+ *  each play clears and refills the one shared store, so two never overlap. */
+export function inTurn<T>(job: () => Promise<T>): Promise<T> {
+  const mine = turn.then(job);
+  turn = mine.catch(() => undefined);
+  return mine;
+}
+
 /** Play one story on the screen as drawn; misses name what was not as the story says. */
 export async function play(story: PlayStory, store: {delTables: () => unknown}, tools: Tools): Promise<{ok: boolean; misses: string[]}> {
   const misses: string[] = [];

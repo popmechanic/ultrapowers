@@ -11,7 +11,7 @@ import {dirname, join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {Aliases, checksFor, hollow, type Content, type Probe} from '../../../factory/stack/tinyapp/probe';
 import {loadBundle, type Bundle, type Card} from './bundle';
-import {runChecks} from './checks';
+import {below, runChecks} from './checks';
 import {renderProduct, saveProduct, type Product} from './product';
 
 type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
@@ -45,26 +45,11 @@ function pieceOrder(cards: Card[]): Card[] {
   return order;
 }
 
-// Every piece `piece` depends on, directly or through others; a circle ends the walk.
-function below(cards: Card[], piece: string): Set<string> {
-  const seen = new Set<string>();
-  const walk = (p: string) => {
-    for (const d of cards.find((c) => c.piece === p)?.depends_on ?? []) {
-      if (!seen.has(d)) {
-        seen.add(d);
-        walk(d);
-      }
-    }
-  };
-  walk(piece);
-  return seen;
-}
-
 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
   const owner = new Map(b.cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
   // A linked step's check goes to the link piece, the tool's owner included, that depends on every other one,
-  // so it is built after everything it reads (#1490, #1525); with none, the owner.
+  // so it is built after everything it reads (#1490, #1525); with none, the owner, which runChecks reports as a fact.
   const links = new Map((b.page.links ?? []).map((l) => [l.id, l.pieces ?? []] as const));
   const carrier = (link: string | undefined, own: string): string => {
     const ps = [...new Set([...(links.get(link ?? '') ?? []), own])];
@@ -195,6 +180,8 @@ async function main(): Promise<number> {
   copyFileSync(join(b.dir, 'store.js'), storeDst);
   let mine: Derived[];
   let text: string;
+  // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
+  const screens = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts'));
   const exportPath = join(app, 'stories', 'probes.jsonl');
   const older: Line[] = existsSync(exportPath)
     ? readFileSync(exportPath, 'utf8').split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l))
@@ -202,7 +189,7 @@ async function main(): Promise<number> {
   const guards = older.filter((l) => l.plan !== planId);
   try {
     mine = probesOf(b, (await import(storeDst)) as StoreModule);
-    text = compilePlan(b, planId, mine, guards, existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')));
+    text = compilePlan(b, planId, mine, guards, screens);
   } catch (e) {
     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
     if (kept) writeFileSync(storeDst, kept);
@@ -214,7 +201,7 @@ async function main(): Promise<number> {
   writeFileSync(v.out, text);
   // Each approved screen becomes the builder's starting spec for its piece.
   for (const c of b.cards) {
-    if (!approved(b, c.piece)) continue;
+    if (!screens || !approved(b, c.piece)) continue;
     const dst = join(app, 'client', 'src', 'pieces', `${c.piece}.json`);
     mkdirSync(dirname(dst), {recursive: true});
     copyFileSync(approvedPath(b, c.piece), dst);

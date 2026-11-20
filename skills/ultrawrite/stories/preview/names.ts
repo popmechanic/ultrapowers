@@ -1,12 +1,23 @@
 // The accessible role and name of a DOM element, the way the stories and the
 // browser checker name it: role from `role`, else the element's implicit one;
 // name from aria-label, then aria-labelledby, then a label[for] or wrapping
-// label, then the text. Comment mode and story play find elements with it.
+// label, then the text, but only for a role named from its content (a list,
+// list item, row, table, form or landmark is not), then the title. Comment
+// mode and story play find elements with it.
 
 const INPUT_ROLES: Record<string, string> = {
   checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton',
   button: 'button', submit: 'button', reset: 'button', image: 'button', search: 'searchbox',
 };
+
+// The roles Chrome names from their content, which is what the checker counts
+// (factory/stack/tinyapp/browser.ts asks Chrome's accessibility tree). Read off
+// Chrome on 2026-11-20 (#1532): listitem, row and every landmark came back unnamed.
+const FROM_CONTENT = new Set([
+  'button', 'cell', 'checkbox', 'columnheader', 'gridcell', 'heading', 'link', 'menuitem',
+  'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'rowheader', 'switch', 'tab', 'term',
+  'tooltip', 'treeitem',
+]);
 
 const clean = (s: string | null | undefined): string => (s ?? '').replace(/\s+/g, ' ').trim();
 
@@ -48,7 +59,6 @@ export function roleOf(el: Element): string {
 }
 
 function textOf(el: Element): string {
-  if (el instanceof HTMLImageElement) return clean(el.alt);
   return clean(el.textContent);
 }
 
@@ -73,7 +83,8 @@ export function nameOf(el: Element): string {
     if (type === 'button' || type === 'submit' || type === 'reset') return clean((el as HTMLInputElement).value);
     return clean(el.getAttribute('title')) || clean(el.getAttribute('placeholder'));
   }
-  return textOf(el) || clean(el.getAttribute('title'));
+  if (el instanceof HTMLImageElement) return clean(el.alt) || clean(el.getAttribute('title'));
+  return (FROM_CONTENT.has(roleOf(el)) ? textOf(el) : '') || clean(el.getAttribute('title'));
 }
 
 /** The nearest element, this one or an ancestor, that has both a role and a name. */

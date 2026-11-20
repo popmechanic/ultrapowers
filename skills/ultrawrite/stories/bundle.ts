@@ -49,7 +49,9 @@ export type Card = {
   concepts?: string[];
 };
 // Every concept a card names: its `concepts` and its `concept`, without duplicates.
-export const conceptsOf = (c: Card): string[] => [...new Set([...(c.concepts ?? []), ...(c.concept ? [c.concept] : [])])];
+// A `concepts` that is not a list (checks.ts refuses it) adds nothing, never its letters.
+export const conceptsOf = (c: Card): string[] =>
+  [...new Set([...(Array.isArray(c.concepts) ? c.concepts.filter((x) => typeof x === 'string') : []), ...(c.concept ? [c.concept] : [])])];
 export type Bundle = {dir: string; page: Page; cards: Card[]; storeText: string; storeSha256: string; product: Product | null};
 
 export function loadBundle(dir: string): Bundle {

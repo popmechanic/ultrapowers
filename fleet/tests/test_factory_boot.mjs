@@ -230,6 +230,41 @@ for (const [runN, version, error] of [
   assert.equal(status.error, error, `(a3) status.json's error — got ${JSON.stringify(status.error)}`)
 }
 
+// ── (a4) the update times out (exit 124): logged, and the installed release above the floor runs ─
+
+{
+  const runN = '524'
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-a4-'))
+  const home = path.join(root, 'home')
+  const bin = path.join(root, 'bin')
+  fs.mkdirSync(home, { recursive: true })
+  fs.mkdirSync(bin, { recursive: true })
+  writeGitConfig(home)
+
+  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
+  wireEvidence(home, evidenceDir)
+  git(root, ['clone', originDir, path.join(home, 'target')])
+  buildEngineDir(home, ENGINE_SHA)
+  writeStubs(bin, { claudeAuth: 'oauth', claudeVersion: '2.1.300' })
+  // `timeout` gives up on the update the way coreutils does when its clock runs out.
+  writeStub(bin, 'timeout', '#!/bin/sh\ncase " $* " in *" exeuntu update "*) exit 124 ;; esac\nshift\nexec "$@"\n')
+
+  const env = {
+    ...baseEnv(PROXY_URL),
+    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA }),
+    MERGE_SHA
+  }
+
+  const res = await runBootAsync({ bin, home, env })
+
+  const bootLog = fs.readFileSync(path.join(home, 'fleet-boot.log'), 'utf8')
+  assert.equal(res.code, 0, `(a4) the boot exits 0 after a timed-out update — got ${res.code}, log tail: ${bootLog.slice(-2000)}`)
+  assert.ok(bootLog.includes('claude: the update failed; checking the installed release'), `(a4) fleet-boot.log says the update failed — got:\n${bootLog}`)
+  assert.ok(bootLog.split('\n').some((l) => l.endsWith(' claude: 2.1.300')), `(a4) fleet-boot.log names the installed release — got:\n${bootLog}`)
+  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
+  assert.equal(status.state, 'done', `(a4) the run proceeds to done — got ${JSON.stringify(status.state)} (${JSON.stringify(status.error)})`)
+}
+
 // ── (b) [M1, M5] a clean run: land, open, merge, close, probe alive ──────
 
 {

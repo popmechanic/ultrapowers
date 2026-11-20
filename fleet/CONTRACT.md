@@ -297,7 +297,8 @@ evidence repository.
   into `$FLEET_HOME/plans/<run>.plan.json` (a refusal fails the run; the engine, the catch-up, the
   PR body and the publish probe all read that parse, #1449), extracts the previous run's folder for the
   engine's `--past-dir`, updates Claude Code to the newest release (`timeout 120 sudo -n exeuntu update claude`,
-  unpinned) and fails the run below the floor `2.1.287` — the first release with mods — logging
+  unpinned) and fails the run below the floor `2.1.287` — the first release with mods; the floor
+  requires a plain `X.Y.Z` release, so a pre-release (`2.1.300-beta`) fails it too — logging
   the release it runs (`claude: <version>` in `fleet-boot.log`) and setting `DISABLE_AUTOUPDATER=1`
   for the run, runs the engine as one transient unit, commits the record to the live
   branch every 10 s and at each transition (see above), cuts and verifies the run tag and deletes

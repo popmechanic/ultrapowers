@@ -3,10 +3,11 @@
 // ?v=<V>, else A); at /compare every version side by side, each with a
 // "Choose <V>" button; the chosen version (clicked here, else the one whose
 // spec equals the approved screen) reads "Chosen ✓" and is outlined. Specs
-// arrive over /ws and redraw in place.
+// arrive over /ws and redraw in place; a piece whose versions change loses the
+// pick clicked here. Plays run one at a time on the one shared store.
 import {createMergeableStore} from 'tinybase';
 import {createRoot} from 'react-dom/client';
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {JSONUIProvider, Renderer} from '@json-render/react';
 import type {Spec} from '@json-render/core';
 import {registry} from '../../client/src/screens/registry';
@@ -14,7 +15,7 @@ import {functions} from '../../client/src/screens/functions';
 import {tinybaseState} from '../../client/src/screens/state';
 import {TOOLS, makeStore} from '../../client/src/store.js';
 import {mountComment} from './comment';
-import {play} from './play';
+import {inTurn, play} from './play';
 
 type Tool = {name: string; inputSchema?: {properties?: Record<string, Record<string, unknown>>}; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
 type Piece = {versions: Record<string, Spec>; approved?: Spec};
@@ -81,13 +82,13 @@ const letters = (p: Piece) => Object.keys(p.versions ?? {}).sort();
 async function playOne(id: string) {
   const story = (bundle.stories ?? []).find((s) => s.id === id);
   const report = story
-    ? await play(story, store, tools).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
+    ? await inTurn(() => play(story, store, tools)).catch((e: unknown) => ({ok: false, misses: [`play failed: ${(e as Error).message}`]}))
     : {ok: false, misses: [`no story ${id}`]};
   await fetch('/played', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({story: id, ok: report.ok, misses: report.misses})});
 }
 
-function choose(v: string) {
-  void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', chose: v})});
+function choose(piece: string, v: string) {
+  void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece, chose: v})});
 }
 
 // The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
@@ -95,9 +96,15 @@ function choose(v: string) {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
 
+// The picks still standing once `next` replaces `prev`: a piece whose versions
+// changed was re-arranged, so its earlier click no longer names what is drawn.
+const kept = (picks: Record<string, string>, prev: Pieces, next: Pieces) =>
+  Object.fromEntries(Object.entries(picks).filter(([name]) => same(prev[name]?.versions ?? {}, next[name]?.versions ?? {})));
+
 function Page() {
   const [pieces, setPieces] = useState<Pieces>(initial);
   const [picked, setPicked] = useState<Record<string, string>>({});
+  const shown = useRef<Pieces>(initial);
   useEffect(() => {
     let ws: WebSocket | null = null;
     let stopped = false;
@@ -106,7 +113,13 @@ function Page() {
       ws.onopen = () => ws?.send(JSON.stringify({type: 'hello', page: compare ? 'compare' : 'single'}));
       ws.onmessage = (e) => {
         const msg = JSON.parse(String(e.data));
-        if (msg?.type === 'specs' && msg.pieces) setPieces(msg.pieces);
+        if (msg?.type === 'specs' && msg.pieces) {
+          const prev = shown.current;
+          const next = msg.pieces as Pieces;
+          shown.current = next;
+          setPieces(next);
+          setPicked((m) => kept(m, prev, next));
+        }
         else if (msg?.type === 'play' && typeof msg.story === 'string' && !compare) void playOne(msg.story);
       };
       ws.onclose = () => { if (!stopped) setTimeout(open, 1000); };
@@ -131,7 +144,7 @@ function Page() {
                       type="button"
                       className="preview-choose"
                       aria-pressed={chosen}
-                      onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(v); }}
+                      onClick={() => { setPicked((m) => ({...m, [name]: v})); choose(name, v); }}
                     >{chosen ? 'Chosen ✓' : `Choose ${v}`}</button>
                   </div>
                   <JSONUIProvider registry={registry} store={box.state} handlers={box.tools} functions={functions}>

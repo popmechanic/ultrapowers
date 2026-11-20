@@ -3,6 +3,8 @@
  * Snapshot: {tables: {<table>: [{id, ...cells}, ...]}, values, draft, session}.
  * Only `draft` is writable from a screen: setSnapshot keeps the new draft and
  * drops everything else, so saved data changes only through the app's actions.
+ * The snapshot rebuilds on each store transaction; `refresh` rebuilds it when
+ * something outside the store changes, such as the session's `who`.
  */
 import { createStoreAdapter } from '@json-render/core/store-utils'
 import type { StateStore } from '@json-render/core'
@@ -10,7 +12,7 @@ import type { MergeableStore } from 'tinybase'
 
 type Session = { staff: boolean; who: string | null }
 
-export function tinybaseState(store: MergeableStore, session: () => Session): StateStore {
+export function tinybaseState(store: MergeableStore, session: () => Session): StateStore & {refresh: () => void} {
   let draft: Record<string, unknown> = {}
   const listeners = new Set<() => void>()
 
@@ -30,7 +32,7 @@ export function tinybaseState(store: MergeableStore, session: () => Session): St
 
   store.addDidFinishTransactionListener(refresh)
 
-  return createStoreAdapter({
+  return Object.assign(createStoreAdapter({
     getSnapshot: () => snapshot,
     setSnapshot: (next) => {
       const nextDraft = next.draft
@@ -43,5 +45,5 @@ export function tinybaseState(store: MergeableStore, session: () => Session): St
         listeners.delete(listener)
       }
     },
-  })
+  }), {refresh})
 }

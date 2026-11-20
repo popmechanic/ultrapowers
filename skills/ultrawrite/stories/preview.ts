@@ -52,8 +52,10 @@ export function feedbackRecord(body: unknown): Rec | null {
   const b = body as Rec;
   const keys = Object.keys(b);
   if (b.kind === 'pick') {
-    if (typeof b.chose !== 'string' || keys.some((k) => k !== 'kind' && k !== 'chose')) return null;
-    return {kind: 'pick', chose: b.chose};
+    // {kind, piece, chose}; a page from before #1532 sent no piece, still taken.
+    if (typeof b.chose !== 'string' || keys.some((k) => !['kind', 'piece', 'chose'].includes(k))) return null;
+    if ('piece' in b && typeof b.piece !== 'string') return null;
+    return 'piece' in b ? {kind: 'pick', piece: b.piece, chose: b.chose} : {kind: 'pick', chose: b.chose};
   }
   if (b.kind === 'element' || b.kind === 'region' || b.kind === 'view') {
     if (typeof b.note !== 'string' || keys.some((k) => !['kind', 'note', 'target'].includes(k))) return null;
@@ -203,7 +205,9 @@ async function main(argv: string[]): Promise<number> {
       if (path === '/' || path === '/compare' || path === '/compare/') {
         return new Response(Bun.file(indexHtml), {headers: {'content-type': 'text/html; charset=utf-8'}});
       }
-      const file = resolve(dist, '.' + decodeURIComponent(path));
+      let decoded: string;
+      try { decoded = decodeURIComponent(path); } catch { return new Response('bad path', {status: 400}); }
+      const file = resolve(dist, '.' + decoded);
       if (file.startsWith(dist + sep) && existsSync(file) && statSync(file).isFile()) return new Response(Bun.file(file));
       return new Response('not found', {status: 404});
     },

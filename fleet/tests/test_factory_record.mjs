@@ -237,6 +237,25 @@ ${F}
   )
 }
 
+// ── f. a `loose:fallback` row with no `terminal` row (a killed engine, #1532) ─
+{
+  const plan = path.join(FIXTURES, 'plan-fallback.md')
+  fs.writeFileSync(plan, '# A widget\n\n**Summary:** One. Two. Three.\n\n### Task 1: The widget\n')
+  const fb = { kind: 'loose:fallback', snap: 3, why: 'the cleanup went red' }
+  const killed = path.join(FIXTURES, 'fallback-no-terminal.jsonl')
+  fs.writeFileSync(killed, JSON.stringify(fb) + '\n')
+  const r1 = run(['pr-body', plan, '--events', killed])
+  assert.equal(r1.status, 0, '(f) pr-body over a fallback row with no terminal row exits 0')
+  assert.ok(lines(r1.stdout).includes('The run ended before its outcome was recorded.'),
+    `(f) with no terminal row the body says the run ended before its outcome was recorded: ${r1.stdout}`)
+  assert.ok(!r1.stdout.includes('itself drafted'), '(f) with no terminal row the body does not say the fallback was drafted')
+  const drafted = path.join(FIXTURES, 'fallback-drafted.jsonl')
+  fs.writeFileSync(drafted, [fb, { kind: 'terminal', pr: 'draft', snap: 3, why: 'check red' }].map((x) => JSON.stringify(x)).join('\n') + '\n')
+  const r2 = run(['pr-body', plan, '--events', drafted])
+  assert.ok(lines(r2.stdout).includes("The cleanup's fallback was itself drafted: check red."),
+    `(f) with a draft terminal row the body names its reason: ${r2.stdout}`)
+}
+
 // ── d. [M4] the publish policy, read by `factory/publish.mjs` (#1441) ────────
 {
   assert.deepEqual(

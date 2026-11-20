@@ -179,7 +179,8 @@ experiment).
   `client/src/screens/functions.ts`, which every renderer is given (#1524).
 - **The writes.** Saved data changes only through card actions, run from an
   element's `action` prop. `$bindState` and json-render's built-in state
-  actions write only under `/draft/`.
+  actions write only under `/draft/` (a built-in with no `statePath` writes its own
+  default, so it names one), and no screen binds `$bindItem`, which writes the row.
 - **The look.** 1st-Pouf (moji2002/1st-pouf, MIT, Copyright (c) 2026 Mojtaba
   Beheshti) is vendored byte-identical at `client/src/pouf/` from commit
   `1993b1ec9f2d93b6753929d1f70c89f8ef89b13e`, pinned by
