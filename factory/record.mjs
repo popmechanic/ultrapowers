@@ -266,7 +266,8 @@ function safeText (value) {
 /** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
  *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
  *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
- *  closing line saying the cleanup was dropped and which snapshot landed. */
+ *  closing line saying the cleanup was dropped and which snapshot landed, or, with no `terminal` row
+ *  (an engine killed before its end), that the run ended before its outcome was recorded. */
 function looseEndsLines (events) {
   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
@@ -281,9 +282,11 @@ function looseEndsLines (events) {
   }
   if (fb) {
     const end = events.filter((r) => r && r.kind === 'terminal').at(-1)
-    out.push('', end && end.pr === 'ready' && end.snap === fb.snap
-      ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
-      : `The cleanup's fallback was itself drafted: ${end && end.why ? end.why : fb.why}.`)
+    out.push('', !end
+      ? 'The run ended before its outcome was recorded.'
+      : end.pr === 'ready' && end.snap === fb.snap
+        ? `The cleanup was dropped: ${fb.why}. This lands ${fb.snap}, the snapshot that was green before it.`
+        : `The cleanup's fallback was itself drafted: ${end.why ? end.why : fb.why}.`)
   }
   return out
 }

@@ -6,7 +6,8 @@ import path from 'node:path'
 
 const MAX_DIFF = 50
 
-// The newest checker result per clause in a checks/ folder (by mtime), keyed by clause.
+// One checker result per clause in a checks/ folder, keyed by clause: the edge's own
+// (`<clause>@edge.json`) when it wrote one, else the newest by mtime across every copy.
 export function latestResults (dir) {
   const by = new Map()
   if (!fs.existsSync(dir)) return by
@@ -16,8 +17,9 @@ export function latestResults (dir) {
     try { r = JSON.parse(fs.readFileSync(p, 'utf8')) } catch { continue }
     if (!r || typeof r.clause !== 'string') continue
     const m = fs.statSync(p).mtimeMs
+    const edge = f.endsWith('@edge.json')
     const prev = by.get(r.clause)
-    if (!prev || prev.m < m) by.set(r.clause, { m, r })
+    if (!prev || (edge && !prev.edge) || (edge === prev.edge && prev.m < m)) by.set(r.clause, { m, r, edge })
   }
   return new Map([...by].map(([k, v]) => [k, v.r]))
 }

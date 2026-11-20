@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // checks-digest.json (#1491, factory/flock/check_digest.mjs): after a run the engine writes one row per
 // file of its checks/ folder, in file-name order. A claims-v1 run whose probe plants two results with
-// the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, and one that is not JSON.
+// the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, one that is not JSON, and one whose name has no `@` (its copy is null).
 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import fs from 'node:fs'
 import path from 'node:path'
@@ -11,7 +11,7 @@ const fails = []
 const assert = (ok, why) => { if (!ok) fails.push(why) }
 
 const t = flockTarget({ 'a.txt': 'x\n' })
-const plant = `grep -q DONE a.txt && printf '%s' '{"clause":"S1.1","exit":0,"stage":"ui","diff":[]}' > "$FLOCK_CHECK_OUT/S1.1@$(basename "$PWD").json" && printf '{' > "$FLOCK_CHECK_OUT/bad@x.json"`
+const plant = `grep -q DONE a.txt && printf '%s' '{"clause":"S1.1","exit":0,"stage":"ui","diff":[]}' > "$FLOCK_CHECK_OUT/S1.1@$(basename "$PWD").json" && printf '{' > "$FLOCK_CHECK_OUT/bad@x.json" && printf '{}' > "$FLOCK_CHECK_OUT/plain.json"`
 const plan = writePlan(t, {
   claim: 'a.txt reads DONE.', check: 'test -f a.txt',
   tasks: [task({ id: 1, title: 'Write DONE', files: ['Modify: `a.txt`'], claim: 'a.txt carries DONE.', stale: 'path-absent: `a.txt`', run: plant })],
@@ -31,6 +31,8 @@ if (!fs.existsSync(file)) {
     `S1.1@edge.json row: ${JSON.stringify(edge)}`)
   const bad = rows.find((x) => x.file === 'bad@x.json')
   assert(bad && bad.unreadable === true && bad.copy === 'x', `bad@x.json row: ${JSON.stringify(bad)}`)
+  const plain = rows.find((x) => x.file === 'plain.json')
+  assert(plain && plain.copy === null, `plain.json (no \`@\`) row: ${JSON.stringify(plain)}`)
 }
 t.done()
 if (fails.length) { for (const f of fails) console.log(`FAIL ${f}`); process.exit(1) }

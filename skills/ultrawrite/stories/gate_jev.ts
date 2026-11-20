@@ -21,8 +21,10 @@ const POLICY = POLICY_FILE.flag_at;
 // Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
 // entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
 // reading of 2026-09-29; each cell reverts alone.
-// An unknown `caught` key falls back to `caught` (#1528), and the record names the key asked.
+// An unknown `caught` key falls back to `caught` with one stderr line naming both (#1528, #1532),
+// and the record names the key asked.
 const ASKED = String(POLICY_FILE.gate_reading?.caught ?? 'caught');
+if (!Object.hasOwn(Q, ASKED)) console.error(`gate_jev: policy.json gate_reading.caught names no question "${ASKED}"; asking "caught"`);
 const READING = {caught: Object.hasOwn(Q, ASKED) ? ASKED : 'caught',
   own_files: POLICY_FILE.gate_reading?.own_files === 'dropped' ? 'dropped' : 'read'};
 

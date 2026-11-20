@@ -276,6 +276,61 @@ test('loose-fallback-empty', async () => {
   t.done()
 })
 
+// checker-cannot-run  a stories-v1 run whose checker exits 127 on the starting app (a fake `bun` on PATH): the
+//                     preflight ends the run before any builder opens, one draft terminal row naming the checker,
+//                     and no loose:fallback (#1532)
+test('checker-cannot-run', async () => {
+  const F = '```'
+  const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
+  const t = flockTarget({ 'note.txt': 'base\n' })
+  const bin = path.join(t.tmp, 'bin')
+  fs.mkdirSync(bin)
+  fs.writeFileSync(path.join(bin, 'bun'), '#!/bin/sh\ncase "$*" in *check.ts*) echo "bun: the checker is missing" >&2; exit 127;; esac\nexit 0\n', { mode: 0o755 })
+  t.over.PATH = simEnv({ bin, home: t.tmp }).PATH
+  const plan = path.join(t.tmp, 'plan.md')
+  fs.writeFileSync(plan, `# Sim plan
+
+**Grammar:** stories-v1
+**Stack:** tinyapp
+**Plan-id:** p1
+**Kind:** behaviour
+**Summary:** One. Two. Three.
+**Store:** \`store.js\` sha256:${'0'.repeat(64)}
+
+## Stories
+
+- S1: You add a note; it shows.
+
+### Task 1: The note piece
+
+**Piece:** note
+**Depends-on-pieces:** none
+
+**Files:**
+- Create: \`client/src/pieces/note.json\`
+
+**Purpose:** Keep notes.
+
+**Stories:**
+- S1: You add a note; it shows.
+
+**Proof:**
+${F}probe
+${PROBE}
+${F}
+`)
+  const r = await flockRun(t, { plan, script: { 1: { 'client/src/pieces/note.json': '{"root":"note","elements":{}}\n' } } })
+  assert(r.rows, `no events.jsonl (engine exit ${r.code}): ${r.out.slice(-1500)}`)
+  const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
+  assert(r.of('checker:start')[0]?.exit === 127, `expected a checker:start row with exit 127, saw ${JSON.stringify(r.of('checker:start'))} ${tail}`)
+  const ends = r.of('terminal')
+  assert(ends.length === 1 && ends[0].pr === 'draft' && String(ends[0].why).startsWith('the checker cannot run on this sandbox: '),
+    `expected one draft terminal row naming the checker, saw ${JSON.stringify(ends)} ${tail}`)
+  assert(r.of('loose:fallback').length === 0, `expected no loose:fallback, saw ${JSON.stringify(r.of('loose:fallback'))}`)
+  assert(r.of('builder:open').length === 0, `expected no builder to open, saw ${JSON.stringify(r.of('builder:open'))}`)
+  t.done()
+})
+
 for (const [name, fn] of cases) {
   try { await fn(); console.log(`ok   ${name}`) } catch (e) { fails.push(name); console.log(`FAIL ${name}: ${e.message}`) }
 }
