@@ -39,10 +39,11 @@ hook.schemas = schemas;
 const staff = isStaff(location.pathname, window.__TINYAPP_SYNC__);
 window.__TINYAPP__ = hook;
 
+const state = tinybaseState(store, () => ({staff, who: hook.who}));
 const pieces = Object.entries(pieceSpecs() as Record<string, Spec & {public?: boolean}>)
   .filter(([, spec]) => staff || spec.public === true);
 createRoot(document.getElementById('app')!).render(
-  <JSONUIProvider registry={registry} store={tinybaseState(store, () => ({staff, who: hook.who}))} handlers={tools} functions={functions}>
+  <JSONUIProvider registry={registry} store={state} handlers={tools} functions={functions}>
     {pieces.map(([name, spec]) => (
       <section key={name} data-piece={name}><Renderer spec={spec} registry={registry} /></section>
     ))}
@@ -86,6 +87,7 @@ if (!staff) {
       .then((r) => (r.ok ? r.json() : {}))
       .then((m: {email?: string | null}) => m.email ?? null)
       .catch(() => null);
+  state.refresh();
   const synchronizer = await createWsSynchronizer(store, new WebSocket(`${origin}/sync/app`));
   await synchronizer.startSync();
   hook.synced = true;
