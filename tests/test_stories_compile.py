@@ -88,3 +88,32 @@ def test_a_link_no_piece_of_which_depends_on_the_others_is_a_fact():
 def test_a_string_concepts_is_refused_once():
     found = [r for r in checks("card('todo').concepts = 'todo'") if r.startswith("piece todo") and "concept" in r]
     assert found == ['piece todo: concepts must be a list of concept ids, not "todo"']
+
+
+# What the screen parts draw (#1491): a story expecting a role no part draws is a fact for the
+# author, and the compiled task that needs it is told to add the part and may touch the parts files.
+DRAWS = """
+import {readDraws, TEMPLATE_DRAWS} from './skills/ultrawrite/stories/parts';
+import {compilePlan} from './skills/ultrawrite/stories/compile';
+const draws = readDraws(TEMPLATE_DRAWS);
+delete draws.ActionCheckbox;
+"""
+
+
+def test_a_role_no_part_draws_is_a_fact():
+    got = _bun(DRAWS, "console.log(JSON.stringify(runChecks(b, draws).facts.filter((f) => f.startsWith('PARTS'))))")
+    assert got == ['PARTS fact: story S1 expects a checkbox (such as "buy milk"), and no screen part draws one yet; '
+                   'the tasks that need it are told to add one']
+    assert not [f for f in checks("", "facts") if f.startswith("PARTS")]
+
+
+def test_the_task_needing_a_part_is_told_to_add_it():
+    got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, draws);"
+                      "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")
+    todo, tag = got
+    assert todo.startswith("1: The todo piece")
+    assert "No part draws a checkbox yet, and this task's stories expect one: add it." in todo
+    assert "- Modify: `client/src/screens/draws.json`" in todo
+    assert "No part draws" not in tag and "- Modify:" not in tag
+    for t in (todo, tag):
+        assert "When a story needs something no part draws, add a part" in t

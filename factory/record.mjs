@@ -293,7 +293,8 @@ function looseEndsLines (events) {
 
 /** The `### What each step changed` section over the `step:receipt` rows: the heading, an empty
  *  line, then one line per row in file order naming each diff entry, `no change` for an empty
- *  diff and a trailing `; and more not shown` when truncated. No such row adds nothing. */
+ *  diff, `stopped at <stage> before changing anything` for a row with no diff (#1491), and a
+ *  trailing `; and more not shown` when truncated. No such row adds nothing. */
 function stepReceiptLines (events) {
   const receipts = events.filter((r) => r && r.kind === 'step:receipt')
   if (!receipts.length) return []
@@ -305,10 +306,27 @@ function stepReceiptLines (events) {
       if (d.diff_type === 'removed') return `removed ${path} (was ${safeText(d.from)})`
       return `changed ${path} ${safeText(d.from)} \u2192 ${safeText(d.to)}`
     })
-    let changes = parts.length ? parts.join('; ') : 'no change'
+    let changes = parts.length ? parts.join('; ')
+      : r.diff === null ? `stopped at ${safeText(r.stage || 'its first stage')} before changing anything` : 'no change'
     if (r.truncated === true) changes += '; and more not shown'
     out.push(`- ${safeText(r.clause)} (exit ${safeText(r.exit)}): ${changes}`)
   }
+  return out
+}
+
+/** The `### New screen parts` section over the last `parts:new` row (#1491): the heading, an empty
+ *  line, one line per part a builder added (its name, the role it draws, the props naming it), then
+ *  a line on keeping it. No row adds nothing. */
+function newPartsLines (events) {
+  const row = events.filter((r) => r && r.kind === 'parts:new').at(-1)
+  const parts = row && Array.isArray(row.parts) ? row.parts.filter((p) => p && typeof p === 'object') : []
+  if (!parts.length) return []
+  const out = ['### New screen parts', '']
+  for (const p of parts) {
+    const names = Array.isArray(p.name) && p.name.length ? `, named by ${p.name.map(safeText).join(' or ')}` : ''
+    out.push(`- ${safeText(p.part)}: ${p.role ? `draws a ${safeText(p.role)}${names}` : 'draws no role a story can see'}`)
+  }
+  out.push('', 'A builder added these to this app\'s screen parts. One worth keeping can be copied into the TinyApp template so the next app starts with it.')
   return out
 }
 
@@ -326,13 +344,14 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   let looseEnds = looseEndsLines(events)
   const draft = draftReasonLines(events)
   let changes = stepReceiptLines(events)
+  const parts = newPartsLines(events)
   const assemble = () => {
     let out = ''
     for (const line of summary) out += line + '\n'
     out += '\n'
     for (const line of rows) out += line + '\n'
     out += '\n'
-    for (const section of [provenance, looseEnds, draft, changes]) {
+    for (const section of [provenance, looseEnds, draft, parts, changes]) {
       for (const line of section) out += line + '\n'
       if (section.length) out += '\n'
     }

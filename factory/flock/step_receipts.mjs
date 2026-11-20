@@ -1,6 +1,8 @@
 // Every story step's receipt: what the step changed in the store, kept for
-// green and red steps alike. Pure: one small row per checker result that
-// carries a `diff`, in clause order, the diff cut to its first 50 entries.
+// green and red steps alike. Pure: one small row per checker result, in clause
+// order, the diff cut to its first 50 entries. A result with no `diff` (the step
+// stopped before the checker read the store, as at its `do` stage) keeps its row
+// with `diff: null`, so a checked step never goes missing from the PR (#1491).
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -27,13 +29,13 @@ export function latestResults (dir) {
 
 export function stepReceipts (results) {
   return [...(results || [])]
-    .filter((r) => r && typeof r.clause === 'string' && Array.isArray(r.diff))
+    .filter((r) => r && typeof r.clause === 'string')
     .map((r) => ({
       clause: r.clause,
       exit: r.exit,
       stage: r.stage,
-      diff: r.diff.slice(0, MAX_DIFF),
-      truncated: r.diff.length > MAX_DIFF
+      diff: Array.isArray(r.diff) ? r.diff.slice(0, MAX_DIFF) : null,
+      truncated: Array.isArray(r.diff) && r.diff.length > MAX_DIFF
     }))
     .sort((a, b) => (a.clause < b.clause ? -1 : a.clause > b.clause ? 1 : 0))
 }

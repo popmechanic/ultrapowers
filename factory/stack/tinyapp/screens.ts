@@ -4,7 +4,8 @@
 // Browser-free: it imports the copy's catalog and store modules in Bun and
 // reads client/src/pieces/<piece>.json. Exit 0 pass, 1 findings about the app,
 // 2 could not run. It writes nothing.
-import {existsSync, readFileSync} from 'node:fs';
+import {createHash} from 'node:crypto';
+import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {join, resolve} from 'node:path';
 
@@ -151,6 +152,45 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
   return found;
 }
 
+/** The app's parts, not its screens (#1491): every catalog part has its line in draws.json (the
+ *  role it draws and the props that name it) and every line a part, and 1st-Pouf under
+ *  client/src/pouf/ is byte-for-byte its pin, so a part added during a run wraps it rather than
+ *  patching it. An app with no draws.json (scaffolded before it) is checked for the pin only. */
+export function checkParts(copy: string, components: Record<string, {props: any}>): string[] {
+  const found: string[] = [];
+  const drawsFile = join(copy, 'client', 'src', 'screens', 'draws.json');
+  if (existsSync(drawsFile)) {
+    let parts: Record<string, unknown> = {};
+    try { parts = JSON.parse(readFileSync(drawsFile, 'utf8')).parts ?? {}; } catch (e) { found.push(`draws.json is not JSON: ${(e as Error).message}`); }
+    for (const name of Object.keys(components)) {
+      const line = parts[name];
+      if (!isObj(line)) { found.push(`part ${name} has no line in client/src/screens/draws.json saying what it draws`); continue; }
+      if (line.role !== null && typeof line.role !== 'string') found.push(`part ${name}: its draws.json role is neither a role nor null`);
+      if (typeof line.role === 'string') {
+        const props = Object.keys(components[name]?.props?.shape ?? {});
+        const by = Array.isArray(line.name) ? line.name : [];
+        if (!by.length) found.push(`part ${name} draws a ${line.role} but its draws.json line names no prop that names it`);
+        for (const n of by) if (!props.includes(String(n))) found.push(`part ${name}: draws.json says ${n} names it, but it has no prop ${n}`);
+      }
+    }
+    for (const name of Object.keys(parts)) if (!(name in components)) found.push(`draws.json has a line for ${name}, which is no part in catalog.ts`);
+  }
+  const pinFile = join(copy, 'client', 'src', 'pouf.vendor.json');
+  const pouf = join(copy, 'client', 'src', 'pouf');
+  if (existsSync(pinFile) && existsSync(pouf)) {
+    const pins: Record<string, string> = JSON.parse(readFileSync(pinFile, 'utf8')).files ?? {};
+    for (const [f, sha] of Object.entries(pins)) {
+      const at = join(pouf, f);
+      if (!existsSync(at)) { found.push(`client/src/pouf/${f} is gone; 1st-Pouf is vendored and never patched`); continue; }
+      if (createHash('sha256').update(readFileSync(at)).digest('hex') !== sha) found.push(`client/src/pouf/${f} changed; 1st-Pouf is never patched, so wrap it in client/src/screens/registry.tsx instead`);
+    }
+    const walk = (dir: string, rel = ''): string[] => readdirSync(join(dir, rel), {withFileTypes: true})
+      .flatMap((e) => (e.isDirectory() ? walk(dir, join(rel, e.name)) : [join(rel, e.name)]));
+    for (const f of walk(pouf)) if (!(f in pins)) found.push(`client/src/pouf/${f} is not 1st-Pouf's; a new part goes in client/src/screens/`);
+  }
+  return found;
+}
+
 async function main(): Promise<number> {
   const plan = arg('plan');
   const bundle = arg('bundle');
@@ -161,6 +201,7 @@ async function main(): Promise<number> {
   const c = await load(copy);
   const names = only ? [only] : [...pieces.keys()];
   let n = 0;
+  for (const f of checkParts(copy, c.components)) { console.log(`SCREENS parts: ${f}`); n++; }
   for (const piece of names) {
     for (const f of checkPiece(copy, piece, pieces.get(piece)!, c)) { console.log(`SCREENS ${piece}: ${f}`); n++; }
   }

@@ -86,6 +86,26 @@ function section (text, name) {
   assert.ok(!CLOSING.test(ch), '(c) [M3] no closing keyword in What each step changed')
 }
 
+// ── c2. a receipt with no diff (#1491) ──
+{
+  const out = body([
+    { kind: 'step:receipt', clause: 'S11.4', exit: 1, stage: 'do', diff: null, truncated: false },
+    { kind: 'step:receipt', clause: 'S2.1', exit: 0, stage: 'ok', diff: [], truncated: false },
+  ])
+  const ch = section(out, '### What each step changed')
+  assert.ok(ch.includes('- S11.4 (exit 1): stopped at do before changing anything'), `(c2) a step that stopped at do is named: ${ch}`)
+  assert.ok(ch.includes('- S2.1 (exit 0): no change'), `(c2) an empty diff is still no change: ${ch}`)
+}
+
+// ── c3. the screen parts a run added (#1491) ──
+{
+  const out = body([{ kind: 'parts:new', snap: 'abc', parts: [{ part: 'Status', role: 'status', name: ['label'] }, { part: 'Meter', role: null, name: [] }] }])
+  const np = section(out, '### New screen parts')
+  assert.ok(np.includes('- Status: draws a status, named by label'), `(c3) a part with a role: ${np}`)
+  assert.ok(np.includes('- Meter: draws no role a story can see'), `(c3) a part with none: ${np}`)
+  assert.ok(!body([]).includes('### New screen parts'), '(c3) no row, no section')
+}
+
 // ── d. [M4] ──
 {
   const out = body([{ kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'v', diff_type: 'modified', from: 'a', to: 'y'.repeat(70000) }], truncated: false }])

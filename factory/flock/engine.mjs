@@ -29,6 +29,7 @@ import { looseEnds } from './loose_ends.mjs'
 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { pastItems } from './past.mjs'
 import { stepReceipts, latestResults } from './step_receipts.mjs'
+import { DRAWS, newParts } from './new_parts.mjs'
 import { checkDigest } from './check_digest.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
@@ -481,7 +482,8 @@ Rules:
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 - Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
-- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again.
+- Your task's Files are where the plan expects you to write, not a fence. When the task needs a change elsewhere (a part the screens lack, a helper another file should hold), make it: it is recorded as an amendment, and nothing reverts it.
+- If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again. A change outside your Files is code you can write, so it is never a reason to object.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
@@ -1228,6 +1230,9 @@ try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(chec
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 ev('loose-ends', { snap: looseSnap, items: looseItems })
+// the screen parts builders added (#1491), read on the same snapshot: the PR lists them for the operator
+const addedParts = newParts(BASE_FILES[DRAWS] ?? null, textAt(looseSnap)(DRAWS))
+if (addedParts.length) ev('parts:new', { snap: looseSnap, parts: addedParts })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   // the commit the work sits on: --base, or the main a `peer` run moved to

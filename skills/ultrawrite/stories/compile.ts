@@ -10,8 +10,9 @@ import {copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import {dirname, join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {Aliases, checksFor, hollow, type Content, type Probe} from '../../../factory/stack/tinyapp/probe';
-import {loadBundle, type Bundle, type Card} from './bundle';
+import {loadBundle, pieceOrder, writePageOrder, type Bundle, type Card} from './bundle';
 import {below, runChecks} from './checks';
+import {drawnRoles, drawsPath, readDraws, rolesSeen, type Draws} from './parts';
 import {renderProduct, saveProduct, type Product} from './product';
 
 type Tool = {name: string; inputSchema?: unknown; run: (store: unknown, args: Record<string, unknown>, who: string | null) => boolean};
@@ -28,22 +29,6 @@ function stable(v: unknown): unknown {
 }
 const json = (v: unknown) => JSON.stringify(stable(v));
 const fence = (p: Probe) => ['```probe', json(p), '```'];
-
-function pieceOrder(cards: Card[]): Card[] {
-  const done = new Set<string>();
-  const order: Card[] = [];
-  let left = [...cards];
-  while (left.length) {
-    const ready = left.filter((c) => (c.depends_on ?? []).every((d) => done.has(d)));
-    if (!ready.length) throw new Error('the pieces depend on each other in a circle');
-    for (const c of ready) {
-      order.push(c);
-      done.add(c.piece);
-    }
-    left = left.filter((c) => !ready.includes(c));
-  }
-  return order;
-}
 
 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
@@ -102,13 +87,23 @@ export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   return out;
 }
 
+// Where a new screen part goes (#1491): never client/src/pouf/, which is vendored and never patched.
+const PART_FILES = ['client/src/screens/catalog.ts', 'client/src/screens/registry.tsx', 'client/src/screens/draws.json'];
+const GROW = 'When a story needs something no part draws, add a part: its props in `client/src/screens/catalog.ts`,'
+  + ' a wrapper over a 1st-Pouf component in `client/src/screens/registry.tsx` (never an edit under `client/src/pouf/`),'
+  + ' and its line in `client/src/screens/draws.json` naming the role it draws and the props that name it;'
+  + ' a label made from the data, such as a count or a total, may call a function you add to `client/src/screens/functions.ts`.'
+  + ' When a peer has already added the part, use theirs.';
+
 // The screen the operator approved for a piece while planning, committed with the bundle.
 const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
 const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
 
 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
-export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true): string {
+// draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
+// told to add a part, and every screen task may add one in the open.
+export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null): string {
   const {page, cards} = b;
   const sentences = new Map(page.stories.map((s) => [s.id, s.sentence]));
   const out = [`# ${page.title}`, '',
@@ -132,15 +127,20 @@ export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: 
   }
   pieceOrder(cards).forEach((c, i) => {
     const probes = mine.filter((m) => m.piece === c.piece);
+    const drawn = draws ? drawnRoles(draws) : null;
+    const lacking = screens && drawn ? rolesSeen(probes.flatMap((m) => m.probe.see ?? [])).filter((r) => !drawn.has(r)) : [];
     out.push('', `### Task ${i + 1}: The ${c.piece} piece`, '',
       `**Piece:** ${c.piece}`,
       `**Depends-on-pieces:** ${(c.depends_on ?? []).join(', ') || 'none'}`,
       '**Files:**', `- Create: \`client/src/pieces/${c.piece}.${screens ? 'json' : 'ts'}\``,
+      ...(lacking.length ? PART_FILES.map((f) => `- Modify: \`${f}\``) : []),
       `**Purpose:** ${c.purpose}`,
       ...(screens ? [`**Screen:** \`client/src/pieces/${c.piece}.json\` is a json-render spec over the catalog`
         + ' in `client/src/screens/catalog.ts`: each action below runs from an element\'s `action` prop,'
         + ' and `$bindState` writes only under `/draft/`.'
-        + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')] : []),
+        + (approved(b, c.piece) ? ' It starts as the screen the operator approved while planning: keep its arrangement and its names.' : '')
+        + ' ' + GROW
+        + (lacking.length ? ` No part draws ${lacking.map((r) => `a ${r}`).join(' or ')} yet, and this task's stories expect one: add it.` : '')] : []),
       '**Actions:**');
     for (const a of c.actions) {
       out.push(`- \`${a.name}\` — ${a.description}${a.refuses?.length ? '; refuses: ' + a.refuses.join('; ') : ''}`);
@@ -162,14 +162,16 @@ async function main(): Promise<number> {
     return 2;
   }
   const b = loadBundle(positionals[0]);
-  const {refusals, facts} = runChecks(b);
+  const app = resolve(v.app);
+  // The app's own parts list when it has one; an app scaffolded before it is checked against nothing.
+  const draws = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')) ? readDraws(drawsPath(app)) : null;
+  const {refusals, facts} = runChecks(b, draws);
   for (const f of facts) console.log(f);
   if (refusals.length) {
     console.log(refusals.join('\n'));
     console.log(`${refusals.length} refusal(s)`);
     return 2;
   }
-  const app = resolve(v.app);
   if (!existsSync(join(app, 'node_modules', 'tinybase'))) {
     console.log(`compile: run bun install in ${app} first; the store module imports tinybase from there`);
     return 2;
@@ -189,7 +191,7 @@ async function main(): Promise<number> {
   const guards = older.filter((l) => l.plan !== planId);
   try {
     mine = probesOf(b, (await import(storeDst)) as StoreModule);
-    text = compilePlan(b, planId, mine, guards, screens);
+    text = compilePlan(b, planId, mine, guards, screens, draws);
   } catch (e) {
     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
     if (kept) writeFileSync(storeDst, kept);
@@ -199,6 +201,7 @@ async function main(): Promise<number> {
   }
   mkdirSync(dirname(resolve(v.out)), {recursive: true});
   writeFileSync(v.out, text);
+  if (screens) writePageOrder(b, app);
   // Each approved screen becomes the builder's starting spec for its piece.
   for (const c of b.cards) {
     if (!screens || !approved(b, c.piece)) continue;
