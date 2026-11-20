@@ -40,8 +40,8 @@ def pieces(edit=""):
     return _bun(edit, "console.log(JSON.stringify(Object.fromEntries(probesOf(b, mod).map(d => [d.probe.clause, d.piece]))))")
 
 
-def checks(edit):
-    return _bun(edit, "console.log(JSON.stringify(runChecks(b).refusals))")
+def checks(edit, kind="refusals"):
+    return _bun(edit, "console.log(JSON.stringify(runChecks(b).%s))" % kind)
 
 
 def test_a_link_of_parallel_pieces_goes_to_the_tools_owner():
@@ -75,3 +75,16 @@ def test_a_link_naming_no_piece_is_refused():
 
 def test_a_dependency_cycle_does_not_hang_probesOf():
     pieces("card('tag').depends_on = ['todo']; card('todo').depends_on = ['tag']")
+
+
+def test_a_link_no_piece_of_which_depends_on_the_others_is_a_fact():
+    found = [f for f in checks("", "facts") if "link L1" in f]
+    assert found == ["CODE fact: step S4.3: link L1 joins todo, tag, but none of them depends on all the others, "
+                     "so its check goes to todo, the tool's owner, and may run before the others are built; "
+                     "make one depend on the rest"]
+    assert not [f for f in checks("card('tag').depends_on = ['todo']", "facts") if "link L1" in f]
+
+
+def test_a_string_concepts_is_refused_once():
+    found = [r for r in checks("card('todo').concepts = 'todo'") if r.startswith("piece todo") and "concept" in r]
+    assert found == ['piece todo: concepts must be a list of concept ids, not "todo"']

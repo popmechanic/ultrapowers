@@ -18,7 +18,7 @@ TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
 SHOPPING = os.path.join(ROOT, "evals/fixtures/tinyapp-shopping")
 
 PRELUDE = r"""
-import {arrange} from %s;
+import {arrange, reshape, writeVersions} from %s;
 const fake = async ({questions}) => { const answers = {}; for (const [k, q] of Object.entries(questions)) { const keys = Object.keys(q.criteria); let c = keys[0]; if (k.startsWith("select_")) c = keys.find((x) => x.startsWith("use:")) ?? (keys.includes("1") ? "1" : keys[0]); else if (k.startsWith("parent_")) c = keys.find((x) => x.startsWith("node_0")) ?? keys[0]; answers[k] = {choice: c, confidence: 0.9}; } return {answers}; };
 const isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 const canon = (v) => JSON.stringify(v, (_k, x) => (isObj(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
@@ -35,6 +35,26 @@ def _app(tmp_path_factory, bundle, name):
     if r.returncode:
         pytest.skip("bun install --offline failed: " + r.stderr.strip()[-200:])
     return dst
+
+
+def _copy(app, tmp_path):
+    """A copy of the app of its own, its node_modules a link to the shared one."""
+    dst = str(tmp_path / "app")
+    shutil.copytree(app, dst, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
+    os.symlink(os.path.join(app, "node_modules"), os.path.join(dst, "node_modules"))
+    return dst
+
+
+def _bundle(tmp_path, edit):
+    """A copy of the todo-tags bundle, its page.json passed through edit(page)."""
+    b = str(tmp_path / "b")
+    shutil.copytree(TAGS, b)
+    with open(os.path.join(b, "page.json")) as f:
+        page = json.load(f)
+    page = edit(page) or page
+    with open(os.path.join(b, "page.json"), "w") as f:
+        json.dump(page, f)
+    return b
 
 
 @pytest.fixture(scope="module")
@@ -102,7 +122,8 @@ def test_no_fixed_row_text(tagged):
     assert not fixed, fixed
 
 
-def test_versions_pass_screens_and_stories(app, tagged):
+def test_versions_pass_screens_and_stories(app, tagged, tmp_path):
+    app = _copy(app, tmp_path)
     for p in ("todo", "tag"):
         with open(os.path.join(app, "client/src/pieces/%s.json" % p), "w") as f:
             json.dump(tagged["versions"][p]["A"], f, indent=2)
@@ -190,3 +211,144 @@ def test_remove_tag_names_its_own_todo(app, tagged):
         "  {stateModel: state, repeatItem: item, repeatIndex: i, repeatBasePath: '/tables/tags/' + i, functions}))));",
         app=app, label=REMOVE_LABEL)
     assert got == ["Remove shop from buy milk", "Remove pets from walk dog"], got
+
+
+def test_dropped_versions_leave_no_file(bun, tmp_path):
+    screens = str(tmp_path / "screens")
+    os.makedirs(screens)
+    for f in ("todo.json", "todo.A.json", "todo.B.json", "todo.C.json", "tag.B.json"):
+        with open(os.path.join(screens, f), "w") as fh:
+            fh.write("{}\n")
+    run_js("writeVersions(screens, 'todo', {A: {root: 'r', elements: {}}}); console.log('1');", screens=screens)
+    assert sorted(os.listdir(screens)) == ["tag.B.json", "todo.A.json", "todo.json"]
+
+
+def test_reshape_refuses_a_screen_missing_a_required_control(app):
+    got = run_js(
+        "const r = await arrange({bundle, app, piece: 'todo', evaluate: fake});\n"
+        "let done = false;\n"
+        "const drop = async ({questions}) => { const crit = questions.next.criteria;\n"
+        "  const gone = Object.keys(crit).find((k) => k.startsWith('remove:') && crit[k].includes('(The list of'));\n"
+        "  const c = done || !gone ? 'finish' : gone; done = true;\n"
+        "  return {answers: {next: {choice: c, confidence: 0.9}, ...(questions.parent ? {parent: {choice: Object.keys(questions.parent.criteria)[0]}} : {})}}; };\n"
+        "try { await reshape({bundle, app, piece: 'todo', spec: r.versions.todo.A, notes: ['drop the list'], evaluate: drop}); console.log(JSON.stringify('kept')); }\n"
+        "catch (e) { console.log(JSON.stringify([e.constructor.name, e.message.split(' ').slice(0, 7).join(' ')])); }",
+        bundle=TAGS, app=app)
+    assert got == ["CouldNotRun", "the reshaped screen left out The list"], got
+
+
+def test_a_row_label_never_cuts_a_row_id_out(app, tmp_path):
+    b = _bundle(tmp_path, lambda page: json.loads(json.dumps(page).replace("Remove shop from buy milk", "Remove shop from buy milk 0")))
+    got = run_js(
+        "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+        "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
+        ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label?.args?.template)))]));",
+        bundle=b, app=app)
+    assert got == ["Remove ${name} from ${todoId.text} 0"], got
+
+
+def test_a_seen_name_is_never_matched_by_a_row_id(app, tmp_path):
+    def edit(page):
+        page["stories"] = [s for s in page["stories"] if s["id"] not in ("S3", "S7")]
+        page["stories"][1]["steps"][1]["see"] = [{"role": "button", "name": "Remove tag 0", "count": 1}]
+    b = _bundle(tmp_path, edit)
+    got = run_js(
+        "const r = await arrange({bundle, app, piece: 'tag', evaluate: fake});\n"
+        "console.log(JSON.stringify([...new Set(Object.values(r.versions.tag).flatMap((s) => Object.values(s.elements)"
+        ".filter((e) => e.props.action === 'removeTag').map((e) => e.props.label)))]));",
+        bundle=b, app=app)
+    assert got == ["Take this tag off its todo."], got
+
+
+TAG_ALL = """  },
+  {
+    name: 'tagAll', piece: 'tag', description: 'Tag every todo with a word.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+    run: (store, { name }) => {
+      for (const t of store.getRowIds('todos')) store.addRow('tags', { todoId: t, name: String(name) })
+      return true
+    }
+  },
+  {
+    name: 'clearTags', piece: 'tag', description: 'Take every tag off every todo.',
+    inputSchema: { type: 'object', properties: {} },
+    run: (store) => { store.delTable('tags'); return true }
+  }
+]
+"""
+
+
+@pytest.fixture(scope="module")
+def tag_all(app, tmp_path_factory):
+    """The tag piece with two more actions: tagAll types a name, as addTag does, and
+    clearTags (no args) empties the tags, the second of the piece's two lists."""
+    tmp = tmp_path_factory.mktemp("tagall")
+    a = _copy(app, tmp)
+    store = os.path.join(a, "client/src/store.js")
+    with open(store) as f:
+        text = f.read()
+    assert text.count("  }\n]\n") == 1
+    with open(store, "w") as f:
+        f.write(text.replace("  }\n]\n", TAG_ALL))
+
+    def edit(page):
+        page["stories"] += [
+            {"id": "S8", "sentence": "You tag every todo home.", "steps": [
+                {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+                {"tool": "tagAll", "args": {"name": "home"}, "layer": "ui", "ui": [
+                    {"type": {"role": "textbox", "name": "Tag every todo", "text": "home"}},
+                    {"click": {"role": "button", "name": "Tag all"}}]}]},
+            {"id": "S9", "sentence": "You clear the tags.", "steps": [
+                {"tool": "addTodo", "args": {"text": "buy milk"}, "layer": "store"},
+                {"tool": "addTag", "args": {"todoId": "0", "name": "shop"}, "layer": "store"},
+                {"tool": "clearTags", "args": {}, "layer": "ui", "ui": [{"click": {"role": "button", "name": "Clear tags"}}]}]}]
+    b = _bundle(tmp, edit)
+    with open(os.path.join(b, "cards.json")) as f:
+        cards = json.load(f)
+    tag = next(c for c in cards if c["piece"] == "tag")
+    tag["actions"] += [
+        {"name": "tagAll", "description": "Tag every todo with a word.",
+         "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}},
+        {"name": "clearTags", "description": "Take every tag off every todo.", "inputSchema": {"type": "object", "properties": {}}}]
+    with open(os.path.join(b, "cards.json"), "w") as f:
+        json.dump(cards, f)
+    r = run_js("const r = await arrange({bundle, app, piece: 'tag', evaluate: fake}); console.log(JSON.stringify(r));", bundle=b, app=a)
+    assert r["dropped"] == {} and r["versions"]["tag"], r["dropped"]
+    return r["versions"]["tag"]
+
+
+def test_two_actions_typing_one_field_keep_their_own_drafts(tag_all):
+    for v, s in tag_all.items():
+        els = s["elements"].values()
+        boxes = sorted(e["props"]["value"]["$bindState"] for e in els if e["type"] == "DraftInput")
+        reads = sorted((e["props"]["action"], e["props"]["args"]["name"]["$state"]) for e in els
+                       if e["type"] == "ActionButton" and "name" in (e["props"].get("args") or {}))
+        assert (boxes, reads) == (["/draft/addTag.name", "/draft/tagAll.name"],
+                                  [("addTag", "/draft/addTag.name"), ("tagAll", "/draft/tagAll.name")]), v
+
+
+def test_a_whole_list_button_sits_beside_its_own_list(tag_all):
+    for v, s in tag_all.items():
+        els = s["elements"]
+        parent = {c: p for p, e in els.items() for c in e.get("children", [])}
+        mover = next(i for i, e in els.items() if e["props"].get("action") == "clearTags")
+        while parent.get(mover) not in (None, s["root"]) and len(els[parent[mover]]["children"]) == 1:
+            mover = parent[mover]
+        tags = next(i for i, e in els.items() if (e.get("repeat") or {}).get("statePath") == "/tables/tags")
+        kids = els[parent[tags]]["children"]
+        assert mover in kids and abs(kids.index(mover) - kids.index(tags)) == 1, (v, kids)
+
+
+def test_compile_copies_no_screen_into_an_app_without_the_catalog(app, tmp_path):
+    a = _copy(app, tmp_path)
+    os.remove(os.path.join(a, "client/src/screens/catalog.ts"))
+    shutil.rmtree(os.path.join(a, "client/src/pieces"))
+    b = _bundle(tmp_path, lambda page: None)
+    os.makedirs(os.path.join(b, "screens"))
+    with open(os.path.join(b, "screens/todo.json"), "w") as f:
+        f.write('{"root": "r", "elements": {}}\n')
+    r = subprocess.run(["bun", os.path.join(STORIES, "compile.ts"), b, "--app", a, "--plan-id", "p1",
+                        "--date", "2026-10-01", "--out", os.path.join(a, ".ultrapowers/plan.md")],
+                       capture_output=True, text=True, timeout=120)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert not os.path.exists(os.path.join(a, "client/src/pieces/todo.json"))

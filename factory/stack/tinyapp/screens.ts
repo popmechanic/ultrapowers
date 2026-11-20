@@ -6,9 +6,9 @@
 // 2 could not run. It writes nothing.
 import {existsSync, readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-import {dirname, join, resolve} from 'node:path';
+import {join, resolve} from 'node:path';
 
-const REPO = join(dirname(new URL(import.meta.url).pathname), '..', '..', '..');
+const REPO = join(import.meta.dir, '..', '..', '..');
 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
 const EXPRESSIONS = ['$state', '$item', '$index', '$bindState', '$bindItem', '$template', '$cond', '$computed'];
 
@@ -22,6 +22,8 @@ class CouldNotRun extends Error {}
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isExpression = (v: unknown) => isObj(v) && EXPRESSIONS.some((k) => k in v);
 const underDraft = (p: unknown) => typeof p === 'string' && p.startsWith('/draft/');
+// Where a built-in action writes when it names no statePath (json-render's ActionProvider).
+const DEFAULT_PATH: Record<string, string> = {validateForm: '/formValidation'};
 
 /** The card actions per piece, in plan or bundle order. */
 function piecesFrom(plan?: string, bundle?: string): Map<string, string[]> {
@@ -61,12 +63,14 @@ async function load(copy: string) {
   return {components: cat.components as Record<string, {props: any}>, builtIn: cat.BUILT_IN as string[], catalog: cat.catalogFor(tools), actionNames: tools.map((t: {name: string}) => t.name) as string[]};
 }
 
-/** Every $bindState path anywhere under v. */
-function bindStates(v: unknown, out: string[] = []): string[] {
-  if (Array.isArray(v)) for (const x of v) bindStates(x, out);
+/** Every two-way binding anywhere under v: a $bindState path, or a $bindItem field
+ *  (which writes the repeated row itself, so never a draft). */
+function bindings(v: unknown, out: string[] = []): string[] {
+  if (Array.isArray(v)) for (const x of v) bindings(x, out);
   else if (isObj(v)) {
-    if ('$bindState' in v) out.push(String(v.$bindState));
-    for (const x of Object.values(v)) bindStates(x, out);
+    if ('$bindState' in v && !underDraft(v.$bindState)) out.push(`$bindState ${String(v.$bindState)}`);
+    if ('$bindItem' in v) out.push(`$bindItem ${String(v.$bindItem)}`);
+    for (const x of Object.values(v)) bindings(x, out);
   }
   return out;
 }
@@ -114,6 +118,11 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
       for (const prop of Object.keys(props)) if (!(prop in shape)) found.push(`${key}: ${type} has no prop ${prop}`);
       const seen = new Set<string>();
       for (const i of schema.safeParse(props).error?.issues ?? []) {
+        if (!i.path?.length) {
+          if (!seen.has('')) found.push(`${key}: ${type} props: ${i.message}`);
+          seen.add('');
+          continue;
+        }
         const prop = String(i.path[0]);
         if (seen.has(prop) || isExpression(props[prop])) continue;
         seen.add(prop);
@@ -129,11 +138,14 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
         if (!isObj(b)) continue;
         const action = String(b.action);
         if (!c.builtIn.includes(action)) found.push(`${key}: on runs ${action}, which is no built-in action (a card action runs from an action prop)`);
+        if (!c.builtIn.includes(action)) continue;
         const params = isObj(b.params) ? b.params : {};
-        if ('statePath' in params && !underDraft(params.statePath)) found.push(`${key}: on ${action} writes ${String(params.statePath)}, which is outside /draft/`);
+        const path = 'statePath' in params ? params.statePath : DEFAULT_PATH[action];
+        if (path === undefined) found.push(`${key}: on ${action} names no statePath, so it writes outside /draft/`);
+        else if (!underDraft(path)) found.push(`${key}: on ${action} writes ${String(path)}, which is outside /draft/`);
       }
     }
-    for (const path of bindStates(props)) if (!underDraft(path)) found.push(`${key}: $bindState ${path} is outside /draft/`);
+    for (const b of bindings(props)) found.push(`${key}: ${b} is outside /draft/`);
   }
   for (const a of actions) if (!run.has(a)) found.push(`no element runs ${a}`);
   return found;

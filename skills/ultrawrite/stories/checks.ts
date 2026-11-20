@@ -1,12 +1,27 @@
 // The code checks a bundle meets before compile. A refusal stops compile; a
 // fact is printed for the author to act on and stops nothing.
-import {KINDS, conceptsOf, type Bundle} from './bundle';
+import {KINDS, conceptsOf, type Bundle, type Card} from './bundle';
 import {checkProduct} from './product';
 
 const GESTURES = new Set(['click', 'type', 'key']);
 const isGesture = (g: unknown) =>
   !!g && typeof g === 'object' && Object.keys(g).length === 1 && GESTURES.has(Object.keys(g)[0]);
 const named = (text: string, word: string) => text.split(word).length - 1;
+
+// Every piece `piece` depends on, directly or through others; a circle ends the walk.
+export function below(cards: Card[], piece: string): Set<string> {
+  const seen = new Set<string>();
+  const walk = (p: string) => {
+    for (const d of cards.find((c) => c.piece === p)?.depends_on ?? []) {
+      if (!seen.has(d)) {
+        seen.add(d);
+        walk(d);
+      }
+    }
+  };
+  walk(piece);
+  return seen;
+}
 
 export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
   const {page, cards} = b;
@@ -74,13 +89,23 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
       if (st.link !== undefined) {
         if (linkIds.includes(st.link)) linked.add(st.link);
         else refusals.push(`${where}: link ${st.link} is not on the page`);
+        // compile hands the step's check to the one link piece (the tool's owner counted) built after all the others
+        const ps = [...new Set([...((page.links ?? []).find((l) => l.id === st.link)?.pieces ?? []), owner.get(st.tool) ?? ''])].filter((p) => pieces.has(p));
+        if (linkIds.includes(st.link) && ps.length > 1 && !ps.some((p) => ps.every((q) => q === p || below(cards, p).has(q)))) {
+          facts.push(`CODE fact: ${where}: link ${st.link} joins ${ps.join(', ')}, but none of them depends on all the others, so its check goes to ${owner.get(st.tool)}, the tool's owner, and may run before the others are built; make one depend on the rest`);
+        }
       }
     });
   }
   for (const l of linkIds) if (!linked.has(l)) refusals.push(`link ${l} has no step`);
   for (const l of page.links ?? []) for (const p of l.pieces ?? []) if (!pieces.has(p)) refusals.push(`link ${l.id}: names piece ${p}, which is no piece`);
 
+  const badConcepts = new Set<string>();
   for (const c of cards) {
+    if (c.concepts !== undefined && !(Array.isArray(c.concepts) && c.concepts.every((x) => typeof x === 'string'))) {
+      refusals.push(`piece ${c.piece}: concepts must be a list of concept ids, not ${JSON.stringify(c.concepts)}`);
+      badConcepts.add(c.piece);
+    }
     if (!storyIds.includes(c.main_story ?? '')) {
       refusals.push(`piece ${c.piece}: its main story ${c.main_story} is not on the page`);
     }
@@ -127,6 +152,7 @@ export function runChecks(b: Bundle): {refusals: string[]; facts: string[]} {
       refusals.push(`page: subproject ${page.subproject} is not in product.json`);
     } else {
       for (const c of cards) {
+        if (badConcepts.has(c.piece)) continue;
         const named = conceptsOf(c);
         if (!named.length) refusals.push(`piece ${c.piece}: its concept (none) is not one this plan builds`);
         for (const id of named) {
