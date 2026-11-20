@@ -10,7 +10,7 @@ import {copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync
 import {dirname, join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {Aliases, checksFor, hollow, type Content, type Probe} from '../../../factory/stack/tinyapp/probe';
-import {loadBundle, type Bundle, type Card} from './bundle';
+import {loadBundle, pieceOrder, writePageOrder, type Bundle, type Card} from './bundle';
 import {below, runChecks} from './checks';
 import {drawnRoles, drawsPath, readDraws, rolesSeen, type Draws} from './parts';
 import {renderProduct, saveProduct, type Product} from './product';
@@ -29,22 +29,6 @@ function stable(v: unknown): unknown {
 }
 const json = (v: unknown) => JSON.stringify(stable(v));
 const fence = (p: Probe) => ['```probe', json(p), '```'];
-
-function pieceOrder(cards: Card[]): Card[] {
-  const done = new Set<string>();
-  const order: Card[] = [];
-  let left = [...cards];
-  while (left.length) {
-    const ready = left.filter((c) => (c.depends_on ?? []).every((d) => done.has(d)));
-    if (!ready.length) throw new Error('the pieces depend on each other in a circle');
-    for (const c of ready) {
-      order.push(c);
-      done.add(c.piece);
-    }
-    left = left.filter((c) => !ready.includes(c));
-  }
-  return order;
-}
 
 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
@@ -217,6 +201,7 @@ async function main(): Promise<number> {
   }
   mkdirSync(dirname(resolve(v.out)), {recursive: true});
   writeFileSync(v.out, text);
+  if (screens) writePageOrder(b, app);
   // Each approved screen becomes the builder's starting spec for its piece.
   for (const c of b.cards) {
     if (!screens || !approved(b, c.piece)) continue;

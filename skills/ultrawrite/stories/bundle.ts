@@ -1,8 +1,8 @@
 // A bundle: page.json (with each story's steps), cards.json and store.js in
 // one directory. The store's fingerprint is taken here.
 import {createHash} from 'node:crypto';
-import {existsSync, readFileSync} from 'node:fs';
-import {join, resolve} from 'node:path';
+import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {dirname, join, resolve} from 'node:path';
 import type {See, UiStep} from '../../../factory/stack/tinyapp/probe';
 import type {Product} from './product';
 
@@ -69,4 +69,29 @@ export function loadBundle(dir: string): Bundle {
     storeSha256: createHash('sha256').update(store).digest('hex'),
     product,
   };
+}
+
+/** The pieces in build order: each after every piece it depends on, ties in card order. */
+export function pieceOrder(cards: Card[]): Card[] {
+  const done = new Set<string>();
+  const order: Card[] = [];
+  let left = [...cards];
+  while (left.length) {
+    const ready = left.filter((c) => (c.depends_on ?? []).every((d) => done.has(d)));
+    if (!ready.length) throw new Error('the pieces depend on each other in a circle');
+    for (const c of ready) {
+      order.push(c);
+      done.add(c.piece);
+    }
+    left = left.filter((c) => !ready.includes(c));
+  }
+  return order;
+}
+
+/** client/src/screens/order.json: the order the page draws its pieces in, the build order, so a
+ *  page reads party before guests before dishes rather than by file name (#1491). */
+export function writePageOrder(b: Bundle, app: string) {
+  const file = join(app, 'client', 'src', 'screens', 'order.json');
+  mkdirSync(dirname(file), {recursive: true});
+  writeFileSync(file, JSON.stringify({pieces: pieceOrder(b.cards).map((c) => c.piece)}, null, 2) + '\n');
 }

@@ -3,13 +3,14 @@
 // code), the bundle's store module at client/src/store.js, and one
 // json-render spec per piece at client/src/pieces/<piece>.json: an empty
 // column that runs no action, so the screens check stays red on it until a
-// builder writes the screen. The page finds the specs itself at build time.
+// builder writes the screen. The page finds the specs itself at build time and
+// draws them in the build order client/src/screens/order.json gives.
 // Refuses a directory that holds anything but .git.
 //
 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
-import {loadBundle} from './bundle';
+import {loadBundle, writePageOrder} from './bundle';
 
 const TEMPLATE = join(import.meta.dir, 'tinyapp-template');
 const STORE = 'client/src/store.js';
@@ -37,6 +38,7 @@ function main(argv: string[]): number {
     const spec = {root: p, elements: {[p]: {type: 'Stack', props: {}, children: []}}};
     writeFileSync(join(pdir, `${p}.json`), JSON.stringify(spec, null, 2) + '\n');
   }
+  writePageOrder(b, dst);
   console.log(`SCAFFOLDED ${dst}: pieces ${pieces.join(', ')}`);
   return 0;
 }

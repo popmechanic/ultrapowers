@@ -69,3 +69,18 @@ def test_who_set_after_the_first_snapshot_reaches_session(tmp_path):
     r = subprocess.run(["bun", probe], cwd=app, capture_output=True, text=True, timeout=60)
     assert r.returncode == 0, r.stderr
     assert json.loads(r.stdout.strip().splitlines()[-1]) == {"who": "a@b.c", "heard": 1}
+
+
+def test_the_page_draws_pieces_in_build_order(tmp_path):
+    """todo-tags' cards are todo then tag: the page draws them so, not by file name (#1491)."""
+    if not shutil.which("bun"):
+        pytest.skip("bun is not installed")
+    app = str(tmp_path / "app")
+    subprocess.run(["bun", os.path.join(STORIES, "scaffold.ts"), os.path.join(ROOT, "skills/ultrawrite/catalog/todo-tags"), app],
+                   check=True, capture_output=True, text=True)
+    with open(os.path.join(app, "client/src/screens/order.json")) as f:
+        assert json.load(f) == {"pieces": ["todo", "tag"]}
+    r = subprocess.run(["bun", "-e", "import {pieceSpecs} from './client/src/screens/pieces.ts';"
+                        "console.log(JSON.stringify(Object.keys(pieceSpecs())))"], cwd=app, capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == ["todo", "tag"]
