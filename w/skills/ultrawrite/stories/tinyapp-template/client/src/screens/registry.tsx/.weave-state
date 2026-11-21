@@ -117,17 +117,34 @@
 113 > 1     ActionSelect: ({ props, emit }) => {
 114 < 1       const { run, busy } = useRun(props.action, props.args)
 115 < 1       const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
+117 > 1       // Its words show above it, as a text box's do; they are also its accessible name.
 116 < 1       return (
-117 < 1         <Select
-118 < 1           label={props.label}
-119 < 1           placeholder={u(props.placeholder)}
-120 < 1           value={props.value ?? ''}
-121 < 1           options={options}
-122 < 1           disabled={busy}
-123 < 1           onChange={async (v) => {
-124 < 1             if (await run({ [props.pick]: v })) emit('change')
-125 < 1           }}
-126 < 1         />
+118 > 1         <Field label={props.label}>
+119 < 1           {(id, describedBy) => (
+120 < 1             <Select
+121 < 1               id={id}
+122 < 1               describedBy={describedBy}
+123 < 1               label={props.label}
+124 < 1               placeholder={u(props.placeholder)}
+125 < 1               value={props.value ?? ''}
+126 < 1               options={options}
+127 < 1               disabled={busy}
+128 < 1               onChange={async (v) => {
+129 < 1                 if (await run({ [props.pick]: v })) emit('change')
+130 < 1               }}
+131 < 1             />
+132 < 1           )}
+133 < 1         </Field>
+117 < 2         <Select
+118 < 2           label={props.label}
+119 < 2           placeholder={u(props.placeholder)}
+120 < 2           value={props.value ?? ''}
+121 < 2           options={options}
+122 < 2           disabled={busy}
+123 < 2           onChange={async (v) => {
+124 < 2             if (await run({ [props.pick]: v })) emit('change')
+125 < 2           }}
+126 < 2         />
 127 < 1       )
 128 < 1     },
 112 < 1     DraftInput: ({ props, bindings }) => {
