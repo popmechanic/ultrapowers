@@ -39,13 +39,20 @@ export type Page = {
 // that row and `${col.cell}` a cell of the row column `col` names), an input property's
 // `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
 // table's boolean column.
+// A card's `shows` are the lines its piece draws: `{text, in}` a line on each row of table `in`
+// (`${cell}`, `${col.cell}` as in a label), `{text}` a line on the page whose slots are values
+// in `state.values` or totals (`${sum t.c}`, `${count t}`, `${count t c=v}`), `{heading}` the
+// page heading (one card's at most). Its `words` give the reader's words for a stored value:
+// slot to stored value to shown words, e.g. `{"answer": {"yes": "coming"}}`.
 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]; label?: string; control?: 'checkbox'};
 export type Card = {
   piece: string;
   purpose: string;
   depends_on?: string[];
-  state?: {tables?: Record<string, string[]>};
+  state?: {tables?: Record<string, string[]>; values?: string[]};
   actions: Action[];
+  shows?: ({text: string; in?: string} | {heading: string})[];
+  words?: Record<string, Record<string, string>>;
   main_story?: string;
   near_miss?: string;
   concept?: string;

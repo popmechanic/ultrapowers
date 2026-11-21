@@ -1,5 +1,61 @@
 [
  {
+  "piece": "party",
+  "concept": "party",
+  "purpose": "Give the potluck a name and a time.",
+  "depends_on": [],
+  "state": {
+   "tables": {},
+   "values": [
+    "title",
+    "when"
+   ]
+  },
+  "actions": [
+   {
+    "name": "setParty",
+    "description": "Name the party and say when it is.",
+    "label": "Save party",
+    "inputSchema": {
+     "type": "object",
+     "properties": {
+      "title": {
+       "type": "string",
+       "x-label": "Party name"
+      },
+      "when": {
+       "type": "string",
+       "x-label": "When"
+      }
+     },
+     "required": [
+      "title"
+     ]
+    },
+    "refuses": [
+     "blank party name"
+    ]
+   }
+  ],
+  "shows": [
+   {
+    "heading": "${title}"
+   },
+   {
+    "text": "${when}"
+   }
+  ],
+  "words": {
+   "title": {
+    "": "Potluck"
+   },
+   "when": {
+    "": "No time set yet"
+   }
+  },
+  "main_story": "S3"
+ },
+ {
   "piece": "guest",
   "concept": "guest",
   "purpose": "The host keeps the list of who is invited and who is coming.",
@@ -55,7 +111,19 @@
      "a guest who does not exist"
     ]
    }
-  ]
+  ],
+  "shows": [
+   {
+    "text": "${name} · ${answer}",
+    "in": "guests"
+   }
+  ],
+  "words": {
+   "answer": {
+    "yes": "Coming",
+    "": "No answer yet"
+   }
+  }
  },
  {
   "piece": "dish",
@@ -132,6 +200,20 @@
      "a guest who does not exist"
     ]
    }
-  ]
+  ],
+  "shows": [
+   {
+    "text": "${name}, serves ${serves} · ${guestId.name} is bringing it",
+    "in": "dishes"
+   },
+   {
+    "text": "Food for ${sum dishes.serves} · ${count guests answer=yes} coming"
+   }
+  ],
+  "words": {
+   "guestId.name": {
+    "": "Nobody"
+   }
+  }
  }
 ]

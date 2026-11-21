@@ -8,17 +8,125 @@
    },
    "children": [
     "title",
+    "partyForm",
+    "when",
     "guestForm",
     "guests",
     "dishForm",
-    "dishes"
+    "dishes",
+    "food"
    ]
   },
   "title": {
    "type": "Heading",
    "props": {
-    "text": "Potluck",
+    "text": {
+     "$computed": "format",
+     "args": {
+      "template": "${title}",
+      "title": {
+       "$computed": "words",
+       "args": {
+        "value": {
+         "$state": "/values/title"
+        },
+        "words": {
+         "": "Potluck"
+        }
+       }
+      }
+     }
+    },
     "level": 1
+   },
+   "children": []
+  },
+  "partyForm": {
+   "type": "Row",
+   "props": {
+    "gap": 2,
+    "align": "center"
+   },
+   "children": [
+    "partyName",
+    "partyWhen",
+    "saveParty"
+   ]
+  },
+  "partyName": {
+   "type": "DraftInput",
+   "props": {
+    "label": "Party name",
+    "value": {
+     "$bindState": "/draft/title"
+    }
+   },
+   "children": []
+  },
+  "partyWhen": {
+   "type": "DraftInput",
+   "props": {
+    "label": "When",
+    "value": {
+     "$bindState": "/draft/when"
+    }
+   },
+   "children": []
+  },
+  "saveParty": {
+   "type": "ActionButton",
+   "props": {
+    "label": "Save party",
+    "action": "setParty",
+    "args": {
+     "title": {
+      "$state": "/draft/title"
+     },
+     "when": {
+      "$state": "/draft/when"
+     }
+    }
+   },
+   "on": {
+    "press": [
+     {
+      "action": "setState",
+      "params": {
+       "statePath": "/draft/title",
+       "value": ""
+      }
+     },
+     {
+      "action": "setState",
+      "params": {
+       "statePath": "/draft/when",
+       "value": ""
+      }
+     }
+    ]
+   },
+   "children": []
+  },
+  "when": {
+   "type": "Text",
+   "props": {
+    "text": {
+     "$computed": "format",
+     "args": {
+      "template": "${when}",
+      "when": {
+       "$computed": "words",
+       "args": {
+        "value": {
+         "$state": "/values/when"
+        },
+        "words": {
+         "": "No time set yet"
+        }
+       }
+      }
+     }
+    }
    },
    "children": []
   },
@@ -94,7 +202,25 @@
    "type": "Text",
    "props": {
     "text": {
-     "$item": "name"
+     "$computed": "format",
+     "args": {
+      "template": "${name} · ${answer}",
+      "name": {
+       "$item": "name"
+      },
+      "answer": {
+       "$computed": "words",
+       "args": {
+        "value": {
+         "$item": "answer"
+        },
+        "words": {
+         "yes": "Coming",
+         "": "No answer yet"
+        }
+       }
+      }
+     }
     }
    },
    "children": []
@@ -209,7 +335,36 @@
    "type": "Text",
    "props": {
     "text": {
-     "$item": "name"
+     "$computed": "format",
+     "args": {
+      "template": "${name}, serves ${serves} · ${guestId.name} is bringing it",
+      "name": {
+       "$item": "name"
+      },
+      "serves": {
+       "$item": "serves"
+      },
+      "guestId.name": {
+       "$computed": "words",
+       "args": {
+        "value": {
+         "$computed": "lookup",
+         "args": {
+          "rows": {
+           "$state": "/tables/guests"
+          },
+          "id": {
+           "$item": "guestId"
+          },
+          "column": "name"
+         }
+        },
+        "words": {
+         "": "Nobody"
+        }
+       }
+      }
+     }
     }
    },
    "children": []
@@ -243,6 +398,38 @@
      "$item": "guestId"
     },
     "placeholder": "Nobody yet"
+   },
+   "children": []
+  },
+  "food": {
+   "type": "Text",
+   "props": {
+    "text": {
+     "$computed": "format",
+     "args": {
+      "template": "Food for ${sum dishes.serves} · ${count guests answer=yes} coming",
+      "sum dishes.serves": {
+       "$computed": "sum",
+       "args": {
+        "rows": {
+         "$state": "/tables/dishes"
+        },
+        "column": "serves"
+       }
+      },
+      "count guests answer=yes": {
+       "$computed": "count",
+       "args": {
+        "rows": {
+         "$state": "/tables/guests"
+        },
+        "where": {
+         "answer": "yes"
+        }
+       }
+      }
+     }
+    }
    },
    "children": []
   }

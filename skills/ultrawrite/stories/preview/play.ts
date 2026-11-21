@@ -5,7 +5,7 @@
 // `select` entry opens its combobox and clicks the option in the listbox,
 // which renders in a portal outside #app. Store-step args name rows by alias,
 // as check.ts reads them, mapped to the store's own ids before each run.
-import {find, nameOf, roleOf, targetOf} from './names';
+import {find, nameOf, ownTextOf, roleOf, targetOf} from './names';
 import {Aliases, type Content} from './probe';
 
 type Target = {role: string; name: string};
@@ -21,7 +21,11 @@ const root = (): ParentNode => document.getElementById('app') ?? document;
 
 function count(role: string, name: string): number {
   let n = 0;
-  for (const el of root().querySelectorAll('*')) if (roleOf(el) === role && nameOf(el) === name) n++;
+  // A run of text has no role or name, so `text` counts elements by their own text.
+  const hit = role === 'text'
+    ? (el: Element) => ownTextOf(el) === name
+    : (el: Element) => roleOf(el) === role && nameOf(el) === name;
+  for (const el of root().querySelectorAll('*')) if (hit(el)) n++;
   return n;
 }
 
@@ -94,7 +98,7 @@ export function inTurn<T>(job: () => Promise<T>): Promise<T> {
 /** Play one story on the screen as drawn; misses name what was not as the story says. */
 export async function play(
   story: PlayStory,
-  store: {delTables: () => unknown; getContent: () => Content},
+  store: {delTables: () => unknown; delValues: () => unknown; getContent: () => Content},
   tools: Tools,
   schemas: Record<string, unknown> = {},
 ): Promise<{ok: boolean; misses: string[]}> {
@@ -102,7 +106,9 @@ export async function play(
   const preview = window.__PREVIEW__;
   if (preview) preview.playing = true;
   try {
+    // The sample data saves values too (a party's title), so both are cleared.
     store.delTables();
+    store.delValues();
     const aliases = new Aliases();
     aliases.learn(store.getContent());
     await pause(GAP);

@@ -62,6 +62,13 @@ function textOf(el: Element): string {
   return clean(el.textContent);
 }
 
+/** The element's own text: its child text nodes joined, whitespace collapsed, trimmed. */
+export function ownTextOf(el: Element): string {
+  let own = '';
+  for (const c of el.childNodes) if (c.nodeType === Node.TEXT_NODE) own += c.nodeValue ?? '';
+  return clean(own);
+}
+
 export function nameOf(el: Element): string {
   const label = clean(el.getAttribute('aria-label'));
   if (label) return label;

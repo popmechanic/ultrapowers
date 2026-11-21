@@ -474,6 +474,22 @@ const pageOn = (
     evaluate,
 
     count: async (locator) => {
+      // Chrome gives a run of text no role or name, so `text` is counted in the
+      // page: elements inside #app whose own text (child text nodes joined,
+      // whitespace collapsed, trimmed) equals the name.
+      if (locator.role === 'text') {
+        return (await evaluate(`(() => {
+          const want = ${JSON.stringify(locator.name)};
+          const root = document.getElementById('app') ?? document.body;
+          let n = 0;
+          for (const el of root.querySelectorAll('*')) {
+            let own = '';
+            for (const c of el.childNodes) if (c.nodeType === 3) own += c.nodeValue;
+            if (own.replace(/\\s+/g, ' ').trim() === want) n++;
+          }
+          return n;
+        })()`)) as number;
+      }
       await connection.send('Accessibility.enable', {}, sessionId);
       const found = (await connection.send('Accessibility.queryAXTree', {
         nodeId: await rootOf(connection, sessionId),
