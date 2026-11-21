@@ -40,7 +40,7 @@ def make_copy(base, dst, screen, server, edit):
     shutil.copytree(base, dst, ignore=shutil.ignore_patterns("node_modules"))
     os.symlink(os.path.join(base, "node_modules"), os.path.join(dst, "node_modules"))
     if screen:
-        shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/pieces/todo.json"))
+        shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/screen.json"))
     if server:
         shutil.copyfile(os.path.join(FIX, server), os.path.join(dst, "server/index.ts"))
     if edit == "hollow":

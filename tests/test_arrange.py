@@ -236,6 +236,25 @@ def test_reshape_refuses_a_screen_missing_a_required_control(app):
     assert got == ["CouldNotRun", "the reshaped screen left out The list"], got
 
 
+
+def test_reshape_names_a_container_by_what_it_holds(app):
+    got = run_js(
+        "const r = await arrange({bundle, app, evaluate: fake});\n"
+        "const spec = structuredClone(r.versions.A); const root = spec.elements[spec.root];\n"
+        "const kids = root.children.filter((c) => ['DraftInput', 'ActionButton'].includes(spec.elements[c].type));\n"
+        "spec.elements.form = {type: 'Row', props: {gap: 2, align: 'center'}, children: kids};\n"
+        "root.children = [...root.children.filter((c) => !kids.includes(c)), 'form'];\n"
+        "let step = 0; let named = '';\n"
+        "const move = async ({questions}) => { const crit = questions.next.criteria; const keys = Object.keys(crit);\n"
+        "  const box = keys.find((k) => k.startsWith('move:') && crit[k].includes('holding The text box'));\n"
+        "  if (step === 0) named = box ? crit[box] : '';\n"
+        "  const c = step === 0 && box ? box : step === 1 ? keys.find((k) => k.startsWith('position:')) : 'finish'; step++;\n"
+        "  return {answers: {next: {choice: c, confidence: 0.9}, ...(questions.parent ? {parent: {choice: Object.keys(questions.parent.criteria)[0]}} : {})}}; };\n"
+        "const out = await reshape({bundle, app, spec, notes: ['move the form'], evaluate: move});\n"
+        "console.log(JSON.stringify([named.includes(', holding The text box'), out.steps.length, out.steps[1].startsWith('Move form (A row')]));",
+        bundle=TAGS, app=app)
+    assert got == [True, 3, True], got
+
 TAG_ALL = """  },
   {
     name: 'tagAll', piece: 'tag', description: 'Tag every todo with a word.',

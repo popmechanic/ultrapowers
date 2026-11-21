@@ -187,7 +187,14 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
 
 function descriptionsOf(spec: Spec, candidates: Candidate[]): Record<string, string> {
   const by = new Map(candidates.map((c) => [recipeKey(c.element), c.description]));
-  return Object.fromEntries(Object.entries(spec.elements).map(([id, e]) => [id, by.get(recipeKey(atomic(e))) ?? `Existing ${e.type}`]));
+  const own = (id: string) => by.get(recipeKey(atomic(spec.elements[id]))) ?? `Existing ${spec.elements[id].type}`;
+  const short = (id: string): string => {
+    const kids = spec.elements[id]?.children ?? [];
+    return kids.length ? `a ${spec.elements[id].type} holding ${kids.map(short).join('; ')}` : own(id).split(':')[0];
+  };
+  return Object.fromEntries(
+    Object.entries(spec.elements).map(([id, e]) => [id, id !== spec.root && e.children?.length ? `${own(id)}, holding ${e.children.map(short).join('; ')}` : own(id)]),
+  );
 }
 
 const missing = (spec: Spec | null, required: Candidate[]) => {
