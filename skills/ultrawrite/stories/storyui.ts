@@ -173,13 +173,15 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
       }
       const ui: UiStep[] = [];
       for (const d of before) {
-        if (d.el.type !== 'DraftInput' || !d.role || !d.name) continue;
+        const isNumber = d.el.type === 'DraftNumber';
+        if ((d.el.type !== 'DraftInput' && !isNumber) || !d.role || !d.name) continue;
         const input = draftInput(d.el.props?.value, st.tool);
         if (!input || !(input in args) || rowArgs.includes(input)) continue;
         const typed = text(args[input]);
         if (typed === '') continue;
         ui.push({type: {role: d.role, name: d.name, text: typed}});
-        setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
+        // A number box's draft is the number itself; a text box's is its text.
+        setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), isNumber ? args[input] : typed);
       }
       // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);

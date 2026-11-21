@@ -34,12 +34,17 @@ export const TOOLS = [
   {
     name: 'addDish',
     piece: 'dish',
-    description: 'List a dish the party needs; nobody is bringing it yet.',
-    inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-    run: (store, { name }) => {
+    description: 'List a dish the party needs and how many it serves; nobody is bringing it yet.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' }, serves: { type: 'number' } },
+      required: ['name', 'serves']
+    },
+    run: (store, { name, serves }) => {
       const clean = String(name ?? '').trim()
       if (clean === '') return false
-      store.addRow('dishes', { name: clean, guestId: '' })
+      if (typeof serves !== 'number' || !Number.isInteger(serves) || serves < 1) return false
+      store.addRow('dishes', { name: clean, serves, guestId: '' })
       return true
     }
   },
@@ -65,6 +70,6 @@ export const TOOLS = [
 export function makeStore () {
   return createStore().setTablesSchema({
     guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
-    dishes: { name: { type: 'string' }, guestId: { type: 'string', default: '' } }
+    dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
   })
 }

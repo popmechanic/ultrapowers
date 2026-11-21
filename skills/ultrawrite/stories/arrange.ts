@@ -4,7 +4,8 @@
 // story's `ui` or `see`: each card action's control (a bound ActionButton or
 // ActionCheckbox, its words the action's `label`; an action taking rows of two tables an
 // ActionSelect in the first table's list, picking a row of the second, narrowed by that
-// input's `x-where`), each string input's DraftInput (its words the input's `x-label`),
+// input's `x-where`), each string input's DraftInput and each number input's DraftNumber (its words the
+// input's `x-label`),
 // one list per table its row actions work on, a few
 // containers, the page title and each card's purpose. Jev only chooses and places them,
 // through json-render's composer, once per version of questions.json's authoring_arrange.
@@ -24,7 +25,7 @@ type Element = {type: string; props: Json; children?: string[]; on?: Json; visib
 export type Spec = {root: string; elements: Record<string, Element>; state?: Json};
 export type Evaluator = (request: {state: Json; questions: Record<string, {criteria: Record<string, string>}>; signal: AbortSignal}) => Promise<{answers: Record<string, {choice: string; confidence?: number}>}>;
 type Candidate = {id: string; description: string; element: Pick<Element, 'type' | 'props' | 'visible'>; root?: boolean; maxUses?: number};
-type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
+type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput' | 'DraftNumber'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
 type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | null; steps: {description: string}[]}>; catalog: unknown; TOOLS: Tool[]; makeStore: () => any};
 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>};
@@ -98,7 +99,12 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
   const rowOf = new Map<string, string>();
   for (const a of actions) for (const [k, p] of Object.entries(propsOf(a))) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
   const rowArgsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => typeof p['x-row-of'] === 'string').map(([arg, p]) => ({arg, table: p['x-row-of']!, where: p['x-where']}));
-  const textsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => p.type === 'string' && typeof p['x-row-of'] !== 'string').map(([k, p]) => ({k, label: p['x-label'] ?? k}));
+  // a string input gets a text box, a number input a number box
+  const textsOf = (a: Action) =>
+    Object.entries(propsOf(a))
+      .filter(([, p]) => (p.type === 'string' || p.type === 'number') && typeof p['x-row-of'] !== 'string')
+      .map(([k, p]) => ({k, label: p['x-label'] ?? k, part: p.type === 'number' ? ('DraftNumber' as const) : ('DraftInput' as const)}));
+  const boxOf = (part: 'DraftInput' | 'DraftNumber') => (part === 'DraftNumber' ? 'a number box' : 'a text box');
   // makeStore gives the same schema every time
   const schema: Record<string, Record<string, {type?: string}>> = JSON.parse(kit.makeStore().getTablesSchemaJson?.() ?? '{}');
   // An input two actions type into gets a draft of its own per action; any other keeps /draft/<input>.
@@ -119,8 +125,8 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
       if (row) {
         const l = lists.get(row.table) ?? {table: row.table, controls: []};
         lists.set(row.table, l);
-        for (const {k, label} of texts)
-          l.controls.push({type: 'DraftInput', name: label, action: a.name, arg: row.arg, draft: draftKey(a.name, k), label: wordsOf(label, rowOf, true), description: `a text box "${label}", where you type the ${k} for ${a.name}`});
+        for (const {k, label, part} of texts)
+          l.controls.push({type: part, name: label, action: a.name, arg: row.arg, draft: draftKey(a.name, k), label: wordsOf(label, rowOf, true), description: `${boxOf(part)} "${label}", where you type the ${k} for ${a.name}`});
         if (other) {
           const rows = {$state: LIST(other.table)};
           const optionLabel = Object.keys(schema[other.table] ?? {}).find((c) => schema[other.table][c]?.type === 'string');
@@ -139,8 +145,8 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
         l.controls.push(control);
         continue;
       }
-      for (const {k, label} of texts)
-        required.push({id: `input_${a.name}_${k}`, root: false, description: `The text box "${label}", where you type the ${k} for ${a.name}: ${describe(a)}`, element: {type: 'DraftInput', props: {label, value: {$bindState: `/draft/${draftKey(a.name, k)}`}}}});
+      for (const {k, label, part} of texts)
+        required.push({id: `input_${a.name}_${k}`, root: false, description: `The ${boxOf(part).slice(2)} "${label}", where you type the ${k} for ${a.name}: ${describe(a)}`, element: {type: part, props: {label, value: {$bindState: `/draft/${draftKey(a.name, k)}`}}}});
       if (texts.length) fields.set(a.name, texts.map(({k}) => draftKey(a.name, k)));
       // a whole-list action changes the tables of its card
       writes.set(a.name, Object.keys(card.state?.tables ?? {}));
@@ -187,8 +193,8 @@ function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Piec
       spec.elements[id] = {type: 'Stack', props: {gap: 2}, repeat: {statePath: LIST(list.table), key: 'id'}, children: [row]};
       spec.elements[row] = {type: 'Row', props: {justify: 'between', align: 'center'}, children: kids};
       list.controls.forEach((c, i) => {
-        if (c.type === 'DraftInput') {
-          spec.elements[kids[i]] = {type: 'DraftInput', props: {label: c.label, ...(c.example === undefined ? {} : {placeholder: c.example}), value: {$bindState: `/draft/${c.draft}`}}, children: []};
+        if (c.type === 'DraftInput' || c.type === 'DraftNumber') {
+          spec.elements[kids[i]] = {type: c.type, props: {label: c.label, ...(c.example === undefined ? {} : {placeholder: c.example}), value: {$bindState: `/draft/${c.draft}`}}, children: []};
           return;
         }
         const props: Json = {label: c.label, ...(c.checked === undefined ? {} : {checked: c.checked}), action: c.action, args: c.args};
@@ -249,7 +255,7 @@ function inUseOrder(spec: Spec, fields: Pieces['fields'], writes: Pieces['writes
   };
   const els = () => Object.entries(spec.elements);
   for (const [action, keys] of fields) {
-    const boxes = keys.map((k) => els().find(([, e]) => e.type === 'DraftInput' && draftOf(e) === k)?.[0]).filter((id): id is string => !!id);
+    const boxes = keys.map((k) => els().find(([, e]) => (e.type === 'DraftInput' || e.type === 'DraftNumber') && draftOf(e) === k)?.[0]).filter((id): id is string => !!id);
     const button = els().find(([, e]) => e.type === 'ActionButton' && e.props.action === action && isObj(e.props.args))?.[0];
     const group = button ? [...boxes, button] : boxes;
     const home = group.length > 1 ? parentOf(group[0]) : undefined;
