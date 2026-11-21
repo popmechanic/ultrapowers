@@ -7,6 +7,25 @@ import { createStore } from 'tinybase'
 // until someone is bringing it.
 export const TOOLS = [
   {
+    name: 'setParty',
+    piece: 'party',
+    description: 'Name the party and say when it is.',
+    inputSchema: {
+      type: 'object',
+      properties: { title: { type: 'string' }, when: { type: 'string' } },
+      required: ['title']
+    },
+    run: (store, { title, when }) => {
+      const clean = String(title ?? '').trim()
+      if (clean === '') return false
+      store.transaction(() => {
+        store.setValue('title', clean)
+        store.setValue('when', String(when ?? '').trim())
+      })
+      return true
+    }
+  },
+  {
     name: 'addGuest',
     piece: 'guest',
     description: 'Invite a guest by name; they have not answered yet.',
@@ -68,8 +87,13 @@ export const TOOLS = [
 ]
 
 export function makeStore () {
-  return createStore().setTablesSchema({
-    guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
-    dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
-  })
+  return createStore()
+    .setTablesSchema({
+      guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
+      dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
+    })
+    .setValuesSchema({
+      title: { type: 'string', default: '' },
+      when: { type: 'string', default: '' }
+    })
 }

@@ -62,6 +62,11 @@ function textOf(el: Element): string {
   return clean(el.textContent);
 }
 
+/** A reading part's line (it carries data-part="text"), whitespace collapsed and trimmed; '' for any other element. */
+export function textLineOf(el: Element): string {
+  return el.getAttribute('data-part') === 'text' ? clean(el.textContent ?? '') : '';
+}
+
 export function nameOf(el: Element): string {
   const label = clean(el.getAttribute('aria-label'));
   if (label) return label;

@@ -474,6 +474,20 @@ const pageOn = (
     evaluate,
 
     count: async (locator) => {
+      // Chrome gives a run of text no role or name, so `text` is counted in the
+      // page: the reading parts inside #app (they carry data-part="text") whose
+      // text (whitespace collapsed, trimmed) equals the name.
+      if (locator.role === 'text') {
+        return (await evaluate(`(() => {
+          const want = ${JSON.stringify(locator.name)};
+          const root = document.getElementById('app') ?? document.body;
+          let n = 0;
+          for (const el of root.querySelectorAll('[data-part="text"]')) {
+            if ((el.textContent ?? '').replace(/\\s+/g, ' ').trim() === want) n++;
+          }
+          return n;
+        })()`)) as number;
+      }
       await connection.send('Accessibility.enable', {}, sessionId);
       const found = (await connection.send('Accessibility.queryAXTree', {
         nodeId: await rootOf(connection, sessionId),

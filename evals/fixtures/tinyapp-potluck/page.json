@@ -120,6 +120,20 @@
      ]
     }
    ]
+  },
+  {
+   "id": "S3",
+   "sentence": "You name the party Taco night on Friday 7pm and press Save party; the heading reads Taco night.",
+   "steps": [
+    {
+     "tool": "setParty",
+     "args": {
+      "title": "Taco night",
+      "when": "Friday 7pm"
+     },
+     "layer": "ui"
+    }
+   ]
   }
  ],
  "links": []

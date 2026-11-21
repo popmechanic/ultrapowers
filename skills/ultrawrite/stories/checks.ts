@@ -146,6 +146,7 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
       refusals.push(`waiver ${w.action} "${w.refuses}": no action refuses that`);
     }
   }
+  for (const r of checkShows(cards)) refusals.push(r);
   const productErrs = b.product ? checkProduct(b.product) : [];
   for (const e of productErrs) refusals.push(`product.json: ${e}`);
   if (b.product && page.subproject && !productErrs.length) {
@@ -178,4 +179,69 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
     facts.push(`PARTS fact: ${who} a ${u.role} (such as "${u.name}"), and no screen part draws one yet; the tasks that need it are told to add one`);
   }
   return {refusals, facts};
+}
+
+const slotsOf = (text: string) => [...text.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
+
+/** The refusals for each card's `shows` lines and `words`: one sentence each, naming the piece. */
+export function checkShows(cards: Card[]): string[] {
+  const refusals: string[] = [];
+  const columns = new Map<string, Set<string>>();
+  for (const c of cards) {
+    for (const [t, cells] of Object.entries(c.state?.tables ?? {})) {
+      const set = columns.get(t) ?? new Set<string>();
+      for (const cell of Array.isArray(cells) ? cells : []) set.add(cell);
+      columns.set(t, set);
+    }
+  }
+  const anyColumn = new Set([...columns.values()].flatMap((s) => [...s]));
+  const values = new Set(cards.flatMap((c) => (Array.isArray(c.state?.values) ? c.state.values : [])));
+  const pageSlot = (slot: string) => {
+    if (values.has(slot)) return true;
+    let m = slot.match(/^sum (\w+)\.(\w+)$/);
+    if (m) return !!columns.get(m[1])?.has(m[2]);
+    m = slot.match(/^count (\w+)$/);
+    if (m) return columns.has(m[1]);
+    m = slot.match(/^count (\w+) (\w+)=(.+)$/);
+    if (m) return !!columns.get(m[1])?.has(m[2]);
+    return false;
+  };
+  let headings = 0;
+  for (const c of cards) {
+    if (c.shows === undefined && c.words === undefined) continue;
+    const slots = new Set<string>();
+    for (const line of Array.isArray(c.shows) ? c.shows : []) {
+      const keys = line && typeof line === 'object' ? Object.keys(line).sort().join(',') : '';
+      const l = line as {text?: unknown; in?: unknown; heading?: unknown};
+      const ok = (keys === 'text' && typeof l.text === 'string')
+        || (keys === 'in,text' && typeof l.text === 'string' && typeof l.in === 'string')
+        || (keys === 'heading' && typeof l.heading === 'string');
+      if (!ok) {
+        refusals.push(`piece ${c.piece}: a shows line must be {"text"}, {"text", "in"} or {"heading"}, not ${JSON.stringify(line)}`);
+        continue;
+      }
+      const text = (l.text ?? l.heading) as string;
+      if (l.heading !== undefined) headings++;
+      for (const slot of slotsOf(text)) {
+        slots.add(slot);
+        if (typeof l.in === 'string') {
+          const [col, cell, ...more] = slot.split('.');
+          if (!(columns.get(l.in)?.has(col) && !more.length && (cell === undefined || anyColumn.has(cell)))) {
+            refusals.push(`piece ${c.piece}: the shows line "${text}" names \${${slot}}, which is no column of ${l.in}${cell === undefined ? '' : ' with a column of some table after it'}`);
+          }
+        } else if (!pageSlot(slot)) {
+          refusals.push(`piece ${c.piece}: the shows line "${text}" names \${${slot}}, which is no card's value nor a sum or count over a table some card holds`);
+        }
+      }
+      if (typeof l.in === 'string' && !Object.keys(c.state?.tables ?? {}).includes(l.in)) {
+        refusals.push(`piece ${c.piece}: a shows line is in ${l.in}, which this card does not hold`);
+      }
+    }
+    if (c.shows !== undefined && !Array.isArray(c.shows)) refusals.push(`piece ${c.piece}: shows must be a list of lines`);
+    for (const k of Object.keys(c.words && typeof c.words === 'object' ? c.words : {})) {
+      if (!slots.has(k)) refusals.push(`piece ${c.piece}: words names ${k}, which is no slot of this card's shows lines`);
+    }
+  }
+  if (headings > 1) refusals.push(`the cards give ${headings} heading lines; one card's heading becomes the page heading, so give only one`);
+  return refusals;
 }

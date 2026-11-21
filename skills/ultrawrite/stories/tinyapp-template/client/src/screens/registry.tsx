@@ -66,19 +66,34 @@ export const { registry } = defineRegistry(baseCatalog, {
       </Card>
     ),
     Heading: ({ props }) => <Heading level={u(props.level)}>{props.text}</Heading>,
-    Eyebrow: ({ props }) => <Eyebrow>{props.text}</Eyebrow>,
-    Text: ({ props }) => (
-      <Text
-        size={u(props.size)}
-        muted={u(props.muted)}
-        num={u(props.num)}
-        mono={u(props.mono)}
-        truncate={u(props.truncate)}
-      >
-        {props.text}
-      </Text>
+    Eyebrow: ({ props }) => (
+      <span data-part="text">
+        <Eyebrow>{props.text}</Eyebrow>
+      </span>
     ),
-    Badge: ({ props }) => <Badge tone={u(props.tone)}>{props.text}</Badge>,
+    // A line of text is a line of its own wherever it sits: 1st-Pouf's Text is a
+    // span, so two of them placed straight in a Card would run together. The
+    // reading parts carry data-part="text": the checker and the preview count a
+    // story's text lines among them only, as storyui names them from draws.json,
+    // so a picker's face that happens to read "Ann" is not a line.
+    Text: ({ props }) => (
+      <div className="min-w-0" data-part="text">
+        <Text
+          size={u(props.size)}
+          muted={u(props.muted)}
+          num={u(props.num)}
+          mono={u(props.mono)}
+          truncate={u(props.truncate)}
+        >
+          {props.text}
+        </Text>
+      </div>
+    ),
+    Badge: ({ props }) => (
+      <span data-part="text">
+        <Badge tone={u(props.tone)}>{props.text}</Badge>
+      </span>
+    ),
     Empty: ({ props }) => <Empty title={props.title}>{u(props.text)}</Empty>,
     Separator: () => <Separator />,
     ActionButton: ({ props, emit }) => {

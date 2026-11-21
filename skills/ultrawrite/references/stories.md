@@ -40,6 +40,17 @@ again at the PR smoke.
      makes impossible (it rejects a row the picker never offers) gets no story:
      waive it in `page.json` `waivers` with `"reason": "unreachable-from-screen"`
      and `arg` the picked input (`guestId`).
+     Give each card the lines its piece shows, as `shows`: a row line
+     `{"text": "${name} · ${answer}", "in": "guests"}` is drawn on each row of a
+     table the card holds, its slots that table's columns; a page line `{"text": "..."}`
+     carries values in the card's `state.values` or totals over a table some card
+     holds: `${sum dishes.serves}`, `${count guests}`, `${count guests answer=yes}`,
+     as Potluck's dish card's `{"text": "Food for ${sum dishes.serves} · ${count guests answer=yes} coming"}`.
+     One card's `{"heading": "${title}"}` becomes the page heading; only one card
+     gives a heading. Give the reader's words for a stored value as `words`, slot
+     to stored value to words: the guest card's `"words": {"answer": {"yes": "coming", "no": "not coming"}}`.
+     The checks refuse a line naming a cell or value no card holds, or in a table
+     its card does not hold.
    - `store.js` exports `TOOLS` and `makeStore`.
 5. **Write the stories the coverage rule requires**, not ones you invent:
    - every card's main story

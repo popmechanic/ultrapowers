@@ -7,6 +7,9 @@
  *   {$computed: 'format', args: {template: 'Remove ${name} from ${todoId.text}',
  *     name: {$item: 'name'},
  *     'todoId.text': {$computed: 'lookup', args: {rows: {$state: '/tables/todos'}, id: {$item: 'todoId'}, column: 'text'}}}}
+ *
+ * A screen's lines say totals with `sum` and `count`, and a saved value in plain
+ * words with `words` (an unanswered '' reads as `words['']`).
  */
 import type { ComputedFunction } from '@json-render/core'
 
@@ -35,4 +38,26 @@ const rowsWhere: ComputedFunction = ({ rows, where }) => {
   )
 }
 
-export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere }
+/** The total of `column` over `rows`, a cell that is no number counting as nothing. */
+const sum: ComputedFunction = ({ rows, column }) => {
+  if (!Array.isArray(rows)) return 0
+  let total = 0
+  for (const r of rows) {
+    const cell = r && typeof r === 'object' ? (r as Record<string, unknown>)[String(column)] : undefined
+    const n = text(cell).trim() === '' ? NaN : Number(cell)
+    if (Number.isFinite(n)) total += n
+  }
+  return total
+}
+
+/** How many rows of `rows` match `where` (every row when there is no `where`). */
+const count: ComputedFunction = (args) => (rowsWhere(args) as unknown[]).length
+
+/** The plain word `words` gives for `value` (a saved '' reads as `words['']`), or the value itself. */
+const words: ComputedFunction = ({ value, words: said }) => {
+  const key = text(value)
+  const table = said && typeof said === 'object' ? (said as Record<string, unknown>) : {}
+  return Object.prototype.hasOwnProperty.call(table, key) ? text(table[key]) : key
+}
+
+export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere, sum, count, words }
