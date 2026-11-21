@@ -123,6 +123,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Story preview play
 
 - **skills/ultrawrite/stories/preview/play.ts inTurn** — In skills/ultrawrite/stories/preview/play.ts, inTurn queues story plays so each starts only after every earlier one ends, whatever its outcome, because each play clears and refills the single shared store and two overlapping plays would corrupt each other.
+- **fill / play** — The preview's replay (skills/ultrawrite/stories/preview/page.tsx `fill`, preview/play.ts `play`) runs each story step's tool and ignores one that throws: a step the tool refuses is skipped and the replay goes on, so one bad step never blanks the preview.
 
 ## Tinyapp scaffold
 

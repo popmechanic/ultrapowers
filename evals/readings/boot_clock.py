@@ -1,26 +1,8 @@
 #!/usr/bin/env python3
-"""The boot clock (fast-boot spec §1): per run, the seconds from launch to its first builder's
-claim. Not a test: nothing runs it automatically; run it to re-read the answer over newer runs.
-
-    python3 evals/readings/boot_clock.py --remote <evidence repository URL> --slug <owner-repo> <run>...
-
-Launch is the committer time of the run's parentless plan commit (the launcher pushes it one
-second before its lobby `new`); the first claim is the `ts` of the first `session:start` row of
-`runs/<slug>/<N>/events.jsonl` at the tag `<slug>/run-<N>`. Per run it prints
-`run-<N> launch_to_first_claim_s=<s>`, then, when the run's folder carries `fleet-setup.log` or
-`fleet-boot.log`, one line per stamped log line: its step and its seconds since the plan commit.
-A run it cannot read (no tag, no `events.jsonl`, no `session:start` row, or one whose `ts` is
-missing or does not parse) prints one `run-<N> skipped: <reason>` line and the reading goes on.
-The last line is
-`n=<runs read> of=<runs asked> window=run-<first read>..run-<last read> median_s=<s>`, so a gap
-shows. The remote is reached once before any run; when it cannot be, the tool prints one line
-naming it and exits non-zero, rather than skipping every run. The tags are fetched blobless into
-a temporary repository of the tool's own, deleted after.
-
-Two clocks: launch is the laptop's commit clock, the claim and the log stamps are the VM's clock,
-so every seconds figure carries whatever skew lies between the two."""
 import argparse, datetime, json, os, re, shutil, statistics, subprocess, sys, tempfile
 
+DESCRIPTION = ("The boot clock: per run, the seconds from launch to its first builder's claim, "
+               "read from the evidence repository.")
 LOGS = ("fleet-setup.log", "fleet-boot.log")
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0",
            "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15"}
@@ -88,7 +70,7 @@ def read_run(repo, remote, slug, n):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap = argparse.ArgumentParser(description=DESCRIPTION)
     ap.add_argument("--remote", required=True, help="evidence repository: any git URL or path")
     ap.add_argument("--slug", required=True, help="the run's <owner-repo>")
     ap.add_argument("runs", nargs="+", type=int)

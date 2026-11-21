@@ -1,23 +1,11 @@
 #!/usr/bin/env python3
-"""The wrong-plans reading: how a run coped with a plan that carried one planted flaw.
-
-    python3 evals/readings/wrong_plans.py <evidence clone> <id>=<run> ... [--jev] [--json <file>]
-
-The plans, their flaws and what coping well looks like are `evals/fixtures/wrong_plans/manifest.json`.
-Each is launched held (`fleet/launch.mjs <plan> --target <manifest target> --base <manifest base>
---hold`), so no run merges and every run starts from the same commit. `<id>=<run>` names the run a
-plan got; `<id>=gate` says the launcher refused it on its proof-gate record, which is a result.
-
-For each run this reads `events.jsonl`, `engine.log` and `status.json` at the run's tag in the
-evidence clone and prints one row of counted facts: how it ended, wall seconds, builder sessions,
-tasks reopened red, tasks given back, objections filed, conflicts opened, tasks the engine added, files written
-outside the plan, beliefs posted, and dollars. `--jev` adds one judgment, `said so`: whether
-anything the builders wrote states the planted flaw (`questions.json` beside this file, asked of
-TypeSafe with the key in `~/.ultrapowers/typesafe.env`). Every message read is printed under the
-table, so a person can check the judgment.
-"""
 import json, os, subprocess, sys, urllib.request
 from datetime import datetime
+
+USAGE = """Usage: python3 evals/readings/wrong_plans.py <evidence clone> <id>=<run> ... [--jev] [--json <file>]
+
+One row of counted facts per run of a planted-flaw plan (evals/fixtures/wrong_plans/manifest.json);
+<id>=gate records a launcher refusal. --jev adds the `said so` judgment."""
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MANIFEST = os.path.join(HERE, '..', 'fixtures', 'wrong_plans', 'manifest.json')
@@ -90,7 +78,7 @@ def ask_jev(flaw, said):
 
 def main(argv):
     if len(argv) < 2:
-        print(__doc__)
+        print(USAGE)
         return 2
     evidence, picks, jev, out = argv[0], {}, '--jev' in argv, None
     if '--json' in argv:

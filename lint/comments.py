@@ -209,7 +209,7 @@ def main(argv):
     if argv[:1] == ["--update"]:
         baseline = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
         now = counts()
-        raised = [p for p, c in now.items() if baseline and c > baseline.get(p, 0)]
+        raised = [p for p, c in now.items() if BASELINE.exists() and c > baseline.get(p, 0)]
         if raised and "--allow-raise" not in argv:
             print("refusing to raise the baseline for: " + ", ".join(raised))
             return 1

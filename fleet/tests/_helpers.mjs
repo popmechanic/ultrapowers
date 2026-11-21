@@ -11,10 +11,7 @@ const whichDir = (name) => {
     try {
       fs.accessSync(candidate, fs.constants.X_OK)
       return dir
-    } catch {
-      // Not here; keep walking. A missing interpreter is left out silently —
-      // the sim that needs it fails where it spawns it.
-    }
+    } catch {}
   }
   return null
 }
@@ -37,9 +34,7 @@ process.on('exit', () => {
   for (const dir of OWNED) {
     try {
       fs.rmSync(dir, { recursive: true, force: true })
-    } catch {
-      // Left for the box's own tmp reaper; never a failed sim.
-    }
+    } catch {}
   }
 })
 

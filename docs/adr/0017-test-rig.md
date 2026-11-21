@@ -1,7 +1,7 @@
 # 0017. The test suite and fleet sims
 
 Status: accepted (2026-11-21)  
-Governs: `tests/conftest.py`, `tests/test_fleet_suite.py`
+Governs: `tests/conftest.py`, `tests/test_fleet_suite.py`, `fleet/tests/_helpers.mjs`, `evals/readings/wrong_plans.py`
 
 Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
 decision the code cannot show on its own. Symbols are named; line numbers are not.
@@ -20,3 +20,9 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Test suite ordering
 
 - **tests/conftest.py pytest_collection_modifyitems** — pytest-xdist's `--dist load` hands items to workers in collection order, so tests/conftest.py moves the fleet .mjs bridge (the slowest items) to the front, otherwise it starts last and every other worker waits on it. At import conftest also points ULTRAPOWERS_HOME at a fresh empty directory so no test reaching Jev (check_provenance.py, routing.py) finds a real key, making every reading a quick null.
+
+## Fleet sim rig
+
+- **whichDir** — fleet/tests/_helpers.mjs `whichDir` leaves an interpreter missing from PATH out silently: the sim that needs it fails where it spawns it, with a clearer error than the rig could give.
+- **OWNED cleanup** — fleet/tests/_helpers.mjs removes the temporary homes it created at exit and ignores a removal that fails: a leftover directory is left to the machine's tmp reaper and never fails a sim.
+- **evals/readings/wrong_plans.py** — The wrong-plans reading launches each planted-flaw plan of `evals/fixtures/wrong_plans/manifest.json` held (`--hold`), so no run merges and every run starts from the same base. Per run it reads `events.jsonl`, `engine.log` and `status.json` at the run's tag and prints counted facts: ending, wall seconds, builder sessions, tasks reopened red, given back, objections, conflicts, tasks the engine added, files written outside the plan, beliefs and dollars. `--jev` adds one judgment, `said so` (whether anything the builders wrote states the planted flaw, from `questions.json` beside it), and prints every message read so a person can check it.

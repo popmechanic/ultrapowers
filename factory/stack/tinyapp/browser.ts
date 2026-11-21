@@ -2,8 +2,6 @@ import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 
-// Borrowed from popmechanic/tinyapp-fixture packages/tinyapp-exam/src/browser.ts
-// at d71c037 (2026-09-27); the two sibling imports are inlined below.
 export type Locator = {role: string; name: string};
 export type Action =
   | {click: Locator}

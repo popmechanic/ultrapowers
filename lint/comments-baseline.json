@@ -1,14 +1,1 @@
-{
- "evals/readings/boot_clock.py": 20,
- "evals/readings/wrong_plans.py": 17,
- "factory/flock/engine.mjs": 4,
- "factory/flock/io.mjs": 1,
- "factory/jev-client.mjs": 1,
- "factory/stack/tinyapp/browser.ts": 2,
- "fleet/tests/_boot_helpers.mjs": 1,
- "fleet/tests/_helpers.mjs": 3,
- "skills/ultrawrite/stories/preview/page.tsx": 1,
- "skills/ultrawrite/stories/preview/play.ts": 1,
- "skills/ultrawrite/stories/tinyapp-template/server/client-files.ts": 1,
- "skills/ultrawrite/stories/tinyapp-template/server/index.ts": 4
-}
+{}

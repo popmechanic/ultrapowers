@@ -31,7 +31,7 @@ export const makeJevClient = ({
 } = {}) => {
   const origin = String(baseUrl == null ? '' : baseUrl).replace(/\/+$/, '')
   const refuse = (detail) => {
-    try { log('jev: ' + detail) } catch { /* evidence, not control flow */ }
+    try { log('jev: ' + detail) } catch {}
     return null
   }
   return {
