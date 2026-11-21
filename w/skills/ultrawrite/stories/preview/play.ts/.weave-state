@@ -6,7 +6,8 @@
 6 < 1 // which renders in a portal outside #app. Store-step args name rows by alias,
 7 < 1 // as check.ts reads them, mapped to the store's own ids before each run.
 3 < 2 // outlined while it acts, then counts every `see` entry by role and name.
-4 < 1 import {find, nameOf, roleOf, targetOf} from './names';
+5 > 1 import {find, nameOf, ownTextOf, roleOf, targetOf} from './names';
+4 < 2 import {find, nameOf, roleOf, targetOf} from './names';
 7 > 1 import {Aliases, type Content} from './probe';
 6 > 2 import {Aliases, type Content} from '../../../../factory/stack/tinyapp/probe';
 5 < 1 
@@ -24,7 +25,12 @@
 16 < 1 
 17 < 1 function count(role: string, name: string): number {
 18 < 1   let n = 0;
-19 < 1   for (const el of root().querySelectorAll('*')) if (roleOf(el) === role && nameOf(el) === name) n++;
+20 > 1   // A run of text has no role or name, so `text` counts elements by their own text.
+21 < 1   const hit = role === 'text'
+22 < 1     ? (el: Element) => ownTextOf(el) === name
+23 < 1     : (el: Element) => roleOf(el) === role && nameOf(el) === name;
+24 < 1   for (const el of root().querySelectorAll('*')) if (hit(el)) n++;
+19 < 2   for (const el of root().querySelectorAll('*')) if (roleOf(el) === role && nameOf(el) === name) n++;
 20 < 1   return n;
 21 < 1 }
 22 < 1 
@@ -109,7 +115,8 @@
 51 < 1 /** Play one story on the screen as drawn; misses name what was not as the story says. */
 53 > 1 export async function play(
 54 < 1   story: PlayStory,
-55 < 1   store: {delTables: () => unknown; getContent: () => Content},
+56 > 1   store: {delTables: () => unknown; delValues: () => unknown; getContent: () => Content},
+55 < 2   store: {delTables: () => unknown; getContent: () => Content},
 56 < 1   tools: Tools,
 57 < 1   schemas: Record<string, unknown> = {},
 58 < 1 ): Promise<{ok: boolean; misses: string[]}> {
@@ -118,7 +125,9 @@
 54 < 1   const preview = window.__PREVIEW__;
 55 < 1   if (preview) preview.playing = true;
 56 < 1   try {
+58 > 1     // The sample data saves values too (a party's title), so both are cleared.
 57 < 1     store.delTables();
+60 > 1     store.delValues();
 59 > 1     const aliases = new Aliases();
 60 < 1     aliases.learn(store.getContent());
 58 < 1     await pause(GAP);

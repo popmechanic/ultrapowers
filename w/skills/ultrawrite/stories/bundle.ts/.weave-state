@@ -41,14 +41,22 @@
 39 < 1 // that row and `${col.cell}` a cell of the row column `col` names), an input property's
 40 < 1 // `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
 41 < 1 // table's boolean column.
+43 > 1 // A card's `shows` are the lines its piece draws: `{text, in}` a line on each row of table `in`
+44 < 1 // (`${cell}`, `${col.cell}` as in a label), `{text}` a line on the page whose slots are values
+45 < 1 // in `state.values` or totals (`${sum t.c}`, `${count t}`, `${count t c=v}`), `{heading}` the
+46 < 1 // page heading (one card's at most). Its `words` give the reader's words for a stored value:
+47 < 1 // slot to stored value to shown words, e.g. `{"answer": {"yes": "coming"}}`.
 42 < 1 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]; label?: string; control?: 'checkbox'};
 37 < 2 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
 38 < 1 export type Card = {
 39 < 1   piece: string;
 40 < 1   purpose: string;
 41 < 1   depends_on?: string[];
-42 < 1   state?: {tables?: Record<string, string[]>};
+43 > 1   state?: {tables?: Record<string, string[]>; values?: string[]};
+42 < 2   state?: {tables?: Record<string, string[]>};
 43 < 1   actions: Action[];
+45 > 1   shows?: ({text: string; in?: string} | {heading: string})[];
+46 < 1   words?: Record<string, Record<string, string>>;
 44 < 1   main_story?: string;
 45 < 1   near_miss?: string;
 46 < 1   concept?: string;

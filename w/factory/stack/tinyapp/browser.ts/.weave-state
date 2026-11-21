@@ -476,6 +476,22 @@
 425 < 1     evaluate,
 426 < 1 
 427 < 1     count: async (locator) => {
+429 > 1       // Chrome gives a run of text no role or name, so `text` is counted in the
+430 < 1       // page: elements inside #app whose own text (child text nodes joined,
+431 < 1       // whitespace collapsed, trimmed) equals the name.
+432 < 1       if (locator.role === 'text') {
+433 < 1         return (await evaluate(`(() => {
+434 < 1           const want = ${JSON.stringify(locator.name)};
+435 < 1           const root = document.getElementById('app') ?? document.body;
+436 < 1           let n = 0;
+437 < 1           for (const el of root.querySelectorAll('*')) {
+438 < 1             let own = '';
+439 < 1             for (const c of el.childNodes) if (c.nodeType === 3) own += c.nodeValue;
+440 < 1             if (own.replace(/\\s+/g, ' ').trim() === want) n++;
+441 < 1           }
+442 < 1           return n;
+443 < 1         })()`)) as number;
+444 < 1       }
 428 < 1       await connection.send('Accessibility.enable', {}, sessionId);
 429 < 1       const found = (await connection.send('Accessibility.queryAXTree', {
 430 < 1         nodeId: await rootOf(connection, sessionId),

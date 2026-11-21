@@ -6,6 +6,25 @@
 5 < 1 // A guest's `answer` is '' until they say yes; a dish's `guestId` is ''
 6 < 1 // until someone is bringing it.
 7 < 1 export const TOOLS = [
+9 > 1   {
+10 < 1     name: 'setParty',
+11 < 1     piece: 'party',
+12 < 1     description: 'Name the party and say when it is.',
+13 < 1     inputSchema: {
+14 < 1       type: 'object',
+15 < 1       properties: { title: { type: 'string' }, when: { type: 'string' } },
+16 < 1       required: ['title']
+17 < 1     },
+18 < 1     run: (store, { title, when }) => {
+19 < 1       const clean = String(title ?? '').trim()
+20 < 1       if (clean === '') return false
+21 < 1       store.transaction(() => {
+22 < 1         store.setValue('title', clean)
+23 < 1         store.setValue('when', String(when ?? '').trim())
+24 < 1       })
+25 < 1       return true
+26 < 1     }
+27 < 1   },
 8 < 1   {
 9 < 1     name: 'addGuest',
 10 < 1     piece: 'guest',
@@ -72,10 +91,19 @@
 62 < 1 ]
 63 < 1 
 64 < 1 export function makeStore () {
-65 < 1   return createStore().setTablesSchema({
-66 < 1     guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
-68 > 1     dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
+66 > 1   return createStore()
+67 < 1     .setTablesSchema({
+68 < 1       guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
+69 < 1       dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
+70 < 1     })
+71 < 1     .setValuesSchema({
+72 < 1       title: { type: 'string', default: '' },
+73 < 1       when: { type: 'string', default: '' }
+74 < 1     })
+65 < 2   return createStore().setTablesSchema({
+66 < 2     guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
+68 > 2     dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
 67 < 2     dishes: { name: { type: 'string' }, guestId: { type: 'string', default: '' } }
-68 < 1   })
+68 < 2   })
 69 < 1 }
 70 < 1 

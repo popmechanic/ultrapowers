@@ -150,6 +150,7 @@
 118 < 1       refusals.push(`waiver ${w.action} "${w.refuses}": no action refuses that`);
 119 < 1     }
 120 < 1   }
+122 > 1   for (const r of checkShows(cards)) refusals.push(r);
 121 < 1   const productErrs = b.product ? checkProduct(b.product) : [];
 122 < 1   for (const e of productErrs) refusals.push(`product.json: ${e}`);
 123 < 1   if (b.product && page.subproject && !productErrs.length) {
@@ -184,3 +185,68 @@
 145 < 1   return {refusals, facts};
 146 < 1 }
 147 < 1 
+148 < 1 const slotsOf = (text: string) => [...text.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
+149 < 1 
+150 < 1 /** The refusals for each card's `shows` lines and `words`: one sentence each, naming the piece. */
+151 < 1 export function checkShows(cards: Card[]): string[] {
+152 < 1   const refusals: string[] = [];
+153 < 1   const columns = new Map<string, Set<string>>();
+154 < 1   for (const c of cards) {
+155 < 1     for (const [t, cells] of Object.entries(c.state?.tables ?? {})) {
+156 < 1       const set = columns.get(t) ?? new Set<string>();
+157 < 1       for (const cell of Array.isArray(cells) ? cells : []) set.add(cell);
+158 < 1       columns.set(t, set);
+159 < 1     }
+160 < 1   }
+161 < 1   const anyColumn = new Set([...columns.values()].flatMap((s) => [...s]));
+162 < 1   const values = new Set(cards.flatMap((c) => (Array.isArray(c.state?.values) ? c.state.values : [])));
+163 < 1   const pageSlot = (slot: string) => {
+164 < 1     if (values.has(slot)) return true;
+165 < 1     let m = slot.match(/^sum (\w+)\.(\w+)$/);
+166 < 1     if (m) return !!columns.get(m[1])?.has(m[2]);
+167 < 1     m = slot.match(/^count (\w+)$/);
+168 < 1     if (m) return columns.has(m[1]);
+169 < 1     m = slot.match(/^count (\w+) (\w+)=(.+)$/);
+170 < 1     if (m) return !!columns.get(m[1])?.has(m[2]);
+171 < 1     return false;
+172 < 1   };
+173 < 1   let headings = 0;
+174 < 1   for (const c of cards) {
+175 < 1     if (c.shows === undefined && c.words === undefined) continue;
+176 < 1     const slots = new Set<string>();
+177 < 1     for (const line of Array.isArray(c.shows) ? c.shows : []) {
+178 < 1       const keys = line && typeof line === 'object' ? Object.keys(line).sort().join(',') : '';
+179 < 1       const l = line as {text?: unknown; in?: unknown; heading?: unknown};
+180 < 1       const ok = (keys === 'text' && typeof l.text === 'string')
+181 < 1         || (keys === 'in,text' && typeof l.text === 'string' && typeof l.in === 'string')
+182 < 1         || (keys === 'heading' && typeof l.heading === 'string');
+183 < 1       if (!ok) {
+184 < 1         refusals.push(`piece ${c.piece}: a shows line must be {"text"}, {"text", "in"} or {"heading"}, not ${JSON.stringify(line)}`);
+185 < 1         continue;
+186 < 1       }
+187 < 1       const text = (l.text ?? l.heading) as string;
+188 < 1       if (l.heading !== undefined) headings++;
+189 < 1       for (const slot of slotsOf(text)) {
+190 < 1         slots.add(slot);
+191 < 1         if (typeof l.in === 'string') {
+192 < 1           const [col, cell, ...more] = slot.split('.');
+193 < 1           if (!(columns.get(l.in)?.has(col) && !more.length && (cell === undefined || anyColumn.has(cell)))) {
+194 < 1             refusals.push(`piece ${c.piece}: the shows line "${text}" names \${${slot}}, which is no column of ${l.in}${cell === undefined ? '' : ' with a column of some table after it'}`);
+195 < 1           }
+196 < 1         } else if (!pageSlot(slot)) {
+197 < 1           refusals.push(`piece ${c.piece}: the shows line "${text}" names \${${slot}}, which is no card's value nor a sum or count over a table some card holds`);
+198 < 1         }
+199 < 1       }
+200 < 1       if (typeof l.in === 'string' && !Object.keys(c.state?.tables ?? {}).includes(l.in)) {
+201 < 1         refusals.push(`piece ${c.piece}: a shows line is in ${l.in}, which this card does not hold`);
+202 < 1       }
+203 < 1     }
+204 < 1     if (c.shows !== undefined && !Array.isArray(c.shows)) refusals.push(`piece ${c.piece}: shows must be a list of lines`);
+205 < 1     for (const k of Object.keys(c.words && typeof c.words === 'object' ? c.words : {})) {
+206 < 1       if (!slots.has(k)) refusals.push(`piece ${c.piece}: words names ${k}, which is no slot of this card's shows lines`);
+207 < 1     }
+208 < 1   }
+209 < 1   if (headings > 1) refusals.push(`the cards give ${headings} heading lines; one card's heading becomes the page heading, so give only one`);
+210 < 1   return refusals;
+211 < 1 }
+212 < 1 

@@ -46,6 +46,17 @@
 41 < 1      makes impossible (it rejects a row the picker never offers) gets no story:
 42 < 1      waive it in `page.json` `waivers` with `"reason": "unreachable-from-screen"`
 43 < 1      and `arg` the picked input (`guestId`).
+44 < 1      Give each card the lines its piece shows, as `shows`: a row line
+45 < 1      `{"text": "${name} · ${answer}", "in": "guests"}` is drawn on each row of a
+46 < 1      table the card holds, its slots that table's columns; a page line `{"text": "..."}`
+47 < 1      carries values in the card's `state.values` or totals over a table some card
+48 < 1      holds: `${sum dishes.serves}`, `${count guests}`, `${count guests answer=yes}`,
+49 < 1      as Potluck's dish card's `{"text": "Food for ${sum dishes.serves} · ${count guests answer=yes} coming"}`.
+50 < 1      One card's `{"heading": "${title}"}` becomes the page heading; only one card
+51 < 1      gives a heading. Give the reader's words for a stored value as `words`, slot
+52 < 1      to stored value to words: the guest card's `"words": {"answer": {"yes": "coming", "no": "not coming"}}`.
+53 < 1      The checks refuse a line naming a cell or value no card holds, or in a table
+54 < 1      its card does not hold.
 35 < 2      arranged from these.
 32 < 2      map line its screen covers.
 33 < 1    - `store.js` exports `TOOLS` and `makeStore`.

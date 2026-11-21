@@ -122,6 +122,20 @@
 117 < 1      ]
 118 < 1     }
 119 < 1    ]
+121 > 1   },
+122 < 1   {
+123 < 1    "id": "S3",
+124 < 1    "sentence": "You name the party Taco night on Friday 7pm and press Save party; the heading reads Taco night.",
+125 < 1    "steps": [
+126 < 1     {
+127 < 1      "tool": "setParty",
+128 < 1      "args": {
+129 < 1       "title": "Taco night",
+130 < 1       "when": "Friday 7pm"
+131 < 1      },
+132 < 1      "layer": "ui"
+133 < 1     }
+134 < 1    ]
 120 < 1   }
 121 < 1  ],
 122 < 1  "links": []

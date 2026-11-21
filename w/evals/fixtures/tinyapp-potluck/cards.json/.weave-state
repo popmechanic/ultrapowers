@@ -1,4 +1,60 @@
 0 < 1 [
+2 > 1  {
+3 < 1   "piece": "party",
+4 < 1   "concept": "party",
+5 < 1   "purpose": "Give the potluck a name and a time.",
+6 < 1   "depends_on": [],
+7 < 1   "state": {
+8 < 1    "tables": {},
+9 < 1    "values": [
+10 < 1     "title",
+11 < 1     "when"
+12 < 1    ]
+13 < 1   },
+14 < 1   "actions": [
+15 < 1    {
+16 < 1     "name": "setParty",
+17 < 1     "description": "Name the party and say when it is.",
+18 < 1     "label": "Save party",
+19 < 1     "inputSchema": {
+20 < 1      "type": "object",
+21 < 1      "properties": {
+22 < 1       "title": {
+23 < 1        "type": "string",
+24 < 1        "x-label": "Party name"
+25 < 1       },
+26 < 1       "when": {
+27 < 1        "type": "string",
+28 < 1        "x-label": "When"
+29 < 1       }
+30 < 1      },
+31 < 1      "required": [
+32 < 1       "title"
+33 < 1      ]
+34 < 1     },
+35 < 1     "refuses": [
+36 < 1      "blank party name"
+37 < 1     ]
+38 < 1    }
+39 < 1   ],
+40 < 1   "shows": [
+41 < 1    {
+42 < 1     "heading": "${title}"
+43 < 1    },
+44 < 1    {
+45 < 1     "text": "${when}"
+46 < 1    }
+47 < 1   ],
+48 < 1   "words": {
+49 < 1    "title": {
+50 < 1     "": "Potluck"
+51 < 1    },
+52 < 1    "when": {
+53 < 1     "": "No time set yet"
+54 < 1    }
+55 < 1   },
+56 < 1   "main_story": "S3"
+57 < 1  },
 1 < 1  {
 2 < 1   "piece": "guest",
 3 < 1   "concept": "guest",
@@ -55,7 +111,20 @@
 54 < 1      "a guest who does not exist"
 55 < 1     ]
 56 < 1    }
-57 < 1   ]
+58 > 1   ],
+59 < 1   "shows": [
+60 < 1    {
+61 < 1     "text": "${name} · ${answer}",
+62 < 1     "in": "guests"
+63 < 1    }
+64 < 1   ],
+65 < 1   "words": {
+66 < 1    "answer": {
+67 < 1     "yes": "Coming",
+68 < 1     "": "No answer yet"
+69 < 1    }
+70 < 1   }
+57 < 2   ]
 58 < 1  },
 59 < 1  {
 60 < 1   "piece": "dish",
@@ -135,7 +204,22 @@
 124 < 1      "a guest who does not exist"
 125 < 1     ]
 126 < 1    }
-127 < 1   ]
+128 > 1   ],
+129 < 1   "shows": [
+130 < 1    {
+131 < 1     "text": "${name}, serves ${serves} · ${guestId.name} is bringing it",
+132 < 1     "in": "dishes"
+133 < 1    },
+134 < 1    {
+135 < 1     "text": "Food for ${sum dishes.serves} · ${count guests answer=yes} coming"
+136 < 1    }
+137 < 1   ],
+138 < 1   "words": {
+139 < 1    "guestId.name": {
+140 < 1     "": "Nobody"
+141 < 1    }
+142 < 1   }
+127 < 2   ]
 128 < 1  }
 129 < 1 ]
 130 < 1 

@@ -10,7 +10,12 @@
 9 < 1 // one list per table its row actions work on, a few
 5 < 2 // ActionCheckbox, its words the action's `label`), each string input's DraftInput (its
 6 < 2 // words the input's `x-label`), one list per table its row actions work on, a few
-7 < 1 // containers, the page title and each card's purpose. Jev only chooses and places them,
+8 > 1 // containers, the page title and each card's purpose, and each card's `shows` lines: a
+9 < 1 // row line a Text in its table's list row, before the row's controls; a page line a Text
+10 < 1 // and a heading line a level-1 Heading outside the lists (a heading line takes the page
+11 < 1 // title's place), their slots filled by `format` from cells, values, `sum` and `count`,
+12 < 1 // in the card's `words` where it gives them. Jev only chooses and places them,
+7 < 2 // containers, the page title and each card's purpose. Jev only chooses and places them,
 8 < 1 // through json-render's composer, once per version of questions.json's authoring_arrange.
 1 < 2 // Jev arranges each piece's screen from what the app can do. The candidates come
 2 < 2 // from the bundle by code: every control a story's `ui` step names (a bound
@@ -29,7 +34,8 @@
 13 > 1 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 12 < 2 import {copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 13 < 1 import {join, resolve} from 'node:path';
-15 > 1 import {loadBundle, type Action, type Bundle} from './bundle';
+16 > 1 import {loadBundle, type Action, type Bundle, type Card} from './bundle';
+15 > 2 import {loadBundle, type Action, type Bundle} from './bundle';
 14 < 2 import {loadBundle, type Bundle, type Card} from './bundle';
 15 < 1 import {composeEvaluator, loadQuestions} from './jev';
 16 < 1 
@@ -38,12 +44,18 @@
 19 < 1 export type Spec = {root: string; elements: Record<string, Element>; state?: Json};
 20 < 1 export type Evaluator = (request: {state: Json; questions: Record<string, {criteria: Record<string, string>}>; signal: AbortSignal}) => Promise<{answers: Record<string, {choice: string; confidence?: number}>}>;
 21 < 1 type Candidate = {id: string; description: string; element: Pick<Element, 'type' | 'props' | 'visible'>; root?: boolean; maxUses?: number};
-24 > 1 type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput' | 'DraftNumber'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
+25 > 1 type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput' | 'DraftNumber' | 'Text'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
+24 > 2 type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput' | 'DraftNumber'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
 23 > 2 type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'ActionSelect' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; pick?: string; options?: unknown; optionLabel?: string; value?: unknown; description: string};
 22 < 2 type RowControl = {type: 'ActionCheckbox' | 'ActionButton' | 'DraftInput'; name: string; action: string; arg: string; label: unknown; checked?: unknown; draft?: string; example?: string; args?: Json; description: string};
 23 < 1 type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | null; steps: {description: string}[]}>; catalog: unknown; TOOLS: Tool[]; makeStore: () => any};
 24 < 1 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
-26 > 1 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>};
+27 > 1 type Heading = {type: 'Heading'; props: Json};
+29 > 1 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>; heading: Heading; lines: Line[]};
+30 < 1 // The composer reads no `$computed`, so a page line goes to it as `stand`, its plain words, and comes back as `real`.
+31 < 1 type Line = {stand: Pick<Element, 'type' | 'props'>; real: Pick<Element, 'type' | 'props'>};
+28 < 2 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>; heading: Heading};
+26 > 2 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>};
 25 < 2 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>};
 26 < 1 
 27 < 1 export class CouldNotRun extends Error {}
@@ -89,19 +101,22 @@
 69 < 1  *  `${cell}` naming a cell of that row and `${col.cell}` a cell of the row that column
 70 < 1  *  `col` names, read by `lookup` (#1524) and put together by `format`. */
 71 < 1 function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unknown {
-72 < 1   const tokens = inRow ? [...label.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]) : [];
+73 > 1   const tokens = inRow ? slotsOf(label) : [];
+72 < 2   const tokens = inRow ? [...label.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]) : [];
 73 < 1   if (!tokens.length) return label;
 74 < 1   const whole = tokens.length === 1 && label === '${' + tokens[0] + '}';
 75 < 1   if (tokens.every((t) => !t.includes('.'))) return whole ? {$item: tokens[0]} : {$template: label};
-76 < 1   const lookup = (t: string) => {
-77 < 1     const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
-78 < 1     const table = rowOf.get(by);
-79 < 1     if (!table) throw new CouldNotRun(`the words "${label}" name ${by}, which names no table's row`);
-80 < 1     return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
-81 < 1   };
-82 < 1   if (whole) return lookup(tokens[0]);
+77 > 1   if (whole) return cellOf(tokens[0], label, rowOf);
+76 < 2   const lookup = (t: string) => {
+77 < 2     const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
+78 < 2     const table = rowOf.get(by);
+79 < 2     if (!table) throw new CouldNotRun(`the words "${label}" name ${by}, which names no table's row`);
+80 < 2     return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
+81 < 2   };
+82 < 2   if (whole) return lookup(tokens[0]);
 83 < 1   const args: Json = {template: label};
-84 < 1   for (const t of tokens) args[t] ??= t.includes('.') ? lookup(t) : {$item: t};
+85 > 1   for (const t of tokens) args[t] ??= cellOf(t, label, rowOf);
+84 < 2   for (const t of tokens) args[t] ??= t.includes('.') ? lookup(t) : {$item: t};
 67 > 2 /** A row that a cell of this row names: the cell (a column some action takes as a row of
 68 < 2  *  `table`), that table, and the named row's cells. */
 69 < 2 type Join = {cell: string; table: string; cells: Json};
@@ -144,6 +159,35 @@
 85 < 1   return {$computed: 'format', args};
 77 < 2   return {$template: parts.map((p) => (p.cell === undefined ? p.text : '${' + p.cell + '}')).join('')};
 78 < 1 }
+80 > 1 
+81 < 1 const slotsOf = (words: string) => [...words.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]);
+82 < 1 
+83 < 1 /** A row's cell `${cell}`, or `${col.cell}` the cell of the row column `col` names. */
+84 < 1 function cellOf(t: string, words: string, rowOf: Map<string, string>): unknown {
+85 < 1   if (!t.includes('.')) return {$item: t};
+86 < 1   const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
+87 < 1   const table = rowOf.get(by);
+88 < 1   if (!table) throw new CouldNotRun(`the words "${words}" name ${by}, which names no table's row`);
+89 < 1   return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
+90 < 1 }
+91 < 1 
+92 < 1 /** A page line's slot: a value in state.values, `sum t.c`, `count t` or `count t c=v`. */
+93 < 1 function totalOf(t: string): unknown {
+94 < 1   const sum = t.match(/^sum\s+([^\s.]+)\.(\S+)$/);
+95 < 1   if (sum) return {$computed: 'sum', args: {rows: {$state: LIST(sum[1])}, column: sum[2]}};
+96 < 1   const count = t.match(/^count\s+(\S+)(?:\s+([^\s=]+)=(.*))?$/);
+97 < 1   if (count) return {$computed: 'count', args: {rows: {$state: LIST(count[1])}, where: count[2] ? {[count[2]]: count[3]} : {}}};
+98 < 1   return {$state: `/values/${t}`};
+99 < 1 }
+100 < 1 
+101 < 1 /** A card line's words put together by `format`, each slot in the card's `words` where it gives them. */
+102 < 1 function lineOf(words: string, said: Card['words'], argOf: (t: string) => unknown): unknown {
+103 < 1   const args: Json = {template: words};
+104 < 1   for (const t of slotsOf(words)) args[t] ??= said?.[t] ? {$computed: 'words', args: {value: argOf(t), words: said[t]}} : argOf(t);
+105 < 1   return {$computed: 'format', args};
+106 < 1 }
+107 < 1 
+108 < 1 const saying = (words: string) => slotsOf(words).map((t) => t.replace(/^(sum|count)\s+/, '$1 of ')).join(' and ');
 79 < 1 
 82 > 2 type CardAction = Action;
 81 > 2 type CardAction = Card['actions'][number] & {label?: string; control?: string};
@@ -375,6 +419,36 @@
 187 > 2       if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${draftKey(c.action, k)}`};
 186 < 2       if (c.type === 'ActionButton') for (const k of rowDrafts.get(c.action) ?? []) c.args[k] = {$state: `/draft/${k}`};
 187 < 1     }
+189 > 1   // each card's lines: a row line first in its table's row, a page line or heading outside the lists
+190 < 1   let heading: Heading = {type: 'Heading', props: {text: b.page.title, level: 1}};
+191 < 1   let headed = false;
+193 > 1   const lines: Line[] = [];
+192 < 1   const rowLines = new Map<string, RowControl[]>();
+193 < 1   for (const card of b.cards)
+194 < 1     (card.shows ?? []).forEach((line, i) => {
+195 < 1       if ('heading' in line) {
+196 < 1         if (headed) throw new CouldNotRun(`two cards carry a heading line; ${card.piece}'s is the second`);
+197 < 1         headed = true;
+198 < 1         heading = {type: 'Heading', props: {text: lineOf(line.heading, card.words, totalOf), level: 1}};
+200 > 1         const stand = {type: 'Heading', props: {text: line.heading, level: 1}};
+201 < 1         lines.push({stand, real: heading});
+202 < 1         required.push({id: 'heading', root: false, description: `The page heading, the ${card.piece}'s ${saying(line.heading)}: "${line.heading}"`, element: stand});
+199 < 2         required.push({id: 'heading', root: false, description: `The page heading, the ${card.piece}'s ${saying(line.heading)}: "${line.heading}"`, element: heading});
+200 < 1         return;
+201 < 1       }
+202 < 1       if (line.in) {
+203 < 1         const table = line.in;
+204 < 1         if (!lists.has(table)) lists.set(table, {table, controls: []});
+205 < 1         const label = lineOf(line.text, card.words, (t) => cellOf(t, line.text, rowOf));
+206 < 1         rowLines.set(table, [...(rowLines.get(table) ?? []), {type: 'Text', name: line.text, action: '', arg: '', label, description: `each ${table} entry's line: its ${saying(line.text)} ("${line.text}")`}]);
+207 < 1         return;
+208 < 1       }
+210 > 1       const stand = {type: 'Text', props: {text: line.text}};
+211 < 1       lines.push({stand, real: {type: 'Text', props: {text: lineOf(line.text, card.words, totalOf)}}});
+212 < 1       required.push({id: `line_${card.piece}_${i}`, root: false, description: `The ${card.piece} line, saying ${saying(line.text)}: "${line.text}"`, element: stand});
+209 < 2       required.push({id: `line_${card.piece}_${i}`, root: false, description: `The ${card.piece} line, saying ${saying(line.text)}: "${line.text}"`, element: {type: 'Text', props: {text: lineOf(line.text, card.words, totalOf)}}});
+210 < 1     });
+211 < 1   for (const [table, ls] of rowLines) lists.get(table)!.controls.unshift(...ls);
 188 < 2   const required: Candidate[] = [];
 189 < 2   for (const [action, ds] of drafts)
 190 < 2     for (const d of ds)
@@ -393,13 +467,16 @@
 201 < 1     {id: 'card', maxUses: 3, description: 'A card: a puffy surface grouping what it holds', element: {type: 'Card', props: {}}},
 202 < 1     {id: 'stack', maxUses: 3, description: 'A column: its children one above the other', element: {type: 'Stack', props: {gap: 3}}},
 203 < 1     {id: 'row', maxUses: 3, root: false, description: 'A row: its children side by side', element: {type: 'Row', props: {gap: 2, align: 'center'}}},
-204 < 1     {id: 'title', root: false, description: `The page title "${b.page.title}" as a heading`, element: {type: 'Heading', props: {text: b.page.title, level: 1}}},
+205 > 1     ...(headed ? [] : [{id: 'title', root: false, description: `The page title "${b.page.title}" as a heading`, element: heading}]),
+204 < 2     {id: 'title', root: false, description: `The page title "${b.page.title}" as a heading`, element: {type: 'Heading', props: {text: b.page.title, level: 1}}},
 206 > 1     ...b.cards.map((c): Candidate => ({id: `purpose_${c.piece}`, root: false, description: `What the ${c.piece} piece is for, in muted text: "${c.purpose}"`, element: {type: 'Text', props: {text: c.purpose, muted: true}}})),
 205 < 2     {id: 'purpose', root: false, description: `What it is for, in muted text: "${card.purpose}"`, element: {type: 'Text', props: {text: card.purpose, muted: true}}},
 206 < 1     ...required,
 207 < 1   ];
 209 > 2   const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => draftKey(action, d.k))]));
-210 < 1   return {candidates, required, lists, fields, writes};
+212 > 1   return {candidates, required, lists, fields, writes, heading, lines};
+211 > 2   return {candidates, required, lists, fields, writes, heading};
+210 < 2   return {candidates, required, lists, fields, writes};
 208 < 2   const fields = new Map([...drafts].map(([action, ds]) => [action, ds.map((d) => d.k)]));
 209 < 2   return {candidates, required, lists, fields};
 210 < 1 }
@@ -416,12 +493,19 @@
 221 < 1 };
 222 < 1 
 223 < 1 /** The composer's layout made real: each list placeholder a repeat over its table,
-224 < 1  *  each draft-reading button clearing its drafts once it ran, the page title (one,
-225 < 1  *  added if left out) first under the root, the controls in the order of use, empty
-226 < 1  *  containers gone. */
-228 > 1 function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Pieces['fields'], writes: Pieces['writes']): Spec {
+225 > 1  *  each draft-reading button clearing its drafts once it ran, the page heading (a card's
+227 > 1  *  heading line, else the page title; one, added if left out) first under the root, the
+228 < 1  *  controls in the order of use, empty containers gone. */
+226 < 2  *  heading line, else the page title; one, added if left out) first under the root, the controls in the order of use, empty
+224 < 2  *  each draft-reading button clearing its drafts once it ran, the page title (one,
+225 < 2  *  added if left out) first under the root, the controls in the order of use, empty
+226 < 2  *  containers gone. */
+230 > 1 function expand(input: Spec, {lists, heading, fields, writes, lines}: Pieces): Spec {
+229 > 2 function expand(input: Spec, lists: Pieces['lists'], heading: Heading, fields: Pieces['fields'], writes: Pieces['writes']): Spec {
+228 > 2 function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Pieces['fields'], writes: Pieces['writes']): Spec {
 227 < 2 function expand(input: Spec, lists: Pieces['lists'], title: string, fields: Pieces['fields']): Spec {
 228 < 1   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
+230 > 1   swap(spec, lines, 'stand', 'real');
 229 < 1   for (const [id, e] of Object.entries(spec.elements)) {
 230 < 1     const path = isObj(e.visible) ? e.visible.$state : undefined;
 231 < 1     const list = e.type === 'Separator' && typeof path === 'string' && path.startsWith('/tables/') ? lists.get(path.slice('/tables/'.length)) : undefined;
@@ -431,6 +515,10 @@
 235 < 1       spec.elements[id] = {type: 'Stack', props: {gap: 2}, repeat: {statePath: LIST(list.table), key: 'id'}, children: [row]};
 236 < 1       spec.elements[row] = {type: 'Row', props: {justify: 'between', align: 'center'}, children: kids};
 237 < 1       list.controls.forEach((c, i) => {
+240 > 1         if (c.type === 'Text') {
+241 < 1           spec.elements[kids[i]] = {type: 'Text', props: {text: c.label}, children: []};
+242 < 1           return;
+243 < 1         }
 239 > 1         if (c.type === 'DraftInput' || c.type === 'DraftNumber') {
 240 < 1           spec.elements[kids[i]] = {type: c.type, props: {label: c.label, ...(c.example === undefined ? {} : {placeholder: c.example}), value: {$bindState: `/draft/${c.draft}`}}, children: []};
 238 < 2         if (c.type === 'DraftInput') {
@@ -451,7 +539,7 @@
 252 < 1       if (clear.length) e.on = {press: clear.length === 1 ? clear[0] : clear};
 253 < 1     }
 254 < 1   }
-255 < 1   const heading = {type: 'Heading', props: {text: title, level: 1}};
+255 < 2   const heading = {type: 'Heading', props: {text: title, level: 1}};
 256 < 1   const titles = Object.keys(spec.elements).filter((id) => id !== spec.root && recipeKey(atomic(spec.elements[id])) === recipeKey(heading));
 257 < 1   let keep = titles[0];
 258 < 1   if (!keep) {
@@ -535,9 +623,22 @@
 323 < 1   }
 324 < 1 }
 325 < 1 
-326 < 1 /** An expanded spec folded back to what the composer may read: lists as placeholders, no `on`. */
-327 < 1 function collapse(input: Spec): Spec {
+327 > 1 /** Each element that is one side of a page line made the other side. */
+328 < 1 function swap(spec: Spec, lines: Line[], from: keyof Line, to: keyof Line) {
+329 < 1   const by = new Map(lines.map((l) => [recipeKey(l[from]), l[to]]));
+330 < 1   for (const e of Object.values(spec.elements)) {
+331 < 1     const other = e.on === undefined && e.visible === undefined ? by.get(recipeKey(atomic(e))) : undefined;
+332 < 1     if (other) e.props = structuredClone(other.props);
+333 < 1   }
+334 < 1 }
+335 < 1 
+336 < 1 /** An expanded spec folded back to what the composer may read: lists as placeholders,
+337 < 1  *  page lines as their plain words, no `on`. */
+338 < 1 function collapse(input: Spec, lines: Line[]): Spec {
+326 < 2 /** An expanded spec folded back to what the composer may read: lists as placeholders, no `on`. */
+327 < 2 function collapse(input: Spec): Spec {
 328 < 1   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
+330 > 1   swap(spec, lines, 'real', 'stand');
 329 < 1   const drop = (id: string): void => {
 330 < 1     for (const c of spec.elements[id]?.children ?? []) drop(c);
 331 < 1     delete spec.elements[id];
@@ -579,7 +680,10 @@
 365 < 1   };
 367 > 1   const versions: Record<string, Spec> = {};
 368 < 1   const dropped: Record<string, string> = {};
-369 < 1   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
+371 > 1   const pieces = candidatesFor(b, kit);
+372 < 1   const {candidates, required} = pieces;
+370 > 2   const {candidates, required, lists, fields, writes, heading} = candidatesFor(b, kit);
+369 < 2   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
 370 < 1   const common = {catalog: kit.catalog, candidates, evaluate, instructions: {next: set.guidance}, context: contextOf(b)};
 371 < 1   const results = await Promise.all(
 372 < 1     Object.entries(set.versions).map(async ([v, sentence]) => {
@@ -590,7 +694,9 @@
 377 < 1         spec = (await lastSpec(kit.compose({...common, initialSpec: spec, elementDescriptions: descriptionsOf(spec, candidates), prompt: `Add ${left.map((c) => c.description).join('; ')}`}))).spec;
 378 < 1         left = missing(spec, required);
 379 < 1       }
-380 < 1       return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
+382 > 1       return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, pieces)}] as const;
+381 > 2       return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, heading, fields, writes)}] as const;
+380 < 2       return [v, left.length || !spec ? {why: `left out ${left.map((c) => c.description).join('; ')}`} : {spec: expand(spec, lists, b.page.title, fields, writes)}] as const;
 381 < 1     }),
 382 < 1   );
 383 < 1   for (const [v, r] of results) {
@@ -628,11 +734,15 @@
 392 < 1   const b = loadBundle(opts.bundle);
 393 < 1   const kit = await loadKit(opts.app);
 394 < 1   const set = arrangeSet();
-396 > 1   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
+398 > 1   const pieces = candidatesFor(b, kit);
+399 < 1   const {candidates, required} = pieces;
+400 < 1   const initialSpec = collapse(opts.spec, pieces.lines);
+397 > 2   const {candidates, required, lists, fields, writes, heading} = candidatesFor(b, kit);
+396 > 2   const {candidates, required, lists, fields, writes} = candidatesFor(b, kit);
 395 < 2   const [card] = cardsOf(b, opts.piece);
 397 > 2   const {candidates, required, lists, fields, writes} = candidatesFor(b, card, kit);
 396 < 2   const {candidates, lists, fields} = candidatesFor(b, card, kit);
-397 < 1   const initialSpec = collapse(opts.spec);
+397 < 2   const initialSpec = collapse(opts.spec);
 398 < 1   const out = await lastSpec(
 399 < 1     kit.compose({
 400 < 1       catalog: kit.catalog,
@@ -648,7 +758,9 @@
 410 < 1   if (!out.spec) throw new Error('the composer returned no screen');
 412 > 1   const left = missing(out.spec, required);
 413 < 1   if (left.length) throw new CouldNotRun(`the reshaped screen left out ${left.map((c) => c.description).join('; ')}`);
-414 < 1   return {spec: expand(out.spec, lists, b.page.title, fields, writes), steps: out.steps.map((s) => s.description)};
+416 > 1   return {spec: expand(out.spec, pieces), steps: out.steps.map((s) => s.description)};
+415 > 2   return {spec: expand(out.spec, lists, heading, fields, writes), steps: out.steps.map((s) => s.description)};
+414 < 2   return {spec: expand(out.spec, lists, b.page.title, fields, writes), steps: out.steps.map((s) => s.description)};
 411 < 2   return {spec: expand(out.spec, lists, b.page.title, fields), steps: out.steps.map((s) => s.description)};
 412 < 1 }
 413 < 1 

@@ -64,6 +64,13 @@
 51 < 1   return clean(el.textContent);
 52 < 1 }
 53 < 1 
+55 > 1 /** The element's own text: its child text nodes joined, whitespace collapsed, trimmed. */
+56 < 1 export function ownTextOf(el: Element): string {
+57 < 1   let own = '';
+58 < 1   for (const c of el.childNodes) if (c.nodeType === Node.TEXT_NODE) own += c.nodeValue ?? '';
+59 < 1   return clean(own);
+60 < 1 }
+61 < 1 
 54 < 1 export function nameOf(el: Element): string {
 55 < 1   const label = clean(el.getAttribute('aria-label'));
 56 < 1   if (label) return label;

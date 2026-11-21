@@ -7,6 +7,9 @@
 6 < 1  *   {$computed: 'format', args: {template: 'Remove ${name} from ${todoId.text}',
 7 < 1  *     name: {$item: 'name'},
 8 < 1  *     'todoId.text': {$computed: 'lookup', args: {rows: {$state: '/tables/todos'}, id: {$item: 'todoId'}, column: 'text'}}}}
+10 > 1  *
+11 < 1  * A screen's lines say totals with `sum` and `count`, and a saved value in plain
+12 < 1  * words with `words` (an unanswered '' reads as `words['']`).
 9 < 1  */
 10 < 1 import type { ComputedFunction } from '@json-render/core'
 11 < 1 
@@ -36,5 +39,32 @@
 36 < 1 }
 25 < 2 export const functions: Record<string, ComputedFunction> = { lookup, format }
 26 < 1 
-27 < 1 export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere }
+28 > 1 /** The total of `column` over `rows`, a cell that is no number counting as nothing. */
+29 < 1 const sum: ComputedFunction = ({ rows, column }) => {
+30 < 1   if (!Array.isArray(rows)) return 0
+32 > 1   let total = 0
+33 < 1   for (const r of rows) {
+34 < 1     const cell = r && typeof r === 'object' ? (r as Record<string, unknown>)[String(column)] : undefined
+35 < 1     const n = text(cell).trim() === '' ? NaN : Number(cell)
+36 < 1     if (Number.isFinite(n)) total += n
+37 < 1   }
+38 < 1   return total
+31 < 2   return rows.reduce((total: number, r) => {
+32 < 2     const n = r && typeof r === 'object' ? Number((r as Record<string, unknown>)[String(column)]) : NaN
+33 < 2     return text((r as Record<string, unknown> | null)?.[String(column)]).trim() !== '' && Number.isFinite(n) ? total + n : total
+34 < 2   }, 0)
+35 < 1 }
+27 < 2 export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere }
 28 < 1 
+29 < 1 /** How many rows of `rows` match `where` (every row when there is no `where`). */
+30 < 1 const count: ComputedFunction = (args) => (rowsWhere(args) as unknown[]).length
+31 < 1 
+32 < 1 /** The plain word `words` gives for `value` (a saved '' reads as `words['']`), or the value itself. */
+33 < 1 const words: ComputedFunction = ({ value, words: said }) => {
+34 < 1   const key = text(value)
+35 < 1   const table = said && typeof said === 'object' ? (said as Record<string, unknown>) : {}
+36 < 1   return Object.prototype.hasOwnProperty.call(table, key) ? text(table[key]) : key
+37 < 1 }
+38 < 1 
+39 < 1 export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere, sum, count, words }
+40 < 1 
