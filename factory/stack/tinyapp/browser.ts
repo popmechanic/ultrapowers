@@ -517,6 +517,19 @@ const pageOn = (
           );
         }
         await clickNode(found);
+        // While its listbox is open Radix hides the rest of the page from the
+        // accessibility tree, so the step ends only once the listbox is gone:
+        // the screen is then read as a person sees it after the pick.
+        const end = Date.now() + SELECT_OPEN_MS;
+        for (;;) {
+          const open = (await connection.send('Accessibility.queryAXTree', {
+            nodeId: await rootOf(connection, sessionId),
+            role: 'listbox',
+          }, sessionId)) as {nodes?: {backendDOMNodeId?: number; ignored?: boolean}[]};
+          if (!(open.nodes ?? []).some((n) => !n.ignored && (n.backendDOMNodeId ?? 0) !== 0)) break;
+          if (Date.now() > end) break;
+          await after(50);
+        }
         return;
       }
 

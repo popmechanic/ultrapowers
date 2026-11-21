@@ -114,17 +114,24 @@ export const { registry } = defineRegistry(baseCatalog, {
     ActionSelect: ({ props, emit }) => {
       const { run, busy } = useRun(props.action, props.args)
       const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
+      // Its words show above it, as a text box's do; they are also its accessible name.
       return (
-        <Select
-          label={props.label}
-          placeholder={u(props.placeholder)}
-          value={props.value ?? ''}
-          options={options}
-          disabled={busy}
-          onChange={async (v) => {
-            if (await run({ [props.pick]: v })) emit('change')
-          }}
-        />
+        <Field label={props.label}>
+          {(id, describedBy) => (
+            <Select
+              id={id}
+              describedBy={describedBy}
+              label={props.label}
+              placeholder={u(props.placeholder)}
+              value={props.value ?? ''}
+              options={options}
+              disabled={busy}
+              onChange={async (v) => {
+                if (await run({ [props.pick]: v })) emit('change')
+              }}
+            />
+          )}
+        </Field>
       )
     },
     DraftInput: ({ props, bindings }) => {
