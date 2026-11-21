@@ -14,7 +14,9 @@
 13 < 1     "ActionButton": {"role": "button", "name": ["name", "label"]},
 14 < 1     "ActionCheckbox": {"role": "checkbox", "name": ["label"]},
 16 > 1     "ActionSelect": {"role": "combobox", "name": ["label"]},
-15 < 1     "DraftInput": {"role": "textbox", "name": ["label"]}
+17 < 1     "DraftInput": {"role": "textbox", "name": ["label"]},
+18 < 1     "DraftNumber": {"role": "spinbutton", "name": ["label"]}
+15 < 2     "DraftInput": {"role": "textbox", "name": ["label"]}
 16 < 1   }
 17 < 1 }
 18 < 1 

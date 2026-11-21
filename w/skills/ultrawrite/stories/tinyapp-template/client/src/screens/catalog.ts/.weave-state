@@ -134,6 +134,16 @@
 118 < 1     slots: [],
 119 < 1     description: 'A text input whose `value` is bound with $bindState to a path under /draft/.',
 120 < 1   },
+122 > 1   DraftNumber: {
+123 < 1     props: z.object({
+124 < 1       label: z.string(),
+125 < 1       value: z.union([z.number(), z.string()]).nullish(),
+126 < 1       placeholder: z.string().nullish(),
+127 < 1     }),
+128 < 1     slots: [],
+129 < 1     description:
+130 < 1       "A number input whose `value` is bound with $bindState to a path under /draft/; the path holds a number, '' when empty.",
+131 < 1   },
 121 < 1 }
 122 < 1 
 123 < 1 /** json-render's built-in actions; a screen may use them to write under /draft/ only. */

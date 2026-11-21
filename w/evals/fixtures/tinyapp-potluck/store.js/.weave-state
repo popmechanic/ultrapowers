@@ -34,12 +34,21 @@
 33 < 1   {
 34 < 1     name: 'addDish',
 35 < 1     piece: 'dish',
-36 < 1     description: 'List a dish the party needs; nobody is bringing it yet.',
-37 < 1     inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
-38 < 1     run: (store, { name }) => {
+37 > 1     description: 'List a dish the party needs and how many it serves; nobody is bringing it yet.',
+38 < 1     inputSchema: {
+39 < 1       type: 'object',
+40 < 1       properties: { name: { type: 'string' }, serves: { type: 'number' } },
+41 < 1       required: ['name', 'serves']
+42 < 1     },
+43 < 1     run: (store, { name, serves }) => {
+36 < 2     description: 'List a dish the party needs; nobody is bringing it yet.',
+37 < 2     inputSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+38 < 2     run: (store, { name }) => {
 39 < 1       const clean = String(name ?? '').trim()
 40 < 1       if (clean === '') return false
-41 < 1       store.addRow('dishes', { name: clean, guestId: '' })
+42 > 1       if (typeof serves !== 'number' || !Number.isInteger(serves) || serves < 1) return false
+43 < 1       store.addRow('dishes', { name: clean, serves, guestId: '' })
+41 < 2       store.addRow('dishes', { name: clean, guestId: '' })
 42 < 1       return true
 43 < 1     }
 44 < 1   },
@@ -65,7 +74,8 @@
 64 < 1 export function makeStore () {
 65 < 1   return createStore().setTablesSchema({
 66 < 1     guests: { name: { type: 'string' }, answer: { type: 'string', default: '' } },
-67 < 1     dishes: { name: { type: 'string' }, guestId: { type: 'string', default: '' } }
+68 > 1     dishes: { name: { type: 'string' }, serves: { type: 'number' }, guestId: { type: 'string', default: '' } }
+67 < 2     dishes: { name: { type: 'string' }, guestId: { type: 'string', default: '' } }
 68 < 1   })
 69 < 1 }
 70 < 1 

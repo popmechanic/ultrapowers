@@ -173,13 +173,17 @@
 170 < 1       }
 171 < 1       const ui: UiStep[] = [];
 172 < 1       for (const d of before) {
-173 < 1         if (d.el.type !== 'DraftInput' || !d.role || !d.name) continue;
+174 > 1         const isNumber = d.el.type === 'DraftNumber';
+175 < 1         if ((d.el.type !== 'DraftInput' && !isNumber) || !d.role || !d.name) continue;
+173 < 2         if (d.el.type !== 'DraftInput' || !d.role || !d.name) continue;
 174 < 1         const input = draftInput(d.el.props?.value, st.tool);
 175 < 1         if (!input || !(input in args) || rowArgs.includes(input)) continue;
 176 < 1         const typed = text(args[input]);
 177 < 1         if (typed === '') continue;
 178 < 1         ui.push({type: {role: d.role, name: d.name, text: typed}});
-180 > 1         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
+181 > 1         // A number box's draft is the number itself; a text box's is its text.
+182 < 1         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), isNumber ? args[input] : typed);
+180 > 2         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
 179 < 2         setPath(draft, ((d.el.props!.value as Record<string, string>).$bindState).slice('/draft/'.length).replace(/^/, '/'), typed);
 180 < 1       }
 182 > 1       // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.

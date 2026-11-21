@@ -180,7 +180,8 @@
 168 < 2   json-render spec — `{root, elements}`, plus `"public": true` for a piece a
 169 < 2   signed-out visitor sees on `/` — over the catalog in
 170 < 1   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
-171 < 1   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
+172 > 1   store-bound `ActionButton`, `ActionCheckbox`, `DraftInput` and `DraftNumber`. The page is
+171 < 2   store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
 173 > 1   React 19; a builder writes specs, and a part only when a story needs one.
 174 < 1 - **The parts list grows in the open (operator, 2026-11-20, #1491).** Each part has a
 175 < 1   line in `client/src/screens/draws.json` naming the accessibility role it draws and

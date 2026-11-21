@@ -29,7 +29,9 @@
 28 < 1     {
 29 < 1      "tool": "addDish",
 30 < 1      "args": {
-31 < 1       "name": "salad"
+32 > 1       "name": "salad",
+33 < 1       "serves": 4
+31 < 2       "name": "salad"
 32 < 1      },
 33 < 1      "layer": "store"
 34 < 1     },
@@ -87,7 +89,9 @@
 86 < 1     {
 87 < 1      "tool": "addDish",
 88 < 1      "args": {
-89 < 1       "name": "salad"
+90 > 1       "name": "salad",
+91 < 1       "serves": 4
+89 < 2       "name": "salad"
 90 < 1      },
 91 < 1      "layer": "store"
 92 < 1     },

@@ -164,6 +164,29 @@
 126 < 1         </Field>
 127 < 1       )
 128 < 1     },
+130 > 1     DraftNumber: ({ props, bindings }) => {
+131 < 1       const [value, setValue] = useBoundProp<number | string>(u(props.value), bindings?.value)
+132 < 1       const write = (text: string) => {
+133 < 1         const n = Number(text)
+134 < 1         setValue(text.trim() !== '' && Number.isFinite(n) ? n : '')
+135 < 1       }
+136 < 1       return (
+137 < 1         <Field label={props.label}>
+138 < 1           {(id, describedBy) => (
+139 < 1             <Input
+140 < 1               id={id}
+141 < 1               describedBy={describedBy}
+142 < 1               label={props.label}
+143 < 1               placeholder={asExample(props.placeholder)}
+144 < 1               type="number"
+145 < 1               inputMode="numeric"
+146 < 1               value={value == null || value === '' ? '' : String(value)}
+147 < 1               onChange={write}
+148 < 1             />
+149 < 1           )}
+150 < 1         </Field>
+151 < 1       )
+152 < 1     },
 129 < 1   },
 130 < 1 })
 131 < 1 
