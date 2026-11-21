@@ -34,6 +34,7 @@ bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--fe
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)
 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
+python3 lint/comments.py [--list <file> | --update]                          # the comment ratchet: no file gains a comment line; --update locks a drop in
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
 ```
@@ -81,6 +82,8 @@ the engine's exit code is the merge decision.
   skill invokes; `evals/fixtures/claims/` is the parser's probe fixture;
   `evals/frontier/{corpus,results}/` are gitignored and live on the laptop.
 - `tests/` — pytest; `tests/test_fleet_suite.py` bridges every `fleet/tests/test_*.mjs`.
+- `lint/` — `comments.py` and `comments-baseline.json`, the comment ratchet `tests/test_comment_ratchet.py` runs.
+- `docs/adr/` — architecture decision records: the non-obvious decisions comments used to carry.
 
 ## Doctrine
 
@@ -186,6 +189,10 @@ the engine's exit code is the merge decision.
   is off. A fact worth keeping goes in an issue comment, the RUNBOOK's Traps, or here.
 
 ## Conventions & gotchas
+
+- **No code comments (2026-11-21).** A decision the code cannot show goes in `docs/adr/`; a hack
+  goes in an issue, never a comment that excuses it. `lint/comments.py` holds every file at or
+  below `lint/comments-baseline.json` and only ever lowers it; `/delete-comment` sweeps the rest.
 
 - **Releasing.** Only `plugin.json` carries the version (the marketplace entry has none,
   so they cannot drift). A release is one hand PR titled

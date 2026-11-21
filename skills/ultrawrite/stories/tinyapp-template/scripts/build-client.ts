@@ -1,8 +1,3 @@
-// Builds the page: client/index.html into <outdir>, with Tailwind compiling
-// 1st-Pouf's theme (the `bun build` command line loads no plugin, so it
-// would leave @theme and @utility as written). Run from anywhere.
-//
-//   bun scripts/build-client.ts <outdir> [--minify]
 import tailwind from 'bun-plugin-tailwind';
 import {join, resolve} from 'node:path';
 

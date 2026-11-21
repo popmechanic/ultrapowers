@@ -1,17 +1,3 @@
-// fleet/tests/gate_jev_replay_probe.mjs — a live probe, run by hand on the laptop (see PROBES.md): every
-// labelled gate disagreement in the operator's untracked plans, re-read through the live Jev with the
-// gate as it stands now, beside two known-bad controls that must still read `fail`.
-//
-//   node fleet/tests/gate_jev_replay_probe.mjs [dir] [reps]   (dir: <repo>/docs/superpowers/plans; reps: 1;
-//                                                              key in $ULTRAPOWERS_HOME/typesafe.env)
-//
-// For each `<stem>.gate-verdicts.json` with its `<stem>.md` beside it, each round where agent and jev
-// both read and either differ with `right` set (jev failed it) or both read `fail` (an agreed fail, #1528):
-// the diet is rebuilt by extract_gate_input.py (with the tally's base when the round was asked `pinned`)
-// and skipped when its hash moved; gate_jev.ts reads it `reps` times, never `--record`. Spends
-// reps × (rounds + 2) calls. Exit 0 when both controls read `fail` in a majority, no agreed fail now
-// passes and at least two thirds of the wrong fails now pass; 2 no key, or no wrong or agreed fail
-// replayable; 1 otherwise. The scoring is _gate_replay_helpers.mjs.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -29,7 +15,6 @@ const dir = path.resolve(process.argv[2] || path.join(REPO, 'docs', 'superpowers
 const reps = Number(process.argv[3] || 1)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-replay-'))
 
-// gate_jev.ts on one diet, `reps` times: the verdict off each run's last stdout line.
 let n = 0
 function readings(diet) {
   const file = path.join(tmp, `diet-${n++}.json`)

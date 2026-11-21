@@ -1,23 +1,3 @@
-"""The plan-check exams: every test that drives
-`skills/ultrapowers/scripts/plan_check.py`, in one file, each shared helper
-defined once. Three sections, in order:
-
-  * GREEN-AT-BASE (#1098): with `--base`, every Proof `Run:` is rehearsed in a
-    detached worktree at BASE, and each one already green prints a
-    `GREEN-AT-BASE fact:` line, plus one reading of what the rehearsal cost.
-    A fact, never a refusal: the verdict stays `PLAN OK`.
-  * The run-wide freeze (#1202): a `Check:` freeze whose pathspec covers a
-    task's own Files is refused (`freeze_violations`).
-  * The authoring record: with `--base`, the gate record's `authoring` object
-    prints one `AUTHORING fact:` line (minutes, gate dispatches and
-    rejections, routing, question counts), each unsaid field read as `-`;
-    the record is telemetry and never refuses (#1440).
-
-The direct legs import plan_check and call its functions; the subprocess legs
-write a real claims-v1 plan (inside a one-commit git repository when they
-need a BASE), sign its gate-verdict record with the gate's own extractor, and
-read the exit code and both output channels.
-"""
 import copy
 import json
 import os
@@ -44,16 +24,6 @@ from extract_gate_input import gate_input, verdicts_path  # noqa: E402
 SOURCE = COMPILER.read_text()
 
 
-# ########################################################################### #
-# GREEN-AT-BASE                                                               #
-# ########################################################################### #
-
-
-# --------------------------------------------------------------------------- #
-# The lines M4, M5 and M6 pin, as format strings. Every assertion below builds  #
-# its expectation from these, so a line is compared whole and not by fragment.  #
-# --------------------------------------------------------------------------- #
-
 FACT = "GREEN-AT-BASE fact: "
 
 PROVER_LINE = (FACT + "task %s: Run: %s — exits 0 at BASE; "
@@ -62,22 +32,14 @@ GUARD_LINE = (FACT + "task %s: Run: %s — exits 0 at BASE; "
               "a guard, no leg cites it")
 TIMEOUT_LINE = FACT + "task %s: Run: %s — not run (timeout after %s s)"
 READING_LINE = FACT + "%s s over %s lines run, %s not run (timeout)"
-# M6's `<S>`, as leg (f) words it: one or more digits, a point, one digit.
 READING_RE = re.compile(
     r"^GREEN-AT-BASE fact: ([0-9]+\.[0-9]) s over (\d+) lines run, "
     r"(\d+) not run \(timeout\)$")
 
-# M2's refusal, with the span `clause_citation_violations` already prints.
 UNKNOWN_CLAUSE_LINE = ("grammar: Run: cites an unknown clause — task %s: %s "
                        "cites %s; the Machine line numbers %s")
 NO_CITING_LEG = "Machine clause %s has no citing Proof leg"
 
-
-# --------------------------------------------------------------------------- #
-# The plan. One task, id 1, parameterized on the three things these legs vary:  #
-# the Machine clauses, the Proof `Run:` lines, and the prose legs. Everything   #
-# else is the fixed claims-v1 grammar the compiler requires.                    #
-# --------------------------------------------------------------------------- #
 
 HEAD = """# Green probe
 
@@ -120,27 +82,15 @@ TWO_CLAUSES = "M1. The prover exits 0. M2. The prover prints nothing."
 LEG_M1 = "- (a) The suite asserts the prover exits 0. [M1]"
 LEGS_M1_M2 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
               "- (b) The suite asserts the prover prints nothing. [M2]")
-# A prose leg citing a ninth clause the Machine line does not number: the
-# refusal leg (g)'s last witness needs, drawn by the leg grammar that already
-# exists at BASE.
 LEGS_M1_AND_M9 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
                   "- (b) The suite asserts the ninth thing. [M9]")
 
-# The file the one-commit repository holds, and an entry the Stale-if machine
-# cannot decide — `sha-matches:` with no `@` pins no id — so every
-# `--check --base` fixture below prints one `STALE fact:` advisory. That
-# advisory is what leg (g)'s ordering is measured against.
 AT_BASE = "at-base.txt"
 STALE_ADVISORY = "sha-matches: `%s`" % AT_BASE
 
 
 def make_plan(check=None, machine=ONE_CLAUSE, runs="", legs=LEG_M1,
               stale=STALE_ADVISORY):
-    """The one-task claims-v1 plan. With `check`, the freeze section's plan:
-    `FREEZE_HEAD`, a `## Global Constraints` whose one `- Check:` bullet is
-    `check`, then `FREEZE_TASK`. Without it, the GREEN-AT-BASE plan
-    parameterized on its Machine clauses, `Run:` lines, prose legs and
-    Stale-if entry."""
     if check is not None:
         constraints = "\n## Global Constraints\n\n- Check: %s\n" % check
         return FREEZE_HEAD + constraints + FREEZE_TASK
@@ -149,13 +99,8 @@ def make_plan(check=None, machine=ONE_CLAUSE, runs="", legs=LEG_M1,
 
 
 def run_bullets(*commands):
-    """The Proof `Run:` bullets for `commands`, in Proof order."""
     return "".join("- Run: %s\n" % c for c in commands)
 
-
-# --------------------------------------------------------------------------- #
-# The repository, the plan on disk, and the two ways the compiler is invoked.   #
-# --------------------------------------------------------------------------- #
 
 def _git(repo, *args):
     p = subprocess.run(["git", "-C", str(repo), *args],
@@ -165,10 +110,6 @@ def _git(repo, *args):
 
 
 def base_repo(tmp_path):
-    """A one-commit git repository whose commit holds `at-base.txt` and
-    nothing else, returned as (repo path, HEAD sha). The plan is written
-    inside it, so a 40-hex `--base` names a commit of the plan's own
-    repository — which is the repository M3's worktree is cut from."""
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-q", ".")
@@ -183,11 +124,6 @@ def base_repo(tmp_path):
 
 
 def write_plan(dirpath, name, text, rec=None):
-    """The plan plus the gate-verdict artifact claims-v1 compiles against
-    (ultrawrite §The proof gate), hashed by the gate's own extractor so a fixture edit re-signs
-    itself rather than going stale against a hand-copied digest. `rec` is the
-    record's every key but `tasks` (the authoring section passes its own);
-    omitted, it is a one-dispatch, zero-rejection `tally`."""
     plan = pathlib.Path(dirpath) / name
     plan.write_text(text)
     entry = gate_input(plan, "1")
@@ -211,11 +147,6 @@ def check_at(repo, name, text, *flags, env=None):
 
 
 def check_at_unsigned(repo, name, text, *flags):
-    """`check_at`, but with the gate-verdict record removed right after the
-    plan is signed and written — a refusal for a reason that has nothing to
-    do with the plan's own commands, which `gate_verdict_violations` already
-    refuses with `grammar: gate verdicts missing …`. Used by leg (g)'s
-    refused-plan-runs-nothing scenario."""
     plan = write_plan(repo, name, text)
     verdicts_path(plan).unlink()
     return subprocess.run([sys.executable, str(COMPILER), str(plan),
@@ -224,62 +155,32 @@ def check_at_unsigned(repo, name, text, *flags):
 
 
 def tasks_of(text):
-    """The task dicts `main()` hands `green_at_base_lines`, built the way the
-    `--check` branch builds them."""
     return plan_parse.parse_plan_full(text)[1]
 
 
 def base_tree_for(plan):
-    """The `BaseTree` a 40-hex `--base` names for this plan — the same reader
-    the `--check` branch builds from the flag."""
     repo = plan.parent
     head = _git(repo, "rev-parse", "HEAD").strip()
     return plan_check.BaseTree.from_flag(head, plan), head
 
 
 def green_lines(repo, name, text, **kw):
-    """`green_at_base_lines` on a real plan, reached through the module so a
-    BASE tree fails here with `module 'plan_check' has no attribute
-    'green_at_base_lines'` — the absent implementation, not a bad import."""
     plan = write_plan(repo, name, text)
     base_tree, _head = base_tree_for(plan)
     return plan_check.green_at_base_lines(tasks_of(text), base_tree, **kw)
 
 
 def fact_lines(stdout, prefix=FACT):
-    """Every line beginning `prefix` — by default `GREEN-AT-BASE fact:`; the
-    authoring section passes `AUTHORING fact:` — in the order printed."""
     return [line for line in stdout.splitlines() if line.startswith(prefix)]
 
 
 def command_facts(lines):
-    """The per-command lines of M4/M5 — every fact line but M6's reading, which
-    names no `Run:`."""
     return [line for line in lines if line.startswith(FACT) and "Run:" in line]
 
-
-# =========================================================================== #
-# (a)/[M1] — the tag is parsed off the command and recorded beside it          #
-# =========================================================================== #
-# "(a) `parse_task` on a task whose Proof carries `- Run: true [M1]`,
-# `- Run: false [M1, M2]` and `- Run: true` records `proof_runs` as exactly
-# `[\"true\", \"false\", \"true\"]` — no bracket in any command — and
-# `proof_run_cites` as exactly `[[\"M1\"], [\"M1\", \"M2\"], []]` [M1]"
 
 RUNS_A = run_bullets("true [M1]", "false [M1, M2]", "true")
 PLAN_A = make_plan(machine=TWO_CLAUSES, runs=RUNS_A, legs=LEGS_M1_M2)
 
-
-# =========================================================================== #
-# (b)/[M2] — an unknown clause is refused, and a tag cites nothing             #
-# =========================================================================== #
-# "(b) `--check` on a plan whose Machine line numbers M1 and M2 and whose Proof
-# carries `- Run: true` tagged with the ninth clause, M9 in the bracket shape,
-# exits 2 with the line `grammar: Run: cites an unknown clause — task 1: true
-# cites M9; the Machine line numbers M1–M2` on stdout, and `--check` on a plan
-# whose leg (a) cites `[M1]` alone while `- Run: true [M2]` is the only
-# citation of M2 exits 2 carrying `Machine clause M2 has no citing Proof leg`
-# — the tag satisfied nothing [M2]"
 
 PLAN_B_UNKNOWN = make_plan(machine=TWO_CLAUSES,
                            runs=run_bullets("true [M9]"),
@@ -289,38 +190,19 @@ PLAN_B_TAG_IS_NO_LEG = make_plan(machine=TWO_CLAUSES,
                                  legs=LEG_M1)
 
 
-# =========================================================================== #
-# (c)/[M3] — one detached worktree at BASE, and nothing left of it             #
-# =========================================================================== #
-# "(c) in a one-commit repository whose commit holds `at-base.txt`, a plan
-# whose `Run:` is `test -f at-base.txt && test \"$ULTRA_BASE\" = <head> && test
-# \"$(git rev-parse HEAD)\" = <head> && test \"$PWD\" != <repo> && touch
-# wrote-here.txt` yields that command's prover line under `--check --base
-# <head>`, and afterwards `git -C <repo> worktree list --porcelain` names
-# exactly one worktree (the repository itself), no directory named
-# `ultra-green-` survives under the temp root, and `<repo>/wrote-here.txt` does
-# not exist — the command ran at BASE, elsewhere than the checkout, and its
-# worktree was removed with what it wrote [M3]"
-
 def witness_command(repo, head):
-    """The leg's command, with `<head>` and `<repo>` substituted."""
     return ('test -f %s && test "$ULTRA_BASE" = %s && '
             'test "$(git rev-parse HEAD)" = %s && test "$PWD" != "%s" && '
             'touch wrote-here.txt' % (AT_BASE, head, head, repo))
 
 
 def worktree_paths(repo):
-    """Every worktree `git` knows of for `repo`, by path."""
     out = _git(repo, "worktree", "list", "--porcelain")
     return [line.split(" ", 1)[1] for line in out.splitlines()
             if line.startswith("worktree ")]
 
 
 def test_c_the_run_line_runs_at_base_in_a_worktree_that_is_then_gone(tmp_path):
-    """(c)/[M3]: the command's own tests say where it ran — BASE's file
-    present, `ULTRA_BASE` and the worktree HEAD both the 40-hex commit, the
-    working directory not the repository — and the exam says what is left of
-    the worktree afterwards: nothing."""
     repo, head = base_repo(tmp_path)
     command = witness_command(repo, head)
     tmpdir = tmp_path / "tmproot"
@@ -337,37 +219,17 @@ def test_c_the_run_line_runs_at_base_in_a_worktree_that_is_then_gone(tmp_path):
         "expected: %s\nstdout:\n%s\nstderr:\n%s"
         % (expected, p.stdout, p.stderr))
     assert p.returncode == 0, out
-    # "git -C <repo> worktree list --porcelain names exactly one worktree"
     paths = worktree_paths(repo)
     assert len(paths) == 1, paths
     assert pathlib.Path(paths[0]).resolve() == repo.resolve(), (paths, repo)
-    # "no directory named ultra-green- survives under the temp root" — the
-    # root the compile was handed, and the machine's own.
     assert sorted(tmpdir.glob("ultra-green-*")) == [], sorted(
         tmpdir.glob("ultra-green-*"))
-    # The machine's own temp root is shared with every other pytest worker, and
-    # a sibling's live worktree appears here between `before` and now — so this
-    # half is read only when this process is the whole suite (#1120). The
-    # handed root above is the assertion that holds either way, and it is the
-    # one that catches a leak the compile is responsible for.
     if os.environ.get("PYTEST_XDIST_WORKER") is None:
         assert sorted(machine_root.glob("ultra-green-*")) == before, (
             "an ultra-green- directory survived under %s" % machine_root)
-    # "<repo>/wrote-here.txt does not exist" — --force took the worktree away
-    # with what the command wrote into it.
     assert not (repo / "wrote-here.txt").exists(), (
         "the command's file landed in the repository's own working tree")
 
-
-# =========================================================================== #
-# (d)/[M4] — prover line, guard line, and nothing for a red command            #
-# =========================================================================== #
-# "(d) one plan carrying `- Run: true [M1]`, `- Run: true` and `- Run: false`
-# yields, from `green_at_base_lines` and from the `--check --base` stdout
-# alike, exactly `GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this
-# line cannot falsify its clause` and `GREEN-AT-BASE fact: task 1: Run: true —
-# exits 0 at BASE; a guard, no leg cites it` in that order and no line naming
-# `false` [M4]"
 
 RUNS_D = run_bullets("true [M1]", "true", "false")
 PLAN_D = make_plan(runs=RUNS_D)
@@ -376,8 +238,6 @@ EXPECTED_D = [PROVER_LINE % ("1", "true"), GUARD_LINE % ("1", "true")]
 
 def test_d_the_function_prints_the_prover_and_the_guard_and_nothing_else(
         tmp_path):
-    """(d)/[M4]: the two lines, in that order, by equality — and no line
-    naming the command that exited non-zero."""
     repo, _head = base_repo(tmp_path)
     lines = green_lines(repo, "d1.md", PLAN_D)
     assert command_facts(lines) == EXPECTED_D, lines
@@ -385,8 +245,6 @@ def test_d_the_function_prints_the_prover_and_the_guard_and_nothing_else(
 
 
 def test_d_check_at_base_prints_the_same_two_lines(tmp_path):
-    """(d)/[M4]: "from the `--check --base` stdout alike" — the same two
-    lines, in the same order, on the compiler's own stdout."""
     repo, head = base_repo(tmp_path)
     p = check_at(repo, "d2.md", PLAN_D, "--base", head)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -395,27 +253,11 @@ def test_d_check_at_base_prints_the_same_two_lines(tmp_path):
                 if "Run: false" in line], p.stdout
 
 
-# =========================================================================== #
-# (e)/[M5] — the timeout line, the bound, and the killed process group         #
-# =========================================================================== #
-# "(e) `green_at_base_lines` with `timeout_s=1` on a task whose `Run:` is
-# `sleep 30` returns `GREEN-AT-BASE fact: task 1: Run: sleep 30 — not run
-# (timeout after 1 s)`, the call returns in under 4 seconds by
-# `time.monotonic()`, and afterwards no `sleep 30` process the call started is
-# alive [M5]"
-
-# The sleeper carries a fraction no other worker is using, so `ps` can tell
-# THIS test's `sleep` from the one a sibling pytest worker is running at the
-# same moment (#1120): a bare `sleep 30` is indistinguishable across workers,
-# and the before/after diff then counts a sibling's sleeper as a leftover.
-# `sleep` takes a fractional argument on macOS and on GNU coreutils alike, and
-# any value over the 1-second limit exercises the same kill path.
 SLEEPER = "sleep 30.%03d" % (os.getpid() % 1000)
 PLAN_E = make_plan(runs=run_bullets(SLEEPER))
 
 
 def sleeper_pids():
-    """Every live process whose command line is exactly this test's sleeper."""
     p = subprocess.run(["ps", "-eo", "pid=,args="],
                        capture_output=True, text=True)
     pids = set()
@@ -427,8 +269,6 @@ def sleeper_pids():
 
 
 def test_e_a_command_past_the_limit_is_killed_and_reported(tmp_path):
-    """(e)/[M5]: the exact line, the 3-second bound over a 1-second limit, and
-    no `sleep 30` this call started left alive — `killpg`, not `kill`."""
     assert shutil.which("ps"), "the exam needs a real `ps` to see the sleeper"
     repo, _head = base_repo(tmp_path)
     before = sleeper_pids()
@@ -447,15 +287,6 @@ def test_e_a_command_past_the_limit_is_killed_and_reported(tmp_path):
         "a `sleep 30` this call started outlived it: %s" % sorted(leftover))
 
 
-# =========================================================================== #
-# (f)/[M6] — the reading line, in all three shapes                             #
-# =========================================================================== #
-# "(f) the same call's last line is `GREEN-AT-BASE fact: <S> s over 0 lines
-# run, 1 not run (timeout)` with `<S>` matching `[0-9]+\\.[0-9]`, the leg (d)
-# call's last line is `GREEN-AT-BASE fact: <S> s over 3 lines run, 0 not run
-# (timeout)`, and a task with no `Run:` line returns exactly one line,
-# `GREEN-AT-BASE fact: 0.0 s over 0 lines run, 0 not run (timeout)` [M6]"
-
 PLAN_F_NO_RUNS = make_plan()
 
 
@@ -467,8 +298,6 @@ def assert_reading(line, ran, timed_out):
 
 
 def test_f_the_timeout_calls_reading_counts_it_as_not_run(tmp_path):
-    """(f)/[M6]: leg (e)'s call — 0 lines run, 1 not run, `<S>` to one
-    decimal."""
     repo, _head = base_repo(tmp_path)
     lines = green_lines(repo, "f1.md", PLAN_E, timeout_s=1)
     assert lines, "green_at_base_lines returned nothing"
@@ -476,8 +305,6 @@ def test_f_the_timeout_calls_reading_counts_it_as_not_run(tmp_path):
 
 
 def test_f_the_three_command_calls_reading_counts_every_one(tmp_path):
-    """(f)/[M6]: leg (d)'s call — three commands reached an exit inside the
-    limit, whatever that exit was, and none was killed."""
     repo, _head = base_repo(tmp_path)
     lines = green_lines(repo, "f2.md", PLAN_D)
     assert lines, "green_at_base_lines returned nothing"
@@ -485,27 +312,12 @@ def test_f_the_three_command_calls_reading_counts_every_one(tmp_path):
 
 
 def test_f_a_plan_with_no_run_line_still_gets_the_reading(tmp_path):
-    """(f)/[M6]: exactly one line, the zero reading, verbatim."""
     repo, _head = base_repo(tmp_path)
     lines = green_lines(repo, "f3.md", PLAN_F_NO_RUNS)
     assert lines == [READING_LINE % ("0.0", 0, 0)], lines
 
 
-# =========================================================================== #
-# (g)/[M7] — where the lines sit, and when nothing runs at all                 #
-# =========================================================================== #
-# "(g) under `--check --base <head>` on the leg (d) plan stdout begins `PLAN
-# OK`, the exit is 0, every `GREEN-AT-BASE fact:` line sits after the last
-# `BASE fact:`/`STALE fact:` line and before the `AUTHORING fact:` line, and
-# with `- Run: touch <tmp>/ran` in the Proof the file `<tmp>/ran` exists after
-# `--check --base <head>` but not after a bare `--check`, not after a plain
-# compile with `--base <head>`, and not after `--check --base <head>` on a plan
-# the grammar refuses (a leg citing a ninth clause the Machine line does not
-# number), none of which prints a `GREEN-AT-BASE fact:` line [M7]"
-
 def test_g_the_verdict_still_comes_first_and_the_exit_is_still_zero(tmp_path):
-    """(g)/[M7]: a fact is not a refusal — `PLAN OK` is still the first line
-    of stdout and the exit is still 0, with the rehearsal's lines below it."""
     repo, head = base_repo(tmp_path)
     p = check_at(repo, "g1.md", PLAN_D, "--base", head)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -514,9 +326,6 @@ def test_g_the_verdict_still_comes_first_and_the_exit_is_still_zero(tmp_path):
 
 def test_g_the_lines_sit_between_the_stale_facts_and_the_authoring_fact(
         tmp_path):
-    """(g)/[M7]: after the last `BASE fact:`/`STALE fact:` line and before the
-    `AUTHORING fact:` line. The fixture's undecidable `sha-matches:` entry
-    guarantees there is a `STALE fact:` line to sit after."""
     repo, head = base_repo(tmp_path)
     p = check_at(repo, "g2.md", PLAN_D, "--base", head)
     assert p.returncode == 0, p.stdout + p.stderr
@@ -544,9 +353,6 @@ def touch_plan(marker, legs=LEG_M1, machine=ONE_CLAUSE):
 
 
 def test_g_check_at_base_runs_the_run_line(tmp_path):
-    """(g)/[M7]: the witness — `--check --base <head>` really does run the
-    command, so the file it touches outside the worktree is there afterwards,
-    and the guard line is printed."""
     repo, head = base_repo(tmp_path)
     marker = tmp_path / "ran"
     p = check_at(repo, "g3.md", touch_plan(marker), "--base", head)
@@ -559,8 +365,6 @@ def test_g_check_at_base_runs_the_run_line(tmp_path):
 
 
 def test_g_a_bare_check_runs_nothing_and_says_nothing(tmp_path):
-    """(g)/[M7]: running a plan's commands is what `--base` asks for, never
-    what a grammar check does."""
     repo, _head = base_repo(tmp_path)
     marker = tmp_path / "ran"
     p = check_at(repo, "g4.md", touch_plan(marker))
@@ -571,8 +375,6 @@ def test_g_a_bare_check_runs_nothing_and_says_nothing(tmp_path):
 
 
 def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
-    """(g)/[M7]: a verdict that is a refusal rehearses nothing — the plan the
-    engine will not run is not a plan worth timing."""
     repo, head = base_repo(tmp_path)
     marker = tmp_path / "ran"
     p = check_at_unsigned(repo, "g6.md", touch_plan(marker), "--base", head)
@@ -583,35 +385,12 @@ def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
     assert FACT not in out, out
 
 
-# =========================================================================== #
-# (h)/[M3, M5] — the Proof's own `Run:` lines                                  #
-# =========================================================================== #
-# "(h) the first and second `Run:` lines find the constant at 30 and the
-# function's signature, and the third reports the exam passing [M3, M5]"
-#
-# The signature is exercised by legs (d)-(f), which call the function with
-# `timeout_s`; no source read pins it. The third, `python3 -m pytest -q
-# tests/test_plan_check.py`, is this file: an exam never runs
-# an exam, and it cannot run itself, so the driver runs that line.
-
-
 def test_h_the_default_timeout_is_a_module_constant_of_thirty():
-    """(h)/[M5]: the Proof's first `Run:` line — `^GREEN_AT_BASE_TIMEOUT_S =
-    30$` — so a leg can name the default without paying 30 seconds for it."""
     assert re.search(r"^GREEN_AT_BASE_TIMEOUT_S = 30$", SOURCE, re.M), (
         "plan_check.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
     assert getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
         getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None))
 
-
-# ########################################################################### #
-# The run-wide freeze                                                         #
-# ########################################################################### #
-
-# --------------------------------------------------------------------------- #
-# The plan: one signed claims-v1 task, `## Global Constraints` varying only   #
-# in its one `- Check:` bullet — the three commands M1, M2 and M3 each name.  #
-# --------------------------------------------------------------------------- #
 
 FREEZE_HEAD = """# Freeze probe
 
@@ -649,33 +428,22 @@ Machine: M1. The freeze check does not cover the task's own paths.
 - sha-matches: `at-base.txt`
 """
 
-# The three commands the Machine clauses name, verbatim.
 CMD_M1 = "git diff --quiet $ULTRA_BASE -- fleet/"
 CMD_M2 = "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/te"
 CMD_M3 = "git diff --quiet $ULTRA_BASE -- docs src/prover.ts"
 
 
 def run_plan_check(tmp_path, name, text):
-    """`plan_check.py <plan>` — no `--base`: the Context says this refusal
-    needs no repository, and none is set up here."""
     plan = write_plan(tmp_path, name, text)
     return subprocess.run([sys.executable, str(COMPILER), str(plan)],
                           capture_output=True, text=True)
 
 
 def freeze_lines(stdout):
-    """Every stdout line carrying the word `freezes`."""
     return [line for line in stdout.splitlines() if "freezes" in line]
 
 
-# =========================================================================== #
-# (a)/[M1] — the freeze is refused, one line, naming everything M1 names      #
-# =========================================================================== #
-
 def test_a_a_directory_pathspec_covering_the_test_path_is_refused(tmp_path):
-    """[M1]: exit 2, no `PLAN OK`, exactly one `freezes` line, carrying the
-    check's whole command, the pathspec `fleet/`, `task 1` and the covered
-    path `fleet/tests/test_x.mjs`."""
     p = run_plan_check(tmp_path, "a.md", make_plan(CMD_M1))
     out = p.stdout + p.stderr
     assert p.returncode == 2, out
@@ -688,13 +456,7 @@ def test_a_a_directory_pathspec_covering_the_test_path_is_refused(tmp_path):
         assert token in line, "%r missing from freeze line: %r" % (token, line)
 
 
-# =========================================================================== #
-# (b)/[M2] — a string prefix that is not a directory prefix covers nothing    #
-# =========================================================================== #
-
 def test_b_a_string_prefix_pathspec_is_not_a_directory_prefix(tmp_path):
-    """[M2]: `fleet/te` is a string prefix of `fleet/tests/test_x.mjs`, not a
-    directory prefix — `PLAN OK`, exit 0, no `freezes` line at all."""
     p = run_plan_check(tmp_path, "b.md", make_plan(CMD_M2))
     out = p.stdout + p.stderr
     assert p.returncode == 0, out
@@ -702,16 +464,7 @@ def test_b_a_string_prefix_pathspec_is_not_a_directory_prefix(tmp_path):
     assert freeze_lines(p.stdout) == [], p.stdout
 
 
-# =========================================================================== #
-# (c)/[M3] — a pathspec equal to a task's path covers it                      #
-# =========================================================================== #
-
 def test_c_a_pathspec_equal_to_the_modify_path_is_refused(tmp_path):
-    """[M3]: `src/prover.ts` named exactly among the freeze's pathspecs
-    refuses the plan; at least one stdout line carries `freezes`,
-    `src/prover.ts` and `task 1` together (`command_violations`' own "names"
-    line may also fire here — that line says a different thing and is not
-    asserted against)."""
     p = run_plan_check(tmp_path, "c.md", make_plan(CMD_M3))
     out = p.stdout + p.stderr
     assert p.returncode == 2, out
@@ -719,12 +472,6 @@ def test_c_a_pathspec_equal_to_the_modify_path_is_refused(tmp_path):
     assert lines, "expected at least one 'freezes' line:\n%s" % p.stdout
     assert any(all(tok in line for tok in ("freezes", "src/prover.ts", "task 1"))
                for line in lines), lines
-
-
-# =========================================================================== #
-# (d)/[M4] — the module-level function, answering from strings alone, and    #
-# the two doc greps                                                          #
-# =========================================================================== #
 
 
 def fake_task(id_, modifies=(), creates=(), deletes=(),
@@ -742,10 +489,6 @@ TASK1 = fake_task("1", modifies=["src/prover.ts"],
 
 
 def test_d_freeze_violations_answers_m1_m2_m3_from_plain_dicts_alone():
-    """[M4]: called directly on plain `checks`/`tasks` dicts — no `tmp_path`,
-    no git, no subprocess anywhere in this test — `freeze_violations`
-    reproduces the M1, M2 and M3 verdicts on its own, which is what "reads
-    only the strings the parser printed" means in practice."""
     m1 = plan_check.freeze_violations([fake_check(CMD_M1)], [TASK1])
     assert len(m1) == 1, m1
     for token in (CMD_M1, "fleet/", "task 1", "fleet/tests/test_x.mjs"):
@@ -759,18 +502,6 @@ def test_d_freeze_violations_answers_m1_m2_m3_from_plain_dicts_alone():
     assert any(all(tok in line for tok in
                    ("freezes", "src/prover.ts", "task 1")) for line in m3), m3
 
-
-# ########################################################################### #
-# The authoring record                                                        #
-# ########################################################################### #
-
-# --------------------------------------------------------------------------- #
-# The plan. One claims-v1 task carrying the fixed grammar the compiler         #
-# requires — the header, the six body slots, a numbered Machine clause, a      #
-# cited leg, a provenance tag, a predicate Stale-if whose path is absent from  #
-# the temp repository, so no plan below is refused for anything but its        #
-# record.                                                                      #
-# --------------------------------------------------------------------------- #
 
 PLAN = """# Authoring record probe
 
@@ -805,7 +536,6 @@ Machine: M1. The sim prints `PASSED`.
 - path-exists: `fleet/tests/sim_probe.mjs`
 """
 
-# The Context's example record, verbatim, and the `tally` it is read beside.
 AUTHORING = {
     "minutes": 118,
     "routing": {"branch": "risk", "lane": "ultrapowers"},
@@ -814,19 +544,15 @@ AUTHORING = {
 }
 TALLY = {"dispatched": 4, "rejected": 1}
 
-# M1's line for that pair, exactly as the Context writes it.
 EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                 "4 gate dispatches, 1 rejected, routing risk->ultrapowers, "
                 "1 questions, 1/1 recommended picked, 0 explain rounds")
-# M2's line for a record with no `authoring` key.
 NONE_LINE = "AUTHORING fact: none recorded"
 
 FACT_PREFIX = "AUTHORING fact:"
 
 
 def record(authoring=..., tally=TALLY):
-    """The gate-verdict record minus its `tasks` key (which is hashed per
-    plan). `authoring` omitted entirely when passed as None."""
     rec = {}
     if tally is not None:
         rec["tally"] = copy.deepcopy(tally)
@@ -847,15 +573,10 @@ def check(dirpath, name, rec, *flags):
 
 
 def carrying_lines(stdout):
-    """Every line mentioning the fact prefix anywhere, so leg (d)'s "zero
-    lines containing `AUTHORING fact:`" is read as written."""
     return [line for line in stdout.splitlines() if FACT_PREFIX in line]
 
 
 def assert_one_fact_after_the_verdict(p, expected):
-    """[M1]/[M2]: exit 0, `PLAN OK` as the first stdout line, and exactly one
-    `AUTHORING fact:` line — equal to `expected` in full, and printed after
-    the verdict line."""
     out = p.stdout + p.stderr
     assert p.returncode == 0, out
     assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
@@ -864,29 +585,11 @@ def assert_one_fact_after_the_verdict(p, expected):
     assert lines.index(expected) > lines.index("PLAN OK"), out
 
 
-# ── (a) M1: the well-formed record prints the Context's example line ────────
-# "a claims-v1 plan whose `<stem>.gate-verdicts.json` carries a well-formed
-# top-level `authoring` object prints, after the verdict line, exactly one line
-# of the form `AUTHORING fact: <minutes> min to PLAN OK, 
-# <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
-# <n> questions, <p>/<q> recommended picked, <e> explain rounds` ... and the
-# compile still exits 0 with `PLAN OK`."
-
 def test_a_the_example_record_prints_the_example_line(tmp_path):
-    """(a)/[M1]: the Context's example `authoring` object beside a `tally` of
-    dispatched 4 / rejected 1, compiled `--check --base <head>` inside a
-    one-commit repository — exit 0, `PLAN OK` first, and exactly one
-    `AUTHORING fact:` line, the Context's example line verbatim."""
     repo, head = base_repo(tmp_path)
     p = check(repo, "a.md", record(), "--base", head)
     assert_one_fact_after_the_verdict(p, EXAMPLE_LINE)
 
-
-# ── (b) M1: the tally's absent key, and the question counts ─────────────────
-# "`<dispatched>` and `<rejected>` read from the record's `tally` (`-` when the
-# key is absent), `<n>` the length of `questions`, `<q>` the count of questions
-# whose `recommended` is not null and `<p>` the count of those whose `picked`
-# equals `recommended`."
 
 REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                         "4 gate dispatches, - rejected, "
@@ -894,8 +597,6 @@ REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
                         "1 questions, 1/1 recommended picked, "
                         "0 explain rounds")
 
-# One question carrying no recommended option, one whose pick is the
-# recommendation: two questions, one of them recommended, that one picked.
 TWO_QUESTIONS = [
     {"question": "Claim and summary", "options": ["A", "B"],
      "recommended": None, "picked": "B", "explain_rounds": 2},
@@ -910,16 +611,12 @@ TWO_QUESTIONS_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
 
 
 def test_b_a_tally_without_rejected_prints_a_dash(tmp_path):
-    """(b)/[M1]: the same record with `tally` lacking `rejected` — the line is
-    the example line with `- rejected` in place of `1 rejected`."""
     repo, head = base_repo(tmp_path)
     p = check(repo, "b1.md", record(tally={"dispatched": 4}), "--base", head)
     assert_one_fact_after_the_verdict(p, REJECTED_ABSENT_LINE)
 
 
 def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
-    """(b)/[M1]: two questions, one with `recommended` null and one picked
-    equal to its recommendation — `2 questions, 1/1 recommended picked`."""
     repo, head = base_repo(tmp_path)
     authoring = copy.deepcopy(AUTHORING)
     authoring["questions"] = TWO_QUESTIONS
@@ -928,9 +625,6 @@ def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
 
 
 def test_b_a_multi_select_question_is_one_row(tmp_path):
-    """#1189: `picked` may be a list for a multi-select question — one row, one
-    question, counted as recommended-picked when the recommendation is among
-    the picks."""
     repo, head = base_repo(tmp_path)
     authoring = copy.deepcopy(AUTHORING)
     authoring["questions"] = [{"question": "which features", "options":
@@ -939,35 +633,20 @@ def test_b_a_multi_select_question_is_one_row(tmp_path):
                                "picked": ["rename", "sort"]}]
     p = check(repo, "b3.md", record(authoring=authoring), "--base", head)
     assert_one_fact_after_the_verdict(
-        p, EXAMPLE_LINE)  # 1 questions, 1/1 recommended picked
+        p, EXAMPLE_LINE)
 
-
-# ── (c) M2: no record, one `none recorded` line ─────────────────────────────
-# "The same `--check --base <sha>` compile of a record with no `authoring` key
-# exits 0 with `PLAN OK` and prints exactly one line `AUTHORING fact: none
-# recorded` after the verdict."
 
 def test_c_a_record_with_no_authoring_key_says_none_recorded(tmp_path):
-    """(c)/[M2]: the same plan, the same tally, no `authoring` key — exit 0,
-    `PLAN OK`, and exactly one `AUTHORING fact: none recorded` line."""
     repo, head = base_repo(tmp_path)
     p = check(repo, "c.md", record(authoring=None), "--base", head)
     assert_one_fact_after_the_verdict(p, NONE_LINE)
 
-
-# ── (d) M2: a bare `--check` prints no fact line at all ─────────────────────
-# "a bare `--check` of either record prints no line beginning `AUTHORING
-# fact:` at all."
 
 @pytest.mark.parametrize("label,authoring", [
     ("with the authoring key", AUTHORING),
     ("without the authoring key", None),
 ])
 def test_d_a_bare_check_prints_no_fact_line(tmp_path, label, authoring):
-    """(d)/[M2]: with no `--base` there is no tree to cost a sitting against —
-    zero lines containing `AUTHORING fact:`, either way. And the bare verdict
-    is the unchanged one the global constraint pins: stdout is `PLAN OK` and
-    nothing else."""
     p = check(tmp_path, "d.md", record(authoring=authoring))
     out = p.stdout + p.stderr
     assert p.returncode == 0, out
@@ -976,10 +655,7 @@ def test_d_a_bare_check_prints_no_fact_line(tmp_path, label, authoring):
     assert p.stdout.strip() == "PLAN OK", out
 
 
-# ── (e) #1440: the record is telemetry — a malformed one reads `-`, never refuses ──
-
 def _odd():
-    """Every field the fact line reads, said oddly or not at all."""
     a = copy.deepcopy(AUTHORING)
     a["minutes"] = "12"
     del a["routing"]
@@ -988,9 +664,6 @@ def _odd():
 
 
 def test_e_a_malformed_record_reads_dashes_and_is_not_refused(tmp_path):
-    """(e) #1440: an odd `minutes`, no `routing` and a non-object
-    question row — exit 0, `PLAN OK`, and one fact line reading each unsaid
-    field as `-` and skipping the row that is not an object."""
     repo, head = base_repo(tmp_path)
     p = check(repo, "e.md", record(authoring=_odd()), "--base", head)
     assert_one_fact_after_the_verdict(
@@ -999,15 +672,6 @@ def test_e_a_malformed_record_reads_dashes_and_is_not_refused(tmp_path):
            "0 explain rounds")
 
 
-# ########################################################################### #
-# THE BODY'S SHAPE                                                            #
-# ########################################################################### #
-#
-# `slip_violations` refuses a body without its six slots in order and a code
-# fence outside a task's Proof (the three wording slips went in #1440). Every plan is
-# `tests/fixtures/plan_check_slips/good.md` with one slip put in, re-signed
-# so the gate record is never the reason it is refused.
-
 SLIPS_GOOD = ROOT / "tests/fixtures/plan_check_slips/good.md"
 SIX_SLOTS_LINE = ("grammar: task 1: the body must carry Claim, Authorized-by, "
                   "Interfaces, Context, Proof and Stale-if, each once, "
@@ -1015,8 +679,6 @@ SIX_SLOTS_LINE = ("grammar: task 1: the body must carry Claim, Authorized-by, "
 
 
 def slipped(tmp_path, pattern, repl):
-    """`good.md` with `pattern` replaced by `repl` (multiline), signed and
-    checked: the lines the checker prints."""
     text = re.sub(pattern, repl, SLIPS_GOOD.read_text(), flags=re.M)
     assert text != SLIPS_GOOD.read_text(), pattern
     p = run_compiler(write_plan(tmp_path, "p.md", text))
@@ -1057,12 +719,6 @@ def test_slips_a_fence_outside_proof_is_refused(tmp_path):
 def test_slips_a_stories_plan_is_untouched():
     p = run_compiler(ROOT / "evals/fixtures/stories/todo/.ultrapowers/plan.md")
     assert p.stdout.splitlines() == ["PLAN OK"], p.stdout
-
-
-# === SHARED fact ===
-#
-# A path two or more tasks list in their Files draws one `SHARED fact:` line
-# after the verdict, with or without --base; the exit code is unchanged.
 
 
 def test_shared_a_file_two_tasks_list_is_named_once():

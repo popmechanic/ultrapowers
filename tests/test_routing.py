@@ -1,9 +1,3 @@
-"""routing.py's risk reading is asked over every task, Type line or not.
-
-A task with no `**Type:**` line parses as `type: None` and is an
-implementation task; the risk reading once kept only `type ==
-"implementation"`, so a plan that leaves the line out was read as empty.
-"""
 import re
 import sys
 from pathlib import Path

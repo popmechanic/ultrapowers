@@ -1,10 +1,3 @@
-"""The TinyApp template (skills/ultrawrite/stories/tinyapp-template/, #1532).
-
-Its dependencies are pinned: every version in package.json is exact, and the
-committed bun.lock (copied by scaffold.ts) lists the same specs and resolves
-each direct dependency to its pin, so a stale lockfile fails here, not in a
-scaffolded app. Its screen state rebuilds when the session's `who` arrives
-after the first snapshot, not only on the next store transaction."""
 import json
 import os
 import re
@@ -72,7 +65,6 @@ def test_who_set_after_the_first_snapshot_reaches_session(tmp_path):
 
 
 def test_scaffold_writes_one_empty_screen(tmp_path):
-    """The page draws one screen file: scaffold writes an empty one and no per-piece specs."""
     if not shutil.which("bun"):
         pytest.skip("bun is not installed")
     app = str(tmp_path / "app")
@@ -83,8 +75,6 @@ def test_scaffold_writes_one_empty_screen(tmp_path):
 
 
 def test_the_page_draws_pieces_in_build_order(tmp_path):
-    """An app built before the one screen: todo-tags' cards are todo then tag, so its
-    hand-made piece specs are drawn so, not by file name (#1491)."""
     if not shutil.which("bun"):
         pytest.skip("bun is not installed")
     app = str(tmp_path / "app")

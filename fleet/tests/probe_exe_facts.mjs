@@ -1,58 +1,9 @@
-// fleet/tests/probe_exe_facts.mjs — the fleet's twelve exe.dev lobby facts,
-// re-read against the live lobby, one line per fact, each stamped with the
-// digest that is the only version marker exe.dev exposes.
-//
-// NOT named test_*.mjs on purpose: `tests/test_fleet_suite.py` globs
-// `test_*.mjs`, so the suite never runs this and CI never spends a real VM.
-// It is a LIVE MEASUREMENT (fleet/tests/PROBES.md) and is run by hand on the
-// laptop, where the ssh seam to exe.dev lives:
-//
-//     node fleet/tests/probe_exe_facts.mjs
-//
-// WHY IT EXISTS. Every lobby fact in fleet/RUNBOOK.md's §Traps under "Tags,
-// keys and names" and "Reading the lobby" was learned from a run that died on
-// it, and fleet/doctor.mjs's verb-drift row re-reads each verb's FLAG set —
-// nothing in the tree re-reads a BEHAVIOUR. exe.dev exposes no version verb,
-// no --version, no version header, no changelog and no change notification
-// (Shelley, exe.dev's assistant, 2026-09-23), so the one thing every line
-// here is stamped with is the digest of `help all --json`'s own stdout and
-// the UTC date the reading was taken.
-//
-// THE THROWAWAY VMS. Fact 6 (new-no-positionals) creates one VM,
-// `probe-exe-facts-<stamp>`; fact 10 (cp-copies-tags) makes two copies of it.
-// All three are removed at the end, the last mutating verbs the probe issues
-// — `rm <name>` once per VM it created — and a failing `rm` is named as left
-// behind rather than lost silently.
-//
-// THE REFUSAL. Before any mutating verb the probe reads `ls --json`, and a
-// `fleet-r*` VM already listed there means a fleet run is live: it refuses
-// to create a throwaway beside it, issues no `new`, and exits 2.
-//
-// HOW A FACT IS SCORED. Each fact issues the lobby verb(s) its recorded
-// reading names and compares what came back against that reading. `holds`
-// means the answer is in the same shape/class as recorded; `DRIFT` means it
-// is not (a refusal that started succeeding, a shape the lobby stopped
-// answering); a verb whose `exec` threw or answered no exit code at all is
-// `UNREADABLE` — never scored as drift, since nothing was actually read.
-//
-// Exit: 0 every fact holds; 1 at least one drift or unreadable fact;
-// 2 the lobby was unreachable, a live run's VM was listed, or the cleanup
-// left a throwaway VM behind.
-
 import path from 'node:path'
 import { createHash } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 
 import { EXE_HOST, defaultExec, parseJson } from '../lobby.mjs'
 
-/**
- * The twelve facts, in the order every run logs them — NOT the order they are
- * read in: fact 11 (rm-reserves-name) is read last of all, after the cleanup,
- * while fact 12 (refused-verbs) is read before it. `says` is the reading the
- * fleet holds today, quoted back on a DRIFT or UNREADABLE line, and the ids
- * are the shared literal `fleet/CONTRACT.md`'s `exe.dev facts (measured)`
- * list carries row for row.
- */
 export const FACTS = Object.freeze([
   { id: 'help-all-digest',
     says: 'help all --json is JSON with a commands array; its sha256 is the only version marker exe.dev exposes (Shelley, 2026-09-23)' },
@@ -80,25 +31,19 @@ export const FACTS = Object.freeze([
     says: 'integrations attach and detach are the grant verbs and there is no integrations policy verb: help integrations lists attach and detach and no policy (#1434; the earlier reading attached a nonexistent name, which fails whatever the model)' },
 ])
 
-// ── Small readings of an answer ─────────────────────────────────────────────
-
 const two = (n) => String(n).padStart(2, '0')
 
-/** `YYYYMMDDHHMM` from `now`, UTC — the throwaway's stamp. */
 const runStampOf = (now) => {
   const d = now instanceof Date ? now : new Date(now)
   return `${d.getUTCFullYear()}${two(d.getUTCMonth() + 1)}${two(d.getUTCDate())}${two(d.getUTCHours())}${two(d.getUTCMinutes())}`
 }
 
-/** `YYYY-MM-DD` from `now`, UTC — the date every line is stamped with. */
 const dateOf = (now) => (now instanceof Date ? now : new Date(now)).toISOString().slice(0, 10)
 
-/** The first 16 hex characters of the sha256 of `text`'s bytes. */
 const sha16 = (text) => createHash('sha256').update(String(text ?? ''), 'utf8').digest('hex').slice(0, 16)
 
 const FLAG_LINE = /^[ \t]+(--[A-Za-z0-9-]+)/gm
 
-/** The `Options:` block's flags, as `fleet/doctor.mjs`'s `helpFlags` reads them. */
 const helpFlags = (stdout) => {
   const flags = []
   for (const match of String(stdout ?? '').matchAll(FLAG_LINE)) {
@@ -107,27 +52,11 @@ const helpFlags = (stdout) => {
   return flags
 }
 
-// ── The probe ────────────────────────────────────────────────────────────────
-
-/**
- * Re-measure all twelve facts against `exec` and write one line per fact
- * through `log`. `exec` is the seam `fleet/lobby.mjs` defines —
- * `(cmd, argv, options?) => Promise<{ code, stdout, stderr }>`, never
- * rejecting — driven raw rather than through `lobby(exec, remote)`: several
- * facts need the exact stdout/stderr split and the exact exit code a caught
- * `LobbyError` does not keep. Every verb is issued as
- * `exec('ssh', [EXE_HOST, '<verb line>'])`, one string argument after the
- * host, exactly as `fleet/lobby.mjs`'s `lobby` does.
- *
- * Resolves `{ exit, stamp, results }`.
- */
 export const probeExeFacts = async ({ exec, log = console.log, now = new Date() } = {}) => {
   const date = dateOf(now)
   const runStamp = runStampOf(now)
   const T = `probe-exe-facts-${runStamp}`
 
-  /** One lobby verb. A thrown `exec` or a non-numeric `code` reads as `code:
-   *  null` — unreadable, never scored as a drift. */
   const send = async (remote) => {
     try {
       const res = await exec('ssh', [EXE_HOST, remote])
@@ -151,7 +80,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
   const drift = (read) => ({ verdict: DRIFT, read })
   const unreadable = (read) => ({ verdict: UNREADABLE, read })
 
-  // ── fact 1: help all --json — the lobby's reachability, and the digest ────
   const helpAll = await send('help all --json')
   if (helpAll.code !== 0) {
     log(`lobby unreachable — help all --json answered ${helpAll.code === null ? 'no exit code' : `exit ${helpAll.code}`}`)
@@ -165,7 +93,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     ? holds(`help all --json is JSON with ${helpAllJson.commands.length} command(s) under commands[]`)
     : drift(helpAllJson ? 'help all --json parsed but carries no commands array' : 'help all --json did not parse as JSON')
 
-  // ── fact 2 and the M3 refusal — ls --json, before any mutating verb ───────
   const ls1 = await send('ls --json')
   const ls1Json = readJson(ls1)
   const vms1 = Array.isArray(ls1Json?.vms) ? ls1Json.vms : []
@@ -184,7 +111,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
         ? drift('ls --json answered no .shared_vms[] array')
         : holds(`ls --json is {shared_vms, vms}; ${vms1.length} row(s) under .vms[]`)
 
-  // ── fact 3: billing plan --json ────────────────────────────────────────────
   const billing = await send('billing plan --json')
   const billingJson = readJson(billing)
   const BILLING_KEYS = ['max_cpus', 'max_memory_gb', 'tier', 'plan']
@@ -199,7 +125,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
             : drift(`billing plan --json is missing ${missing.join(', ')}`)
         })()
 
-  // ── fact 4: help new — the Options: block the doctor's verb-drift reads ──
   const helpNew = await send('help new')
   const WANT_FLAGS = ['--comment', '--name', '--setup-script', '--tag', '--cpu', '--memory']
   const fact4 = helpNew.code === null
@@ -214,7 +139,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
             : drift(`help new's Options: block is missing ${missing.join(', ')}`)
         })()
 
-  // ── fact 5: a lobby error on stdout, no envelope ──────────────────────────
   const badVm = `no-such-vm-${runStamp}`
   const errCheck = await send(`comment ${badVm} probe`)
   const fact5 = errCheck.code === null
@@ -228,7 +152,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
           return holds(`comment ${badVm} probe exited ${errCheck.code} with non-empty, non-JSON stdout`)
         })()
 
-  // ── fact 6: new — no positionals, a spaced --comment survives whole ──────
   const comment6 = `probe exe facts ${runStamp}`
   const newT = await send(`new --name ${T} --cpu 1 --memory 2GB --comment '${comment6}'`)
   let tCreated = false
@@ -246,7 +169,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
       : drift(row ? `ls --json reads comment ${JSON.stringify(row.comment)}` : `ls --json does not list ${T}`)
   }
 
-  // ── fact 7: the 200-byte comment ceiling ──────────────────────────────────
   let fact7
   if (!tCreated) {
     fact7 = unreadable(`${T} was never created`)
@@ -264,7 +186,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     }
   }
 
-  // ── fact 8: share port — one proxy_port, replaced ─────────────────────────
   let fact8
   if (!tCreated) {
     fact8 = unreadable(`${T} was never created`)
@@ -282,7 +203,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     }
   }
 
-  // ── fact 9: tag / tag -d ───────────────────────────────────────────────────
   const tagName = `probe-exe-${runStamp}`
   let fact9
   if (!tCreated) {
@@ -303,7 +223,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     }
   }
 
-  // ── fact 10: cp — copies tags by default, --copy-tags=false makes none ───
   const copy1 = `${T}-copy1`
   const copy2 = `${T}-copy2`
   let copy1Created = false
@@ -312,7 +231,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
   if (!tCreated) {
     fact10 = unreadable(`${T} was never created`)
   } else {
-    // Fact 9 removed the tag; put it back so cp has something to copy.
     await send(`tag ${T} ${tagName}`)
     const cp1 = await send(`cp ${T} ${copy1}`)
     if (cp1.code === 0) copy1Created = true
@@ -332,7 +250,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     }
   }
 
-  // ── fact 12: refused verbs — read before the cleanup ──────────────────────
   const intHelp = await send('help integrations')
   const verbs = new Set([...String(intHelp.stdout ?? '').matchAll(/^\s+([a-z-]+)\s+-\s/gm)].map((m) => m[1]))
   const fact12 = intHelp.code !== 0
@@ -341,7 +258,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
       ? holds(`help integrations lists attach and detach and no policy`)
       : drift(`help integrations lists ${JSON.stringify([...verbs])}`)
 
-  // ── cleanup: one `rm` per VM the run created ──────────────────────────────
   const toRemove = []
   if (copy1Created) toRemove.push(copy1)
   if (copy2Created) toRemove.push(copy2)
@@ -353,7 +269,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     if (rm.code !== 0) leftBehind.push(name)
   }
 
-  // ── fact 11: rm frees the name — read last, after the cleanup ────────────
   let fact11
   if (!tCreated) {
     fact11 = unreadable(`${T} was never created`)
@@ -366,14 +281,12 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
     } else if (again.code !== 0) {
       fact11 = drift(`new --name ${T} … failed (exit ${again.code}) — the name is reserved`)
     } else {
-      // Succeeded: it made a VM, so it is counted in the cleanup.
       const rmAgain = await send(`rm ${T}`)
       if (rmAgain.code !== 0) leftBehind.push(T)
       fact11 = holds(`new --name ${T} … exited 0 — the name was not reserved`)
     }
   }
 
-  // ── the FACT lines, in FACTS order, and the tally ─────────────────────────
   const byId = {
     'help-all-digest': fact1,
     'ls-json-shape': fact2,
@@ -415,12 +328,6 @@ export const probeExeFacts = async ({ exec, log = console.log, now = new Date() 
 
   return { exit, stamp, results }
 }
-
-// ── The hand run ────────────────────────────────────────────────────────────
-//
-// Guarded exactly as `fleet/janitor.mjs` guards
-// its own: nothing below runs on an import, so an import issues no ssh and
-// starts no process.
 
 const main = async () => {
   const { exit } = await probeExeFacts({ exec: defaultExec })

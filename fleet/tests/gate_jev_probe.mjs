@@ -1,17 +1,4 @@
 #!/usr/bin/env node
-// The gate Jev probe: `skills/ultrawrite/stories/gate_jev.ts` records what Jev would have said at
-// the proof gate beside the agent reader's verdict, and reads how often the two agreed. It runs
-// the script against a local stand-in Jev (a node:http server on 127.0.0.1) that records each
-// request and answers every `fact:` question 0.9, every `caught:` question 0.1 and
-// `contradiction` 0.1. The case is argv[2]:
-//   record     one diet (task 3, hash h1, clauses M1 and M2) read with `--record --agent pass
-//              --reason r1`: one request asking exactly fact/caught per clause plus contradiction,
-//              whose state carries the two clauses; stdout is one JSON line with verdict fail; the
-//              call writes the task's hash h1, verdict pass and reason r1 over the seeded ones, and
-//              the task gains one gate round {h1, pass, fail} with its clause scores;
-//   agreement  `--agreement` over two records (rounds pass/pass, fail/pass and fail/fail) prints
-//              exactly the counts.
-// Prints `GATE JEV <case> OK` and exits 0, or names what differed and exits 1.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -31,7 +18,6 @@ let server
 const fail = (why) => { console.log(`GATE JEV ${CASE} FAILED: ${why}`); server?.close(); process.exit(1) }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-// the stand-in Jev
 const requests = []
 const byPrefix = (k) => (k.startsWith('fact:') ? 0.9 : k.startsWith('caught:') ? 0.1 : k === 'contradiction' ? 0.1 : 0.5)
 server = http.createServer((req, res) => {

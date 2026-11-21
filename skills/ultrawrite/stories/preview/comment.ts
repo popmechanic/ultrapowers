@@ -1,9 +1,3 @@
-// Comment mode: a floating bar outside #app with "About this view" and
-// "Comment". While the mode is on (and no story plays), hovering a named
-// element inside #app outlines it and labels it with its target; a click on it
-// or a dragged box over the page opens a note form instead of running the
-// page's own action. A pinned note posts to /feedback and, once the server has
-// kept it, leaves a numbered pin; a refused post keeps the form open with why.
 import {named, nameOf, roleOf, targetOf} from './names';
 
 type Box = {left: number; top: number; right: number; bottom: number};
@@ -104,7 +98,7 @@ export function mountComment(): void {
         pin.style.top = `${note.at.top + scrollY}px`;
         document.body.append(pin);
       }
-      if (form === f) closeForm(); // another form opened while the post was out stays
+      if (form === f) closeForm();
     });
     form = f;
     document.body.append(f);

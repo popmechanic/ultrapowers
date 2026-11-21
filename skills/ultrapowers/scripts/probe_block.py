@@ -1,27 +1,4 @@
 #!/usr/bin/env python3
-"""A state probe, as a stories-v1 plan carries it: one fenced ```probe block
-holding one JSON object. The grammar is closed, and code decides every check.
-
-    {"clause": "S1.2", "layer": "store" | "ui" | "saved",
-     "as"?: email | null,                               who is signed in for `do`
-     "given": [{"tool": name, "args": {...}, "as"?: email | null}, ...],
-     "do":    [{"tool": name, "args": {...}}]            (store, saved)
-            | [{"click" | "type" | "key": {...}}, ...]   (ui),
-     "expect": [check, ...],
-     "see": [{"role": r, "name": n, "count"?: k}, ...],
-     "judge": null | "a sentence Jev reads over the before/after state",
-     "holds_before": bool}
-
-A check is exactly one of:
-    {"table": t, "row": r, "cell": c, "eq": v}         the cell holds v
-    {"table": t, "row": r, "cell": c, "absent": true}  the cell is not set
-    {"table": t, "row": r, "absent": true}             the row is gone
-    {"value": k, "eq": v} | {"value": k, "absent": true}
-    {"unchanged": true}                                nothing changed
-`as` sets who is signed in on the page (the page hook's `who`) before that
-call, and it stays so until the next `as`; absent, the page's own sign-in
-stands (none, on the checker). Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
-(factory/stack/tinyapp/probe.ts); this module reads the shape only."""
 import json
 
 LAYERS = ("store", "ui", "saved")
@@ -30,7 +7,6 @@ PROBE_KEYS = {"clause", "layer", "as", "given", "do", "expect", "see", "judge", 
 
 
 def is_who(x):
-    """A signed-in email, or None for nobody signed in."""
     return x is None or (isinstance(x, str) and x != "")
 
 
@@ -70,7 +46,6 @@ def _is_see(s):
 
 
 def validate_probe(p):
-    """Every way `p` leaves the grammar, one plain sentence each; [] when valid."""
     if not isinstance(p, dict):
         return ["probe: must be a JSON object"]
     where = "probe %s" % p.get("clause", "?")
@@ -109,7 +84,6 @@ def validate_probe(p):
 
 
 def parse_probe_text(text):
-    """`(probe, errors)` for one fence's body."""
     try:
         p = json.loads(text)
     except ValueError as exc:
@@ -118,7 +92,6 @@ def parse_probe_text(text):
 
 
 def tools_of(p):
-    """Every tool name the probe calls, in `given` and in a tool-form `do`."""
     names = {g["tool"] for g in p.get("given", []) if is_tool_call(g)}
     names |= {d["tool"] for d in p.get("do", []) if is_tool_call(d)}
     return names

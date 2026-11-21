@@ -1,21 +1,3 @@
-/**
- * fleet/tests/test_lobby_evidence_refs.mjs — the exam for "The evidence setting
- * and ref names, in one place" (#1395).
- *
- * Legs, each naming the Machine clause it comes from:
- *
- *   (d) [M4] `highestRunInEvidence` over a real local bare evidence repository
- *       holding `refs/tags/o-r/run-4`, `refs/heads/live/o-r/run-6` and
- *       `refs/tags/o-x/run-9` answers 6 for `o/r`; over one holding no `o-r`
- *       ref it answers 0; a non-zero `ls-remote` throws a `Refusal` naming
- *       the command.
- *   (e) [M5] `readEvidenceSetting({ path })` answers `ops/evidence` for a file
- *       carrying the key, and null for an absent file and a file without it.
- *
- * The seam rewrites the `https://github.com/…` URL to the local bare path, so
- * the listing is real git and no socket is opened.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -32,7 +14,6 @@ const gitIn = (cwd, argv) => {
   return res.stdout.trim()
 }
 
-/** A bare evidence repository holding one commit under each of `refs`. */
 function evidenceRepo (name, refs) {
   const bare = path.join(root, `${name}.git`)
   gitIn(root, ['init', '--bare', '--initial-branch=main', bare])
@@ -47,7 +28,6 @@ function evidenceRepo (name, refs) {
   return bare
 }
 
-/** The seam: every `https://github.com/ops/evidence.git` becomes `bare`. */
 const localExec = (bare) => makeExec({
   rules: [{
     when: (cmd) => cmd === 'git',
@@ -62,7 +42,6 @@ const localExec = (bare) => makeExec({
 })
 
 try {
-  // (d) [M4]
   const full = evidenceRepo('full', ['refs/tags/o-r/run-4', 'refs/heads/live/o-r/run-6', 'refs/tags/o-x/run-9'])
   const fullExec = localExec(full)
   assert.equal(await highestRunInEvidence(fullExec, root, 'ops/evidence', 'o/r'), 6, '(d) [M4] highest o/r run is 6')
@@ -82,7 +61,6 @@ try {
   assert.ok(error instanceof Refusal, '(d) [M4] a failed listing is a Refusal')
   assert.match(error.message, /git ls-remote https:\/\/github\.com\/ops\/evidence\.git/, '(d) [M4] the refusal names the command')
 
-  // (e) [M5]
   const withKey = path.join(root, 'with.json')
   fs.writeFileSync(withKey, JSON.stringify({ evidence: 'ops/evidence' }))
   const withoutKey = path.join(root, 'without.json')

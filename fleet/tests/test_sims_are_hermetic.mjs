@@ -1,78 +1,3 @@
-/**
- * fleet/tests/test_sims_are_hermetic.mjs — the probe.
- *
- * The engine's pre-flight is this directory: the sims the bridge runs before
- * any run flies. What a sim sees is what it was handed; nothing of the box it
- * happens to be running on reaches it. This file is the one place that fails
- * the moment any of that stops being true.
- *
- * The exam is written against the task's Machine clauses, leg by leg. Every
- * assertion names the leg it belongs to and the clause it comes from, so a
- * reader can map this file back to the contract:
- *
- *   M1  `fleet/tests/_helpers.mjs` exports `simEnv({ bin, home, env } = {})`.
- *       The object it returns carries no key of the parent's environment whose
- *       name begins `ULTRA_`, `TINYAPP_`, `FLEET_`, `ANTHROPIC_`, `CLAUDE_` or
- *       `GH_`; the keys it sets itself are `PATH`, `HOME`, `TMPDIR` and
- *       `FLEET_HOME`, the
- *       last three under `home`, which defaults to a fresh `mkdtemp` under
- *       `os.tmpdir()`; the caller's `env` entries are laid over all of that
- *       last, so a caller-supplied key of any name wins; and its `PATH` is
- *       `bin` (when given) followed by the directories that hold `node`,
- *       `python3`, `git`, `bash` and `sh` for the parent, and nothing else of
- *       the parent's `PATH`.
- *   M2  every process spawn in `fleet/tests/test_*.mjs` and
- *       `fleet/tests/_*.mjs` passes an `env` derived from `simEnv`, and the
- *       probe names every spawn that does not.
- *   M3  no such file reads, stats or sources a string-literal absolute path
- *       outside the checkout and `os.tmpdir()`, and the probe names every one.
- *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`. A mutated
- *       copy of a sim's own text under the temp root is not a sibling run.
- *   M7  the probe, pointed at `fleet/tests/fixtures/hermetic/leaky_sim.mjs`,
- *       names its inheriting spawn, its `/etc/fleet/planted.env` read and its
- *       sibling-sim spawn.
- *
- * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (g) M7.
- *
- * The sweep (legs b, c, d) is a static read of source, never an execution: it
- * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
- * file, and never `probe_*.mjs` (those are
- * live probes, `fleet/tests/PROBES.md`, outside every sweep here) and never
- * `fixtures/`. The bridge (`tests/test_fleet_suite.py`) guards itself by
- * construction: its `sim_env()` builds each sim's environment from nothing.
- *
- * The three rules, spelled once so an implementation can be read against them:
- *
- *   inherit  a call to one of `spawn`, `spawnSync`, `exec`, `execSync`,
- *            `execFile`, `execFileSync`. Its options object is the argument
- *            carrying `env:`; the accepted values are a literal `simEnv(`
- *            call, a spread `{ ...simEnv(`, or an identifier bound — in the
- *            same file, or in the sibling `_*.mjs` the file imports it from —
- *            by `const X =`/`let X =`/a function whose body returns one of
- *            those. A value mentioning `process.env` is refused outright.
- *            Anything else, including no `env:` at all, is an offender named
- *            by file and line. A helper is accepted by its body and not by its
- *            name: `bootEnv` passes because its body in
- *            `_sandbox_boot_helpers.mjs` spreads `simEnv(`.
- *   absolute a call to an fs read/stat/open name whose first argument is a
- *            string literal starting `/` and not under `os.tmpdir()`. Only
- *            reads: the absolute strings a sim asserts a script *emits* or a
- *            hook *denies* are fixtures, not paths it opens.
- *   sibling  a spawn whose call text, or the initializer of any identifier
- *            that call names (`const X =`, `for (const X of …)`, resolved one
- *            level in the same file), carries a string literal matching
- *            `test_[a-z0-9_]+\.mjs` or the word `pytest`. One level and no
- *            further is what keeps `test_run_engine_proof_runs.mjs`'s
- *            `spawnSync(process.execPath, [copy])` — where
- *            `const copy = copyWithProbe(simName, probe)` resolves to no
- *            literal — out of it: a mutated copy of a sim's own text under the
- *            temp root is a pin proven to be a pin, not a sibling run.
- *
- * Comments are blanked before any rule reads a file, so a spawn quoted in
- * prose is prose. String contents are blanked for the structural pass and kept
- * for the literal pass, so both questions are asked of the same offsets.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -81,15 +6,10 @@ import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const TESTS_DIR = HERE
-/** This file, the one sim the sweep leaves out — it quotes offenders on purpose. */
 const SELF = 'test_sims_are_hermetic.mjs'
-/** The deliverable leg (a) exercises, at the path the Produces line names. */
 const HELPERS = path.join(TESTS_DIR, '_helpers.mjs')
-/** The fixture leg (g) sweeps, at the path the Files list names. */
 const FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'leaky_sim.mjs')
 
-/** The deliverable, imported dynamically so a tree without it still reports
- *  every other leg rather than dying at load. */
 let helpers = null
 let helpersError = null
 try {
@@ -98,23 +18,11 @@ try {
   helpersError = error
 }
 
-// ── the source scanner ───────────────────────────────────────────────────────
-
 const REGEX_KEYWORDS = new Set([
   'return', 'typeof', 'case', 'in', 'of', 'new', 'delete', 'void', 'instanceof',
   'do', 'else', 'yield', 'await',
 ])
 
-/**
- * One pass over a source text. Returns three views at identical offsets:
- *   code      the text with comments blanked (string literals intact)
- *   skeleton  the same, with string and template contents blanked too, so
- *             brackets, commas and identifiers can be counted without a
- *             quoted one being mistaken for structure
- *   strings   the span of every string and template literal
- * Blanking preserves length and newlines, so a line number taken from any
- * view is a line number in the file.
- */
 const scan = (text) => {
   const code = Array.from(text)
   const skel = Array.from(text)
@@ -206,8 +114,6 @@ const scan = (text) => {
           if (e === '/') { j++; break }
           j++
         }
-        // The body is blanked in the skeleton only: a `//` inside a character
-        // class is not a comment, and a quote inside one opens no string.
         blank(i + 1, Math.max(i + 1, j - 1), false)
         i = j
         continue
@@ -230,7 +136,6 @@ const matchParen = (skeleton, open) => {
   return -1
 }
 
-/** The top-level argument ranges between `open` and `close`. */
 const splitArgs = (skeleton, open, close) => {
   const args = []
   let depth = 0
@@ -255,8 +160,6 @@ const RESERVED = new Set([
   'Map', 'RegExp', 'Error', 'globalThis',
 ])
 
-/** Every identifier a skeleton slice names, skipping property names and the
- *  keys of an object literal. */
 const identsIn = (skeletonSlice) => {
   const out = []
   const re = /[A-Za-z_$][A-Za-z0-9_$]*/g
@@ -275,8 +178,6 @@ const identsIn = (skeletonSlice) => {
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/** Where an expression that starts at `from` ends: back at depth zero, at a
- *  `;` or the end of the line. */
 const endOfExpression = (skeleton, from) => {
   let i = from
   while (i < skeleton.length && /\s/.test(skeleton[i])) i++
@@ -290,11 +191,6 @@ const endOfExpression = (skeleton, from) => {
   return skeleton.length
 }
 
-/**
- * The initializer bound to `ident` in `src`, as a span — `const X =`,
- * `let X =`, `var X =`, `for (const … X … of EXPR)`, or a function
- * declaration's body. The first binding found; no recursion of its own.
- */
 const bindingOf = (src, ident) => {
   const id = escapeRe(ident)
   const decl = new RegExp(`(^|[\\s;{(\\[,])(?:export\\s+)?(?:const|let|var)\\s+${id}\\s*=`)
@@ -335,21 +231,12 @@ const sliceOf = (src, span) => ({
   skeleton: src.skeleton.slice(span.start, span.end),
 })
 
-// ── the three rules ──────────────────────────────────────────────────────────
-
 const SPAWN_NAMES = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync']
 
-/** The fs names that read, stat, open or source a path. */
 const READ_NAMES = ['readFileSync', 'readFile', 'existsSync', 'statSync', 'lstatSync',
   'realpathSync', 'readdirSync', 'readdir', 'accessSync', 'access', 'openSync', 'open',
   'createReadStream', 'copyFileSync', 'stat']
 
-/**
- * Every call of one of `names` in a source. `dotted` says whether a name
- * reached through a member expression counts: an fs read is written
- * `fs.readFileSync(`, while a spawn is imported by name and a `.exec(` on some
- * other object is not a process.
- */
 const callSitesOf = (src, names, { dotted = false } = {}) => {
   const out = []
   const before = dotted ? '[^\\w$]' : '[^\\w$.]'
@@ -372,9 +259,6 @@ const callSitesOf = (src, names, { dotted = false } = {}) => {
   return out
 }
 
-/** The `env:` value of a call's options object, as a span — or null when no
- *  argument carries one. A bare identifier argument is resolved one level so
- *  `spawnSync(cmd, argv, opts)` is read through `opts`. */
 const envValueOf = (src, call) => {
   const findIn = (span) => {
     const skel = src.skeleton.slice(span.start, span.end)
@@ -413,14 +297,9 @@ const envValueOf = (src, call) => {
   return null
 }
 
-// The `\.\.\.` alternative is the spread: `{ ...simEnv() }` and
-// `{ ...process.env }` both put a dot in front of the name that matters.
 const PROCESS_ENV_RE = /(?:^|\.\.\.|[^\w$.])process\s*\.\s*env\b/
 const SIM_ENV_RE = /(?:^|\.\.\.|[^\w$.])simEnv\s*\(/
 
-/** Is this `env:` value derived from `simEnv`? A value naming `process.env` is
- *  refused outright; otherwise a literal `simEnv(` call or a spread of one is
- *  accepted, and any other identifier is resolved by its body. */
 const envIsSimEnv = (view, src, resolveImport, depth = 0, seen = new Set()) => {
   if (PROCESS_ENV_RE.test(view.code)) return false
   if (SIM_ENV_RE.test(view.code)) return true
@@ -447,10 +326,6 @@ const SIBLING_LITERAL_RE = /test_[a-z0-9_]+\.mjs|(^|[^\w])pytest([^\w]|$)/
 
 const TMP = os.tmpdir()
 
-/**
- * The three rules over one source text. `resolveImport(ident)` hands back the
- * scanned source of the sibling `_*.mjs` a name is imported from, or null.
- */
 const sweep = (text, { file = '<source>', resolveImport = null } = {}) => {
   const src = scan(text)
   const inherit = []
@@ -494,16 +369,8 @@ const sweep = (text, { file = '<source>', resolveImport = null } = {}) => {
 
 const named = (offenders) => offenders.map((o) => `${o.where} (${o.why}) ${o.text}`)
 
-// ── the tree ─────────────────────────────────────────────────────────────────
-
-/** A sim or a helper by name: `test_*.mjs`, `_*.mjs`. */
 const isSwept = (n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_'))
 
-/**
- * The names the sweep reads under `dir`: the flat `test_*.mjs` and `_*.mjs` —
- * the same glob the bridge collects (`tests/test_fleet_suite.py`'s
- * `collect_sims`), plus the helpers beside them.
- */
 const sweptNames = (dir, self = SELF) =>
   fs.readdirSync(dir).filter((n) => isSwept(n) && n !== self).sort()
 
@@ -518,8 +385,6 @@ const sourceOf = (name) => {
   return cache.get(name)
 }
 
-/** ident -> the sibling `_*.mjs` source it is imported from, resolved against
- *  the importing file's own directory (`./_x.mjs` beside a flat sim). */
 const importerFor = (src, file = '') => {
   const map = new Map()
   const base = path.posix.dirname(file)
@@ -542,12 +407,8 @@ const TREE = SWEPT.map((name) => {
 })
 const treeOffenders = (kind) => TREE.flatMap((r) => r[kind])
 
-// ── the harness ──────────────────────────────────────────────────────────────
-
 const tests = []
 const test = (name, fn) => { tests.push([name, fn]) }
-
-// ── (a) the rig itself  [M1] ─────────────────────────────────────────────────
 
 const PLANT = {
   ULTRA_PLANTED: '1',
@@ -560,8 +421,6 @@ const PLANT = {
 const DROPPED = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
 const TOOLS = ['node', 'python3', 'git', 'bash', 'sh']
 
-/** Runs `fn` with the six planted keys (one per dropped prefix) on this
- *  process, and restores the parent's own values after. */
 const withPlant = (extra, fn) => {
   const before = new Map()
   const keys = { ...PLANT, ...extra }
@@ -596,8 +455,6 @@ test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
         `(a) [M1] ${key} is planted on the parent and must not be in what simEnv() hands a child — ` +
         `got ${JSON.stringify(e[key])}`)
     }
-    // The clause is about keys OF THE PARENT: `FLEET_HOME` begins with a swept
-    // prefix and is still the rig's own, minted under the case's own home.
     const own = new Set(['PATH', 'HOME', 'TMPDIR', 'FLEET_HOME'])
     const leaked = Object.keys(e).filter((k) => DROPPED.some((p) => k.startsWith(p)) && !own.has(k))
     assert.deepEqual(leaked, [],
@@ -610,9 +467,6 @@ test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
 
 test('a planted FLEET_HOME is the parent\'s, and never the child\'s  [M1 / leg (a)]', () => {
   const simEnv = simEnvOrThrow()
-  // TMPDIR is left alone on purpose: `os.tmpdir()` reads it, and M1 sends the
-  // default home there. The planted key here is the FLEET_ one that names a
-  // home — the fact of the box #833 was about.
   withPlant({ FLEET_HOME: '/planted/home', HOME: '/planted/home' }, () => {
     const e = simEnv()
     assert.notEqual(e.FLEET_HOME, '/planted/home',
@@ -699,15 +553,7 @@ test('home, when given, is where the three keys point  [M1 / leg (a)]', () => {
   })
 })
 
-// ── (b) every spawn is handed its environment  [M2] ──────────────────────────
-
 test('the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]', () => {
-  // The reach, pinned by equality against the files the sweep is defined over
-  // and read from the directory here — not by a floor on how many there are. A
-  // floor is a fact about how large the pre-flight happened to be on the day it
-  // was written, and it says nothing when a retired sim leaves the tree; the
-  // set says the one thing that matters, that every file the rules are defined
-  // over was read.
   const definedOver = fs.readdirSync(TESTS_DIR).filter((n) => isSwept(n) && n !== SELF)
   assert.deepEqual(SWEPT, [...definedOver].sort(),
     `(b) [M2] the sweep reads every fleet/tests/test_*.mjs and _*.mjs but this file — ` +
@@ -762,8 +608,6 @@ test("a sibling helper's bootEnv is accepted by its body, across the import  [M2
     '(b) [M2] and the same name is named when that body spreads the parent instead')
 })
 
-// ── (c) no sim opens a path on the box  [M3] ─────────────────────────────────
-
 test('the sweep names zero literal absolute reads in fleet/tests/  [M3 / leg (c)]', () => {
   const offenders = treeOffenders('absolute')
   assert.deepEqual(named(offenders), [],
@@ -779,8 +623,6 @@ test('the same sweep names the box\'s render.env and leaves a temp path alone  [
   assert.deepEqual(named(green.absolute), [],
     '(c) [M3] and none for a read under os.tmpdir()')
 })
-
-// ── (d) no sim runs another  [M4] ────────────────────────────────────────────
 
 test('the sweep names zero sibling-sim spawns in fleet/tests/  [M4 / leg (d)]', () => {
   const offenders = treeOffenders('siblings')
@@ -808,8 +650,6 @@ test('the same sweep names each shape of a sim running another  [M4 / leg (d)]',
     'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
 })
 
-// ── (g) the fixture, one offender per rule  [M7] ─────────────────────────────
-
 test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]', () => {
   assert.ok(fs.existsSync(FIXTURE),
     '(g) [M7] fleet/tests/fixtures/hermetic/leaky_sim.mjs is the fixture that proves the sweep can ' +
@@ -832,8 +672,6 @@ test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (
   assert.equal(SWEPT.includes(path.basename(FIXTURE)), false,
     '(g) [M7] nor swept as a sim of the tree')
 })
-
-// ── the sentinel ─────────────────────────────────────────────────────────────
 
 let failures = 0
 for (const [name, fn] of tests) {

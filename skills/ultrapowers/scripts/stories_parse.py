@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""Parse a stories-v1 plan to the fields the engine and the laptop's check
-read. The Flock's field names (tasks, dag_edges, width, checks,
-bootstrapCmd, publish) are kept, and each task carries its `wave`. proofRuns stays empty: each task's facts are
-its probes, which factory/flock/plan.mjs turns into check.ts calls itself."""
 import re
 
 from plan_parse import task_sections
@@ -13,7 +9,6 @@ class StoriesRefusal(Exception):
     pass
 
 
-# preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
 KINDS = ("behaviour", "preserve")
 STACKS = ("tinyapp",)
 HEADER_RE = re.compile(r'^\*\*([A-Za-z-]+):\*\*\s*(.*)$')
@@ -112,7 +107,6 @@ def parse_stories_text(text):
             stories.append({"id": bm.group(1), "sentence": bm.group(2)})
         elif bm and section == "links":
             links.append({"id": bm.group(1), "sentence": bm.group(2)})
-        # numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
         elif bm and section == "numbers":
             parts = [x.strip() for x in bm.group(2).split(" | ")]
             fields = dict(x.split(": ", 1) for x in parts[1:] if ": " in x)
@@ -156,8 +150,6 @@ def parse_stories_text(text):
         for t in tasks:
             if t["id"] in layer:
                 t["wave"] = n + 1
-    # A TinyApp plan that publishes carries the same three header lines a claims plan does;
-    # the boot deploys after the self-merge and verifies with ULTRA_PUBLISH_URL set.
     unwrap = lambda v: v[1:-1] if v and len(v) > 1 and v[0] == v[-1] == "`" else v
     publish = None
     if head.get("publish") or head.get("verify"):

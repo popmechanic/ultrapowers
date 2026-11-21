@@ -1,15 +1,4 @@
 #!/usr/bin/env bun
-// What Jev would have said at the proof gate. It reads the gate reader's diet (the task's Claim
-// with its numbered Machine clauses, and the Proof slot) and asks, in one request, whether each
-// clause states a computable fact, whether a probe would catch it false, and whether a leg
-// contradicts the clause it cites, and, when the diet carries `base`, whether a file there already
-// pins the opposite of a clause. The verdict is computed here, from policy.json. Jev judges
-// beside the agent reader; it decides nothing.
-//
-//   bun skills/ultrawrite/stories/gate_jev.ts <diet.json> [--record <gate-verdicts.json> --agent pass|fail --reason <sentence>]
-//   bun skills/ultrawrite/stories/gate_jev.ts --agreement <dir>
-//   bun skills/ultrawrite/stories/gate_jev.ts --readings <dir>
-//   bun skills/ultrawrite/stories/gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"
 import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
@@ -18,11 +7,6 @@ import {at, defaultAsk, loadQuestions, noul} from './jev';
 const Q = loadQuestions().authoring_gate.questions as Record<string, any>;
 const POLICY_FILE = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8'));
 const POLICY = POLICY_FILE.flag_at;
-// Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
-// entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
-// reading of 2026-09-29; each cell reverts alone.
-// An unknown `caught` key falls back to `caught` with one stderr line naming both (#1528, #1532),
-// and the record names the key asked.
 const ASKED = String(POLICY_FILE.gate_reading?.caught ?? 'caught');
 if (!Object.hasOwn(Q, ASKED)) console.error(`gate_jev: policy.json gate_reading.caught names no question "${ASKED}"; asking "caught"`);
 const READING = {caught: Object.hasOwn(Q, ASKED) ? ASKED : 'caught',
@@ -61,8 +45,6 @@ export function gateState(d: Diet) {
   return {claim, clauses, probes, legs, base: baseFor(d.base)};
 }
 
-// A base with a `files` array loses the entries marked `own` when own_files is "dropped"; either
-// way no entry keeps the `own` key. Any other base reaches Jev unchanged.
 function baseFor(base: Record<string, unknown>): Record<string, unknown> {
   if (!Array.isArray(base.files)) return base;
   const files = (base.files as unknown[])
@@ -98,8 +80,6 @@ async function read(d: Diet) {
   return {task: d.task, hash: d.hash, verdict, clauses, contradiction, pinned};
 }
 
-// The one writer of the gate verdict: set the task's {hash, verdict, reason} (what plan_check.py
-// reads) and append the round with Jev's reading beside it; every other key stays as it was.
 function record(file: string, task: string, reason: string, round: Round) {
   const rec = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
   rec.tasks ??= {};
@@ -111,8 +91,6 @@ function record(file: string, task: string, reason: string, round: Round) {
 
 const disagrees = (r: Round) => r.agent != null && r.jev != null && r.agent !== r.jev;
 
-// Mark who the run proved right on one disagreeing round (1-based over the task's gate_rounds).
-// Anything else — unknown task, out-of-range round, a round that agrees — writes nothing.
 function label(file: string, task: string, n: number, right: 'agent' | 'jev', because: string): boolean {
   if (!existsSync(file)) return false;
   const rec = JSON.parse(readFileSync(file, 'utf8'));
@@ -150,8 +128,6 @@ function agreement(dir: string): string[] {
     `gate-jev outcomes: disagreements ${disagreements}, agent right ${agentRight}, jev right ${jevRight}, unlabelled ${unlabelled}`];
 }
 
-// The census per reading: a reworded question is a different question, so each reading
-// (caught question / own files) is counted apart; a round recorded without one is caught/read.
 export function readings(dir: string): string[] {
   const by = new Map<string, {plans: number; rounds: number; agree: number; disagreements: number; agentRight: number;
     jevRight: number; unlabelled: number}>();

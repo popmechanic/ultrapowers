@@ -1,32 +1,4 @@
 #!/usr/bin/env python3
-"""Read a release's runs into one table: what authoring cost beside the run.
-
-Every run leaves a gate record, and since this plan that record carries an
-`authoring` object — the minutes, the routing branch the risk
-override chose, the lane, and the questions with their recommended and picked
-options and how many explain rounds each asked for. One run's record answers
-one run; a release is a handful of them, and
-the question an operator asks at a release ("what did authoring cost, how often
-did the override send a plan to the fleet, how often was Recommended picked")
-is a question about the pile. This census is that pile read into one table.
-
-    authoring_census.py --from <dir>
-    authoring_census.py --from <dir> --register
-    authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
-        [--evidence-repo <owner>/<repo>] [--config <path>]
-
-`<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
-`run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
-`--register` prints one line per option of every question instead of the table
-(#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
-`runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
-`<owner>-<repo>/run-<N>`, and then prints the table over it. The evidence
-repository is `--evidence-repo`, else the `evidence` key of `--config`
-(default `~/.ultrapowers/fleet.json`); with neither the fetch exits 2 before
-any read (#1395). `--gh` swaps that binary — the test seam,
-and the hook for a caller with its own wrapper; nothing here reaches the
-network by any other route, and only under `--fetch`.
-"""
 from __future__ import annotations
 
 import argparse
@@ -39,20 +11,14 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# scripts -> ultrawrite -> skills: the question counts are `plan_check.py`'s,
-# so a run's census row and its `AUTHORING fact:` line cannot disagree.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 from plan_check import explain_rounds, picks, recommended_picked  # noqa: E402
 
-# The stem of a run directory: `run-131` is run 131. The census orders by that
-# number, not by the name — `run-9` sorts ahead of `run-131`.
 RUN_DIR_RE = re.compile(r"^run-(\d+)$")
 
 RECORD_NAME = "gate-verdicts.json"
 STATUS_NAME = "status.json"
 
-#: The table's columns, in order. The first line of `--from` output is exactly
-#: these names, tab-separated.
 COLUMNS = (
     "run",
     "authoring_min",
@@ -66,16 +32,10 @@ COLUMNS = (
     "explain_rounds",
 )
 
-#: What a column prints when the run's files do not carry it.
 MISSING = "-"
 
 
 def _load_json(path):
-    """The JSON at `path`, or None when it is absent or unreadable.
-
-    A malformed record is read as a record that is not there: the census is a
-    reading tool over a release's leavings, and one run's bad file is not this
-    script's to raise over."""
     try:
         text = path.read_text(encoding="utf-8")
     except OSError:
@@ -87,16 +47,10 @@ def _load_json(path):
 
 
 def _obj(value):
-    """`value` when it is a JSON object, else an empty one."""
     return value if isinstance(value, dict) else {}
 
 
 def _run_minutes(status):
-    """Whole minutes, rounded down, from `startedAt` to `updatedAt`.
-
-    The contract's shape (`fleet/CONTRACT.md`): both are ISO-8601 with a `Z`
-    suffix, which `datetime.fromisoformat` reads once the `Z` is spelled
-    `+00:00`. None when either stamp is absent or unparseable."""
     started, updated = status.get("startedAt"), status.get("updatedAt")
     if not isinstance(started, str) or not isinstance(updated, str):
         return None
@@ -109,7 +63,6 @@ def _run_minutes(status):
 
 
 def _questions(authoring):
-    """The record's questions as a list of objects."""
     questions = authoring.get("questions")
     if not isinstance(questions, list):
         return []
@@ -117,13 +70,6 @@ def _questions(authoring):
 
 
 def census_rows(root):
-    """One row per `run-<N>` directory under `root` that holds a record.
-
-    Each row carries the column values, with None where the run's files do not
-    carry one, plus the raw question list the register prints from. A record
-    older than this plan has no `authoring` key: its row is None in every
-    authoring column, and only `dispatched`/`rejected` — which the tally has
-    always carried — read."""
     root = Path(root)
     found = []
     try:
@@ -170,9 +116,6 @@ def census_rows(root):
 
 
 def _cell(value):
-    """A column's text: `-` for what the run's files do not carry.
-
-    A tuple prints slash-separated — `<picked>/<offered>` for a ratio."""
     if value is None:
         return MISSING
     if isinstance(value, tuple):
@@ -181,27 +124,17 @@ def _cell(value):
 
 
 def _sum(rows, key):
-    """The sum of `key` over the rows that carry it."""
     return sum(row[key] for row in rows
                if isinstance(row.get(key), int) and not isinstance(row[key], bool))
 
 
 def _window(rows):
-    """The runs the census was read over: `<lowest>..<highest>`, `-` when no
-    row was found. `census_rows` sorts by run number, so the ends are the
-    first and last row."""
     if not rows:
         return MISSING
     return "%d..%d" % (rows[0]["run"], rows[-1]["run"])
 
 
 def _totals_line(rows):
-    """The table's last line: the release read as one number per question,
-    over the window of runs it read (`runs=`, after `plans=`).
-
-    `risk_override` is over the rows that carry a routing record at all — a
-    pre-plan record has no branch and is no part of the denominator — and the
-    two `recommended_picked` sums are over every row. `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
     routed = [row for row in rows if row["routing"] is not None]
     risk = [row for row in routed if row["routing"] == "risk"]
     picked = offered = 0
@@ -220,7 +153,6 @@ def _totals_line(rows):
 
 
 def render_table(rows):
-    """The census as tab-separated text: header, one line per run, totals."""
     lines = ["\t".join(COLUMNS)]
     for row in rows:
         lines.append("\t".join(_cell(row[name]) for name in COLUMNS))
@@ -229,13 +161,6 @@ def render_table(rows):
 
 
 def render_register(rows):
-    """One line per option of every question, in row then question then option
-    order (#735): `run-<N>  q<i>  <question>  <option>  <rec|->  <picked|->`.
-
-    The register is the fixed record of what was offered, not a summary of what
-    was chosen — every option gets its line whether or not anyone looked at it,
-    and a question with no recommended option prints `-` in that column on all
-    of them."""
     lines = []
     for row in rows:
         for index, question in enumerate(row["questions_detail"], start=1):
@@ -258,33 +183,20 @@ def render_register(rows):
     return "\n".join(lines)
 
 
-# --- --fetch: the run folder in the evidence repository --------------------
-
 def _slug(target):
-    """`<owner>/<repo>` as the one path segment a run folder and tag use."""
     return target.replace("/", "-")
 
 
 def run_tag(target, number):
-    """The tag a run's folder is read at: `<owner>-<repo>/run-<N>`."""
     return "%s/run-%d" % (_slug(target), int(number))
 
 
 def evidence_contents_path(evidence, target, number, name):
-    """The `gh api` path for one file of run `number` of `target`: the file
-    `runs/<owner>-<repo>/<N>/<name>` of the evidence repository, at the run's
-    tag `<owner>-<repo>/run-<N>`."""
     return "repos/%s/contents/runs/%s/%d/%s?ref=%s" % (
         evidence, _slug(target), int(number), name, run_tag(target, number))
 
 
 def _fetch_file(gh, path):
-    """The bytes of one contents path, or None when `gh` exits non-zero.
-
-    `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
-    newlines, so the decode is over the whole string. The call names exactly
-    two arguments — `api` and the contents path — so a caller's wrapper sees
-    the same shape the real binary does."""
     proc = subprocess.run(
         gh + ["api", path],
         capture_output=True, text=True)
@@ -304,20 +216,7 @@ def _fetch_file(gh, path):
 
 
 def fetch_runs(target, first, last, into, gh="gh", *, evidence):
-    """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
-    for each N from `first` to `last` inclusive; return the runs written.
-
-    Both live in the run's folder `runs/<owner>-<repo>/<N>/` of the
-    operator's evidence repository `evidence`, at the tag
-    `<owner>-<repo>/run-<N>`; the record is read first. A run
-    whose tag has no record is skipped whole — one line on stderr, nothing
-    written for it, no directory left behind — because a run with no record is
-    no row. A status that does not answer leaves that file unwritten and the
-    row's `run_min` a `-`: the authoring numbers are still worth reading
-    without it."""
     into = Path(into)
-    # The destination exists whether or not any run answers: a release where
-    # every tag is missing is an empty census, not a usage error.
     into.mkdir(parents=True, exist_ok=True)
     command = shlex.split(gh) if isinstance(gh, str) else list(gh)
     written = []
@@ -342,14 +241,10 @@ def fetch_runs(target, first, last, into, gh="gh", *, evidence):
 
 RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
 
-# The operator's setting: its `evidence` key names the evidence repository.
 DEFAULT_CONFIG = "~/.ultrapowers/fleet.json"
 
 
 def _configured_evidence(config):
-    """The `evidence` value of the config at `config`, or None when the file
-    is absent, unreadable, or lacks a non-empty string there. Nothing guesses
-    a repository in its place."""
     try:
         setting = json.loads(Path(config).expanduser().read_text())
     except (OSError, ValueError):

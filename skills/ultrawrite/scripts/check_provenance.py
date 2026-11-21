@@ -1,24 +1,4 @@
 #!/usr/bin/env python3
-"""Resolve a `claims-v1` plan's Claim quotes and Authorized-by anchors.
-
-The parser stays a pure function: `plan_parse.py` reads the provenance tag's
-*form* and stops. Resolution — does `#NNN` exist, and does the operator sentence still
-read verbatim in it — needs the network, so it lives here, in `ultrawrite`'s
-validation step, ahead of the check (spec 2026-08-31 §4.4).
-
-    check_provenance.py <plan.md> [--gh <cmd>]
-
-Exit 0 when every `quoted:#NNN` claim string-matches its issue body and every
-Authorized-by anchor resolves; `(derived)` claims are counted, never resolved —
-their signature is the plan-level Claim (#552), not an issue; exit 2 with one
-line per failure; exit 1 on a usage error. `--gh` swaps the `gh` binary — the test seam, and the hook for a
-caller with its own wrapper. Nothing here reaches the network by any other
-route: the binary is never resolved by bare name when `--gh` names one.
-
-The signature is over the quote AT SIGNING TIME (§4.4): a later edit to the
-issue does not retro-invalidate a signed claim — that drift is Stale-if's
-department, not this script's.
-"""
 from __future__ import annotations
 
 import argparse
@@ -43,33 +23,19 @@ from plan_parse import (  # noqa: E402
     plan_grammar,
 )
 
-# An issue reference inside the Authorized-by slot. A slot may cite several
-# anchors (`#489; spec ... §3`); every issue among them must resolve, and the
-# non-issue anchors (spec sections, decision records) are not this script's to
-# check — no mechanism can.
 ANCHOR_RE = re.compile(r"#(\d+)")
 
 
 def operator_sentence(claim):
-    """The operator's signed sentence: the Claim slot up to the `Machine:`
-    restatement, with the provenance tag that closes it stripped."""
     return CLAIM_PROVENANCE_RE.sub(
         "", "\n".join(operator_lines(claim)).strip()).strip()
 
 
 def fold(text):
-    """CRLF normalization plus wrap folding, so the comparison is over words.
-
-    The match is exact — every word, in order, verbatim — but a markdown hard
-    wrap is not paraphrase: the authoring agent rewraps the sentence to fit the
-    plan's column and the issue wraps it to fit GitHub's. Folding every
-    whitespace run to one space is what makes "exact substring" mean the same
-    thing on both sides of that."""
     return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
 
 
 def issue_body(number, gh, cache):
-    """The body of issue `number`, or None when it does not resolve."""
     if number not in cache:
         proc = gh_issue_view(gh, number, "body")
         cache[number] = proc.stdout if proc.returncode == 0 else None
@@ -77,27 +43,11 @@ def issue_body(number, gh, cache):
 
 
 def check_plan(md_text, gh, matched=None):
-    """Every provenance failure the plan earns, in task order, plus the counts
-    of what was resolved. `elicited` claims are skipped outright — there is no
-    issue to fetch, so they cost no `gh` call — and so are `derived` ones
-    (#552): a derived claim descends from the plan's one elicited operator
-    sentence, which has no issue behind it either. They are COUNTED, so a run
-    of them is visible in the success line rather than silently absent.
-
-    `matched`, when given, gains one `(subject, number, body, sentence)` per
-    quote whose issue resolved and holds the sentence verbatim — the quotes
-    Jev is asked about."""
     failures, cache = [], {}
     if matched is None:
         matched = []
     quotes = derived = anchors = 0
     plan_claim = parse_plan_claim(md_text)
-    # The header Claim signs like a task Claim (#755): `(elicited)` costs no
-    # `gh` call, `(quoted from #NNN)` is string-matched against the issue body
-    # exactly as a task-level quote is. It is resolved BEFORE the task loop and
-    # through the same per-number cache, so a header and a task quoting the
-    # same issue cost one fetch between them, and the failure lines name it
-    # `plan-level claim` where a task's name `task <id> claim`.
     plan_provenance = plan_claim_provenance(md_text) or ""
     if plan_provenance.startswith("quoted:#"):
         quotes += 1
@@ -108,8 +58,6 @@ def check_plan(md_text, gh, matched=None):
             failures.append("provenance: plan-level claim quotes #%s, which "
                             "does not resolve" % number)
         elif not sentence:
-            # The vacuous pass, as at task level: a header that is nothing but
-            # its tag strips to "", and "" is a substring of every body.
             failures.append(
                 "provenance: plan-level claim quotes #%s with an empty "
                 "operator sentence — the Claim is nothing but its provenance "
@@ -123,10 +71,6 @@ def check_plan(md_text, gh, matched=None):
         claims = task
         provenance = claim_provenance(task["claim"]) or ""
         if claims.get("claim") and not provenance:
-            # Defense in depth (2026-09-01): a tag mangled past recognition
-            # made a claim invisible here — counted N-1 quotes, exited 0. The
-            # first layer must not bless what it cannot classify — and since
-            # the compiler left, this is the only wall.
             failures.append(
                 "provenance: task %s claim carries no recognizable provenance "
                 "tag — `(elicited)`, `(derived)` or `(quoted from #NNN)`"
@@ -143,9 +87,6 @@ def check_plan(md_text, gh, matched=None):
                     "provenance: task %s claim quotes #%s, which does not "
                     "resolve" % (task["id"], number))
             elif not sentence:
-                # The vacuous pass: a Claim that is nothing but its tag strips
-                # to "", and "" is a substring of every body, so the comparison
-                # below would sign off on a quote of nothing.
                 failures.append(
                     "provenance: task %s claim quotes #%s with an empty "
                     "operator sentence — the Claim is nothing but its "
@@ -165,17 +106,11 @@ def check_plan(md_text, gh, matched=None):
 
 
 def jev_desired_state(body, sentence):
-    """Jev's reading of whether `sentence` says what should be true after the
-    change, or None. Any failure (`ask_jev`) is no reading: the author's own
-    read decides."""
     return ask_jev("authoring_desired_state", "desired_state",
                    {"issue_body": body, "sentence": sentence})
 
 
 def record_readings(plan_path, rows):
-    """Append `rows` to the `jev_readings` list of the plan's sibling
-    `<stem>.gate-verdicts.json`, every other key left as it was. Record-only:
-    a record that cannot be read or written is skipped, never a failure."""
     record = verdicts_path(plan_path)
     try:
         data = (json.loads(record.read_text(encoding="utf-8"))
@@ -193,8 +128,6 @@ def _plural(n, word):
 
 
 def _series(parts):
-    """`A`, `A and B`, `A, B and C` — the success line reads as one sentence
-    whether or not the plan carries derived claims."""
     if len(parts) == 1:
         return parts[0]
     return ", ".join(parts[:-1]) + " and " + parts[-1]
@@ -222,9 +155,6 @@ def main(argv=None):
     matched = []
     failures, quotes, derived, anchors = check_plan(
         md_text, shlex.split(args.gh), matched)
-    # Jev's desired_state reading (operator decisions 2026-09-29): printed and
-    # kept on the record beside the author's own read; it never changes the
-    # exit code or the failure lines.
     rows = []
     for subject, number, body, sentence in matched:
         value = jev_desired_state(body, sentence)
@@ -241,8 +171,6 @@ def main(argv=None):
         print(line)
     if failures:
         return 2
-    # `<m> derived` is omitted when zero, so a plan with no derived claims
-    # prints exactly the line it printed before #552.
     counts = [_plural(quotes, "claim quote")]
     if derived:
         counts.append("%d derived" % derived)

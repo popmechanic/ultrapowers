@@ -1,28 +1,4 @@
 #!/usr/bin/env node
-// The peer sim (the main-is-a-peer design, stage 3): the target's default branch moves while a
-// scripted Flock run is live, and the run takes the move in. Each case builds a throwaway target
-// with a bare `origin` beside it (_flock_helpers.mjs), runs the engine looking at main every two seconds,
-// and pushes one commit to origin's main from a second clone while task 2 holds the run open.
-//   clean     task 1 wrote a.txt's first line; main changes its last line, changes a file that is
-//             not text and adds a file. The run settles ready on the moved main: `main:moved` names
-//             the tip, the landed commit's one parent is the tip, a.txt carries both lines, the
-//             other two files are main's, `base` and summary.json name the tip, and the stored
-//             entry names both writers of a.txt, the run's task and main's commit.
-//   conflict  task 1 put a line between two lines that main deletes. The conflict opens inside the
-//             run, with a resolve task for it; the scripted builder cannot resolve one, so the
-//             run ends a draft, and its draft commit sits on the moved main.
-//   behind    main moved before the run began. The run takes the move in before its first builder
-//             opens (`main:moved` with why `start`), and settles ready on the moved main.
-//   created   task 1 creates new.txt and main creates new.txt too. The merge can only put one whole
-//             file after the other, so a conflict opens (`created: both`) with a resolve task for
-//             it, where the run once settled ready on the two files stacked; the scripted builder
-//             cannot resolve one, so the run ends a draft.
-//   made in the run  two tasks of one plan each create new.txt, with no main in it. Both tasks'
-//             probes run on the join, so it stays a union: no conflict opens, and the run is ready.
-//   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it. The
-//             edit is recorded as a `peer:rewrite` row naming main's commit, and the run ends
-//             ready: nothing reads the rewrite as lost (the Jev read was cut, 2026-11-14).
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -36,8 +12,6 @@ const BODY = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'thet
 const lines = (l) => l.join('\n') + '\n'
 const BIN = Buffer.from([0xff, 0xfe, 0x00, 0x01]), BIN2 = Buffer.from([0xff, 0xfe, 0x00, 0x02, 0x03])
 
-// A target with an origin it follows, and a second clone that moves origin's main.
-// `o.env` reaches the engine; `o.late` is the a.txt task 2 writes once its hold is over
 function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   const t = flockTarget({ 'a.txt': lines(BODY), 'b.txt': 'none\n', 'logo.bin': BIN }, { env: o.env })
   const env = simEnv({ home: t.tmp, env: t.over })
@@ -50,7 +24,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   sh(t.tmp, 'clone', '-q', '--bare', t.T, origin)
   t.git('remote', 'add', 'origin', origin); t.git('fetch', '-q', 'origin'); t.git('remote', 'set-head', 'origin', 'main')
   sh(t.tmp, 'clone', '-q', origin, mover)
-  // one commit on origin's main, made of `files` ({path: text | Buffer}); its sha
   const move = (files) => {
     for (const [p, body] of Object.entries(files)) fs.writeFileSync(path.join(mover, p), body)
     sh(mover, 'add', '-A'); sh(mover, 'commit', '-qm', 'main moved'); sh(mover, 'push', '-q', 'origin', 'HEAD:main')
@@ -63,14 +36,10 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
       task({ id: 2, title: 'Hold the run open', files: ['Modify: `b.txt`', ...(o.late ? ['Modify: `a.txt`'] : [])], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
     ],
   })
-  // task 1 lands at once (`first` is the a.txt it writes), before the engine's first look at main;
-  // task 2 holds seven seconds, the window main moves in
-  // `made`: task 1 also creates new.txt with this text
   const script = { '@hold_ms': { 2: 7000 }, 1: { 'a.txt': first, ...(made ? { 'new.txt': made } : {}) }, 2: { 'b.txt': 'B\n', ...(o.late ? { 'a.txt': o.late } : {}) } }
   return { t, move, run: () => flockRun(t, { plan, script, args: ['--main-poll', '2'] }) }
 }
 
-// ── clean ───────────────────────────────────────────────────────────────────────
 {
   const { t, move, run } = rig()
   const going = run()
@@ -97,7 +66,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   t.done()
 }
 
-// ── conflict ────────────────────────────────────────────────────────────────────
 {
   const { t, move, run } = rig(lines(['alpha', 'beta', 'RUN', ...BODY.slice(2)]))
   const going = run()
@@ -114,7 +82,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   t.done()
 }
 
-// ── behind ──────────────────────────────────────────────────────────────────────
 {
   const { t, move, run } = rig()
   const tip = move({ 'logo.bin': BIN2, 'n.txt': 'new\n' })
@@ -130,7 +97,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   t.done()
 }
 
-// ── created ─────────────────────────────────────────────────────────────────────
 {
   const { t, move, run } = rig(undefined, 'def run():\n    return "RUN"\n')
   const going = run()
@@ -149,7 +115,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   t.done()
 }
 
-// ── made in the run ─────────────────────────────────────────────────────────────
 {
   const t = flockTarget({ 'a.txt': lines(BODY) })
   const plan = writePlan(t, {
@@ -168,7 +133,6 @@ function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
   t.done()
 }
 
-// ── folded ──────────────────────────────────────────────────────────────────────
 {
   const { t, move, run } = rig(undefined, null, { late: lines(['RUN', ...BODY.slice(1, -1), 'FOLDED']) })
   const going = run()

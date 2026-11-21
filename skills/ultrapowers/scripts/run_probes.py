@@ -1,25 +1,4 @@
 #!/usr/bin/env python3
-"""Run a plan's `Run:` probes against the working tree, the way the sandbox would.
-
-Usage: python3 run_probes.py <plan.md> [<task id> ...]
-
-Reads the plan through `plan_parse` (the sandbox's parser, so the tags are
-stripped exactly as the engine strips them) and runs each task's `Run:` lines
-in the current directory, one `bash -c` per line with stdin closed, printing
-one line per probe:
-
-    task 1 run 1 [M1] exit 0
-    task 1 run 2 [guard] exit 1
-
-and a last `probes: <n> run, <k> red` line. Exits 0 when every probe exited
-0, 1 when any did not, 2 when the plan cannot be read. `$ULTRA_BASE` is left
-as the caller's environment has it.
-
-It exists because a hand loop over a plan's probes misreports: on 2026-09-28
-`echo "$(basename …) exit $?"` read `$?` after the command substitution had
-reset it, and printed exit 0 for a probe that failed (the stall-stop plan's
-first probe, after #1348). Use this instead of a loop.
-"""
 
 import subprocess
 import sys

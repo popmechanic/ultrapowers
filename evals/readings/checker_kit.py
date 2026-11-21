@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""Score the state-probe checker against a good todo app and broken copies of
-it: the seed of story-planning part 4's broken-copy kit. Not a test: nothing
-runs it automatically; run it when factory/stack/tinyapp/ changes.
-
-    python3 evals/readings/checker_kit.py
-
-Needs bun, celld and a browser (TINYAPP_BROWSER, /headless-shell, or the
-Mac's Chrome). Prints one row per case, expected against got, and exits 0 only
-when every case lands where it should."""
 import json
 import os
 import shutil
@@ -20,7 +11,6 @@ CHECK = os.path.join(ROOT, "factory/stack/tinyapp/check.ts")
 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
 
-# (case, screen, server, clause, extra env, plan edit, expected exit, expected stage)
 CASES = [
     ("good app, S1.1", "todo.json", None, "S1.1", {}, None, 0, "ok"),
     ("good app, S2.2", "todo.json", None, "S2.2", {}, None, 0, "ok"),

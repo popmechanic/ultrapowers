@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# SessionStart hook: inject the plan-routing rule so every session knows to
-# author implementation plans with ultrawrite and to offer /ultrapowers at the
-# handoff. Without this, the routing depends on the model noticing the ultrawrite
-# skill description at exactly the plan-writing moment — probabilistic, not reliable.
-# Stdout from a SessionStart command hook becomes session context (exit 0).
 set -euo pipefail
 
 cat <<'EOF'

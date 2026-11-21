@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// factory/flock/new_parts.mjs (#1491): the screen parts a run added are the draws.json lines the
-// landed text has and the base's does not, each with its role and naming props; a base with no
-// draws.json makes every landed line new, and text that is not a parts list adds nothing.
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { newParts } from '../../factory/flock/new_parts.mjs'
 
 const fails = []

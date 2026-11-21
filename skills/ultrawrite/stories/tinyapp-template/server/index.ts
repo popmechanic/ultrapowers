@@ -12,7 +12,6 @@ export class AppStore extends WsServerDurableObject {
     return createDurableObjectSqlStoragePersister(createMergeableStore(), this.ctx.storage.sql, {mode: 'fragmented'});
   }
 
-  // A string, because the content object does not survive the RPC boundary.
   async snapshot(): Promise<string> {
     const store = createMergeableStore();
     await createDurableObjectSqlStoragePersister(store, this.ctx.storage.sql, {mode: 'fragmented'}).load();
@@ -31,7 +30,6 @@ const me = async (ctx?: {access?: Access}) => {
 
 type Env = {APP_STORE: {idFromName: (name: string) => unknown; get: (id: unknown) => {snapshot: () => Promise<string>}}};
 
-// TinyBase names the Durable Object after the sync path without its leading '/'.
 const snapshot = async (env: Env) => {
   const stub = env.APP_STORE.get(env.APP_STORE.idFromName('sync/app'));
   return new Response(await stub.snapshot(), {

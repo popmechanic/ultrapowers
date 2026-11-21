@@ -1,68 +1,3 @@
-/**
- * fleet/tests/test_launch_credential.mjs — the exam for "The launcher puts a
- * held sign-in on the launch line and turns a declined one into a one-line
- * refusal before anything is pushed" (#1113), plus "The launcher reads the
- * windows after the refresh, prints them, and refuses at the wall" (#1114).
- *
- * A sibling task changes `fleet/claude-token.mjs` so it stops rotating the
- * Claude credential while a `fleet-r*` VM is listed (a refresh grant would
- * revoke the access token every live run is using). It now exits 0 and prints
- * a hold line on stderr when it declines to rotate for that reason, and exits
- * 1 with a refusal line when the cached token is under ninety minutes from
- * expiring. This exam does not touch that file or spawn it — M1 and M2 drive
- * `defaultRefreshCredential` with a spy standing in for `spawnSync`, reading
- * the two lines back out of canned output exactly as that tool would print
- * them.
- *
- * Legs, each naming the Machine clause it comes from:
- *
- *   (a) [M1] a spy answering exit 0 with a hold line: `ok` true, `held`
- *       exactly the line (no newline), one spy call, argv's last three
- *       entries `refresh`, `--account`, `acct`.
- *   (b) [M2] a spy answering exit 1 with a refusal line: `ok` false, `refused`
- *       exactly the line; a spy answering exit 1 with unrelated stderr: `ok`
- *       false, `refused` undefined.
- *   (c) [M3] `launch` given a `refreshCredential` that answers `refused`
- *       rejects with a `Refusal` (exit 2) whose message carries the line and
- *       "nothing was pushed", with no push and no `new` verb issued.
- *   (d) [M4] `launch` given a `refreshCredential` that answers `held` resolves
- *       with `result.token` exactly the held line, carried by `renderLaunch`
- *       as its own whole line; `{ ok: true }` alone renders no `token:` line.
- *
- * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential })`
- * in-process over the launch sims' shared rig in
- * `_lobby_helpers.mjs` (`launchRules`, `launchWorkspace`): a local bare origin
- * stands in for GitHub, and every lobby verb, `gh api` and `python3` call is
- * answered by a rule.
- *
- * ── #1114 (this task) ───────────────────────────────────────────────────────
- *
- * Legs (e)-(i) sit under this comment, added for "The launcher reads the
- * windows after the refresh, prints them, and refuses at the wall":
- *
- *   (e) [M1] `defaultReadUsage(account, spawn)` over a spawn spy: exit 0 with
- *       a one-row JSON array answers that row, one spy call, `process.execPath`
- *       as the spawned command and argv's last five entries `usage`, `--json`,
- *       `--account`, `<account>`, `--no-rotate`; exit 1, an empty array and
- *       unparseable stdout each answer `{ unread: true, reason: <string> }`.
- *   (f) [M2] `launch` with `readUsage` answering `sevenDay.utilization: 96`
- *       rejects with a `Refusal` carrying the account, `seven-day`, `96`, the
- *       reset string and the ending sentence, with no push and no `new` verb
- *       issued; `fiveHour.utilization: 95` (the wall itself) carries
- *       `five-hour` the same way. `USAGE_REFUSE_PCT` is asserted to be 95.
- *   (g) [M3] `readUsage` answering a row under both thresholds resolves with
- *       `result.usage` byte-exact as the Machine spells it, and `renderLaunch`
- *       carries that line immediately after the `account=` line; an
- *       `{ unread: true, reason }` row resolves `usage: <account> unread —
- *       <reason>` in the same place.
- *   (h) [M4] a `refreshCredential` answering `refused` leaves a spy
- *       `readUsage` at zero calls; one answering `{ ok: true }` leaves it at
- *       one call, ordered before the rig's first `git push`.
- *   (i) [M5] `fleet/CONTRACT.md` names the `--no-rotate` usage read and the
- *       `usage: <account> 7d` launch line (the two `grep` legs of the Proof,
- *       run here as substring checks over the file the exam already reads).
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -73,8 +8,6 @@ import { Refusal, defaultExec } from '../lobby.mjs'
 import {
   launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 } from './_lobby_helpers.mjs'
-
-// ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
 
 const HELD_LINE = 'token: fresh until 2026-09-21T14:00:00.000Z; 1 run(s) live — not rotated'
 const REFUSED_LINE =
@@ -91,7 +24,6 @@ function spy (result) {
   return fn
 }
 
-// (a) [M1] the hold line, on exit 0
 {
   const sp = spy({ status: 0, stdout: '', stderr: `${HELD_LINE}\n` })
   const cred = defaultRefreshCredential('acct', sp)
@@ -105,7 +37,6 @@ function spy (result) {
   )
 }
 
-// (b) [M2] the refusal line, on exit 1 — and a plain failure carries none
 {
   const sp = spy({ status: 1, stdout: '', stderr: `${REFUSED_LINE}\n` })
   const cred = defaultRefreshCredential('acct', sp)
@@ -117,15 +48,12 @@ function spy (result) {
   assert.equal(credOther.ok, false, '(b) [M2] ok is false on an unrelated failure')
   assert.equal(credOther.refused, undefined, '(b) [M2] refused is undefined when no refusal line is present')
 
-  // no keychain record for the account (a misnamed --account) refuses, naming it — never a skip
   const spNone = spy({ status: 1, stderr: 'no refresh token in the keychain — run `node fleet/claude-token.mjs login` first\n' })
   const credNone = defaultRefreshCredential('acct', spNone)
   assert.equal(credNone.ok, false, '(b) a missing keychain record is not ok')
   assert.ok(typeof credNone.refused === 'string' && credNone.refused.includes('account acct'),
     `(b) a missing keychain record refuses naming the account — got ${JSON.stringify(credNone.refused)}`)
 }
-
-// ── c/d. [M3, M4] launch() driven with a stand-in refreshCredential ─────────
 
 const TARGET = 'popmechanic/smoke'
 const GH = 'gh-popmechanic-smoke'
@@ -136,7 +64,6 @@ const EVIDENCE = 'ops/evidence'
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
 const readRules = ({ repo }) =>
   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH })
 
@@ -159,7 +86,6 @@ const launchIn = (ws, { exec, refreshCredential, readUsage }) => launch({
 
 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
 
-// (c) [M3] a declined credential refuses in one line, before anything is pushed
 {
   const ws = workspace()
   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -177,7 +103,6 @@ const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new
   ws.cleanup()
 }
 
-// (d) [M4] a held credential is carried on the result and the launch line
 {
   const ws = workspace()
   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -204,10 +129,6 @@ const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new
   ws.cleanup()
 }
 
-// ── #1114 — the launcher reads the windows after the refresh, prints them, ─
-//            and refuses at the wall ───────────────────────────────────────
-
-// (e) [M1] defaultReadUsage(account, spawn) over a spawn spy
 {
   const ROW = {
     name: 'acct',
@@ -241,7 +162,6 @@ const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new
   assert.equal(typeof rowBad.reason, 'string', '(e) [M1] and a string reason')
 }
 
-// USAGE_REFUSE_PCT is exported and exactly 95, as M2 spells it
 assert.equal(USAGE_REFUSE_PCT, 95, '[M2] USAGE_REFUSE_PCT is exactly 95')
 
 const rowAt = (sevenPct, fivePct) => ({
@@ -249,7 +169,6 @@ const rowAt = (sevenPct, fivePct) => ({
   fiveHour: { utilization: fivePct, resetsAt: '2026-09-16T08:20:00.000Z' }
 })
 
-// (f) [M2] a wall reading refuses before anything is pushed
 {
   const ws = workspace()
   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -297,7 +216,6 @@ const rowAt = (sevenPct, fivePct) => ({
   ws.cleanup()
 }
 
-// (g) [M3] a row under both thresholds carries usage on the result and the launch line
 {
   const ws = workspace()
   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -338,7 +256,6 @@ const rowAt = (sevenPct, fivePct) => ({
   ws.cleanup()
 }
 
-// (h) [M4] readUsage's call count is gated on refreshCredential, and ordered before push
 function orderedSpy (result, order, tag) {
   const calls = []
   const fn = (...args) => {
@@ -391,8 +308,6 @@ const pushOrderRule = (repo, order) => ({
   ws.cleanup()
 }
 
-// (i) [M5] fleet/CONTRACT.md names the usage read and the launch line — the
-// two `grep` legs of the Proof, run here as substring checks over the file.
 {
   const contract = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
   assert.ok(

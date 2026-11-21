@@ -1,4 +1,3 @@
-"""plan_check.py on a stories-v1 plan: the signed store and the listed tools."""
 import json
 import shutil
 import subprocess
@@ -27,7 +26,7 @@ def test_a_freshly_compiled_plan_is_ok(tmp_path):
     assert res.stdout.strip() == "PLAN OK"
 
 
-def test_the_store_edited_after_signing_is_refused(tmp_path):  # Review Focus 3
+def test_the_store_edited_after_signing_is_refused(tmp_path):
     app, plan = compiled(tmp_path)
     (app / "client/src/store.js").write_text("// edited\n", encoding="utf-8")
     res = check(plan)

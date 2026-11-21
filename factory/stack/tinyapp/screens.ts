@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-// The screens checker: does every screen of this copy read as a json-render
-// spec over its catalog, and does it run each of its piece's card actions?
-// Browser-free: it imports the copy's catalog and store modules in Bun and
-// reads client/src/screen.json, the one page every piece's actions live in, or
-// client/src/pieces/<piece>.json in an app built before it. Exit 0 pass, 1 findings about the app,
-// 2 could not run. It writes nothing.
 import {createHash} from 'node:crypto';
 import {existsSync, readFileSync, readdirSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -12,7 +6,6 @@ import {join, resolve} from 'node:path';
 
 const REPO = join(import.meta.dir, '..', '..', '..');
 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
-// The app's one page, when it has one: a json-render spec every piece's builder writes into.
 const SCREEN = join('client', 'src', 'screen.json');
 const EXPRESSIONS = ['$state', '$item', '$index', '$bindState', '$bindItem', '$template', '$cond', '$computed'];
 
@@ -26,10 +19,8 @@ class CouldNotRun extends Error {}
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const isExpression = (v: unknown) => isObj(v) && EXPRESSIONS.some((k) => k in v);
 const underDraft = (p: unknown) => typeof p === 'string' && p.startsWith('/draft/');
-// Where a built-in action writes when it names no statePath (json-render's ActionProvider).
 const DEFAULT_PATH: Record<string, string> = {validateForm: '/formValidation'};
 
-/** The card actions per piece, in plan or bundle order. */
 function piecesFrom(plan?: string, bundle?: string): Map<string, string[]> {
   const out = new Map<string, string[]>();
   const add = (piece: string, actions: string[]) => out.set(piece, [...(out.get(piece) ?? []), ...actions.filter((a) => !(out.get(piece) ?? []).includes(a))]);
@@ -67,8 +58,6 @@ async function load(copy: string) {
   return {components: cat.components as Record<string, {props: any}>, builtIn: cat.BUILT_IN as string[], catalog: cat.catalogFor(tools), actionNames: tools.map((t: {name: string}) => t.name) as string[]};
 }
 
-/** Every two-way binding anywhere under v: a $bindState path, or a $bindItem field
- *  (which writes the repeated row itself, so never a draft). */
 function bindings(v: unknown, out: string[] = []): string[] {
   if (Array.isArray(v)) for (const x of v) bindings(x, out);
   else if (isObj(v)) {
@@ -81,7 +70,6 @@ function bindings(v: unknown, out: string[] = []): string[] {
 
 type Loaded = Awaited<ReturnType<typeof load>>;
 
-/** Read one spec file of the copy: the spec, or the finding that it cannot be read. */
 function readSpec(copy: string, rel: string): {spec?: unknown; found: string[]} {
   const file = join(copy, rel);
   if (!existsSync(file)) return {found: [`no screen at ${rel}`]};
@@ -90,15 +78,12 @@ function readSpec(copy: string, rel: string): {spec?: unknown; found: string[]} 
   }
 }
 
-/** A spec's findings (root, children, props against the catalog, draft-only writes) and the
- *  card actions its reachable elements run. */
 function checkSpec(spec: any, c: Loaded, screen = false): {found: string[]; run: Set<string>} {
   const found: string[] = [];
   const v = c.catalog.validate(spec);
   if (!v.success) {
     for (const i of v.error?.issues ?? []) found.push(`${(i.path ?? []).join('.') || '(spec)'}: ${i.message}`);
   }
-  // screen.json lists the element ids anyone may see; a per-piece spec says true or false.
   const publicOk = (p: unknown) => screen ? Array.isArray(p) && p.every((id) => typeof id === 'string') : typeof p === 'boolean';
   if (isObj(spec) && 'public' in spec && !publicOk(spec.public)) found.push(`public cannot be ${JSON.stringify(spec.public)}`);
   const run = new Set<string>();
@@ -161,7 +146,6 @@ function checkSpec(spec: any, c: Loaded, screen = false): {found: string[]; run:
   return {found, run};
 }
 
-/** The per-piece flow: client/src/pieces/<piece>.json is that piece's own screen. */
 function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): string[] {
   const r = readSpec(copy, join('client', 'src', 'pieces', `${piece}.json`));
   if (r.found.length) return r.found;
@@ -170,10 +154,6 @@ function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): 
   return found;
 }
 
-/** The app's parts, not its screens (#1491): every catalog part has its line in draws.json (the
- *  role it draws and the props that name it) and every line a part, and 1st-Pouf under
- *  client/src/pouf/ is byte-for-byte its pin, so a part added during a run wraps it rather than
- *  patching it. An app with no draws.json (scaffolded before it) is checked for the pin only. */
 export function checkParts(copy: string, components: Record<string, {props: any}>): string[] {
   const found: string[] = [];
   const drawsFile = join(copy, 'client', 'src', 'screens', 'draws.json');
@@ -221,7 +201,6 @@ async function main(): Promise<number> {
   let n = 0;
   for (const f of checkParts(copy, c.components)) { console.log(`SCREENS parts: ${f}`); n++; }
   if (existsSync(join(copy, SCREEN))) {
-    // The screen flow: one page holds every piece's actions, read once.
     const r = readSpec(copy, SCREEN);
     const {found, run} = r.found.length ? {found: r.found, run: new Set<string>()} : checkSpec(r.spec, c, true);
     for (const f of found) { console.log(`SCREENS screen: ${f}`); n++; }

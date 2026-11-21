@@ -1,5 +1,3 @@
-// Packs the page into the Worker: builds client/index.html and writes every
-// output file into server/client-files.ts, so a deploy uploads one thing.
 import {mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {extname, join, relative} from 'node:path';

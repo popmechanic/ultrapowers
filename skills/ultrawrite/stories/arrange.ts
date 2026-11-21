@@ -1,24 +1,4 @@
 #!/usr/bin/env bun
-// Jev arranges the whole page from what the app can do, before any story names a
-// control. The candidates come from the cards and the store by code, never from a
-// story's `ui` or `see`: each card action's control (a bound ActionButton or
-// ActionCheckbox, its words the action's `label`; an action taking rows of two tables an
-// ActionSelect in the first table's list, picking a row of the second, narrowed by that
-// input's `x-where`), each string input's DraftInput and each number input's DraftNumber (its words the
-// input's `x-label`),
-// one list per table its row actions work on, a few
-// containers, the page title and each card's purpose, and each card's `shows` lines: a
-// row line a Text in its table's list row, before the row's controls; a page line a Text
-// and a heading line a level-1 Heading outside the lists (a heading line takes the page
-// title's place), their slots filled by `format` from cells, values, `sum` and `count`,
-// in the card's `words` where it gives them. Jev only chooses and places them,
-// through json-render's composer, once per version of questions.json's authoring_arrange.
-// The kit is the installed TinyApp's: its catalog and store, and the composer copied
-// to <app>/.preview/json-render/ so it shares the app's zod.
-//
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir>              writes screens/screen.<V>.json
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --pick <V>   copies it to screens/screen.json
-//   bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> --reshape --note <text> [--note <text>...]
 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {loadBundle, type Action, type Bundle, type Card} from './bundle';
@@ -34,7 +14,6 @@ type Kit = {compose: (o: Json) => AsyncGenerator<{type: string; spec: Spec | nul
 type Tool = {name: string; description: string; inputSchema?: {properties?: Record<string, Json>}; run: (store: unknown, args: unknown, as: unknown) => unknown};
 type Heading = {type: 'Heading'; props: Json};
 type Pieces = {candidates: Candidate[]; required: Candidate[]; lists: Map<string, {table: string; controls: RowControl[]}>; fields: Map<string, string[]>; writes: Map<string, string[]>; heading: Heading; lines: Line[]};
-// The composer reads no `$computed`, so a page line goes to it as `stand`, its plain words, and comes back as `real`.
 type Line = {stand: Pick<Element, 'type' | 'props'>; real: Pick<Element, 'type' | 'props'>};
 
 export class CouldNotRun extends Error {}
@@ -43,12 +22,10 @@ const VENDOR = join(import.meta.dir, 'vendor', 'json-render');
 const LIST = (table: string) => `/tables/${table}`;
 const isObj = (v: unknown): v is Json => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-// Object keys sorted, as the composer compares recipes.
 const recipeKey = (v: unknown) =>
   JSON.stringify(v, (_k, x) => (isObj(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x));
 const atomic = (e: Element) => ({type: e.type, props: e.props, ...(e.on === undefined ? {} : {on: e.on}), ...(e.visible === undefined ? {} : {visible: e.visible})});
 
-/** The app's catalog, store and a staged copy of the composer, or CouldNotRun. */
 async function loadKit(app: string): Promise<Kit> {
   const dir = resolve(app);
   const catPath = join(dir, 'client', 'src', 'screens', 'catalog.ts');
@@ -70,9 +47,6 @@ function arrangeSet() {
   return s;
 }
 
-/** A control's words, read off its card: plain text, or for a control in a row, with
- *  `${cell}` naming a cell of that row and `${col.cell}` a cell of the row that column
- *  `col` names, read by `lookup` (#1524) and put together by `format`. */
 function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unknown {
   const tokens = inRow ? slotsOf(label) : [];
   if (!tokens.length) return label;
@@ -86,7 +60,6 @@ function wordsOf(label: string, rowOf: Map<string, string>, inRow: boolean): unk
 
 const slotsOf = (words: string) => [...words.matchAll(/\$\{([^}]+)\}/g)].map((m) => m[1]);
 
-/** A row's cell `${cell}`, or `${col.cell}` the cell of the row column `col` names. */
 function cellOf(t: string, words: string, rowOf: Map<string, string>): unknown {
   if (!t.includes('.')) return {$item: t};
   const [by, column] = [t.slice(0, t.indexOf('.')), t.slice(t.indexOf('.') + 1)];
@@ -95,7 +68,6 @@ function cellOf(t: string, words: string, rowOf: Map<string, string>): unknown {
   return {$computed: 'lookup', args: {rows: {$state: LIST(table)}, id: {$item: by}, column}};
 }
 
-/** A page line's slot: a value in state.values, `sum t.c`, `count t` or `count t c=v`. */
 function totalOf(t: string): unknown {
   const sum = t.match(/^sum\s+([^\s.]+)\.(\S+)$/);
   if (sum) return {$computed: 'sum', args: {rows: {$state: LIST(sum[1])}, column: sum[2]}};
@@ -104,7 +76,6 @@ function totalOf(t: string): unknown {
   return {$state: `/values/${t}`};
 }
 
-/** A card line's words put together by `format`, each slot in the card's `words` where it gives them. */
 function lineOf(words: string, said: Card['words'], argOf: (t: string) => unknown): unknown {
   const args: Json = {template: words};
   for (const t of slotsOf(words)) args[t] ??= said?.[t] ? {$computed: 'words', args: {value: argOf(t), words: said[t]}} : argOf(t);
@@ -116,28 +87,19 @@ const saying = (words: string) => slotsOf(words).map((t) => t.replace(/^(sum|cou
 type Props = Record<string, {type?: string; 'x-row-of'?: string; 'x-label'?: string; 'x-where'?: Json}>;
 const propsOf = (a: Action): Props => ((a.inputSchema as {properties?: Props})?.properties ?? {});
 
-/** Every candidate for the whole page, from the cards and the store alone: each card's
- *  actions, a row action (an input carrying x-row-of) a control inside the one list of its
- *  table, whichever piece owns it (an action taking rows of two tables a picker of the
- *  second's rows, offering those its x-where allows), any other action a control outside the lists, and each
- *  string input that is not a row a text box writing /draft/<input>. */
 function candidatesFor(b: Bundle, kit: Kit): Pieces {
   const tools = new Map(kit.TOOLS.map((t) => [t.name, t]));
   const actions = b.cards.flatMap((c) => c.actions);
   const describe = (a: Action) => tools.get(a.name)?.description ?? a.description ?? '';
-  // a column some action takes as a row of a table, by name: a tag's todoId names a todo
   const rowOf = new Map<string, string>();
   for (const a of actions) for (const [k, p] of Object.entries(propsOf(a))) if (typeof p['x-row-of'] === 'string') rowOf.set(k, p['x-row-of']);
   const rowArgsOf = (a: Action) => Object.entries(propsOf(a)).filter(([, p]) => typeof p['x-row-of'] === 'string').map(([arg, p]) => ({arg, table: p['x-row-of']!, where: p['x-where']}));
-  // a string input gets a text box, a number input a number box
   const textsOf = (a: Action) =>
     Object.entries(propsOf(a))
       .filter(([, p]) => (p.type === 'string' || p.type === 'number') && typeof p['x-row-of'] !== 'string')
       .map(([k, p]) => ({k, label: p['x-label'] ?? k, part: p.type === 'number' ? ('DraftNumber' as const) : ('DraftInput' as const)}));
   const boxOf = (part: 'DraftInput' | 'DraftNumber') => (part === 'DraftNumber' ? 'a number box' : 'a text box');
-  // makeStore gives the same schema every time
   const schema: Record<string, Record<string, {type?: string}>> = JSON.parse(kit.makeStore().getTablesSchemaJson?.() ?? '{}');
-  // An input two actions type into gets a draft of its own per action; any other keeps /draft/<input>.
   const typers = new Map<string, Set<string>>();
   for (const a of actions) for (const {k} of textsOf(a)) typers.set(k, (typers.get(k) ?? new Set()).add(a.name));
   const draftKey = (action: string, k: string) => ((typers.get(k)?.size ?? 0) > 1 ? `${action}.${k}` : k);
@@ -178,13 +140,11 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
       for (const {k, label, part} of texts)
         required.push({id: `input_${a.name}_${k}`, root: false, description: `The ${boxOf(part).slice(2)} "${label}", where you type the ${k} for ${a.name}: ${describe(a)}`, element: {type: part, props: {label, value: {$bindState: `/draft/${draftKey(a.name, k)}`}}}});
       if (texts.length) fields.set(a.name, texts.map(({k}) => draftKey(a.name, k)));
-      // a whole-list action changes the tables of its card
       writes.set(a.name, Object.keys(card.state?.tables ?? {}));
       const props: Json = {label: words, action: a.name};
       if (texts.length) props.args = args;
       required.push({id: `button_${buttons++}`, root: false, description: `The button "${words}": ${describe(a)}`, element: {type: 'ActionButton', props}});
     }
-  // each card's lines: a row line first in its table's row, a page line or heading outside the lists
   let heading: Heading = {type: 'Heading', props: {text: b.page.title, level: 1}};
   let headed = false;
   const lines: Line[] = [];
@@ -225,10 +185,6 @@ function candidatesFor(b: Bundle, kit: Kit): Pieces {
   return {candidates, required, lists, fields, writes, heading, lines};
 }
 
-/** Element id -> its candidate's description, by recipe; a container below the root also
- *  names what it holds (each child's description up to its first colon), so a note can
- *  name it by its content ("the party form", "the guests"): a bare "A row" gave Jev
- *  nothing to move, and it finished without an edit. */
 function descriptionsOf(spec: Spec, candidates: Candidate[]): Record<string, string> {
   const by = new Map(candidates.map((c) => [recipeKey(c.element), c.description]));
   const own = (id: string) => by.get(recipeKey(atomic(spec.elements[id]))) ?? `Existing ${spec.elements[id].type}`;
@@ -246,10 +202,6 @@ const missing = (spec: Spec | null, required: Candidate[]) => {
   return required.filter((c) => !have.has(recipeKey(c.element)));
 };
 
-/** The composer's layout made real: each list placeholder a repeat over its table,
- *  each draft-reading button clearing its drafts once it ran, the page heading (a card's
- *  heading line, else the page title; one, added if left out) first under the root, the
- *  controls in the order of use, empty containers gone. */
 function expand(input: Spec, {lists, heading, fields, writes, lines}: Pieces): Spec {
   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
   swap(spec, lines, 'stand', 'real');
@@ -309,12 +261,6 @@ function expand(input: Spec, {lists, heading, fields, writes, lines}: Pieces): S
   return spec;
 }
 
-/** The order a person uses the screen, by code (#1510). An action's text boxes, in the
- *  order its card lists the inputs, sit directly before its button, gathered where the
- *  first box sits. A whole-list button (no args) sits just below its list (the list of
- *  the one table its action changed; with one list on the screen, that one), unless it,
- *  or the wrapper holding only it, is already right beside the list. Anything already in
- *  order is left as composed, so the versions keep their own containers. */
 function inUseOrder(spec: Spec, fields: Pieces['fields'], writes: Pieces['writes']) {
   const parentOf = (id: string) => Object.keys(spec.elements).find((p) => spec.elements[p].children?.includes(id));
   const take = (id: string) => {
@@ -358,7 +304,6 @@ function inUseOrder(spec: Spec, fields: Pieces['fields'], writes: Pieces['writes
   }
 }
 
-/** Each element that is one side of a page line made the other side. */
 function swap(spec: Spec, lines: Line[], from: keyof Line, to: keyof Line) {
   const by = new Map(lines.map((l) => [recipeKey(l[from]), l[to]]));
   for (const e of Object.values(spec.elements)) {
@@ -367,8 +312,6 @@ function swap(spec: Spec, lines: Line[], from: keyof Line, to: keyof Line) {
   }
 }
 
-/** An expanded spec folded back to what the composer may read: lists as placeholders,
- *  page lines as their plain words, no `on`. */
 function collapse(input: Spec, lines: Line[]): Spec {
   const spec: Spec = structuredClone({root: input.root, elements: input.elements});
   swap(spec, lines, 'real', 'stand');
@@ -394,7 +337,6 @@ async function lastSpec(events: AsyncGenerator<{type: string; spec: Spec | null;
 
 const contextOf = (b: Bundle) => ({app: b.page.title, stories: b.page.stories.map((s) => s.sentence)});
 
-/** The whole page in each version of authoring_arrange: every version kept, or dropped with why. */
 export async function arrange(opts: {bundle: string; app: string; evaluate: Evaluator}): Promise<{versions: Record<string, Spec>; dropped: Record<string, string>; calls: number}> {
   const b = loadBundle(opts.bundle);
   const kit = await loadKit(opts.app);
@@ -456,9 +398,6 @@ export async function reshape(opts: {bundle: string; app: string; spec: Spec; no
 const USAGE = 'usage: arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>...]';
 const write = (path: string, spec: Spec) => writeFileSync(path, JSON.stringify(spec, null, 2) + '\n');
 
-/** The page's kept versions as <screens>/screen.<V>.json, and any other version, left
- *  from an earlier arrange, gone, so /compare shows only these. The approved
- *  screen.json stays. */
 export function writeVersions(screens: string, kept: Record<string, Spec>) {
   if (Object.keys(kept).length) mkdirSync(screens, {recursive: true});
   if (existsSync(screens))
@@ -524,7 +463,6 @@ async function main(argv: string[]): Promise<number> {
   }
 }
 
-// Anything the composer or Jev throws stops the run as could-not-run.
 function fail(e: unknown): never {
   throw new CouldNotRun((e as Error)?.message ?? String(e));
 }

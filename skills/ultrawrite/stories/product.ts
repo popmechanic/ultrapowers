@@ -1,13 +1,4 @@
 #!/usr/bin/env bun
-// The product record: what the app is for, what the operator said and what
-// the author assumed, every concept a successful version needs, and the order
-// the plans build them in. It lives in the bundle while a plan is authored and
-// in the target app (stories/product.json) after compile. product.md is its
-// rendering in the operator's words; it is never written by hand.
-//
-//   bun skills/ultrawrite/stories/product.ts check <product.json>
-//   bun skills/ultrawrite/stories/product.ts render <product.json> [--bundle <dir>] --out <product.md>
-//   bun skills/ultrawrite/stories/product.ts record <product.json>
 import {readFileSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
@@ -59,7 +50,6 @@ function cycle(ids: string[], edges: (id: string) => string[]): string | null {
   return null;
 }
 
-// Every way `p` leaves product-v1, one plain sentence each; [] when valid.
 export function checkProduct(p: unknown): string[] {
   const errs: string[] = [];
   if (!p || typeof p !== 'object') return ['product: must be a JSON object'];
@@ -169,7 +159,6 @@ export function saveProduct(path: string, p: Product): void {
 
 const SAY = {keep: 'First version', defer: 'Later', cut: 'Not doing'} as const;
 
-// product.md: the product in the operator's words. No ids, statuses, kinds or scores.
 export function renderProduct(p: Product, page?: Page & {subproject?: string}): string {
   const out = [`# ${p.intent.name}`, '', p.intent.summary.join(' '), '',
     `**Who uses it:** ${p.intent.audience.join(', ')}`, '', '**It succeeds when:**',
@@ -200,8 +189,6 @@ export function renderProduct(p: Product, page?: Page & {subproject?: string}): 
   return out.join('\n');
 }
 
-// Fill operator_pick on readings that have none, from the product's final
-// state: a concept's status, an assumption's state. Returns how many it filled.
 export function recordPicks(p: Product): number {
   let n = 0;
   for (const r of p.readings) {

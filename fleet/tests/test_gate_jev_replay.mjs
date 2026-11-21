@@ -1,5 +1,3 @@
-// The gate Jev replay's scoring (#1528): which rounds are replayed, how they are scored, the exit code
-// and the summary line. Pure: no spawn, no file reads.
 import assert from 'node:assert/strict'
 import { exitCode, replayRounds, score, summary } from './_gate_replay_helpers.mjs'
 
@@ -29,7 +27,6 @@ assert.deepEqual(s, { wrong: 1, wrongPass: 1, right: 1, rightFail: 1, agreed: 1,
 assert.equal(exitCode(s, true), 1)
 assert.equal(exitCode({ ...s, agreedPass: 0 }, true), 0)
 assert.equal(exitCode({ ...s, agreedPass: 0 }, false), 1)
-// one wrong fail in three now passing is under two thirds; two in three is enough
 assert.equal(exitCode({ wrong: 3, wrongPass: 1, agreed: 0, agreedPass: 0 }, true), 1)
 assert.equal(exitCode({ wrong: 3, wrongPass: 2, agreed: 0, agreedPass: 0 }, true), 0)
 assert.equal(exitCode({ wrong: 0, wrongPass: 0, agreed: 0, agreedPass: 0 }, true), 2)

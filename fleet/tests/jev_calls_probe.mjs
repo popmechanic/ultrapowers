@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-// The Jev calls probe: the authoring checks (`skills/ultrawrite/stories/jev_checks.ts`) send each
-// question the evidence its answer turns on, send the store once, batch what shares a state and
-// ride the same client the fleet uses. It copies `skills/ultrawrite/catalog/todo-tags` (2 pieces,
-// 5 actions, 1 link) to a temp dir and runs the checks against a local stand-in Jev (a node:http
-// server on 127.0.0.1) that answers every asked key {noul: 0.5} and records each request's headers
-// and body. The case is argv[2], the stage run:
-//   bundle         the store goes once (5 questions), pieces are compared in one request (2
-//                  entries), near-miss requests carry story_steps, the link request carries the
-//                  summary, every request carries the key as a bearer header, and product.json
-//                  saves 5 branches_on_text readings;
-//   map            every request carries other_purposes (1 entry) and no top-level purpose;
-//   decompose      every request carries a non-empty summary and a built_before array;
-//   understanding  one request carries sentences (2 entries) with 2 questions.
-// Prints `JEV CALLS <case> OK` and exits 0, or names what differed and exits 1.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -35,7 +21,6 @@ fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
 let server
 const fail = (why) => { console.log(`JEV CALLS ${CASE} FAILED: ${why}`); server?.close(); process.exit(1) }
 
-// the stand-in Jev
 const requests = []
 server = http.createServer((req, res) => {
   let body = ''

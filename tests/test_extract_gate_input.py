@@ -1,23 +1,3 @@
-"""The proof-gate reader reads BASE (#989) — the exam of
-`skills/ultrawrite/scripts/extract_gate_input.py --base`.
-
-One test per leg of the 2026-09-15 plan `gate-reader-reads-base`, task 1:
-
-  (a) [M1] `--base <sha>` and `--base <dir>` add exactly one key, `base`, whose
-      `rev` is the value given; the hash equals the no-`--base` hash; and the
-      no-`--base` output carries no `base` key.
-  (b) [M2] `files` is the Files block's paths in written order, then the
-      Proof's backticked path, then the `Run:` command's path, no duplicate;
-      an absent path (or a directory) is `{"path", "status": "absent"}` alone.
-  (c) [M3] headings per file kind; the excerpt is the numbered carrier regions,
-      ±2 lines, no line twice, no non-carrier region, no 7-character literal.
-  (d) [M4] the 8,000-byte per-file cap and the 24,000-byte total cap, with
-      `truncated` exactly on the entries the cap cut.
-  (e) [M5] an unknown sha exits non-zero with an `error:` line.
-
-The fixture is a one-commit git repository under tmp_path holding the plan
-itself, so a 40-hex `--base` names a commit of the plan's own repository.
-"""
 from __future__ import annotations
 
 import json
@@ -31,8 +11,6 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
 
-# A 7-character literal is under the compiler's `_LITERAL_MIN` of 8; the
-# nine-character one is the carrier the exam looks for.
 SHORT_LIT = "sevench"
 LONG_LIT = "carrier_x"
 OTHER_LIT = "second_carrier"
@@ -98,7 +76,6 @@ Machine: M1. The file carries `{LONG_LIT}` and `{OTHER_LIT}`.
 
 @pytest.fixture
 def repo(tmp_path):
-    """A one-commit repository holding the plan and its fixture files."""
     r = tmp_path / "repo"
     r.mkdir()
     _git(r, "init", "-q", ".")
@@ -195,8 +172,6 @@ def test_c_m3_headings_and_carrier_excerpt(repo):
     nums = [int(l.split(":", 1)[0]) for l in ex]
     assert nums == sorted(nums) and len(nums) == len(set(nums)), \
         "(c) [M3] ascending, no line twice"
-    # LONG_LIT sits on line 13, OTHER_LIT on 17: regions 11–15 and 15–19
-    # overlap on 15 and print once; SHORT_LIT (line 21) is not a carrier.
     assert nums == list(range(11, 20)), nums
     assert ex[2] == f"13:     assert {LONG_LIT} == 1"
     assert not any(SHORT_LIT in l for l in ex), "(c) [M3] a 7-char literal is not a carrier"
@@ -212,14 +187,11 @@ def test_d_m4_caps(tmp_path):
     _git(r, "config", "user.name", "exam")
     (r / "t").mkdir()
     big = "\n".join(f"line {i} {LONG_LIT} " + "x" * 60 for i in range(200)) + "\n"
-    (r / "t/big.py").write_text(big)          # far over 8,000 bytes of carriers
+    (r / "t/big.py").write_text(big)
     (r / "t/small.py").write_text(f"a = '{LONG_LIT}'\n")
-    for i in range(4):                        # 4 × ~8 KB crosses 24,000
+    for i in range(4):
         (r / f"t/fill{i}.py").write_text(big)
     plan = r / "plan.md"
-    # Files: big, small, (nothing — absent), fill0, fill1 (Create:); Proof:
-    # fill2 (Run: cat) and fill3 (Run: python3). Present entries in order:
-    # big, small, fill0, fill1, fill2, fill3 — the total cap lands inside fill1.
     plan.write_text(_plan_text("t/big.py", "t/small.py", "t/fill0.py",
                                "t/nothing.py", "t/fill1.py", "t/fill2.py",
                                "t/fill3.py", verb="Create"))
@@ -236,14 +208,10 @@ def test_d_m4_caps(tmp_path):
     present = [f for f in d["base"]["files"] if f["status"] == "present"]
     total = sum(len(f["excerpt"].encode()) for f in present)
     assert 23000 < total <= 24000, total
-    # big (file cap), small (whole), fill0 (file cap), fill1 (the total cap
-    # cuts it, non-empty), then every later entry empty and truncated.
     order = [f["path"] for f in present]
     assert order == ["t/big.py", "t/small.py", "t/fill0.py", "t/fill1.py",
                      "t/fill2.py", "t/fill3.py"], order
     assert by["t/fill0.py"]["truncated"] is True and by["t/fill0.py"]["excerpt"]
-    # The entry the TOTAL cap cut keeps what fit (non-empty, truncated); every
-    # later entry is empty and truncated while still carrying lines/headings.
     nonempty = [i for i, f in enumerate(present) if f["excerpt"]]
     last = nonempty[-1]
     assert last >= order.index("t/fill1.py"), "(d) [M4] the total lands past fill1"
@@ -255,8 +223,6 @@ def test_d_m4_caps(tmp_path):
 
 
 def test_h_own_entries_spend_the_budget_after_their_siblings(tmp_path):
-    """(#1528) an own entry spends the excerpt budget last, so a sibling the
-    task's Proof names is never starved by the files the task rewrites."""
     r = tmp_path / "repo3"
     r.mkdir()
     _git(r, "init", "-q", ".")
@@ -297,18 +263,12 @@ def test_e_m5_refusals(repo):
     assert q.stderr.strip().startswith("error:") and zeros in q.stderr, q.stderr
 
 
-# ── extractor-and-authoring-refusals task 1 (#1025): a base that is neither a
-# checkout directory nor a 40-hex sha is refused on one line, exit 2 ─────────
-
 REFUSAL = ("extract: --base %s is not a commit this repository has — "
            "pass the 40-hex sha or a checkout directory")
 
 
 @pytest.mark.parametrize("label", ["abbrev", "word"])
 def test_g_m1_a_short_or_unknown_base_is_refused_on_one_line(repo, label):
-    """(a) [M1]: the fixture HEAD's first 8 characters, and the word
-    `notasha` — exit 2, empty stdout, exactly one stderr line, the issue's
-    message with the value substituted."""
     r, plan, head = repo
     value = head[:8] if label == "abbrev" else "notasha"
     p = run(plan, "--task", "1", "--base", value)
@@ -318,8 +278,6 @@ def test_g_m1_a_short_or_unknown_base_is_refused_on_one_line(repo, label):
 
 
 def test_g_m3_a_real_sha_and_a_directory_still_read_present(repo):
-    """(d) [M3]: the 40-hex sha and the checkout directory both print
-    `present` for a file that exists, and the hash equals the no-base diet's."""
     r, plan, head = repo
     plain = load(run(plan, "--task", "1"))
     for rev in (head, str(r)):

@@ -1,5 +1,3 @@
-"""Which piece a linked story's check goes to (skills/ultrawrite/stories/compile.ts, #1525).
-Drives bun on the tracked todo-tags bundle with a fake store module."""
 import json
 import os
 import shutil
@@ -52,7 +50,7 @@ def test_a_link_goes_to_the_piece_that_depends_on_the_other():
     assert pieces("card('tag').depends_on = ['todo']")["S4.3"] == "tag"
 
 
-def test_a_link_goes_to_the_piece_that_depends_on_both_others():  # potluck's shape
+def test_a_link_goes_to_the_piece_that_depends_on_both_others():
     assert pieces("b.cards.push({piece: 'board', depends_on: ['todo', 'tag'], actions: []}); "
                   "b.page.links[0].pieces = ['todo', 'tag', 'board']")["S4.3"] == "board"
 
@@ -68,7 +66,6 @@ def test_the_tools_owner_counts_as_a_link_piece():
 
 
 def test_a_link_naming_no_piece_is_refused():
-    # the two kept stories leave other pieces unproven, so look only at the link's refusals
     found = [r for r in checks("b.page.links[0].pieces = ['todo', 'tags']") if r.startswith("link ")]
     assert found == ["link L1: names piece tags, which is no piece"]
 
@@ -90,8 +87,6 @@ def test_a_string_concepts_is_refused_once():
     assert found == ['piece todo: concepts must be a list of concept ids, not "todo"']
 
 
-# What the screen parts draw (#1491): a story expecting a role no part draws is a fact for the
-# author, and the compiled task that needs it is told to add the part and may touch the parts files.
 DRAWS = """
 import {readDraws, TEMPLATE_DRAWS} from './skills/ultrawrite/stories/parts';
 import {compilePlan} from './skills/ultrawrite/stories/compile';
@@ -119,7 +114,6 @@ def test_the_task_needing_a_part_is_told_to_add_it():
         assert "When a story needs something no part draws, add a part" in t
 
 
-# The one page (client/src/screen.json): every piece's task modifies it, and none names a piece's own screen.
 def test_with_one_page_every_task_modifies_it():
     got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, null, true);"
                       "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")

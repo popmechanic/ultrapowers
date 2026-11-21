@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Stop hook: a session that used ultrawrite or ultrapowers spends most of its
-# clock waiting on a Monitor, a background Agent or a sandbox run; when the
-# last tool call of a turn is a background dispatch the agent ends the turn
-# and the operator had to notice the pause and ask "anything else productive
-# while that runs?" by hand. This hook asks it instead: the first stop of a
-# turn with background work still running is blocked with the in-flight list
-# and the question; a second stop (stop_hook_active), or a stop with nothing
-# in flight, is allowed silently.
 set -euo pipefail
 
 python3 -c "$(cat <<'PY'

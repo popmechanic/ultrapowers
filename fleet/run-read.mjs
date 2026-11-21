@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/**
- * fleet/run-read.mjs — a run, read from the evidence record.
- *
- *   node fleet/run-read.mjs --run <N>[,<M>…] --target <owner>/<repo> [--evidence-repo <owner>/<repo>]
- *                           [--since <n>] [--json] [--follow [--quiet <minutes>]]
- *   node fleet/run-read.mjs --live [--target <owner>/<repo>] [--evidence-repo <owner>/<repo>] [--json]
- *
- * The sandbox is the one writer of a run, and its record is git: `status.json` and `events.jsonl`
- * under `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, on the run's live branch
- * while it works and on its tag once it has ended. This reads that record and nothing else: no
- * hub, no VM. `projectRun` is pure and answers plain data (the run's state, each task's state and
- * a timeline of every row worth a line), so a page in a browser can use it as it stands; the CLI
- * prints it one line per row.
- *
- * `--since <n>` prints only timeline rows after the first `n` (the last line of every print is
- * `cursor <rows read>`). `--follow` keeps reading every 10 s, prints each new line once, flags a
- * claim or a run gone quiet with `!`, and ends when every asked run's status says it ended; the
- * record is committed every 10 s, so a line is up to about 20 s behind the sandbox. `--live` lists the runs that have a live branch. The evidence repository
- * is `--evidence-repo`, else `"evidence"` in `~/.ultrapowers/fleet.json`. Reads go through `gh api`.
- */
 import { fileURLToPath } from 'node:url'
 
 import { projectRun } from '../factory/view.mjs'
@@ -29,11 +9,8 @@ import {
 const fail = (message) => { throw new Refusal(`run-read: ${message}`) }
 const timeOf = (iso) => (typeof iso === 'string' && iso.length >= 19 ? iso.slice(11, 19) + 'Z' : '-')
 
-// ── The projection (pure; `factory/view.mjs` holds it, since the engine renders the run's view) ──
-
 export { projectRun }
 
-/** The projection as the operator reads it; `since` drops timeline lines at or before that row. */
 export function renderRun (p, { since = 0 } = {}) {
   const lines = [`== run-${p.run} ${p.state ?? 'unknown'}${p.phase ? `: ${p.phase}` : ''}${p.pr ? `  ${p.pr}` : ''}`]
   for (const t of p.tasks) {
@@ -48,9 +25,6 @@ export function renderRun (p, { since = 0 } = {}) {
   return lines.join('\n')
 }
 
-// ── Reading the record ───────────────────────────────────────────────────
-
-/** One file of the evidence repository at a ref, as text, or null when it is not there. */
 async function fileAt (exec, evidence, filePath, ref) {
   const res = await exec('gh', ['api', '-H', 'Accept: application/vnd.github.raw',
     `repos/${evidence}/contents/${filePath}?ref=${encodeURIComponent(ref)}`])
@@ -60,16 +34,9 @@ async function fileAt (exec, evidence, filePath, ref) {
 const jsonOf = (text) => { try { return JSON.parse(text) } catch { return null } }
 const rowsOf = (text) => String(text ?? '').split('\n').filter((l) => l.trim() !== '').map(jsonOf).filter((e) => e !== null)
 
-/**
- * A run's record: `{ ref, live, rows, status, plan }`, or null when the evidence repository holds
- * neither a tag nor a live branch for it. The tag is tried first: a run that has ended is read
- * where it will stay, and a run still at work has only its live branch.
- */
 export async function readRunRecord ({ exec = defaultExec, evidence, target, run, liveFirst = false, plan: wantPlan = true }) {
   const folder = runFolderFor(target, run)
   const refs = [[runTagFor(target, run), false], [liveBranchFor(target, run), true]]
-  // `liveFirst` is the follower's order: a run at work is on its live branch, so the tag is asked
-  // only once that branch is gone. `plan: false` skips the plan's parse, which never changes.
   for (const [ref, live] of liveFirst ? refs.reverse() : refs) {
     const events = await fileAt(exec, evidence, `${folder}/events.jsonl`, ref)
     const status = await fileAt(exec, evidence, `${folder}/status.json`, ref)
@@ -80,16 +47,8 @@ export async function readRunRecord ({ exec = defaultExec, evidence, target, run
   return null
 }
 
-// ── Following a run ──────────────────────────────────────────────────────
-
-/** The states a run's status page ends on (`fleet/janitor.mjs`'s `REAPABLE_STATES`). */
 const ENDED = ['done', 'parked', 'failed']
 
-/**
- * `--follow`'s reader: each call answers one projection per asked run, in order, or null for a
- * run whose record holds nothing yet. A run is read live branch first (two requests a look while
- * it works) and its plan once, since the parse the engine read does not change.
- */
 export function followReader ({ exec = defaultExec, evidence, target, runs }) {
   const plans = new Map()
   return async () => {
@@ -104,17 +63,9 @@ export function followReader ({ exec = defaultExec, evidence, target, runs }) {
   }
 }
 
-/**
- * `--follow`: look every `everyMs`, print each timeline line not yet printed, and print one `!`
- * line when something looks wrong: a task claimed `quietMs` ago with nothing since, or no new line
- * from any asked run for `quietMs`. Each warning prints once until the thing it names changes.
- * Ends when every asked run's status page says it ended (one `== run-<N> <state>` line each, and
- * 0) or at `maxMs` (`== gave up` and 3).
- * `read` is `followReader`'s; `now`, `sleep` and `write` are the test's seams.
- */
 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
   const start = now()
-  const printed = new Map(runs.map((run) => [run, 0]))   // run -> the last log row printed
+  const printed = new Map(runs.map((run) => [run, 0]))
   const warned = new Set()
   let lastNewAt = start
   for (;;) {
@@ -154,8 +105,6 @@ export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10
   }
 }
 
-/** Every run with a live branch: `[{ target, run, branch }]`, `target` as `<owner>-<repo>`;
- *  with `target` given, only that target's. */
 export async function listLive ({ exec = defaultExec, evidence, target = null }) {
   const prefix = target === null ? 'live/' : `live/${targetSlug(target)}/`
   const res = await exec('gh', ['api', '--paginate', '--slurp', `repos/${evidence}/git/matching-refs/heads/${prefix}`])
@@ -168,8 +117,6 @@ export async function listLive ({ exec = defaultExec, evidence, target = null })
   }
   return out.sort((a, b) => a.target.localeCompare(b.target) || a.run - b.run)
 }
-
-// ── The CLI ──────────────────────────────────────────────────────────────
 
 export function parseArgs (argv) {
   const a = { runs: [], target: null, evidence: null, since: 0, json: false, live: false, follow: false, quietMinutes: 10 }

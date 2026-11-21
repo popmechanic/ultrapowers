@@ -1,5 +1,3 @@
-"""The TinyApp screens check (factory/stack/tinyapp/screens.ts): what a screen's root draws,
-and every element's props against the catalog. Needs bun and an offline-installable app."""
 import json
 import os
 import shutil
@@ -11,7 +9,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCREENS = os.path.join(ROOT, "factory/stack/tinyapp/screens.ts")
 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
-SCREEN = "client/src/screen.json"  # the one page the scaffold writes
+SCREEN = "client/src/screen.json"
 
 MISSING = ["SCREENS todo: no element runs addTodo", "SCREENS todo: no element runs completeTodo",
            "SCREENS todo: no element runs deleteTodo"]
@@ -50,7 +48,6 @@ def test_screens_check(app, fixture, want_exit, want_lines):
 
 
 def _copy(app, tmp_path):
-    """A copy of the app sharing its node_modules."""
     a = str(tmp_path / "app")
     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
@@ -134,7 +131,6 @@ def test_a_checkout_path_with_a_space_still_finds_the_parser(app, tmp_path):
 
 
 def _with_file(app, rel, change, run):
-    """Change one app file in place for `run`, then put it back."""
     p = os.path.join(app, rel)
     with open(p, "rb") as f:
         kept = f.read()
@@ -155,7 +151,7 @@ def _draws_edit(fn):
     return change
 
 
-def test_a_part_with_no_draws_line_is_a_finding(app):  # #1491
+def test_a_part_with_no_draws_line_is_a_finding(app):
     got = _with_file(app, "client/src/screens/draws.json", _draws_edit(lambda parts: parts.pop("Badge")),
                      lambda: _screens(app, _todo()))
     assert got == (1, ["SCREENS parts: part Badge has no line in client/src/screens/draws.json saying what it draws",

@@ -1,15 +1,8 @@
-// Every story step's receipt: what the step changed in the store, kept for
-// green and red steps alike. Pure: one small row per checker result, in clause
-// order, the diff cut to its first 50 entries. A result with no `diff` (the step
-// stopped before the checker read the store, as at its `do` stage) keeps its row
-// with `diff: null`, so a checked step never goes missing from the PR (#1491).
 import fs from 'node:fs'
 import path from 'node:path'
 
 const MAX_DIFF = 50
 
-// One checker result per clause in a checks/ folder, keyed by clause: the edge's own
-// (`<clause>@edge.json`) when it wrote one, else the newest by mtime across every copy.
 export function latestResults (dir) {
   const by = new Map()
   if (!fs.existsSync(dir)) return by

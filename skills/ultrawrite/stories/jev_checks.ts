@@ -1,11 +1,4 @@
 #!/usr/bin/env bun
-// Jev reads the plan at each enrichment stage. It judges; it never generates or
-// decides. A flag is for the author to act on. Only three kinds of flag may
-// become the operator's doubts (DOUBT:), each a product choice in plain words:
-// an ask sentence with two readings, an assumption about what the app does,
-// and a link the audience might not expect. The code checks run first.
-//
-//   bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>] [--stage understanding|map|decompose|bundle]
 import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
@@ -28,8 +21,6 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 type Get = (k: string, flagged: (v: number) => boolean, question?: string, subject?: string) => number | null;
 
-// `one` sends its request at once, so every call of a stage runs concurrently; the thunk it
-// returns is awaited in the stage's own order, so flags and reading rows keep that order.
 function reader(ask: Ask, out: Out, product: Product | null, stage: string) {
   return (state: unknown, questions: Record<string, unknown>, label: string, subject: string): (() => Promise<Get>) => {
     out.reads += 1;
@@ -46,7 +37,6 @@ function reader(ask: Ask, out: Out, product: Product | null, stage: string) {
   };
 }
 
-// The ask's sentences, all in one request: one question per sentence.
 async function ambiguity(one: ReturnType<typeof reader>, ask: string, out: Out) {
   const ss = sentences(ask);
   if (!ss.length) return;
@@ -60,11 +50,8 @@ async function ambiguity(one: ReturnType<typeof reader>, ask: string, out: Out) 
 
 async function understanding(p: Product, ask: Ask, out: Out) {
   const one = reader(ask, out, p, 'understanding');
-  // Only what the author decided alone; a choice the operator already made is never re-asked.
   const assumed = p.understanding.assumed.filter((x) => x.about === 'product' && x.by === 'author')
     .map((a) => [a, one({ask: p.understanding.ask, assumption: a.text}, Q.surprise, `assumption "${a.text}"`, a.text)] as const);
-  // A technical label keeps an assumption from the surprise question; Jev reads whether it is
-  // really about the app, and a high reading is only a flag: the author acts on it.
   const technical = p.understanding.assumed.filter((x) => x.about === 'technical' && x.by === 'author')
     .map((a) => [a, one({assumption: a.text}, {about_product: Q.about_product.about_product}, `technical assumption "${a.text}"`, a.text)] as const);
   await ambiguity(one, p.understanding.ask, out);
@@ -117,7 +104,6 @@ async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
   const stories = new Map(b.page.stories.map((s) => [s.id, s]));
   const summary = (b.product?.intent.summary ?? b.page.summary ?? []).join(' ');
   const audience = b.product?.intent.audience.join(', ') ?? 'the people who use the app';
-  // Every request goes out now; the answers are read below in the order the flags are written.
   const coherence = b.cards.map((c) => one(
     {piece: {name: c.piece, purpose: c.purpose, actions: c.actions.map((a) => ({name: a.name, description: a.description}))}},
     Q.coherence, `piece ${c.piece} coherence`, c.piece));
@@ -127,19 +113,16 @@ async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
       story_steps: (story?.steps ?? []).map((st) => ({tool: st.tool, args: st.args, see: st.see ?? []})), near_miss: c.near_miss ?? ''},
     Q.near_miss, `piece ${c.piece} near-miss`, c.piece);
   });
-  // The store goes once, with one question per action.
   const actions = b.cards.flatMap((c) => c.actions.map((a) => ({piece: c.piece, name: a.name, description: a.description})));
   const storeRead = actions.length ? one({store_module: b.storeText.slice(0, 20000), actions},
     Object.fromEntries(actions.map((_, i) => [`branches_on_text_${i}`, at(Q.content_branch.branches_on_text, {i})])),
     `store for ${actions.length} action(s)`, 'store') : null;
-  // Every pair of pieces, in one request.
   const pairs: [number, number][] = [];
   for (let i = 0; i < b.cards.length; i++) for (let j = i + 1; j < b.cards.length; j++) pairs.push([i, j]);
   const pairRead = pairs.length ? one({pieces: b.cards.map((c) => ({name: c.piece, purpose: c.purpose}))},
     Object.fromEntries(pairs.map(([i, j]) => [`same_need_${i}_${j}`, at(Q.redundancy.same_need, {i, j})])),
     `${pairs.length} pair(s) of pieces`, 'pieces') : null;
   const links = (b.page.links ?? []).map((l) => one({audience, summary, link: l.sentence}, Q.link, `link ${l.id}`, l.id));
-  // A later plan's ask is new words: read them too. The first plan's ask was read at stage 2.
   if (askText && askText.trim() !== (b.product?.understanding.ask ?? '').trim()) await ambiguity(one, askText, out);
   const storeGet = storeRead && (await storeRead());
   let n = 0;

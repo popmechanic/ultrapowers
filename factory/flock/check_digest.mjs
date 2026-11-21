@@ -1,7 +1,3 @@
-// The run's checks/ folder as one small row per result file (#1491), so a step whose receipt or Jev
-// reading is missing can be read off the record instead of guessed at. Pure but for reading `dir`:
-// file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`,
-// null for a name with no `@`) and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
 import fs from 'node:fs'
 import path from 'node:path'
 

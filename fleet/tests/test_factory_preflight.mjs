@@ -1,49 +1,3 @@
-/**
- * fleet/tests/test_factory_preflight.mjs — the exam for "the credential probe
- * answers each of the six things the edge can say with one exact line,
- * examined by a rig that can answer it; and the probe runs when called
- * through a symlinked `factory/`."
- *
- * Legs, each naming the Machine clause it comes from:
- *
- *   (a) [M1] `node factory/preflight.mjs --proxy <U>` prints exactly one of
- *       the six lines the edge can say and exits 0 — `alive` (oauth_token +
- *       usage 200), `api_key`, `no_oauth` (neither word), `inconclusive`
- *       (usage 403 with `oauth_scope_insufficient`, and again over 500),
- *       `bearer_dead 401 <message>` (a 401 with a `"type":"error"` JSON body
- *       carrying a `message`), and `edge_refused 401 <first line>` (a 401
- *       with a plain body starting `integration not found`).
- *   (c) [M3] `node <D>/factory/preflight.mjs --proxy <U>`, through the same
- *       link, with an `oauth_token` auth answer and a 200 usage answer,
- *       prints exactly `alive\n` and exits 0.
- *
- * M4 is the Proof's `Run:` lines against the modules' own text, not
- * something a running exam observes — this file does not touch it.
- *
- * The rig: one `node:http` server on `127.0.0.1` port `0`, in this process,
- * answers `/api/oauth/usage` with whatever `{ code, body }` the current case
- * set (mutated between cases, since every case is awaited to completion
- * before the next one runs — no two cases are ever in flight together). The
- * `claude` stub is a `#!/bin/sh` script, mode `0755`, first on the child's
- * `PATH`, that `cat`s an `auth.txt` file the case writes ahead of the run
- * with one of `authMethod: oauth_token`, `authMethod: api_key` or
- * `authMethod: none`. Every child
- * is driven by `runAsync`, which `spawn`s (never `spawnSync`, which would
- * block the event loop the proxy stub server runs on) and awaits the close
- * event, `env: simEnv({ bin, home })` throughout. Every directory this file
- * writes into sits under a fresh `fs.mkdtempSync` under `os.tmpdir()`; no
- * string-literal absolute path appears anywhere below.
- *
- * What this exam assumes about the modules under test: that `classify`'s
- * decision is reachable only through the CLI's one printed line (the
- * Machine clause and the "For the examiner" note both drive it that way,
- * never by importing `classify` in-process); that `preflight.mjs`'s `main`
- * takes the argv already sliced past the node/script pair, so spawning it
- * with `[PREFLIGHT, '--proxy', url]` as the child's own argv is the same
- * call `factory/boot.sh` makes. The assumption does not reach past what the
- * task's own Context and "For the examiner" section already state.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -59,17 +13,12 @@ const REPO_ROOT = path.resolve(HERE, '../..')
 const FACTORY_DIR = path.join(REPO_ROOT, 'factory')
 const PREFLIGHT = path.join(FACTORY_DIR, 'preflight.mjs')
 
-/** Writes an executable `#!/bin/sh` stub into `dir/name`. */
 function writeStub (dir, name, content) {
   const p = path.join(dir, name)
   fs.writeFileSync(p, content)
   fs.chmodSync(p, 0o755)
 }
 
-/** Runs `node <argv[0]> ...argv.slice(1)` as a real child, asynchronously —
- *  the whole reason this rig exists rather than `spawnSync`: the in-process
- *  proxy stub server below can only answer a child that does not block this
- *  event loop. Resolves once the child's `close` event fires. */
 async function runAsync (argv, { bin, home } = {}) {
   const child = spawn(process.execPath, argv, {
     env: simEnv({ bin, home }),
@@ -83,10 +32,6 @@ async function runAsync (argv, { bin, home } = {}) {
   return { code, stdout, stderr }
 }
 
-// ── the in-process proxy stub ────────────────────────────────────────────
-
-/** The `/api/oauth/usage` answer the current case wants; mutated between
- *  cases, each of which is awaited to completion before the next mutates it. */
 let usageAnswer = { code: 200, body: '{}' }
 
 const proxyServer = http.createServer((req, res) => {
@@ -101,8 +46,6 @@ const proxyServer = http.createServer((req, res) => {
 await new Promise((resolve) => proxyServer.listen(0, '127.0.0.1', resolve))
 const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
 
-// ── (a) [M1] the six answers the edge can give ───────────────────────────
-
 {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-preflight-m1-'))
   const home = path.join(root, 'home')
@@ -111,8 +54,6 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   fs.mkdirSync(bin, { recursive: true })
 
   const authFile = path.join(home, 'auth.txt')
-  // The stub `cat`s whatever the case last wrote to authFile — written once,
-  // reused across every case below, since the cases run strictly in turn.
   writeStub(bin, 'claude', `#!/bin/sh\ncat "${authFile}"\n`)
 
   const CASES = [
@@ -175,15 +116,12 @@ const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
   }
 }
 
-// ── (b), (c) [M2, M3] both entry guards through a symlinked factory/ ────
-
 {
   const linkRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-preflight-link-'))
   const D = path.join(linkRoot, 'D')
   fs.mkdirSync(D, { recursive: true })
   fs.symlinkSync(FACTORY_DIR, path.join(D, 'factory'), 'dir')
 
-  // ── (c) [M3] preflight.mjs through the link ──────────────────────────
   {
     const preflightHome = path.join(linkRoot, 'preflight-home')
     const preflightBin = path.join(linkRoot, 'preflight-bin')

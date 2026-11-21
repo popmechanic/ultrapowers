@@ -1,7 +1,3 @@
-"""The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): /specs answers
-the one whole-page screen, a pick names its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
-a time, and the page names elements the way the browser checker does. The server legs need bun
-and an offline-installable app; the naming leg needs the checker's own browser."""
 import json
 import os
 import shutil
@@ -76,7 +72,6 @@ def server(bun, tmp_path_factory):
     other["elements"]["add"]["props"]["label"] = "Add it"
     screens = os.path.join(bundle, "screens")
     os.makedirs(screens, exist_ok=True)
-    # A per-piece file from before the whole-page screen: /specs must not read it.
     for name, s in [("screen.A.json", spec), ("screen.B.json", other), ("screen.json", other), ("todo.A.json", spec)]:
         with open(os.path.join(screens, name), "w") as f:
             json.dump(s, f)
@@ -160,9 +155,6 @@ CASES = [["main", "Main text"], ["navigation", "Nav text"], ["form", "Form text"
 
 
 def test_the_page_names_elements_the_way_the_checker_does(bun, tmp_path):
-    """Each (role, name) counted by preview/names.ts and by the checker's Chrome must agree.
-    Names only: Chrome's own role mapping (an <img> is `image`, a table with no header is a
-    layout table with no cells) is not what this leg reads."""
     browser = os.path.join(ROOT, "factory/stack/tinyapp/browser.ts")
     entry = tmp_path / "entry.ts"
     entry.write_text("import * as n from %s;\n(window as any).__names = n;\n"

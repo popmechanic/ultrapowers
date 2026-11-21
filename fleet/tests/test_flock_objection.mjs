@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-// The objection sim: a builder that finds its task cannot be done as the plan is written says so,
-// and the task waits for the operator where a give-back would hand it round (the wrong-plans
-// reading, flock-baseline run-32, 2026-11-13). One scripted Flock run on a throwaway target
-// (_flock_helpers.mjs): task 1 writes a.txt, and task 2's session files an objection. Task 2 is
-// claimed once and parks at once: one `objection` row, one `task:parked` row marked `objected` with
-// no give-backs, and the run ends a draft whose reason is the objection in the builder's words,
-// which the pull-request body carries.
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import path from 'node:path'
 import { simEnv } from './_helpers.mjs'

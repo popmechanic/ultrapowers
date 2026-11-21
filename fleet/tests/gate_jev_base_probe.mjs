@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-// The gate Jev base probe: when the gate reader's diet carries a `base` object (what each named
-// file is at BASE), `skills/ultrawrite/stories/gate_jev.ts` hands it to Jev unchanged and asks
-// `pinned`: whether a file there already pins the opposite of a clause. It runs the script against
-// a local stand-in Jev (a node:http server on 127.0.0.1) answering every `fact:` and `caught:`
-// question 0.9, `contradiction` 0.1 and `pinned` by case. The case is argv[2]:
-//   pinned-high  a diet with base, `pinned` answered 0.9;
-//   pinned-low   a diet with base, `pinned` answered 0.1;
-//   no-base      the same diet without base.
-// Prints one JSON line {"verdict", "pinned", "asked_pinned", "state_base"} and exits 0; exits 1
-// only when it could not run.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -28,7 +18,6 @@ fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
 let server
 const fail = (why) => { console.error(`GATE JEV BASE ${CASE} COULD NOT RUN: ${why}`); server?.close(); process.exit(1) }
 
-// the stand-in Jev
 const requests = []
 const answer = (k) => (k.startsWith('fact:') || k.startsWith('caught:') ? 0.9 : k === 'contradiction' ? 0.1 : k === 'pinned' ? PINNED[CASE] : 0.5)
 server = http.createServer((req, res) => {

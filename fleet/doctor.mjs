@@ -1,25 +1,4 @@
 #!/usr/bin/env node
-/**
- * fleet/doctor.mjs — "do you have a fleet?"
- *
- * The nine rows, their reads and their verdicts are `fleet/CONTRACT.md` §Doctor;
- * each red row names the `references/first-run.md` section that builds the
- * piece. This header does not restate them (#1444). Every row is a read:
- * running the doctor twice is the same as running it once.
- *
- * Built-ins only: the doctor runs on a user's laptop straight out of the
- * installed plugin cache, where no `node_modules` under `fleet/` has ever
- * existed, so every specifier here is `node:`-prefixed or a sibling fleet
- * module that is itself built-ins-only (the config readers come from
- * `./lobby.mjs`, one copy for both the doctor and the launcher).
- *
- * No token rows: no token is on any disk the doctor could stat. The Claude
- * subscription reaches a sandbox through the `claude-max` http-proxy, whose
- * bearer is injected at exe.dev's edge, and `integrations test claude-max` is
- * not a check for an http-proxy (measured 2026-09-04: it answers "test
- * connection is available for catalog and database integrations"), so the
- * bearer's presence in the listing is the edge-side truth the doctor can read.
- */
 
 import fsp from 'node:fs/promises'
 import path from 'node:path'
@@ -49,45 +28,27 @@ import {
   runCli
 } from './lobby.mjs'
 
-/** The nine rows, in the order the doctor reports them. Each id is also a
- *  `## ` heading in skills/ultrapowers/references/first-run.md. */
 export const ROW_IDS = Object.freeze([
   'exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare'
 ])
 
-/** Each row's `fix` is the `## ` heading in first-run.md that repairs it, and
- *  every row id is its own heading. */
 const FIXES = Object.freeze(Object.fromEntries(ROW_IDS.map((id) => [id, id])))
 
-/** The doctor's own directory: claude-token.mjs sits beside this file, and the
- *  doctor runs it rather than importing it, so its keychain access stays out of
- *  a process that has to start when nothing else in the fleet does. */
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const CLAUDE_TOKEN = path.join(HERE, 'claude-token.mjs')
 
-/** The standing lobby reads, as the remote half of `ssh exe.dev "<remote>"`,
- *  in the order the doctor issues them; the three `claude-token.mjs` reads
- *  follow the github one, then the `help` reads of the
- *  verb-drift row, one per verb of the record; together they are the only
- *  commands the doctor ever runs, every one through the exec seam
- *  `exec(cmd, argv)` — `ssh` or `node`, never a shell string. */
 const READS = Object.freeze({
   whoami: 'whoami',
   github: 'integrations setup github --list'
 })
 
-/** One lobby read: `ssh exe.dev "<remote>"`, answered whatever its exit code,
- *  so every row keeps the code it reports. */
 const lobbyRead = (exec, remote) => exec('ssh', [EXE_HOST, remote])
 
-/** One `claude-token.mjs` read. stderr joins stdout because claude-token logs
- *  its status line there. */
 async function tokenRead (exec, argv) {
   const res = await exec('node', [CLAUDE_TOKEN, ...argv])
   return { code: res.code, stdout: `${res.stdout ?? ''}${res.stderr ?? ''}` }
 }
 
-/** The bearer the edge injects, as the listing spells it. */
 const BEARER = 'Authorization:Bearer'
 
 const row = (id, status, detail) => ({ id, status, detail, fix: FIXES[id] })
@@ -95,22 +56,10 @@ const firstLine = (stdout) => String(stdout ?? '').split('\n')[0].trim()
 
 const parseCpus = (value) => (/^\d+$/.test(String(value ?? '').trim()) ? Number(value) : null)
 
-/**
- * The config file's default account: its top-level `account`, or null when the
- * file is absent, is not JSON, is not a JSON object, or names no account. The
- * launcher reads the same key to pick the keychain entry a run signs in with;
- * the doctor reads it only to ask whether the keychain holds that name.
- *
- * It travels beside `loadFleetConfig` rather than inside it: `result.config` is
- * exactly the two keys the doctor itself reads, and the account reaches
- * `doctor()` as its own option.
- */
 export async function fleetConfigAccount ({ path: configPath } = {}) {
   const account = (await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH()))?.account
   return typeof account === 'string' && account !== '' ? account : null
 }
-
-// ── exe-dev ──────────────────────────────────────────────────────────────────
 
 function exeDevRow (res) {
   const who = firstLine(res.stdout)
@@ -118,27 +67,6 @@ function exeDevRow (res) {
   return row('exe-dev', 'missing', `ssh exe.dev whoami answered code ${res.code} with no account name`)
 }
 
-// ── capacity ─────────────────────────────────────────────────────────────────
-
-/**
- * `billing plan --json` is one flat object with `max_cpus`, `max_memory_gb`,
- * `tier` and `plan`. The row reports two numbers side by side — the pool, and
- * the size one run asks for — and draws no conclusion from them, because
- * allocation on exe.dev is over-committable: 56 vCPU stood allocated against a
- * 16-vCPU plan and no run was ever refused (measured 2026-09-05). A pool
- * smaller than the ask is therefore a green row that says so, not a limit.
- *
- * Only a number the doctor could not read turns the row red: an unreadable
- * `billing plan --json`, or a `cpu`/`memory` it cannot parse. Both details name
- * `~/.ultrapowers/fleet.json`, the file that sets the size a run asks for.
- */
-/**
- * The pool `billing plan --json` answered, through the lobby's own reader:
- * `{ maxCpus, maxMemoryGb, tier }`, or null when the verb exited non-zero or
- * answered no numeric `max_cpus`. `readPlanCapacity` reads an absent
- * `max_memory_gb` as 0, which is a launch's business; the doctor reads it as no
- * pool, so `maxMemoryGb` is null unless the payload itself carries a number.
- */
 async function readPool (res) {
   if (res.code !== 0) return null
   let capacity
@@ -179,32 +107,12 @@ function poolRow (res, pool, config) {
   return row('capacity', 'ok', `${described}; a run asks ${asked}`)
 }
 
-/** The two key names the doctor reads, as the row's detail spells them. */
 const READ_KEYS = Object.keys(FLEET_DEFAULTS)
 
-/** The names something outside the doctor reads, as the row's detail spells
- *  them: `account` picks the keychain entry a run signs in with, and
- *  `evidence` names the repository a run keeps its record in. They are the
- *  launcher's to read; the doctor only asks whether what they name is there. */
 const LAUNCHER_KEYS = Object.freeze(['account', 'evidence'])
 
-/** Every name the config file may carry: the two the doctor reads, and the
- *  ones the launcher does. A name outside this list is a key nothing reads. */
 const CONFIG_KEYS = Object.freeze([...READ_KEYS, ...LAUNCHER_KEYS])
 
-/**
- * The pool arithmetic, plus what the config file's own key names say about it.
- *
- * `configKeys` is the file's own top-level key names (`readFleetJson`): null when there
- * is no file to read keys off, and otherwise every top-level name in it. A name
- * outside `CONFIG_KEYS` is a key left by a fleet from before the lift — the
- * operator wrote a setting nothing consults, so the row is red until the file is
- * rewritten, and the detail names those keys by echoing the file rather than
- * spelling any of them here. `account` is not among them: the doctor never reads
- * it, but the launcher does, and the `accounts` row says whether what it names is
- * there. A file that omits one of the two the doctor does read is not wrong, only
- * silent, so the green detail says which default it fell back to.
- */
 function capacityRow (res, pool, config, configKeys = null) {
   const base = poolRow(res, pool, config)
   const keys = Array.isArray(configKeys) ? configKeys.filter((k) => typeof k === 'string') : null
@@ -229,21 +137,6 @@ function capacityRow (res, pool, config, configKeys = null) {
   return notes.length === 0 ? base : row('capacity', 'ok', `${base.detail}${notes.join('')}`)
 }
 
-// ── integrations, read once for two rows ─────────────────────────────────────
-
-/**
- * `integrations list --json`, read through the lobby's own `listIntegrations`.
- * The doctor asks three questions of each object — does it exist, does it
- * carry the bearer, and is it attached to `tag:fleet` — and the lobby's reader
- * answers all three defensively (`bearer`, `tags`), so a field rename on
- * exe.dev's side does not turn a healthy fleet red for the wrong reason.
- *
- * Answers a Map of name → `{ name, tags, github, bearer, comment }`, or null
- * when the verb exited non-zero or its stdout is not a listing at all.
- * `comment` is the entry's own comment string or null: the credential tool
- * writes `account=<name>` into `claude-max`'s on every install, and the
- * `accounts` row reads the edge's account off it.
- */
 async function readIntegrations (res) {
   if (res.code !== 0) return null
   const payload = parseJson(res.stdout)
@@ -260,16 +153,8 @@ async function readIntegrations (res) {
   return out
 }
 
-/** The fix for an integration no fleet VM is granted. */
 const attachFix = (name) => `ssh exe.dev "integrations attach ${name} ${FLEET_POLICY}"`
 
-/**
- * The one question every integration row asks: is the object `name` granted to
- * fleet VMs, i.e. attached to `tag:fleet` in `integrations list --json`?
- * Resolves null when it is, otherwise the row `id` reports: an absent object is
- * `ok` with `absentIsOk` (and `absentDetail`), `missing` without; an unattached
- * one is `missing`, naming `attachFix(name)`.
- */
 export function attachRowFor (name, { id, found, absentIsOk = false, absentDetail = null } = {}) {
   const have = found === null || found === undefined ? undefined : found.get(name)
   if (have === undefined) {
@@ -278,15 +163,7 @@ export function attachRowFor (name, { id, found, absentIsOk = false, absentDetai
   if (have.tags.includes(FLEET_TAG)) return null
   return row(id, 'missing', `${name} is not attached to ${FLEET_POLICY}, so no fleet VM is granted it — ${attachFix(name)}`)
 }
-// ── claude ───────────────────────────────────────────────────────────────────
 
-/**
- * `usage --json --no-rotate`'s first row, read for its own detail suffix: the
- * account's seven-day and five-hour windows when the row reads clean, or
- * `usage unread — <reason>` when it does not — a non-zero exit reads as
- * `usage answered code <code>`, an `unread: true` row as its own `reason`.
- * A read never rotates the token; that is the point of `--no-rotate`.
- */
 export function usageSuffix (usageRes) {
   if (usageRes.code !== 0) {
     return `; usage unread — usage answered code ${usageRes.code}`
@@ -303,21 +180,10 @@ export function usageSuffix (usageRes) {
     return `; usage unread — ${reason}`
   }
   const { sevenDay, fiveHour } = first
-  // A null window is one the account does not have.
   const windowText = (w) => w === null ? 'none' : `${w.utilization}% resets ${w.resetsAt}`
   return `; 7d ${windowText(sevenDay)}; 5h ${windowText(fiveHour)}`
 }
 
-/**
- * The bearer has to exist at the edge. Whether the object reaches a fleet VM
- * is the `integrations` row's question (its attachment), not this one's.
- *
- * claude-token's status line only decorates the row. Either outcome leaves the
- * status alone — the bearer is injected at the edge whether or not this laptop
- * still holds the refresh token — and only the detail differs. The usage
- * window reading rides beside it, appended to `detail` either way, so the
- * reading is visible whether or not the bearer is found.
- */
 function claudeRow (found, tokenRes, usageRes) {
   const suffix = usageSuffix(usageRes)
   if (found === null) {
@@ -336,20 +202,10 @@ function claudeRow (found, tokenRes, usageRes) {
   return row('claude', 'ok', `${CLAUDE_INTEGRATION} carries the bearer at the edge; ${status}${suffix}`)
 }
 
-// ── accounts ─────────────────────────────────────────────────────────────────
-
-/** The command a laptop with no usable keychain entry runs. */
 const LOGIN = 'node fleet/claude-token.mjs login'
 
-/** The token the credential tool writes into `claude-max`'s comment on every
- *  install, so the edge itself records which account its bearer came from. */
 const ACCOUNT_TOKEN = 'account='
 
-/**
- * `claude-token.mjs accounts --json` prints one object per keychain entry —
- * `{ name, expiresAt, fresh }` — under the one service. Nothing secret is in
- * it: an expiry and a name, never a token.
- */
 function parseAccounts (res) {
   if (res.code !== 0) return null
   const parsed = parseJson(res.stdout)
@@ -361,12 +217,6 @@ const accountName = (entry) => (entry && typeof entry.name === 'string' ? entry.
 const describeAccount = (entry) =>
   `${accountName(entry)} ${entry?.fresh === true ? 'fresh until' : 'expired'} ${String(entry?.expiresAt ?? '')}`
 
-/**
- * The account the edge carries, off `claude-max`'s comment: the value after
- * `account=` in the first whitespace-separated token that starts with it. Null
- * when the comment is prose with no such token — an install from before the
- * tool wrote one, which the next refresh records.
- */
 function edgeAccount (found) {
   const comment = found?.get(CLAUDE_INTEGRATION)?.comment
   if (typeof comment !== 'string') return null
@@ -378,13 +228,6 @@ function edgeAccount (found) {
   return null
 }
 
-/**
- * Which accounts this laptop holds, when each one expires, which of them the
- * edge is carrying, and — when `~/.ultrapowers/fleet.json` names one — whether
- * the keychain holds that name at all. An expired entry is not red: the
- * launcher refreshes before every run, and the bearer already lives at the
- * edge. An empty keychain is, because nothing can be refreshed from it.
- */
 function accountsRow (res, found, account) {
   const entries = parseAccounts(res)
   if (entries === null) {
@@ -413,15 +256,8 @@ function accountsRow (res, found, account) {
   return row('accounts', 'ok', `${listed}${carries}${named}`)
 }
 
-// ── verb-drift ───────────────────────────────────────────────────────────────
-
-/** The only shape a verb name may take before it is interpolated into an ssh
- *  string. Any other key of the record is reported unreadable, never run. */
 const VERB = /^[a-z][a-z0-9 -]*$/
 
-/** The lobby's `Options:` block: two spaces, the flag, spaces, its description.
- *  `help <verb>` and `<verb> --help` print the same block (measured 2026-09-05),
- *  and `help …` is not a mutating verb, so this is the form the doctor asks. */
 const FLAG_LINE = /^[ \t]+(--[A-Za-z0-9-]+)/gm
 
 function helpFlags (stdout) {
@@ -432,21 +268,6 @@ function helpFlags (stdout) {
   return flags
 }
 
-/**
- * Re-fetch `help <verb>` for every verb of the verb record (`VERBS_PATH`, or
- * `recordPath` so an exam drives the row from a fixture) and diff the live
- * flag set against the recorded one.
- *
- * `--help` answers text, not JSON — a `Command:` line, a description, an
- * optional `Usage:` line, an `Options:` block and an optional `Examples:` block
- * — so the diff unit is the flag set and the record stores flag names, not
- * prose. A verb the lobby no longer knows answers a line starting `No help
- * available for unrecognized command:` at exit 0, which is why a stdout with no
- * flag at all counts as unreadable whatever the exit code was.
- *
- * A drift is a finding, never a refusal: the caller decides what a finding is
- * worth. Only a record this cannot read at all answers `readable: false`.
- */
 export async function verbDrift ({ help, recordPath } = {}) {
   const target = recordPath ?? VERBS_PATH
   const unreadable = (why) => ({
@@ -509,18 +330,8 @@ export async function verbDrift ({ help, recordPath } = {}) {
   return { readable: true, capturedAt, findings, detail }
 }
 
-/** A readable record is a green row whatever it found; an unreadable one is the
- *  only red, because then the doctor has nothing to compare the lobby against. */
 const verbDriftRow = (drift) => row('verb-drift', drift.readable ? 'ok' : 'missing', drift.detail)
 
-// ── github ───────────────────────────────────────────────────────────────────
-
-/**
- * `integrations setup github --list` has no `--json` (`--json` is a
- * flag-parsing error), so the row reads the two-line form it does print: a
- * `GitHub accounts:` header, then one indented account per line. No account
- * means the browser step has never been walked.
- */
 function githubAccounts (stdout) {
   const lines = String(stdout ?? '').split('\n')
   const header = lines.findIndex((line) => /accounts\s*:\s*$/i.test(line))
@@ -545,24 +356,12 @@ function githubRow (res) {
   return row('github', 'ok', `GitHub accounts ${accounts.join(', ')}`)
 }
 
-// ── integrations ─────────────────────────────────────────────────────────────
-
-/** The names the row asks about: the bearer's object always, and the target's
- *  with `--target`, in this order. */
 function attachNames (target) {
   const names = [CLAUDE_INTEGRATION]
   if (target !== null) names.push(githubIntegrationFor(target))
   return names
 }
 
-/**
- * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
- * the tag `new --tag fleet` creates the VM with. The row is red for the FIRST
- * name that is not attached, naming the attach that fixes it, because a stranger
- * reading several failures at once cannot tell which one to run first. With
- * `--target`, the target's one object `gh-<owner>-<repo>` also has to exist, and
- * that is asked first.
- */
 function integrationsRow (found, target) {
   if (found === null) {
     return row('integrations', 'missing', 'integrations list printed no readable JSON')
@@ -575,28 +374,15 @@ function integrationsRow (found, target) {
   }
   const names = attachNames(target)
   for (const name of names) {
-    if (!found.has(name)) continue // the claude row names a missing object
+    if (!found.has(name)) continue
     const off = attachRowFor(name, { id: 'integrations', found })
     if (off !== null) return off
   }
   return row('integrations', 'ok', `${names.filter((n) => found.has(n)).join(', ')} attached to ${FLEET_POLICY}`)
 }
 
-// ── evidence ─────────────────────────────────────────────────────────────────
-
-/** The read that asks whether the evidence repository exists, as the argv of
- *  `exec('gh', …)`. */
 const evidenceRepoRead = (evidence) => ['api', `repos/${evidence}`]
 
-/**
- * The one-time setup that lets a run keep its record in the operator's own
- * evidence repository — whatever repository the run drives — walked in the
- * order an operator does it and stopped at the first miss, each naming its
- * fix: the key `evidence` in `~/.ultrapowers/fleet.json`; the repository
- * itself (`repoRes`, the answer of `gh api repos/<owner>/<repo>`, null when
- * there was no key to read); its `gh-<owner>-<repo>` integration in the
- * listing, then its attachment, judged by `attachRowFor`.
- */
 function evidenceRow (evidence, repoRes, found) {
   if (evidence === null) {
     return row(
@@ -623,17 +409,8 @@ function evidenceRow (evidence, repoRes, found) {
   return off ?? row('evidence', 'ok', `${evidence} exists and ${name} is attached to ${FLEET_POLICY}`)
 }
 
-// ── cloudflare ───────────────────────────────────────────────────────────────
-
-/** The deploy's credential: an http-proxy integration that forwards a
- *  Cloudflare API token, named the same as every other fleet integration. */
 const CLOUDFLARE_INTEGRATION = 'cloudflare'
 
-/**
- * The ninth row: cloudflare carries the deploy's credential at the edge, and
- * only a plan with a `**Publish:**` line needs it — so unlike every other row,
- * absent is `ok`, and present is judged by its attachment `tag:fleet`.
- */
 function cloudflareRow (found) {
   const off = attachRowFor(CLOUDFLARE_INTEGRATION, {
     id: 'cloudflare',
@@ -645,26 +422,6 @@ function cloudflareRow (found) {
   return off ?? row('cloudflare', 'ok', `${CLOUDFLARE_INTEGRATION} http-proxy attached to ${FLEET_POLICY}`)
 }
 
-// ── the doctor ───────────────────────────────────────────────────────────────
-
-/**
- * Run every row against `config` and resolve `{ config, rows, verdict }`.
- * `exec(cmd, argv)` is the lobby's seam, resolving `{ code, stdout, stderr }`,
- * so a test drives the doctor with a stub. `target` is `owner/repo` or null; anything else is refused before any
- * read rather than interpolated into an ssh string.
- *
- * `configKeys` is the config file's own top-level key names — `readFleetJson`'s keys
- * for the same path `config` was loaded from, or null when there is no file.
- * It reaches the `capacity` row and nothing else: `result.config` stays exactly
- * the two keys the doctor reads.
- *
- * `account` is that file's own `account` — `fleetConfigAccount` for the same
- * path — and reaches the `accounts` row alone, for the same reason. `verbsPath`
- * overrides the verb record the `verb-drift` row reads.
- *
- * `evidence` is that file's own `evidence` — `readEvidenceSetting` for the same
- * path, `<owner>/<repo>` or null — and reaches the `evidence` row alone.
- */
 export async function doctor ({
   config, exec, target = null, configKeys = null, account = null, verbsPath = null, evidence = null
 } = {}) {
@@ -682,23 +439,16 @@ export async function doctor ({
 
   const read = (remote) => lobbyRead(run, remote)
   const whoami = await read(READS.whoami)
-  // The lobby's own readers, each handed the answer already in hand so a
-  // non-zero exit stays the code the row reports rather than a thrown error.
   const billing = await read('billing plan --json')
   const pool = await readPool(billing)
   const list = await read('integrations list --json')
   const found = await readIntegrations(list)
   const github = await read(READS.github)
-  // The status read names the configured account (`fleet.json` `account`), never
-  // the code's default: the keychain entries are named by email since 2026-09-11.
   const token = await tokenRead(run, wantAccount ? ['status', '--account', wantAccount] : ['status'])
-  // The usage read carries `--account` before `--no-rotate`, unlike the token
-  // read's trailing clause, and never rotates the token it reads.
   const usage = await tokenRead(run, wantAccount
     ? ['usage', '--json', '--account', wantAccount, '--no-rotate']
     : ['usage', '--json', '--no-rotate'])
   const accounts = await tokenRead(run, ['accounts', '--json'])
-  // The evidence repository, when a key names one.
   const evidenceRepo = wantEvidence === null ? null : await run('gh', evidenceRepoRead(wantEvidence))
   const drift = await verbDrift({
     help: (verb) => read(`help ${verb}`),
@@ -720,8 +470,6 @@ export async function doctor ({
   return { config: cfg, rows, verdict }
 }
 
-// ── CLI ──────────────────────────────────────────────────────────────────────
-
 const PAD = Math.max(...['ok', 'missing'].map((s) => s.length))
 
 function renderRows (rows) {
@@ -733,16 +481,12 @@ function renderRows (rows) {
   return out.join('\n')
 }
 
-/** A value flag's string, or null when absent or given bare. */
 const valueOf = (opt) => (typeof opt === 'string' ? opt : null)
 
 async function main (argv) {
   const { opts } = parseArgs(argv, { flags: ['json'] })
   const configPath = valueOf(opts.config) ?? DEFAULT_CONFIG_PATH()
   const config = await loadFleetConfig({ path: configPath })
-  // The config file's own top-level key names — what the operator wrote, where
-  // `config` is what the doctor reads — reach the `capacity` row alone; null
-  // when there is no JSON object to carry keys.
   const written = await readFleetJson(configPath)
   const configKeys = written === null ? null : Object.keys(written)
   const account = await fleetConfigAccount({ path: configPath })

@@ -1,12 +1,4 @@
 #!/usr/bin/env bun
-// Write the starting app a stories-v1 launch builds on: the template (given
-// code), the bundle's store module at client/src/store.js, and the page's one
-// json-render screen at client/src/screen.json: an empty column that runs no
-// action, so the screens check stays red on it until a builder writes the
-// screen. The page reads it itself at build time.
-// Refuses a directory that holds anything but .git.
-//
-//   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
 import {copyFileSync, cpSync, existsSync, readdirSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {loadBundle, writePageOrder} from './bundle';

@@ -1,40 +1,3 @@
-/**
- * fleet/tests/test_factory_record.mjs — the exam for "the run's status page and
- * pull request body are rendered by `factory/record.mjs`, and the publish policy
- * is read fail-closed by `factory/publish.mjs`".
- *
- * `record.mjs`'s CLI is driven as a child process exactly the way `factory/boot.sh`
- * drives `status`; the policy read is called in-process. The rows, payloads and
- * `publish.json` the publish writes are its own JSON since #1441, and their shapes
- * are measured end to end by `test_factory_boot.mjs` (the merge PUT byte-equal,
- * the row kinds in order) and `test_factory_publish.mjs` (every probe case).
- *
- * Legs, each naming the Machine clause it comes from:
- *
- *   (b) [M2] `status key=value ... --events <file>` prints the twelve-cell
- *       page in exactly the pinned key order with `tasks` last; the five
- *       optional cells given empty on the command line come back `null`;
- *       `updatedAt` is a non-empty
- *       string; `tasks` is the two-row projection M2 pins over an events file
- *       holding a `landing` and a `parked` row, and is `{}` over a path that
- *       does not exist.
- *   (c) [M3] `pr-body <plan.md> --events <file>` is byte-equal, over the
- *       fixture plan and one `landing` row, to the paragraph, a blank line,
- *       the one table row, a blank line and `Closes #1222`; and, over a plan
- *       with no `**Closes:**` line and no events file, to the paragraph
- *       followed by two blank lines and nothing else.
- *   (d) [M4] `publishPolicy` over the repo's own `factory/policy.json` reads
- *       the self-merge's bounds and the probe enabled; over a probe cell
- *       carrying no `enabled` key the probe reads disabled and the bounds are
- *       the cell's; over a path that does not exist, the probe reads disabled
- *       with the defaults (3 catch-ups, 120 s, 600 s).
- *
- * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
- * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
- * files, the events files, the policy files — is written under a fresh
- * `fs.mkdtempSync` directory, never a string-literal absolute path.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -52,8 +15,6 @@ const POLICY_JSON = path.resolve(HERE, '../../factory/policy.json')
 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-home-'))
 const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-fixtures-'))
 
-/** Runs `node record.mjs <args>`, never throwing on a non-zero exit — every
- *  case in this exam wants to read the exit code itself. */
 function run (args) {
   const res = spawnSync(process.execPath, [RECORD_MJS, ...args], {
     encoding: 'utf8',
@@ -62,12 +23,10 @@ function run (args) {
   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
 }
 
-/** The non-empty, newline-split lines of `text`. */
 function lines (text) {
   return text.split('\n').filter((l) => l !== '')
 }
 
-// ── b. [M2] `status key=value ... --events <file>` ─────────────────────────
 {
   const STATUS_KEYS = [
     'run', 'state', 'phase', 'pr', 'prAuthor', 'merged',
@@ -119,7 +78,6 @@ function lines (text) {
   assert.equal(status.branch, 'b', '(b) [M2] branch is the given string')
   assert.equal(status.startedAt, 's', '(b) [M2] startedAt is the given string')
 
-  // tasks is {} over an events file that does not exist.
   const missingEvents = path.join(FIXTURES, 'no-such-events.jsonl')
   const r2 = run([
     'status',
@@ -133,7 +91,6 @@ function lines (text) {
   assert.deepEqual(status2.tasks, {}, '(b) [M2] tasks is exactly {} over a path that does not exist')
 }
 
-// ── c. [M3] `pr-body <plan.md> --events <file>` ─────────────────────────────
 {
   const PARAGRAPH = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.'
 
@@ -190,7 +147,6 @@ function lines (text) {
   )
 }
 
-// ── e. the screens check shows on a stories-v1 task's Receipt rows (#1523) ───
 {
   const F = '```'
   const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
@@ -237,7 +193,6 @@ ${F}
   )
 }
 
-// ── f. a `loose:fallback` row with no `terminal` row (a killed engine, #1532) ─
 {
   const plan = path.join(FIXTURES, 'plan-fallback.md')
   fs.writeFileSync(plan, '# A widget\n\n**Summary:** One. Two. Three.\n\n### Task 1: The widget\n')
@@ -256,7 +211,6 @@ ${F}
     `(f) with a draft terminal row the body names its reason: ${r2.stdout}`)
 }
 
-// ── d. [M4] the publish policy, read by `factory/publish.mjs` (#1441) ────────
 {
   assert.deepEqual(
     publishPolicy(POLICY_JSON),

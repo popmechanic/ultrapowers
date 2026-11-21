@@ -1,22 +1,4 @@
 #!/usr/bin/env python3
-"""Parse a claims-v1 plan markdown file to its grammar shape.
-
-Usage: python3 plan_parse.py <plan.md>
-
-Prints exactly one JSON object on stdout with keys `tasks`, `dag_edges`,
-`width`, `checks`, `bootstrapCmd` and `publish`, and exits 0 -- reading no file but the plan
-itself, whether or not a `<stem>.gate-verdicts.json` sits beside it.
-
-Each task's files is the sorted set of its Create, Modify and Delete paths, and
-its `wave` is its 1-based layer in the dependency order; `width` is the widest
-layer, the most tasks that can be ready at once, which the launcher sizes the VM
-from.
-
-A grammar parser: it refuses (exit 2, one stderr line) only what it cannot
-parse or must not run -- no `### Task <id>:` heading found, a duplicate task id,
-a cycle in the derived dependency edges, or a `(minor)` Check. Gate verdicts,
-slot shapes and clause citations are `plan_check.py`'s business.
-"""
 
 import json
 import re
@@ -24,22 +6,14 @@ import sys
 
 
 class Refusal(Exception):
-    """Raised for a grammar-level refusal."""
+    pass
 
-
-# --------------------------------------------------------------------------- #
-# Fence-aware line scanning: track a stack of open ``` / ~~~ fences so
-# headings and labels inside code blocks are never mistaken for real
-# structure.
-# --------------------------------------------------------------------------- #
 
 _FENCE_RE = re.compile(r'^(`{3,}|~{3,})\s*.*$')
 
 
 def _fence_aware_lines(text):
-    """Yield (line, fenced) for each line of text, `fenced` True when the
-    line is itself a fence marker or lies inside an open fence."""
-    stack = []  # stack of fence marker strings, e.g. "```" or "~~~~"
+    stack = []
     out = []
     for line in text.splitlines():
         s = line.strip()
@@ -67,17 +41,10 @@ FILE_BULLET = re.compile(r'^-\s*(Create|Modify|Delete)\s*:\s*(.+)$', re.I)
 IFACE_BULLET = re.compile(r'^-\s*(Consumes|Produces)\s*:\s*(.+)$', re.I)
 PROOF_RUN_BULLET = re.compile(r'^-\s*Run\s*:\s*(.+)$', re.I)
 
-# A Proof `Run:` bullet's citation tag: the same bracket shape a Legs bullet's own citation
-# carries (`[M2]`, `[M1, M3]`), anchored at the END of the value after
-# whitespace -- a tag mid-command is part of the command, not a tag.
 RUN_CITE_RE = re.compile(r"\s*\[\s*(M\d+(?:\s*,\s*M\d+)*)\s*\]\s*$")
 
 
 def _claims_run_cites(value):
-    """Split a Proof `Run:` value into (command text, sorted clause ids).
-    Untagged, the value rides back whole with `[]`. Tagged, the tag is cut off FIRST --
-    before any backtick-wrapper stripping -- and its ids are returned
-    sorted by number."""
     m = RUN_CITE_RE.search(value)
     if not m:
         return value, []
@@ -107,14 +74,10 @@ def _slot_name(raw):
     return key
 
 
-# --------------------------------------------------------------------------- #
-# Plan-level split: headings, boundaries, header block.
-# --------------------------------------------------------------------------- #
-
 def _split_plan(text):
     scanned = _fence_aware_lines(text)
-    heads = []       # (id, title, line_idx)
-    boundaries = []  # line indices of task headings and h2 headings
+    heads = []
+    boundaries = []
 
     for i, (line, fenced) in enumerate(scanned):
         if fenced:
@@ -161,8 +124,6 @@ def _split_plan(text):
 
 
 def _strip_whole_backticks(val):
-    """A whole-value backtick wrapper stripped, exactly as `Check:` strips
-    one."""
     bm = re.match(r'^`([^`]+)`$', val)
     return bm.group(1).strip() if bm else val
 
@@ -204,9 +165,6 @@ def _parse_header(header_lines):
 
 
 def _parse_checks(header_lines):
-    """`- Check:` bullets under the `## Global Constraints` heading in the
-    plan header, in order, each `{"cmd"}`. A trailing `(minor)` is refused: it
-    once marked a Check never run, and a Check is always run now."""
     checks = []
     in_section = False
     for line, fenced in header_lines:
@@ -233,15 +191,7 @@ def _parse_checks(header_lines):
     return checks
 
 
-# --------------------------------------------------------------------------- #
-# Task-body parsing.
-# --------------------------------------------------------------------------- #
-
 def _slot_spans(body_lines):
-    """`[(start, end, name, inline)]` for each unfenced slot label after the
-    heading line, in written order, duplicates kept: the label's line index,
-    the next label's (or the body's end), its canonical name, and the label
-    line's remainder, stripped."""
     heads = []
     for i, (line, fenced) in enumerate(body_lines):
         if fenced or i == 0:
@@ -255,25 +205,17 @@ def _slot_spans(body_lines):
 
 
 def _span_text(body_lines, span):
-    """A slot's raw text, label stripped: the label line's remainder and every
-    line to the next label, stripped once as a whole. `plan_check.py`'s gate
-    hash is over two of these (`sha256(claim + NUL + proof)`), so the recipe
-    is byte-for-byte the one every recorded verdict was signed under."""
     start, end, _name, inline = span
     return "\n".join(([inline] if inline else [])
                      + [l for l, _ in body_lines[start + 1:end]]).strip()
 
 
 def _pre_slot(body_lines):
-    """The task body's lines between its heading and its first slot label --
-    the region its Files bullets are read from."""
     spans = _slot_spans(body_lines)
     return body_lines[1:spans[0][0] if spans else len(body_lines)]
 
 
 def _file_bullets(lines):
-    """`(label, paths)` for each unfenced `Create:`/`Modify:`/`Delete:`
-    bullet of `lines`, in written order, label lower-cased."""
     for line, fenced in lines:
         m = None if fenced else FILE_BULLET.match(line.strip())
         if m:
@@ -281,8 +223,6 @@ def _file_bullets(lines):
 
 
 def _parse_task_body(body_lines):
-    """body_lines is the fence-aware (line, fenced) list from the task's
-    heading line through (but not including) the next boundary."""
     spans = _slot_spans(body_lines)
     pre_slot = _pre_slot(body_lines)
 
@@ -294,28 +234,23 @@ def _parse_task_body(body_lines):
         return out
 
     def slot_text(name):
-        """First occurrence wins; "" when the slot is absent."""
         span = next((sp for sp in spans if sp[2] == name), None)
         return "" if span is None else _span_text(body_lines, span)
 
-    # Stale-if: one predicate per line, bullet optional.
     stale_if_entries = [e for e in (re.sub(r'^[-*+]\s+', '', l.strip())
                                     for l in slot_text("stale-if").splitlines())
                         if e]
 
-    # Files block.
     files = {"create": [], "modify": [], "delete": []}
     for label, paths in _file_bullets(pre_slot):
         files[label].extend(paths)
 
-    # Interfaces slot.
     interfaces = {"consumes": [], "produces": []}
     for line, fenced in slot_lines("interfaces"):
         m = None if fenced else IFACE_BULLET.match(line.strip())
         if m:
             interfaces[m.group(1).lower()].append(m.group(2).strip())
 
-    # Proof slot.
     proof_slot_lines = slot_lines("proof")
     proof_runs = []
     proof_run_clauses = []
@@ -346,10 +281,6 @@ def _parse_task_body(body_lines):
         "stale_if_entries": stale_if_entries,
     }
 
-
-# --------------------------------------------------------------------------- #
-# M3: the Interfaces-bullet token rule.
-# --------------------------------------------------------------------------- #
 
 _DECL_KEYWORDS = {"def", "function", "class", "const", "let", "var", "export", "async"}
 
@@ -382,24 +313,13 @@ def _interface_token(text):
     return word
 
 
-# --------------------------------------------------------------------------- #
-# M4: the edge-building algorithm.
-# --------------------------------------------------------------------------- #
-
 _RUN_SPLIT_RE = re.compile(r'&&|\|\||[;()|\s]+')
 
-# Python `from <dotted> import ...` -- captures the dotted module only; the
-# whole match (including the imported names) is later blanked out of the
-# command before the bare-`import` regex runs, so `x` in `from pkg import x`
-# is never mistaken for a module of its own.
 _PY_FROM_IMPORT_RE = re.compile(
     r'\bfrom\s+([\w.]+)\s+import\s+[\w.]+(?:\s*,\s*[\w.]+)*'
 )
-# Python bare `import <dotted>[, <dotted> ...]`.
 _PY_IMPORT_RE = re.compile(r'\bimport\s+([\w.]+(?:\s*,\s*[\w.]+)*)')
 
-# JavaScript/TypeScript import forms: `import ... from '<spec>'`,
-# `import('<spec>')`, `require('<spec>')` -- single or double quotes.
 _JS_SPEC_RE = re.compile(
     r"""\bimport\s+[^'";]*?\bfrom\s+(['"])(?P<spec1>[^'"]+)\1"""
     r"""|\bimport\(\s*(['"])(?P<spec2>[^'"]+)\3\s*\)"""
@@ -426,9 +346,6 @@ def _js_spec_candidates(spec):
 
 
 def _import_paths(cmd):
-    """Candidate module/file paths named by any import in `cmd`, Python or
-    JavaScript. A candidate that no task's Files carry costs nothing --
-    `_build_edges` only fires on an actual intersection."""
     out = []
 
     for m in _PY_FROM_IMPORT_RE.finditer(cmd):
@@ -492,7 +409,6 @@ def _build_edges(impl):
     ids = [t["id"] for t in impl]
     by_id = {t["id"]: t for t in impl}
 
-    # Tier 1: write-after-create -- always added, no cycle guard.
     for a in ids:
         for b in ids:
             if a == b:
@@ -500,7 +416,6 @@ def _build_edges(impl):
             if set(by_id[a]["creates"]) & set(by_id[b]["modifies"]):
                 add(a, b, "write-after-create")
 
-    # Tier 2: interface.
     produced_tokens = _produced_tokens_map(impl)
     for b in ids:
         b_consumes = {tok for c in by_id[b]["interfaces"]["consumes"]
@@ -516,7 +431,6 @@ def _build_edges(impl):
                 continue
             add(a, b, "interface")
 
-    # Tier 3: proof-run -- fully after tier 2 completes.
     files_of = {t["id"]: set(t["files"]) | set(t.get("deletes", [])) for t in impl}
     for b in ids:
         b_files = files_of[b]
@@ -544,10 +458,6 @@ def _produced_tokens_map(impl):
         for t in impl
     }
 
-
-# --------------------------------------------------------------------------- #
-# M5: Kahn layering and cycle detection.
-# --------------------------------------------------------------------------- #
 
 def _find_a_cycle(ids, edges):
     graph = {i: [] for i in ids}
@@ -609,12 +519,7 @@ def _kahn_layers(ids, edges):
     return waves
 
 
-# --------------------------------------------------------------------------- #
-# Top-level parse.
 def task_sections(text):
-    """Each task's own section of the plan text, keyed by task id: its heading
-    line without the leading '### ' (so 'Task <id>: <title>'), then everything
-    up to the next unfenced task heading, trimmed -- what a builder is shown."""
     scanned = _fence_aware_lines(text)
     heads = [(m.group(1), i) for i, (line, fenced) in enumerate(scanned)
              if not fenced and _leading_spaces(line) <= 3
@@ -628,18 +533,11 @@ def task_sections(text):
     return out
 
 
-# --------------------------------------------------------------------------- #
-
 def parse_plan_text(text):
     return parse_plan_full(text)[0]
 
 
 def parse_plan_full(text):
-    """`(result, all_tasks)`: the public object `parse_plan_text` answers,
-    and beside it every task of the plan with the fields the laptop's check
-    and the authoring scripts read and the sandbox does not: `body`,
-    `deletes`, the `claim`, `authorized_by` and `proof` slot texts, and
-    `stale_if_entries`."""
     header_lines, task_bodies = _split_plan(text)
     bootstrap_cmd, publish = _parse_header(header_lines)
     checks = _parse_checks(header_lines)
@@ -664,8 +562,6 @@ def parse_plan_full(text):
     tasks_out = [{
         "id": t["id"],
         "title": t["title"],
-        # a Delete: path is the task's own too, or the engine's scope rule reads a
-        # planned deletion as an amendment (run-263: all 44 amendment rows)
         "files": sorted(set(t["files"]) | set(t["deletes"])),
         "wave": wave_of[t["id"]],
         "proofRuns": t["proofRuns"],
@@ -683,11 +579,6 @@ def parse_plan_full(text):
     }, all_tasks
 
 
-# --------------------------------------------------------------------------- #
-# The Claim's two halves and the plan header -- read by the laptop's check
-# and the authoring scripts, never by the sandbox.
-# --------------------------------------------------------------------------- #
-
 CLAIMS_GRAMMAR = "claims-v1"
 STORIES_GRAMMAR = "stories-v1"
 GRAMMARS = (CLAIMS_GRAMMAR, STORIES_GRAMMAR)
@@ -700,7 +591,6 @@ PLAN_CLAIM_PROVENANCE_RE = re.compile(
 
 
 def _header_lines(text):
-    """The unfenced-or-not `(line, fenced)` pairs above the first task."""
     out = []
     for line, fenced in _fence_aware_lines(text):
         if (not fenced and _leading_spaces(line) <= 3
@@ -711,7 +601,6 @@ def _header_lines(text):
 
 
 def plan_grammar(text):
-    """`claims-v1` or `stories-v1` when the header declares one, else None."""
     for line, fenced in _header_lines(text):
         m = None if fenced else GRAMMAR_RE.match(line.strip())
         if m and m.group(1) in GRAMMARS:
@@ -720,8 +609,6 @@ def plan_grammar(text):
 
 
 def _plan_claim_raw(text):
-    """The header `**Claim:**` sentence, tag attached, wrapped lines joined
-    on one space -- it runs to the next blank line, bold marker or fence."""
     value = None
     for line, fenced in _header_lines(text):
         s = line.strip()
@@ -737,13 +624,11 @@ def _plan_claim_raw(text):
 
 
 def parse_plan_claim(text):
-    """The plan's one operator sentence, tag stripped, or None."""
     raw = _plan_claim_raw(text)
     return None if raw is None else PLAN_CLAIM_PROVENANCE_RE.sub("", raw).strip()
 
 
 def plan_claim_provenance(text):
-    """`elicited`, `quoted:#NNN`, or None (no header Claim, or no tag)."""
     m = PLAN_CLAIM_PROVENANCE_RE.search(_plan_claim_raw(text) or "")
     if m is None:
         return None
@@ -751,7 +636,6 @@ def plan_claim_provenance(text):
 
 
 def operator_lines(claim):
-    """A Claim slot's lines above its `Machine:` restatement."""
     out = []
     for line in claim.splitlines():
         if MACHINE_LEAD_RE.match(line.strip()):
@@ -761,9 +645,6 @@ def operator_lines(claim):
 
 
 def claim_provenance(claim):
-    """A task Claim's tag -- `elicited`, `derived`, `quoted:#NNN` or None --
-    read off the whitespace-normalized operator sentence, so a tag an editor
-    wrapped across two lines is still a tag."""
     m = CLAIM_PROVENANCE_RE.search(
         re.sub(r'\s+', ' ', " ".join(operator_lines(claim))).strip())
     if m is None:
@@ -774,8 +655,6 @@ def claim_provenance(claim):
 
 
 def machine_restatement(claim):
-    """The Machine half of a Claim slot: the text from the `Machine:` lead-in
-    to the end of the slot, lead-in stripped, wrapped lines joined."""
     lines = claim.splitlines()
     for i, line in enumerate(lines):
         if MACHINE_LEAD_RE.match(line.strip()):

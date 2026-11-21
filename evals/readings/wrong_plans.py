@@ -24,7 +24,6 @@ MANIFEST = os.path.join(HERE, '..', 'fixtures', 'wrong_plans', 'manifest.json')
 
 
 def show(evidence, slug, run, name):
-    # the run's tag, else its live branch: a run whose tag did not verify keeps the branch
     for ref in ('%s/run-%s' % (slug, run), 'origin/live/%s/run-%s' % (slug, run)):
         r = subprocess.run(['git', '-C', evidence, 'show', '%s:runs/%s/%s/%s' % (ref, slug, run, name)],
                            capture_output=True, text=True, errors='replace')
@@ -76,7 +75,6 @@ def read_run(evidence, slug, run):
 
 
 def ask_jev(flaw, said):
-    """`named`, `hinted` or `silent` with its confidence, or None when Jev did not answer."""
     try:
         env = open(os.path.join(os.path.expanduser('~'), '.ultrapowers', 'typesafe.env')).read()
         key = [l.split('=', 1)[1].strip() for l in env.splitlines() if l.startswith('TYPESAFE_API_KEY=')][0]

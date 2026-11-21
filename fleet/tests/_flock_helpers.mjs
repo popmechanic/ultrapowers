@@ -1,4 +1,3 @@
-// fleet/tests/_flock_helpers.mjs — a throwaway git target and a scripted Flock run, for the flock sims.
 import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -8,8 +7,6 @@ import { simEnv } from './_helpers.mjs'
 
 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 
-// A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's.
-// `git` throws on a non-zero exit.
 export function flockTarget (files, { env = {} } = {}) {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'flock-sim-'))
   const T = path.join(tmp, 'target')
@@ -26,7 +23,6 @@ export function flockTarget (files, { env = {} } = {}) {
   return { tmp, T, RUN: path.join(tmp, 'run'), over, git, base: git('rev-parse', 'HEAD'), done: () => fs.rmSync(tmp, { recursive: true, force: true }) }
 }
 
-// One claims-v1 task. `files` are the Files lines (`Modify: \`a.txt\``), `run` the one probe (tagged M1).
 export const task = ({ id, title, files, claim, run, stale, iface = '- Produces: none' }) => `### Task ${id}: ${title}
 
 **Type:** implementation
@@ -52,7 +48,6 @@ ${iface}
 - ${stale}
 `
 
-// A claims-v1 plan of `tasks` with one run-wide `check`, written into the target's temp dir.
 export function writePlan (t, { claim, check, tasks }) {
   const plan = path.join(t.tmp, 'plan.md')
   fs.writeFileSync(plan, `# Sim plan
@@ -71,8 +66,6 @@ ${tasks.join('\n')}`)
   return plan
 }
 
-// The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}. `args` are
-// further engine arguments.
 export async function flockRun (t, { plan, script, args = [] }) {
   const scriptFile = path.join(t.tmp, 'script.json')
   fs.writeFileSync(scriptFile, JSON.stringify(script))

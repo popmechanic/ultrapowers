@@ -1,16 +1,4 @@
 #!/usr/bin/env bun
-// Read each story's clicks and checks off the picked screen.
-//
-//   bun skills/ultrawrite/stories/storyui.ts <bundle> --app <dir>
-//
-// The stories keep their sentences, tools, args and layers; this writes the
-// on-screen half. Each story is replayed through the bundle's store module, and
-// each `ui`-layer step gets its gestures (`ui`: the draft boxes it types into,
-// then the control that runs its tool, in its row when it sits in a list) and
-// what is drawn after it (`see`: every named element with its count, and each
-// one that left with count 0). Names are read the way the browser and the checker
-// read them: the part's role and naming props from the app's draws.json, each
-// prop resolved by json-render against the state the page holds.
 import {copyFileSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
@@ -28,11 +16,9 @@ type Core = {
   splitRepeatVisibility: (c: unknown) => {container: unknown; itemFilter: unknown};
 };
 type Ctx = {stateModel: Record<string, unknown>; repeatItem?: unknown; repeatIndex?: number; repeatBasePath?: string; functions?: Record<string, unknown>};
-// One element as drawn: its spec, the context it resolves in, its role and name (null when it names nothing).
 type Drawn = {el: El; ctx: Ctx; role: string | null; name: string};
 
 class CannotRun extends Error {}
-// A story whose pick the page's picker does not offer: it cannot be played on the page.
 class NotOffered extends Error {}
 
 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -44,7 +30,6 @@ function getPath(state: unknown, path: string): unknown {
   return cur;
 }
 
-/** Every element the screen draws against `state`, in document order. */
 function drawAll(screen: Screen, draws: Draws, core: Core, functions: Record<string, unknown>, state: Record<string, unknown>): Drawn[] {
   const out: Drawn[] = [];
   const walk = (key: string, ctx: Ctx) => {
@@ -81,7 +66,6 @@ function drawAll(screen: Screen, draws: Draws, core: Core, functions: Record<str
   return out;
 }
 
-/** The named elements drawn, with their counts, in first-drawn order. */
 function seen(drawn: Drawn[]): See[] {
   const out: See[] = [];
   for (const d of drawn) {
@@ -93,7 +77,6 @@ function seen(drawn: Drawn[]): See[] {
   return out;
 }
 
-// The draft input a `$bindState` value writes: `/draft/<input>` or `/draft/<tool>.<input>`.
 function draftInput(v: unknown, tool: string): string | null {
   if (!isObj(v) || typeof v.$bindState !== 'string') return null;
   const m = /^\/draft\/(.+)$/.exec(v.$bindState);
@@ -111,11 +94,8 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown) {
   if (segs.length) cur[segs[segs.length - 1]] = value;
 }
 
-/** The number of `ui`-layer steps filled. */
 export async function storyUi(bundleDir: string, appDir: string): Promise<number> {
   const b = loadBundle(bundleDir);
-  // The real path: on macOS a temp dir is reached through the /var -> /private/var link, and the
-  // store module copied in under the linked path will not import.
   const app = existsSync(appDir) ? realpathSync(resolve(appDir)) : resolve(appDir);
   const screenFile = join(b.dir, 'screens', 'screen.json');
   if (!existsSync(screenFile)) throw new CannotRun(`${screenFile} does not exist; pick a screen first`);
@@ -133,7 +113,6 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
   } catch (e) {
     throw new CannotRun(`the app's json-render or functions would not load: ${(e as Error).message}`);
   }
-  // The bundle's store module, imported from inside the app so tinybase resolves.
   const tmp = join(app, 'client', 'src', `.storyui-${process.pid}.js`);
   let mod: StoreModule;
   try {
@@ -182,10 +161,8 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
         const typed = text(args[input]);
         if (typed === '') continue;
         ui.push({type: {role: d.role, name: d.name, text: typed}});
-        // A number box's draft is the number itself; a text box's is its text.
         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), isNumber ? args[input] : typed);
       }
-      // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);
       const pickOf = (d: Drawn) => (d.el.type === 'ActionSelect' && typeof d.el.props?.pick === 'string' ? d.el.props.pick : null);
       const inRow = (d: Drawn) => {
@@ -195,7 +172,6 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
       const control = controls.find(inRow) ?? controls.find((d) => d.ctx.repeatBasePath === undefined) ?? controls[0];
       const pick = control ? pickOf(control) : null;
       if (control && pick !== null) {
-        // A picker: choose the offered row whose id is the step's pick.
         const p = control.el.props!;
         const label = typeof p.optionLabel === 'string' ? p.optionLabel : 'name';
         const options = core.resolvePropValue(p.options, control.ctx);
@@ -210,7 +186,6 @@ export async function storyUi(bundleDir: string, appDir: string): Promise<number
         ui.push({select: {role: control.role!, name: control.name, option: String(row[label])}});
       } else if (control) {
         ui.push({click: {role: control.role!, name: control.name}});
-        // A press that clears its draft box clears it on the page too.
         const press = control.el.on?.press;
         for (const a of Array.isArray(press) ? press : press ? [press] : []) {
           if (isObj(a) && a.action === 'setState' && isObj(a.params) && typeof a.params.statePath === 'string' && a.params.statePath.startsWith('/draft/')) {

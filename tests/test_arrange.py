@@ -1,8 +1,3 @@
-"""Jev's page arranger (skills/ultrawrite/stories/arrange.ts): the whole page from the cards
-and the store alone, never a story's `ui` or `see`. Row controls carry their typed args and sit
-in the one list of their table, whichever piece owns them; their words come from the card's
-`label` and `x-label`, row cells templated in (#1524). A fake evaluator stands in for Jev, so no
-test reaches the network. Needs bun and an offline-installable app."""
 import hashlib
 import json
 import os
@@ -39,7 +34,6 @@ def _app(tmp_path_factory, bundle, name):
 
 
 def _copy(app, tmp_path):
-    """A copy of the app of its own, its node_modules a link to the shared one."""
     dst = str(tmp_path / "app")
     shutil.copytree(app, dst, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
     os.symlink(os.path.join(app, "node_modules"), os.path.join(dst, "node_modules"))
@@ -47,7 +41,6 @@ def _copy(app, tmp_path):
 
 
 def _bundle(tmp_path, edit, name="page.json", src=TAGS):
-    """A copy of a bundle (todo-tags by default), its page.json (or another file) passed through edit."""
     b = str(tmp_path / "b")
     shutil.copytree(src, b)
     with open(os.path.join(b, name)) as f:
@@ -70,7 +63,6 @@ def app(bun, tmp_path_factory):
 
 
 def run_js(body, **values):
-    """Run PRELUDE + body under bun, with each value bound as a const; parse the JSON it prints."""
     consts = "".join("const %s = %s;\n" % (k, json.dumps(v)) for k, v in values.items())
     r = subprocess.run(["bun", "-e", PRELUDE + consts + body], cwd=ROOT, capture_output=True, text=True, timeout=300)
     assert r.returncode == 0, r.stderr[-2000:]
@@ -79,13 +71,11 @@ def run_js(body, **values):
 
 @pytest.fixture(scope="module")
 def tagged(app):
-    """Every version of the todo-tags page, arranged by the fake evaluator."""
     return run_js("const r = await arrange({bundle, app, evaluate: fake}); console.log(JSON.stringify(r));",
                   bundle=TAGS, app=app)
 
 
 def check_versions(app, pred, bundle=TAGS):
-    """[version, does the predicate hold] for each version of the page."""
     return run_js(
         "const r = await arrange({bundle, app, evaluate: fake});\n"
         "console.log(JSON.stringify(Object.entries(r.versions).map(([v, s]) => [v, (%s)(s)])));" % pred,
@@ -195,8 +185,6 @@ REMOVE_LABEL = {"$computed": "format", "args": {
 
 
 def test_remove_tag_names_its_own_todo(app, tagged):
-    """The Remove button reads the tag's todo through lookup, and on two todos each tag's
-    label names its own todo, resolved by json-render with the template's functions (#1524)."""
     labels = [e["props"]["label"] for s in tagged["versions"].values()
               for e in s["elements"].values() if e["props"].get("action") == "removeTag"]
     assert labels and all(l == REMOVE_LABEL for l in labels), labels
@@ -250,8 +238,6 @@ def test_reshape_refuses_a_screen_missing_a_required_control(app):
 
 
 def test_reshape_names_a_container_by_what_it_holds(app):
-    """A move note names a group by its content ("the form"); a bare "A row" gave Jev nothing
-    to move, and the Potluck reshape finished without an edit."""
     got = run_js(
         "const r = await arrange({bundle, app, evaluate: fake});\n"
         "const spec = structuredClone(r.versions.A); const root = spec.elements[spec.root];\n"
@@ -289,8 +275,6 @@ TAG_ALL = """  },
 
 @pytest.fixture(scope="module")
 def tag_all(app, tmp_path_factory):
-    """The todo-tags page with two more tag actions, on its card alone: tagAll types a name,
-    as addTag does, and clearTags (no args) empties the tags, the second of the page's two lists."""
     tmp = tmp_path_factory.mktemp("tagall")
     a = _copy(app, tmp)
     store = os.path.join(a, "client/src/store.js")

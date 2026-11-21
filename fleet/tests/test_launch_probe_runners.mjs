@@ -1,30 +1,3 @@
-/**
- * fleet/tests/test_launch_probe_runners.mjs — the launcher refuses a plan whose
- * `Run:` probe or `Check:` line calls a program the sandbox does not have,
- * before anything is pushed (#645, the 2026-09-22 plan).
- *
- * Three pure exports of `fleet/toolchain.mjs` and one launch:
- *
- *   (a) [M1] `probeWordsOf(line)` answers the command words of one shell
- *       line — the two example lines the plan pins, a regex alternation inside
- *       quotes (one program, not two), and a `$(…)` inside double quotes.
- *   (b) [M2] `SANDBOX_TOOLCHAIN` is frozen, carries the words the plan names
- *       and no duplicate; `toolchainViolations(compiled)` answers `1:cargo`,
- *       `2:go`, `check:make` in that order over the plan's fixture, and `[]`
- *       over a plan whose probes only use toolchain words.
- *   (c) [M3] a launch of a plan whose one task carries `proofRuns: ["cargo
- *       test"]` throws a `Refusal` (exit 2) whose message names `task 1`,
- *       `'cargo'` and the line, and the recorded exec calls carry no `git
- *       push`, no `ssh exe.dev new` and no `billing plan` — nothing was
- *       pushed and no lobby verb was issued.
- *
- * Hermetic in the shape of `test_launch_plan_path.mjs`: a stubbed lobby
- * (`makeExec`), a real temporary target with a bare origin (`makeTargetRepo`),
- * the compiler's fetch and every `python3` run stubbed. Imports only
- * `./_helpers.mjs` and `./_lobby_helpers.mjs` — a sim may not name a sibling
- * sim.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -41,9 +14,6 @@ const isFunction = (leg, name, value) => assert.equal(
   `${leg} \`${name}\` must be exported by ${name === 'launch' ? 'fleet/launch.mjs' : 'fleet/toolchain.mjs'} — the task's Produces: names it`
 )
 
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] probeWordsOf
-// ══════════════════════════════════════════════════════════════════════════
 {
   isFunction('(a) [M1]', 'probeWordsOf', probeWordsOf)
   assert.deepEqual(
@@ -74,9 +44,6 @@ const isFunction = (leg, name, value) => assert.equal(
   assert.deepEqual(probeWordsOf(''), [], '(a) [M1] an empty line answers []')
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] SANDBOX_TOOLCHAIN and toolchainViolations
-// ══════════════════════════════════════════════════════════════════════════
 {
   isFunction('(b) [M2]', 'toolchainViolations', toolchainViolations)
   assert.ok(Array.isArray(SANDBOX_TOOLCHAIN) && Object.isFrozen(SANDBOX_TOOLCHAIN),
@@ -120,9 +87,6 @@ const isFunction = (leg, name, value) => assert.equal(
   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no tasks, no checks: []')
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] the launch refuses before the push and before any lobby verb
-// ══════════════════════════════════════════════════════════════════════════
 {
   isFunction('(c) [M3]', 'launch', launch)
   const TARGET = 'acme/widgets'
@@ -134,15 +98,11 @@ const isFunction = (leg, name, value) => assert.equal(
   const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
   const PLAN = '# a plan\n\nOne plan whose probe runs cargo.\n'
 
-  // The compiled plan the stubbed parser answers: one task, one probe the
-  // sandbox cannot run.
   const COMPILED = {
     tasks: [{ id: '1', title: 'task 1', files: ['src/a.rs'], wave: 1, proofRuns: ['cargo test'], proofRunClauses: [['M1']] }],
     dag_edges: [], width: 1, checks: [], bootstrapCmd: null
   }
 
-  // The evidence repository's URL goes to its own bare; every other github.com
-  // URL, and `origin`, to the target's. No engine rule: the refusal comes first.
   const ws = launchWorkspace({
     prefix: 'fleet-launch-probe-runners-',
     originUrl: ORIGIN_URL,

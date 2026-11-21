@@ -1,42 +1,4 @@
 #!/usr/bin/env python3
-"""The laptop's check of a claims-v1 plan, on the sandbox's own parser.
-
-    plan_check.py [--base <sha|checkout-dir>] <plan.md>
-
-`plan_parse.py` reads the grammar — the same file the sandbox runs, so there
-is no second reader to drift from it. This file asks only what a parser
-cannot: whether the records beside the plan are in order, and what the tree
-the plan launches on says about it. It prints `PLAN OK` and exits 0, or every
-violation, a count, and exits 2.
-
-What refuses:
-  * the gate-verdict record `<stem>.gate-verdicts.json` — missing, unreadable,
-    an entry missing, stale against the live `sha256(claim NUL proof)`, or
-    `fail`;
-  * a `- Check:`, Proof `Run:`, `**Publish:**`, `**Verify:**` or
-    `**Rollback:**` command carrying a backtick, and a `Check:` naming a path
-    one implementation task's Files own;
-  * a `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` whose
-    pathspec covers any task's `Create:`, `Modify:` or `Delete:` path (run-199);
-  * a `**Publish:**` header line without a `**Verify:**` line (or the other
-    way around), and a `**Verify:**` command that never reads
-    `$ULTRA_PUBLISH_URL`;
-  * a Proof `Run:` tag citing a clause the Machine line does not number, and
-    a `**Stale-if:**` entry that is no predicate;
-  * a task body without its six slots once each, non-empty and in order, and
-    a code fence outside a task's Proof;
-  * with `--base`: a Stale-if predicate that already holds at BASE, and a
-    `--base` that is neither a checkout directory nor a 40-hex sha.
-
-The parser's own refusals (a cycle, a duplicate id, a `(minor)` Check) come back verbatim.
-
-What is printed after the verdict and refuses nothing: `SHARED fact:` always;
-with `--base`, `STALE fact: … unreadable at BASE`, `GREEN-AT-BASE fact:` (the
-plan's `Run:` lines rehearsed in a throwaway worktree at BASE — behind a
-`PLAN OK` only) and `AUTHORING fact:` (the record's telemetry, never a
-refusal). The execution handoff's `ROUTING fact:` is ultrawrite's
-(`skills/ultrawrite/scripts/routing.py`).
-"""
 from __future__ import annotations
 
 import argparse
@@ -59,34 +21,21 @@ from plan_parse import machine_restatement  # noqa: E402
 
 
 
-# --------------------------------------------------------------------------- #
-# The gate-verdict record                                                      #
-# --------------------------------------------------------------------------- #
 GATE_VERDICTS_SUFFIX = ".gate-verdicts.json"
 GATE_VERDICT_VALUES = ("pass", "fail")
 
 
 def verdicts_path(plan_path):
-    """The gate-verdict artifact sibling to a plan: `<stem>.gate-verdicts.json`."""
     p = Path(plan_path)
     return p.with_name(p.stem + GATE_VERDICTS_SUFFIX)
 
 
 def gate_input_hash(claim, proof):
-    """The signed pair's identity: sha256 of Claim, NUL, Proof.
-
-    NUL separates because it is the one byte no slot can carry, so no edit that
-    merely moves text across the boundary can collide."""
     return hashlib.sha256(
         (claim + "\x00" + proof).encode("utf-8")).hexdigest()
 
 
 def gate_verdict_violations(plan_path, tasks):
-    """Every gate-verdict refusal a plan earns, `grammar:`-namespaced.
-
-    Keyed on the LIVE hash of each task's (Claim, Proof) pair, so an edited
-    claim or proof goes stale and re-dispatches rather than riding an old
-    verdict."""
     path = verdicts_path(plan_path)
     if not path.exists():
         return ["grammar: gate verdicts missing — expected `%s` beside the "
@@ -133,18 +82,10 @@ def gate_verdict_violations(plan_path, tasks):
     return violations
 
 
-# --------------------------------------------------------------------------- #
-# The authoring record (#988): what the sitting that produced the plan cost    #
-# --------------------------------------------------------------------------- #
-# A top-level `authoring` object in the verdict record, written by the
-# authoring skill and only READ here: telemetry, printed as a fact and never a
-# refusal (#1440). A field the record does not say, or says oddly, reads `-`.
 AUTHORING_KEY = "authoring"
 
 
 def _record(plan_path):
-    """The verdict record as a dict — `{}` when absent or unreadable, which is
-    `gate_verdict_violations`'s refusal to make, once."""
     try:
         record = json.loads(verdicts_path(plan_path).read_text())
     except (OSError, ValueError):
@@ -153,47 +94,32 @@ def _record(plan_path):
 
 
 def picks(question):
-    """A question's picks as a list: `picked` is one option, or — for a
-    multi-select question (#1189) — a list of them. One row is one question
-    either way. `authoring_census.py` reads its register through this."""
     picked = question.get("picked")
     return picked if isinstance(picked, list) else [picked]
 
 
 def recommended_picked(questions):
-    """`(picked, offered)` — the questions that carried a recommended option,
-    and those of them whose picks include that option. A question with a null
-    `recommended` offered no recommendation and counts in neither."""
     offered = [q for q in questions if q.get("recommended") is not None]
     return (len([q for q in offered if q.get("recommended") in picks(q)]),
             len(offered))
 
 
 def explain_rounds(questions):
-    """The sum of every row's `explain_rounds` — absent, or not an int,
-    counts 0 (#526)."""
     return sum(q["explain_rounds"] for q in questions
                if isinstance(q.get("explain_rounds"), int)
                and not isinstance(q["explain_rounds"], bool))
 
 
 def _count(value):
-    """A JSON non-negative integer as itself, anything else as `-` (`True`
-    is an `int` in Python and is not one of these)."""
     ok = isinstance(value, int) and not isinstance(value, bool) and value >= 0
     return value if ok else "-"
 
 
 def _word(value):
-    """A non-empty string as itself, anything else as `-`."""
     return value if isinstance(value, str) and value else "-"
 
 
 def authoring_fact_line(plan_path):
-    """The `AUTHORING fact:` line: `none recorded` for a record with no
-    `authoring` key, else what it cost, each field the record does not say
-    (or says oddly) read as `-`, like `authoring_census.py` reads it. Rows of
-    `questions` that are not objects are skipped."""
     record = _record(plan_path)
     auth = record.get(AUTHORING_KEY)
     if auth is None:
@@ -213,13 +139,7 @@ def authoring_fact_line(plan_path):
                len(questions), picked, offered, explain_rounds(questions)))
 
 
-# --------------------------------------------------------------------------- #
-# The run-wide `- Check:` commands                                             #
-# --------------------------------------------------------------------------- #
 def command_names_path(command, path):
-    """True when `command` names `path` as a WHOLE token. The boundary class
-    is the path alphabet itself, so `a.mjs.bak` does not name `a.mjs`, while a
-    path inside quotes, a pipeline or a `$(...)` does."""
     if not path:
         return False
     return re.search(r"(?<![\w./-])" + re.escape(path) + r"(?![\w./-])",
@@ -227,17 +147,10 @@ def command_names_path(command, path):
 
 
 def task_files(t):
-    """Every path a task's Files block claims: `Create:`, `Modify:` and
-    `Delete:` paths."""
     return set(t["creates"]) | set(t["modifies"]) | set(t["deletes"])
 
 
 def shared_fact_lines(tasks):
-    """One `SHARED fact:` line per path two or more tasks list in their
-    Files, in the order each path first appears: each such task's probes
-    should pin what the file must keep beyond its own change (run-277's
-    two probes each checked only their own removal). A fact, never a
-    refusal."""
     owners = {}
     for t in tasks:
         for path in t["creates"] + t["modifies"] + t["deletes"]:
@@ -255,13 +168,6 @@ def shared_fact_lines(tasks):
 
 
 def command_violations(checks, tasks, publish=None):
-    """The engine runs a `Check:` and a Proof `Run:` through a shell, which
-    reads a backtick as a command substitution (run-74) — one wording, two
-    callers; and a `Check:` naming a path ONE implementation task's Files own
-    is that task's `Run:` wearing a run-wide coat — red for every other task
-    until that one lands (#978). A `**Publish:**`, `**Verify:**` or
-    `**Rollback:**` command earns the same backtick refusal — the engine's
-    shell reads all four the same way."""
     commands = ([("Check", "", c["cmd"]) for c in checks]
                 + [("Run", "task %s: " % t["id"], cmd)
                    for t in tasks for cmd in t["proofRuns"]])
@@ -288,12 +194,6 @@ def command_violations(checks, tasks, publish=None):
 
 
 def publish_violations(publish):
-    """A `**Publish:**` line names a deploy — worthless without a
-    `**Verify:**` line to check it landed live, and a `**Verify:**` line
-    is worthless without a `**Publish:**` line naming the deploy it probes;
-    and a `**Verify:**` command that never reads `$ULTRA_PUBLISH_URL` never
-    reads the URL the deploy actually printed, so it cannot be a live
-    probe."""
     if not publish:
         return []
     deploy, verify = publish.get("deploy"), publish.get("verify")
@@ -321,16 +221,6 @@ _WHOLE_TREE_TOKENS = (".", "", "*")
 
 
 def freeze_violations(checks, tasks):
-    """A `- Check:` that freezes a `git diff … $ULTRA_BASE -- <pathspecs>` is
-    green at BASE by construction — it goes red the moment a task's own patch
-    lands under the frozen path (run-199). Reads only the strings the parser
-    printed: no worktree, no git, no subprocess.
-
-    A `- Check:` with no ` -- ` pathspec after `$ULTRA_BASE` at all, or whose
-    first pathspec normalizes to `.`, `''` or `*`, freezes the WHOLE tree
-    against BASE — every implementation task's Files sit under it, so it goes
-    red the moment any task's patch lands. One violation per such check, not
-    per task."""
     violations = []
     for check in checks:
         cmd = check["cmd"]
@@ -379,18 +269,10 @@ def freeze_violations(checks, tasks):
     return violations
 
 
-# --------------------------------------------------------------------------- #
-# Two shapes the authoring skill already says it refuses, but `plan_parse.py` #
-# only ignores: a Run: tag citing a clause the Machine line does not number, #
-# a Stale-if entry that is not a predicate (review 2026-09-24, S3/S5).       #
-# --------------------------------------------------------------------------- #
 _MACHINE_NUM_RE = re.compile(r'\bM(\d+)\.')
 
 
 def _run_cite_span(numbers):
-    """The span `<Mn>` or `<Mn>–<Mm>` a Machine line's own numbers print, in
-    the wording the old compiler used and `tests/test_plan_check.py`
-    still documents."""
     if not numbers:
         return "(no clauses)"
     if len(numbers) == 1:
@@ -399,11 +281,6 @@ def _run_cite_span(numbers):
 
 
 def promised_violations(tasks):
-    """One `grammar:` violation for each of two shapes the authoring skill
-    already tells an author are refused, but that `plan_parse.py` only
-    ignores rather than refusing: a Proof `Run:` tag citing a clause the
-    task's Machine line does not number, and a `**Stale-if:**` entry that
-    matches no predicate head."""
     violations = []
     for t in tasks:
         numbers = [int(n) for n in _MACHINE_NUM_RE.findall(
@@ -427,26 +304,15 @@ def promised_violations(tasks):
     return violations
 
 
-# --------------------------------------------------------------------------- #
-# The body's shape (2026-09-29): the six slots in order, and a code fence     #
-# only in a task's Proof                                                      #
-# --------------------------------------------------------------------------- #
 _SLOT_ORDER = ["claim", "authorized-by", "interfaces", "context", "proof",
                "stale-if"]
 def _task_slots(body_lines):
-    """`[(name, text)]` for each unfenced slot label after the heading, in
-    order, duplicates kept, each the parser's own slot text -- and
-    `[(idx, name)]` the label positions."""
     spans = plan_parse._slot_spans(body_lines)
     return ([(sp[2], plan_parse._span_text(body_lines, sp)) for sp in spans],
             [(sp[0], sp[2]) for sp in spans])
 
 
 def slip_violations(text, tasks):
-    """One `grammar:` line per shape slip: a task body without its six slots
-    once each, non-empty and in order, and a code fence anywhere but a task's
-    Proof. Reads the plan's own lines through `plan_parse.py`'s
-    scanners; `tasks` is `parse_plan_full`'s list, whose ids it names."""
     violations = []
     header, bodies = plan_parse._split_plan(text)
 
@@ -471,8 +337,6 @@ def slip_violations(text, tasks):
                     "grammar: task %s: a code fence outside the Proof slot"
                     % tid)
                 break
-    # Lines under an `##` heading that is no task's own: neither the header
-    # nor any task body holds them.
     scanned = plan_parse._fence_aware_lines(text)
     owned = len(header) + sum(len(b) for _, _, _, b in bodies)
     if owned < len(scanned):
@@ -491,12 +355,7 @@ def slip_violations(text, tasks):
     return violations
 
 
-# --------------------------------------------------------------------------- #
-# The tree at BASE                                                             #
-# --------------------------------------------------------------------------- #
 def _git_run(base, *args, binary=False):
-    """THE subprocess call every git read of a base tree makes. Returns
-    (ok, stdout) — ok False on ANY failure, so a tree read never raises."""
     try:
         p = subprocess.run(["git", "-C", str(base), *args],
                            capture_output=True, text=not binary)
@@ -506,29 +365,20 @@ def _git_run(base, *args, binary=False):
 
 
 def _git(base, *args):
-    """git in `base`; stdout text, or '' on ANY failure. `BaseTree`, which
-    `extract_gate_input.py` imports, reads the tree through this."""
     ok, out = _git_run(base, *args)
     return out if ok else ""
 
 
-# The sentinel rev of the DIRECTORY reader: it passes no tree-ish, so a read
-# is of the working tree. Any other rev is a commit sha.
 WORKTREE_REV = "HEAD"
 _SHA40_RE = re.compile(r"[0-9a-f]{40}")
 
 
 def default_base(plan_path):
-    """The git toplevel of the plan's directory, or None outside a checkout."""
     top = _git(Path(plan_path).resolve().parent, "rev-parse", "--show-toplevel").strip()
     return Path(top) if top else None
 
 
 def base_flag_refusal(value):
-    """The one line a `--base` that is neither a checkout directory nor a
-    40-hex sha earns, or None. `BaseTree.from_flag` reads any non-sha as a
-    directory on purpose, so an 8-character abbreviation became
-    `git -C <abbrev>` and every file read absent (#1025)."""
     if Path(str(value)).is_dir() or _SHA40_RE.fullmatch(str(value)):
         return None
     return ("--base %s is not a commit this repository has — pass the 40-hex "
@@ -536,14 +386,6 @@ def base_flag_refusal(value):
 
 
 class BaseTree:
-    """The one reader every BASE-tree question goes through.
-
-    `--base` names a tree two ways: a CHECKOUT DIRECTORY (`rev` is the
-    `WORKTREE_REV` sentinel and a read is the working tree's), or a 40-hex SHA
-    of the plan's own repository (every read is `git -C <repo> … <sha>`;
-    nothing is opened off disk, the commit need not be checked out). Both
-    answer the same questions, so no caller branches on which it was handed
-    (#725)."""
 
     def __init__(self, repo, rev=WORKTREE_REV):
         self.repo = Path(repo)
@@ -552,13 +394,6 @@ class BaseTree:
 
     @classmethod
     def from_flag(cls, value, plan_path, repo=None):
-        """The reader a `--base` VALUE names. A sha that names no commit of
-        the plan's repository — or a plan outside any checkout — exits with
-        one `error:` line rather than reading a tree nobody asked for.
-
-        `repo`, when given, names the repository a 40-hex `--base` is
-        resolved and peeled in, in place of `default_base(plan_path)`; a
-        directory `--base` is unaffected by it."""
         text = str(value)
         if Path(text).is_dir() or not _SHA40_RE.fullmatch(text):
             return cls(text)
@@ -577,7 +412,6 @@ class BaseTree:
         return self.rev != WORKTREE_REV
 
     def read_text(self, path):
-        """`path`'s text at BASE, or None when it is not readable there."""
         if not self.is_sha:
             try:
                 return (self.repo / path).read_text(errors="replace")
@@ -588,8 +422,6 @@ class BaseTree:
         return raw.decode("utf-8", "replace") if ok else None
 
     def commit_sha(self):
-        """The 40-hex commit this reader reads — the sha itself, or the
-        checkout's HEAD; '' when there is none."""
         return self._peel(self.rev)
 
     def _peel(self, rev):
@@ -599,25 +431,17 @@ class BaseTree:
         return self._peeled[rev]
 
     def _ls_tree(self, path):
-        """The `(mode, type, id)` heads `git ls-tree <rev> -- <path>` prints."""
         return [line.split("\t", 1)[0].split()
                 for line in _git(self.repo, "ls-tree", self.rev,
                                  "--", path).splitlines()]
 
     def _blob_mode(self, path):
-        """The entry's mode when `path` is a blob at `rev`, else None."""
         for head in self._ls_tree(path):
             if len(head) >= 3 and head[1] == "blob":
                 return head[0]
         return None
 
 
-# --------------------------------------------------------------------------- #
-# Stale-if predicates, answered at BASE (#538)                                 #
-# --------------------------------------------------------------------------- #
-# A predicate that HOLDS at BASE is a refusal: the plan is stale before it is
-# dispatched. One the machine cannot DECIDE is an advisory after the verdict:
-# an unreachable network is evidence about the laptop, never about the plan.
 _STALE_ENTRY_RE = re.compile(
     r"^(path-exists|path-absent|sha-matches|issue-open|issue-closed)\s*:\s*(.*)$")
 _ISSUE_ARG_RE = re.compile(r"^#?\s*(\d+)$")
@@ -625,21 +449,16 @@ _ISSUE_STATE_CACHE = {}
 
 
 def _stale_argument(text):
-    """An entry's argument, whitespace and the author's backticks stripped."""
     return text.strip().strip("`").strip()
 
 
 def gh_issue_view(gh, number, field, cwd=None):
-    """THE `gh issue view <number> --json <field> -q .<field>` call: the
-    completed process. `gh` is the command as a list — a binary, or a
-    caller's wrapper."""
     return subprocess.run(
         list(gh) + ["issue", "view", number, "--json", field, "-q", "." + field],
         capture_output=True, text=True, cwd=cwd)
 
 
 def _issue_state(repo, number):
-    """(state, reason) from one `gh issue view` in `repo`, once per number."""
     if number in _ISSUE_STATE_CACHE:
         return _ISSUE_STATE_CACHE[number]
     gh = shutil.which("gh")
@@ -661,7 +480,6 @@ def _issue_state(repo, number):
 
 
 def _base_blob_id(base_tree, path):
-    """`path`'s object id at BASE when it is a blob there, else None."""
     if not base_tree.is_sha:
         f = base_tree.repo / path
         if not f.is_file():
@@ -674,8 +492,6 @@ def _base_blob_id(base_tree, path):
 
 
 def _stale_entry_holds(head, argument, base_tree):
-    """(holds, reason) for one entry. A non-None `reason` means the machine
-    could not decide it, and `holds` says nothing."""
     if head in ("path-exists", "path-absent"):
         path = _stale_argument(argument)
         if not path:
@@ -692,7 +508,6 @@ def _stale_entry_holds(head, argument, base_tree):
         if not sep or not path or not want:
             return False, "malformed argument"
         blob = _base_blob_id(base_tree, path)
-        # Not a blob at BASE cannot match an id — the predicate answered.
         return (blob is not None and blob.startswith(want.lower())), None
 
     m = _ISSUE_ARG_RE.match(_stale_argument(argument))
@@ -705,15 +520,12 @@ def _stale_entry_holds(head, argument, base_tree):
 
 
 def evaluate_stale_if(tasks, base_tree):
-    """`(refusals, advisories)`: `STALE fact: task <id>: <entry> holds at
-    BASE` per entry that holds, `… unreadable at BASE — <reason>` per entry
-    the machine cannot decide. `<entry>` is the line as the author typed it."""
     refusals, advisories = [], []
     for t in tasks:
         for entry in t["stale_if_entries"]:
             m = _STALE_ENTRY_RE.match(entry)
             if m is None:
-                continue  # not a predicate at all
+                continue
             holds, reason = _stale_entry_holds(m.group(1), m.group(2), base_tree)
             if reason is not None:
                 advisories.append(
@@ -725,21 +537,11 @@ def evaluate_stale_if(tasks, base_tree):
     return refusals, advisories
 
 
-# --------------------------------------------------------------------------- #
-# The rehearsals at BASE: every `Run:` (#1098)                                #
-# --------------------------------------------------------------------------- #
 GREEN_AT_BASE_TIMEOUT_S = 30
 GREEN_FACT = "GREEN-AT-BASE fact:"
 
 
 def _timeout_shim_env(tmp):
-    """The environment the rehearsed commands run in: the inherited one, with
-    a directory holding a `timeout` shim prepended to `PATH` when no real
-    `timeout` is on it (macOS ships none). The shim drops the duration and
-    runs the rest (not `exec`'d, so a shell builtin runs too) — `timeout
-    SECONDS CMD...`, the argv shape the engine builds; the rehearsal's own
-    clock still bounds the command. With a real
-    `timeout` on PATH the environment is the inherited one, unchanged."""
     env = dict(os.environ)
     if shutil.which("timeout") is not None:
         return env
@@ -747,8 +549,6 @@ def _timeout_shim_env(tmp):
     os.makedirs(shim_dir, exist_ok=True)
     shim = os.path.join(shim_dir, "timeout")
     with open(shim, "w") as f:
-        # No `exec`: a builtin (`true`) is not a file exec can find on a
-        # bare PATH, and `sh` running `"$@"` answers its exit code the same.
         f.write('#!/bin/sh\nshift; "$@"\n')
     os.chmod(shim, 0o755)
     path = env.get("PATH")
@@ -757,13 +557,6 @@ def _timeout_shim_env(tmp):
 
 
 def _run_at_base(command, worktree, sha, timeout_s, env=None):
-    """One command in the worktree at BASE: `(exit code or None, seconds)`.
-
-    `bash -lc <command>` with `ULTRA_BASE` ADDED to the inherited environment.
-    Output is discarded — the exit code is the reading. `start_new_session`
-    puts the command in its own process group so a timeout kills the WHOLE
-    tree: a `pytest` or `node` grandchild outlives a signal sent to the shell
-    alone."""
     started = time.monotonic()
     proc = subprocess.Popen(["bash", "-lc", command], cwd=worktree,
                             env={**(os.environ if env is None else env),
@@ -778,19 +571,13 @@ def _run_at_base(command, worktree, sha, timeout_s, env=None):
         code = None
         try:
             os.killpg(proc.pid, signal.SIGKILL)
-        except OSError:  # the group is already gone
+        except OSError:
             pass
         proc.wait()
     return code, time.monotonic() - started
 
 
 def _rehearse(commands, base_tree, timeout_s):
-    """`[(exit code or None, seconds)]`, one per command, each run in order in
-    ONE detached worktree of the plan's repository cut at BASE's commit under
-    a fresh temporary directory, removed with `--force` whatever the commands
-    wrote. The repository's own working tree is never the one a command runs
-    in. `[]` for no commands, a base that is no commit, or a worktree git
-    would not cut."""
     sha = base_tree.commit_sha()
     if not sha or not commands:
         return []
@@ -809,11 +596,6 @@ def _rehearse(commands, base_tree, timeout_s):
 
 
 def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
-    """A `Run:` that exits 0 at BASE yields one line, worded by what the plan
-    said it was: a PROVER (it carries a citation tag) cannot falsify the clause
-    it cites, a GUARD is cited by no leg. Red at BASE is the ordinary case and
-    is silent. The last line is always the reading — seconds, how many reached
-    an exit, how many were killed — even for a plan with no `Run:` line."""
     runs = [(t["id"], command, cites) for t in tasks
             for command, cites in zip(t["proofRuns"], t["proofRunClauses"])]
     lines, seconds, ran, killed = [], 0.0, 0, 0
@@ -837,7 +619,6 @@ def green_at_base_lines(tasks, base_tree, timeout_s=GREEN_AT_BASE_TIMEOUT_S):
     return lines
 
 
-# --------------------------------------------------------------------------- #
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Check a claims-v1 plan's records, and with --base what "
@@ -854,7 +635,6 @@ def main(argv=None):
                          "a directory --base is unaffected")
     args = ap.parse_args(argv)
 
-    # An input error prints no verdict line at all.
     base_tree = None
     if args.base is not None:
         refusal = base_flag_refusal(args.base)
@@ -908,8 +688,6 @@ def main(argv=None):
     if base_tree is not None:
         for line in advisories:
             print(line)
-        # A refused plan's commands are not run: the seconds would buy a
-        # reading of a document nobody will dispatch.
         if not violations:
             for line in green_at_base_lines(tasks, base_tree):
                 print(line)

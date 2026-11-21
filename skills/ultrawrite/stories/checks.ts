@@ -1,5 +1,3 @@
-// The code checks a bundle meets before compile. A refusal stops compile; a
-// fact is printed for the author to act on and stops nothing.
 import {KINDS, conceptsOf, type Bundle, type Card} from './bundle';
 import {TEMPLATE_DRAWS, readDraws, undrawn, type Draws} from './parts';
 import {checkProduct} from './product';
@@ -9,7 +7,6 @@ const isGesture = (g: unknown) =>
   !!g && typeof g === 'object' && Object.keys(g).length === 1 && GESTURES.has(Object.keys(g)[0]);
 const named = (text: string, word: string) => text.split(word).length - 1;
 
-// Every piece `piece` depends on, directly or through others; a circle ends the walk.
 export function below(cards: Card[], piece: string): Set<string> {
   const seen = new Set<string>();
   const walk = (p: string) => {
@@ -24,7 +21,6 @@ export function below(cards: Card[], piece: string): Set<string> {
   return seen;
 }
 
-/** `draws`: what the screen parts draw, the template's by default (#1491). */
 export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DRAWS)): {refusals: string[]; facts: string[]} {
   const {page, cards} = b;
   const refusals: string[] = [];
@@ -44,8 +40,6 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
   const stories = page.stories ?? [];
   const storyIds = stories.map((s) => s.id);
   const linkIds = (page.links ?? []).map((l) => l.id);
-  // The sandbox's parser reads an id only as S, L or N followed by digits;
-  // any other id would compile and then be dropped without a word.
   const idKinds = [['story', 'S', storyIds], ['link', 'L', linkIds],
     ['number', 'N', (page.numbers ?? []).map((n) => n.id)]] as const;
   for (const [what, letter, ids] of idKinds) {
@@ -91,7 +85,6 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
       if (st.link !== undefined) {
         if (linkIds.includes(st.link)) linked.add(st.link);
         else refusals.push(`${where}: link ${st.link} is not on the page`);
-        // compile hands the step's check to the one link piece (the tool's owner counted) built after all the others
         const ps = [...new Set([...((page.links ?? []).find((l) => l.id === st.link)?.pieces ?? []), owner.get(st.tool) ?? ''])].filter((p) => pieces.has(p));
         if (linkIds.includes(st.link) && ps.length > 1 && !ps.some((p) => ps.every((q) => q === p || below(cards, p).has(q)))) {
           facts.push(`CODE fact: ${where}: link ${st.link} joins ${ps.join(', ')}, but none of them depends on all the others, so its check goes to ${owner.get(st.tool)}, the tool's owner, and may run before the others are built; make one depend on the rest`);
@@ -162,7 +155,6 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
           if (!sp.concepts.includes(id)) refusals.push(`piece ${c.piece}: its concept ${id} is not one this plan builds`);
         }
       }
-      // A change to a built plan carries cards only for what it changes.
       if (sp.status !== 'built') {
         for (const id of sp.concepts) {
           if (!cards.some((c) => conceptsOf(c).includes(id))) refusals.push(`concept ${id}: this plan builds it, but no card has it`);
@@ -172,8 +164,6 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
   } else if (b.product && !page.subproject) {
     refusals.push('page: product.json is present, so page.json must name its subproject');
   }
-  // A story that expects to see something no screen part draws (#1491): the run adds the part, so
-  // the compiler writes it into the task that needs it; the author hears of it here, before launch.
   for (const u of draws ? undrawn(b, draws) : []) {
     const who = u.stories.length > 1 ? `stories ${u.stories.join(', ')} expect` : `story ${u.stories[0]} expects`;
     facts.push(`PARTS fact: ${who} a ${u.role} (such as "${u.name}"), and no screen part draws one yet; the tasks that need it are told to add one`);
@@ -183,7 +173,6 @@ export function runChecks(b: Bundle, draws: Draws | null = readDraws(TEMPLATE_DR
 
 const slotsOf = (text: string) => [...text.matchAll(/\$\{([^}]*)\}/g)].map((m) => m[1]);
 
-/** The refusals for each card's `shows` lines and `words`: one sentence each, naming the piece. */
 export function checkShows(cards: Card[]): string[] {
   const refusals: string[] = [];
   const columns = new Map<string, Set<string>>();
