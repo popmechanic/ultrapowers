@@ -1,10 +1,3 @@
-// Story play: before the sign question, each story plays out on the approved
-// screen where the operator can watch. Steps off the ui layer run their tool;
-// a ui step types and clicks through the elements its `ui` entries name, each
-// outlined while it acts, then counts every `see` entry by role and name. A
-// `select` entry opens its combobox and clicks the option in the listbox,
-// which renders in a portal outside #app. Store-step args name rows by alias,
-// as check.ts reads them, mapped to the store's own ids before each run.
 import {find, nameOf, roleOf, targetOf, textLineOf} from './names';
 import {Aliases, type Content} from './probe';
 
@@ -21,7 +14,6 @@ const root = (): ParentNode => document.getElementById('app') ?? document;
 
 function count(role: string, name: string): number {
   let n = 0;
-  // A run of text has no role or name, so `text` counts the reading parts by their line.
   const hit = role === 'text'
     ? (el: Element) => textLineOf(el) === name
     : (el: Element) => roleOf(el) === role && nameOf(el) === name;
@@ -36,7 +28,6 @@ function setValue(el: Element, text: string) {
   el.dispatchEvent(new Event('input', {bubbles: true}));
 }
 
-/** Outline `el` while `job` runs on it. */
 async function outlined(el: Element, job: (html: HTMLElement) => void) {
   const html = el as HTMLElement;
   const before = html.style.outline;
@@ -50,7 +41,6 @@ async function outlined(el: Element, job: (html: HTMLElement) => void) {
   }
 }
 
-/** The element of `role` named `name` anywhere in the document, waited for up to `ms`. */
 async function appearing(role: string, name: string, ms: number): Promise<Element | null> {
   const end = Date.now() + ms;
   for (;;) {
@@ -87,15 +77,12 @@ async function act(entry: UiEntry, misses: string[]) {
 
 let turn: Promise<unknown> = Promise.resolve();
 
-/** Run `job` once every job queued before it has ended, whatever their outcome:
- *  each play clears and refills the one shared store, so two never overlap. */
 export function inTurn<T>(job: () => Promise<T>): Promise<T> {
   const mine = turn.then(job);
   turn = mine.catch(() => undefined);
   return mine;
 }
 
-/** Play one story on the screen as drawn; misses name what was not as the story says. */
 export async function play(
   story: PlayStory,
   store: {delTables: () => unknown; delValues: () => unknown; getContent: () => Content},
@@ -106,7 +93,6 @@ export async function play(
   const preview = window.__PREVIEW__;
   if (preview) preview.playing = true;
   try {
-    // The sample data saves values too (a party's title), so both are cleared.
     store.delTables();
     store.delValues();
     const aliases = new Aliases();

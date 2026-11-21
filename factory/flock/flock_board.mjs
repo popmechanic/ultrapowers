@@ -1,18 +1,9 @@
-// The Flock's board (map #1292): the in-memory board the engine (factory/flock/engine.mjs) uses —
-// the verbs of an issue board (ready, claim, release, park, done, reopen, post_belief, board_read,
-// add task) and no service behind them: its moves are rows in events.jsonl.
-
-// Each claimer starts its walk of the ready list at its own offset, so N claimers
-// do not all race for the first row.
 const rotate = (xs, who) => {
   if (!xs.length) return xs
   const k = [...String(who)].reduce((a, c) => a * 31 + c.charCodeAt(0), 7) % xs.length
   return [...xs.slice(k), ...xs.slice(0, k)]
 }
 
-// The final atlas race: each task's remaining chain, the longest run of dependent tasks from it to
-// the end, itself included (atlas: 1, 4 and 10 head chains of 3). A task added later (a resolve or
-// check task) has no consumers and counts 1.
 function chainLengths (tasks) {
   const consumers = new Map(tasks.map((t) => [t.id, []]))
   for (const t of tasks) for (const d of t.depends_on) consumers.get(d).push(t.id)
@@ -30,7 +21,6 @@ export class Board {
     this.now = now
     this.tasks = new Map(tasks.map((t) => [t.id, { ...t, state: 'ready', owner: null, notes: [], reopen: 0 }]))
     this.beliefs = []
-    // the ready set is offered longest remaining chain first, each claimer's own rotation kept only among equals
     this.cp = chainLengths(tasks)
   }
 
@@ -40,7 +30,6 @@ export class Board {
   }
 
   allDone () { return [...this.tasks.values()].every((t) => t.state === 'done') }
-  // the host's own view of what is claimable, for the settle rule
   readyNow () { return [...this.tasks.values()].filter((t) => t.state === 'ready' && t.depends_on.every((d) => this.tasks.get(d).state === 'done')) }
 
   async claim (agent) {

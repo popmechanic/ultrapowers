@@ -1,22 +1,8 @@
-/**
- * factory/preflight.mjs — the boot's credential probe, on its own: it asks
- * `claude auth status` and, when that alone is not enough to know, one
- * `GET <proxy>/api/oauth/usage`, and prints exactly one classification line.
- * It decides nothing — `factory/boot.sh` reads the line back and is the one
- * that turns `api_key`/`no_oauth`/`bearer_dead …`/`edge_refused …` into a
- * refusal, and `alive`/`inconclusive` into "proceed".
- *
- * `classify({ authOutput, code, body })` is the pure decision, exported so
- * an exam can drive it directly; the CLI below is the one caller that also
- * does the I/O (`claude auth status`, then at most one network request).
- */
-
 import { spawnSync } from 'node:child_process'
 
 const USAGE_PATH = '/api/oauth/usage'
 const USAGE_TIMEOUT_MS = 20000
 
-/** The first `"message"` string value anywhere in `text`, or `''`. */
 function firstMessage (text) {
   const m = /"message"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(text || '')
   if (!m) return ''
@@ -27,10 +13,6 @@ function firstMessage (text) {
   }
 }
 
-/** The pure classification: `authOutput` is `claude auth status`'s joined
- *  stdout+stderr; `code`/`body` are the `/api/oauth/usage` GET's status and
- *  text body, read only when the auth text alone did not already decide.
- *  Never throws — any unexpected shape reads as `inconclusive`. */
 export function classify ({ authOutput, code, body } = {}) {
   try {
     const authText = authOutput || ''
@@ -52,8 +34,6 @@ export function classify ({ authOutput, code, body } = {}) {
   }
 }
 
-/** `claude auth status`'s stdout+stderr, joined; a failed spawn reads as
- *  empty. `claude` is resolved on `PATH` and gets no credential in argv. */
 function authStatus (proxy) {
   const res = spawnSync('claude', ['auth', 'status'], {
     encoding: 'utf8',
@@ -63,9 +43,6 @@ function authStatus (proxy) {
   return (res.stdout || '') + (res.stderr || '')
 }
 
-/** One `GET <proxy>/api/oauth/usage`, 20 s bounded, the literal token
- *  `placeholder` (the edge injects the real bearer). `{ code, body }` on any
- *  answer at all, `{}` on any failure — never throws. */
 async function usageProbe (proxy) {
   try {
     const res = await fetch(`${proxy}${USAGE_PATH}`, {

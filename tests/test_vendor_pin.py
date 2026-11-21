@@ -1,8 +1,3 @@
-"""The vendored kernel (Manyana) is pinned: its tracked file list and a digest
-over those files' bytes are frozen here, so a vendor file that is added,
-removed or changed is caught. `vendor/manyana.py` is never edited; re-vendoring
-updates `FROZEN_VENDOR_DIGEST` in the same commit (see `vendor/PROVENANCE.md`).
-"""
 import hashlib
 import os
 import subprocess

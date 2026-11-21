@@ -1,9 +1,4 @@
 #!/usr/bin/env node
-// factory/flock/step_receipts.mjs's latestResults (#1532): a step's receipt is the edge's own checker
-// result (`<clause>@edge.json`) when the edge wrote one, even when a builder's copy wrote a newer file
-// for the same clause; a clause no edge result names falls back to the newest file by mtime. A result
-// with no diff (the step stopped at `do`, before the store was read) still gets its row (#1491).
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -19,13 +14,10 @@ const put = (name, r, secondsAgo) => {
   const t = new Date(Date.now() - secondsAgo * 1000)
   fs.utimesSync(p, t, t)
 }
-// S1.1: the edge's result is the older file; a builder's copy wrote after it.
 put('S1.1@edge.json', { clause: 'S1.1', exit: 0, diff: [{ cell: 'from-edge' }] }, 60)
 put('S1.1@b1.json', { clause: 'S1.1', exit: 1, diff: [{ cell: 'from-b1' }] }, 5)
-// S1.2: no edge result; two builder copies, the newest wins.
 put('S1.2@b1.json', { clause: 'S1.2', exit: 1, diff: [{ cell: 'older' }] }, 60)
 put('S1.2@b2.json', { clause: 'S1.2', exit: 0, diff: [{ cell: 'newer' }] }, 5)
-// S2.1: the step stopped at `do`, so its result carries no diff.
 put('S2.1@edge.json', { clause: 'S2.1', exit: 1, stage: 'do' }, 30)
 
 const got = latestResults(dir)

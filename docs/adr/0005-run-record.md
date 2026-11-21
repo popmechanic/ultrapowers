@@ -1,0 +1,41 @@
+# 0005. The run record, status page and PR body
+
+Status: accepted (2026-11-21)  
+Governs: `factory/record.mjs`, `factory/view.mjs`, `fleet/run-read.mjs`
+
+Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
+decision the code cannot show on its own. Symbols are named; line numbers are not.
+
+## Run record reading
+
+- **fleet/run-read.mjs** — fleet/run-read.mjs reads a run only from its evidence record in git: `status.json` and `events.jsonl` under `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, on the run's live branch while it works and on its tag once ended; it touches no hub and no VM, since the sandbox is the run's one writer. `projectRun` is pure so a browser page can reuse it. `--follow` polls every 10 s and, since the sandbox commits the record every 10 s, a line can be about 20 s behind; the evidence repository comes from `--evidence-repo` or `evidence` in `~/.ultrapowers/fleet.json`, read via `gh api`.
+- **fleet/run-read.mjs readRunRecord** — readRunRecord in fleet/run-read.mjs tries a run's tag before its live branch: an ended run is read where it will stay, and a run still at work has only its live branch. It answers null when the evidence repository holds neither.
+- **fleet/run-read.mjs readRunRecord liveFirst** — The follower in fleet/run-read.mjs reads live branch first (`liveFirst`), because a run at work is on its live branch and its tag exists only after; the tag is asked only once the branch is gone. It parses the plan once (`plan: false` afterwards) since the plan never changes during a run, saving a request per poll.
+
+## Pr body rendering
+
+- **factory/record.mjs planClosesLine** — factory/record.mjs reads a plan's closes from exactly one line: the first **Closes:** after the first **Goal:** and before the first ### heading. It never regex-scans the body, so issue numbers mentioned elsewhere in a plan never become Closes lines on the PR.
+- **factory/record.mjs receiptEdge** — The PR receipt in factory/record.mjs reads the edge row whose snap equals the last settled row's snap, so the exits shown are those of the snapshot that actually landed; only when nothing settled does it fall back to the last edge row.
+
+## Pr body size cap
+
+- **factory/record.mjs BODY_CAP, VALUE_CAP** — GitHub refuses a pull request body over about 65,536 characters, and then no PR opens. factory/record.mjs caps the body at BODY_CAP = 60000 and cuts any single builder value at VALUE_CAP = 500.
+- **factory/record.mjs renderPrBody** — When the PR body exceeds BODY_CAP, factory/record.mjs renderPrBody trims only the builder-written item lines (loose ends and step changes, via cutItems) and never the author's summary or Closes lines, so the PR always carries the plan's words and still closes its issues.
+
+## Run record rendering
+
+- **factory/record.mjs** — factory/record.mjs is a pure renderer for the boot and factory/publish.mjs: it decides nothing, writes no file and reads no environment variable. Its subcommands status (the twelve-cell status page over events.jsonl), pr-body (summary, receipt, provenance, draft reason, closes) and view (factory/view.mjs renderView) each print one thing to stdout, and the exit code says whether that printing happened. Publish-side JSON belongs to publish.mjs.
+- **factory/record.mjs renderObject** — factory/record.mjs renderObject builds the status JSON from an ordered entry list instead of a plain JS object, because a JS object moves integer-looking string keys ahead of insertion order and the status page's cell order must be stable.
+
+## Run record view
+
+- **factory/view.mjs projectRun / renderView** — factory/view.mjs turns a run's events.jsonl rows, status.json and plan parse into the run's view, and is pure: it reads no file. The engine may not import fleet/ (fleet is laptop-only and absent from the sandbox's needs), so view.mjs imports nothing from fleet; fleet/run-read.mjs re-exports projectRun from it instead, and the boot writes renderView's output through record.mjs view.
+- **factory/view.mjs lineOf** — Run records written before 2026-11-15 name the catch-up row `refold`; later records name it `catchup`. lineOf in factory/view.mjs accepts both kinds so past runs' records still render their catch-up lines.
+
+## Pr body sanitization
+
+- **factory/record.mjs safeText** — Builder text and app data in the PR body pass through factory/record.mjs safeText: line breaks become spaces (no injected heading or list), `<` becomes `&lt;` (no HTML comment hiding the rest), `#` before a digit is escaped (no `Fixes #3` closing an issue), and text is cut at VALUE_CAP with an ellipsis. Plain text passes unchanged.
+
+## Provenance record
+
+- **factory/record.mjs provenanceLines (hunk task field)** — In the engine's provenance.json, a hunk whose task is `1|2` holds lines two tasks wrote identically. factory/record.mjs splits on `|` and counts each task once when reporting how many tasks changed lines.

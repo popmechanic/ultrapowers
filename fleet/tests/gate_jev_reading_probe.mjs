@@ -1,16 +1,4 @@
 #!/usr/bin/env node
-// The gate Jev reading probe (#1497): which reading `skills/ultrawrite/stories/gate_jev.ts` asks,
-// per policy.json `gate_reading`. It runs the script with `--record` against a local stand-in Jev
-// (a node:http server on 127.0.0.1) answering every `fact:` and `caught:` question 0.9,
-// `contradiction` 0.1 and `pinned` 0.1. The diet's base holds OWN (the task's own file, marked
-// `"own": "modify"`) and SIB (a sibling test, unmarked). The case is argv[2]:
-//   own-files  base files [OWN, SIB], the repository's policy;
-//   own-only   base files [OWN], the repository's policy;
-//   rollback   base files [OWN, SIB], on a copy whose gate_reading is caught "caught", own_files "read";
-//   typo       base files [OWN, SIB], on a copy whose gate_reading caught is "caught_v9", a key no question has:
-//              the script falls back to `caught` and the round's reading says so.
-// Prints one JSON line {requests, asked, state_base, caught_M1, verdict, pinned, round} and exits 0;
-// exits 1 only when it could not run.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import http from 'node:http'
@@ -30,7 +18,6 @@ fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
 let server
 const fail = (why) => { console.error(`GATE JEV READING ${CASE} COULD NOT RUN: ${why}`); server?.close(); process.exit(1) }
 
-// the root gate_jev.ts runs from: the repository, or a copy with the policy cells changed (rollback, typo)
 let root = REPO
 if (CASE === 'rollback' || CASE === 'typo') {
   root = path.join(tmp, 'repo')
@@ -51,7 +38,6 @@ if (CASE === 'rollback' || CASE === 'typo') {
   } catch (e) { fail(`could not build the copy: ${e}`) }
 }
 
-// the stand-in Jev
 const requests = []
 const answer = (k) => (k.startsWith('fact:') || k.startsWith('caught:') ? 0.9 : k === 'contradiction' ? 0.1 : k === 'pinned' ? 0.1 : 0.5)
 server = http.createServer((req, res) => {

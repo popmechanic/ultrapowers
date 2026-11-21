@@ -1,22 +1,10 @@
-/**
- * factory/view.mjs — the run's finished picture (pure).
- *
- * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
- * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
- * re-exports it. `renderView` is the run's view, which the boot writes through `record.mjs view`: that projection plus
- * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
- * here reads a file; the engine may not import `fleet/`, so nothing here does either.
- */
-
 const short = (text, n) => { const s = String(text ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
 
-/** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
- *  task the line belongs to, null for a line about the whole run. */
 function lineOf (e) {
   const k = e.kind
   if (k === 'session:start') return { task: e.task, what: `claimed by ${e.agent}` }
   if (k === 'session:end') {
-    if (e.objected) return null   // the `objection` row says it
+    if (e.objected) return null
     if (e.released) return { task: e.task, what: `${e.agent} gave it back: ${short(e.released, 140)}` }
     if (e.done) return { task: e.task, what: `done by ${e.agent}` }
     return null
@@ -33,14 +21,12 @@ function lineOf (e) {
   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
-  // `refold` is a past run's name for the catch-up row (before 2026-11-15)
   if (k === 'catchup' || k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
   if (k === 'merge') return { task: null, what: `merge answered ${e.code}${e.message ? `: ${short(e.message, 80)}` : ''}` }
   return null
 }
 
-/** A task's state after a line: what the line says happened to it. */
 function stateAfter (what, was) {
   if (what.startsWith('claimed by ')) return 'claimed'
   if (what.startsWith('done by ')) return 'done'
@@ -50,13 +36,6 @@ function stateAfter (what, was) {
   return was
 }
 
-/**
- * `{ run, target, state, phase, pr, merged, tasks, timeline, cursor }` for one run, from its
- * `events.jsonl` rows, its `status.json` and, when given, the plan's parse (for task titles).
- * `tasks` is every task the plan names and every one the engine added, each `{ id, title, state,
- * last, lastAt }`; `timeline` is one `{ n, at, task, what }` per line, `n` the row's 1-based
- * place in the log; `cursor` is how many rows were read.
- */
 export function projectRun ({ run, target, rows, status = null, plan = null }) {
   const tasks = new Map()
   const titled = new Map((plan && Array.isArray(plan.tasks) ? plan.tasks : []).map((t) => [String(t.id), t.title]))
@@ -95,8 +74,6 @@ const later = (a, b) => {
   return Date.parse(b) > Date.parse(a) ? b : a
 }
 
-/** A `proof` row's reading: 0 when every exit is 0 and no error was caught, else the first
- *  non-zero exit, else 1. */
 function proofOf (e) {
   const exits = Array.isArray(e.exits) ? e.exits : []
   const errs = Array.isArray(e.errs) ? e.errs : []
@@ -105,13 +82,6 @@ function proofOf (e) {
   return errs.length ? 1 : 0
 }
 
-/**
- * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
- * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
- * last, lastAt }` plus `wave` (its 1-based layer in the plan's dependency order, the parse's own
- * `wave`; one past the last for a task the plan does not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
- * `proof` row's reading, null without one).
- */
 export function renderView ({ run, target, rows, status = null, plan = null, summary = null }) {
   const p = projectRun({ run, target, rows, status, plan })
   const list = Array.isArray(rows) ? rows : []

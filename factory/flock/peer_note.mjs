@@ -1,7 +1,3 @@
-// A builder about to edit a file is told which of its lines its peers wrote, and which task
-// wrote them. authors: the weave's authors_keyed answer, one entry per visible line: 'base',
-// one agent letter, or several joined by '|' (written identically by more than one agent).
-
 const runsOf = (lines) => {
   const runs = []
   for (const n of lines) {
@@ -12,7 +8,6 @@ const runsOf = (lines) => {
   return runs.map(([a, b]) => a === b ? String(a) : `${a}-${b}`)
 }
 const joinAnd = (xs) => xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]
-// More than MAX_RUNS runs list the first MAX_RUNS and a count, so a large interleaved file keeps the note short.
 const MAX_RUNS = 20
 const joinRuns = (xs) => xs.length > MAX_RUNS ? xs.slice(0, MAX_RUNS).join(', ') + ` and ${xs.length - MAX_RUNS} more` : joinAnd(xs)
 

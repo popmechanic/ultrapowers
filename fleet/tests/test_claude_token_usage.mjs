@@ -1,45 +1,3 @@
-/**
- * fleet/tests/test_claude_token_usage.mjs — the exam for "The token tool reads
- * one account's window without rotating" (#1114).
- *
- * In-process only: `import { usage, main, USAGE_URL } from '../claude-token.mjs'`,
- * every call handed a fake `deps` — no child process is spawned, so there is no
- * `simEnv()` to route through (`fleet/claude-token.mjs`'s own `main()` is
- * guarded on `process.argv[1] === import.meta.url`, so importing the module
- * runs nothing by itself). `deps.lock` is omitted, matching `refresh`'s own
- * `deps.lock ? deps.lock() : () => {}` fallback — none of these legs reach
- * `refresh` at all, since every record handed in either already carries an
- * unexpired `accessToken` or is read with `rotate: false`.
- *
- * The Machine clauses under test, restated:
- *   M1 — `usage(deps, { account, rotate: false })` over an unexpired record:
- *        one row shaped exactly `{ name, fiveHour, sevenDay, unread: false,
- *        reason: null }`, one fetch of USAGE_URL bearing that record's
- *        `accessToken`, zero keychain writes, zero edit/add lobby verbs.
- *   M2 — the same over an expired record: one row `unread: true`, `reason`
- *        starting `access token expired`, zero fetches, zero keychain writes.
- *   M3 — `main` with `--account --no-rotate` writes one JSON line, an array
- *        of length 1 named for that account; `main` with plain `--json` over
- *        two listed accounts writes an array of length 2.
- *   M4 — `USAGE_LINE`'s text spells the `usage` verb's flags exactly.
- *
- * Legs, each naming the Machine clause it comes from:
- *   (a) [M1] one unexpired record, `account` + `rotate: false`.
- *   (b) [M2] one expired record, `account` + `rotate: false`.
- *   (c) [M3] `main(['usage', '--json', '--account', 'acct', '--no-rotate'])`.
- *   (d) [M3] `main(['usage', '--json'])` over two listed accounts.
- *   (e) [M4] the source text carries the exact `usage` line.
- *
- * What the exam assumes about the code under test: that `usage(deps, opts)`
- * reads the record through `deps.keychainRead`/`deps.keychainList` (the same
- * seams `refresh`/`accounts` use, per `fleet/claude-token.mjs`'s own header),
- * that an unexpired record's window is read straight off `deps.fetch(USAGE_URL,
- * …)` without touching `deps.lobby` or `deps.keychainWrite` at all, and that
- * `main` still funnels its one JSON line through `deps.stdout` (the seam
- * `accounts`'s branch already uses). None of that is pinned as a clause here,
- * only used as scaffolding to reach the clauses that are.
- */
-
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -56,14 +14,6 @@ const USAGE_BODY = {
   seven_day: { utilization: 34, resets_at: '2026-09-28T12:00:00.000Z' }
 }
 
-/**
- * A fake `deps` over the named keychain `records` (name -> record, or name ->
- * null for "listed, unreadable"). Records every fetch, every keychain write
- * and every lobby verb, plus the stdout lines a `main` call writes, so a leg
- * can assert on all four. A lobby verb that isn't `integrations edit/add`
- * throws — no leg here should ever need the fleet listing or the integration
- * probe, since `rotate: false` never reaches `refresh`.
- */
 function makeDeps (records) {
   const fetchCalls = []
   const keychainWrites = []
@@ -103,10 +53,6 @@ function makeDeps (records) {
 
 const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('integrations edit') || c.verb.startsWith('integrations add'))
 
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] unexpired record, account + rotate:false: one row, one fetch,
-//     zero keychain writes, zero edit/add verbs
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a-fresh', expiresAt: NOW_MS + 2 * HOUR }
   const deps = makeDeps({ acct: record })
@@ -138,10 +84,6 @@ const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('in
     `(a) [M1] zero integrations edit/add lobby verbs are issued. Got: ${JSON.stringify(deps.lobbyCalls.map((c) => c.verb))}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] expired record, account + rotate:false: unread, reason prefix,
-//     zero fetches, zero keychain writes
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a-old', expiresAt: NOW_MS - HOUR }
   const deps = makeDeps({ acct: record })
@@ -163,10 +105,6 @@ const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('in
     `(b) [M2] zero deps.keychainWrite calls are made. Got ${deps.keychainWrites.length}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] main(['usage', '--json', '--account', 'acct', '--no-rotate']):
-//     one stdout line, array of length 1, named for the account
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a-fresh', expiresAt: NOW_MS + 2 * HOUR }
   const deps = makeDeps({ acct: record })
@@ -182,10 +120,6 @@ const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('in
     `(c) [M3] the one row's name is "acct". Got: ${JSON.stringify(parsed[0])}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (d) [M3] main(['usage', '--json']) over two listed accounts: array of
-//     length 2
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record1 = { refreshToken: 'r1', accessToken: 'a-fresh-1', expiresAt: NOW_MS + 2 * HOUR }
   const record2 = { refreshToken: 'r2', accessToken: 'a-fresh-2', expiresAt: NOW_MS + 2 * HOUR }
@@ -200,9 +134,6 @@ const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('in
     `(d) [M3] the line parses as a JSON array of length 2, one row per listed account. Got: ${deps.stdoutLines[0]}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (e) [M4] USAGE_LINE spells the usage verb exactly
-// ══════════════════════════════════════════════════════════════════════════
 {
   const here = path.dirname(fileURLToPath(import.meta.url))
   const src = fs.readFileSync(path.join(here, '..', 'claude-token.mjs'), 'utf8')

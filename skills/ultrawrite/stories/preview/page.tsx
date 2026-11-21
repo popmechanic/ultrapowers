@@ -1,10 +1,3 @@
-// The preview page: the app's own kit draws the one whole-page screen through
-// one Renderer over a store filled from the bundle's stories. At / the approved
-// spec (else ?v=<V>, else A); at /compare every whole-page version side by
-// side, each with a "Choose <V>" button; the chosen version (clicked here, else
-// the one whose spec equals the approved screen) reads "Chosen ✓" and is
-// outlined. Specs arrive over /ws and redraw in place; when the versions change
-// the pick clicked here is dropped. Plays run one at a time on the one shared store.
 import {createMergeableStore} from 'tinybase';
 import {createRoot} from 'react-dom/client';
 import {useEffect, useRef, useState} from 'react';
@@ -45,7 +38,6 @@ const [bundle, initial] = await Promise.all([
 ]);
 document.title = `${bundle.title} — preview`;
 
-// Sample data: every step whose tool takes no row, once each, in story order.
 function fill(s: unknown) {
   const seen = new Set<string>();
   for (const story of bundle.stories ?? []) {
@@ -61,8 +53,6 @@ function fill(s: unknown) {
 }
 fill(store);
 
-// On /compare each version gets its own store, filled the same way, so
-// acting in one version leaves the others' rows alone.
 const viewer = () => ({staff: true, who: null});
 const sandboxes = new Map<string, {state: ReturnType<typeof tinybaseState>; tools: ReturnType<typeof bind>}>();
 function sandbox(key: string) {
@@ -92,13 +82,9 @@ function choose(v: string) {
   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', piece: 'screen', chose: v})});
 }
 
-// The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
-// copy of the chosen version, so equal JSON names it.
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
 
-// The pick still standing once `next` replaces `prev`: versions that changed
-// were re-arranged, so the earlier click no longer names what is drawn.
 const kept = (pick: string | null, prev: Pieces, next: Pieces) =>
   same(prev.screen?.versions ?? {}, next.screen?.versions ?? {}) ? pick : null;
 

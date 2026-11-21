@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-// The operator notebook: a private file, read at the start of every planning
-// session, that learns the operator's words. Outside every repo on purpose.
-//
-//   bun skills/ultrawrite/stories/notebook.ts show
-//   bun skills/ultrawrite/stories/notebook.ts add <worked|failed|lands|author|retired> <text>
-//   bun skills/ultrawrite/stories/notebook.ts log <plan-id> --rounds N --explains N --fixes N
 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join} from 'node:path';
 import {parseArgs} from 'node:util';

@@ -1,14 +1,3 @@
-// PROTOTYPE (map #1292, ticket 4). An Edit call, replayed into the weave as line spans.
-//
-// editSpans(before, old, neu, all) -> [{ vstart, vend, lines }], last span first, each in
-// `before`'s visible line numbers, so applying them in order to the weave's copy of
-// `before` yields the text the Edit tool wrote.
-//
-// Ticket 4 follow-up: a replace-all whose matches share a line. Each match used to become
-// its own span covering the whole line, rebuilt from `before` with only that one match
-// replaced, so the earlier match's span put the later match's old text back. Matches whose
-// lines touch are now one group and one span, rebuilt with every match in it replaced.
-// Pinned by readings/replace_all_check.mjs.
 export function editSpans (before, old, neu, all) {
   const idxs = []
   let i = before.indexOf(old)
@@ -30,7 +19,6 @@ function trim (ls, oldLines, newLines) {
   return { vstart: ls + h, vend: ls + oldLines.length - t, lines: newLines.slice(h, newLines.length - t) }
 }
 
-// one match: unchanged from the first pass
 function one (before, old, neu, idx) {
   const endc = idx + old.length
   const ls = before.slice(0, idx).split('\n').length - 1
@@ -49,7 +37,6 @@ function one (before, old, neu, idx) {
   return trim(ls, oldLines, newLines)
 }
 
-// several matches whose lines touch: one span over their whole lines, every match replaced
 function many (before, old, neu, g, lineEndAt) {
   const lineStart = before.lastIndexOf('\n', g[0] - 1) + 1
   const regionEnd = lineEndAt(g[g.length - 1] + old.length)

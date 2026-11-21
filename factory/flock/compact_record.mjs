@@ -1,8 +1,3 @@
-// The compact record: what each tested snapshot changed, as a unified diff against the previous
-// tested snapshot (base for the first) that `git apply` accepts, and the weave's ops with file
-// texts as fingerprints. No file text is copied whole into the record: a snapshot is replayed by
-// applying the rows' patches in order onto base. The 512 KB cap over all patches is about ten
-// times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
 import crypto from 'node:crypto'
 
 const PATCH_LIMIT = 524288
@@ -10,7 +5,6 @@ const CONTEXT = 3
 
 const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
 
-// Lines with their terminators kept, so a last line without '\n' compares unequal to one with it.
 function lines (text) {
   const out = text.match(/[^\n]*\n|[^\n]+$/g)
   return out || []
@@ -20,7 +14,6 @@ function hunkLine (mark, l) {
   return l.endsWith('\n') ? mark + l : mark + l + '\n\\ No newline at end of file\n'
 }
 
-// One hunk around the region between the common prefix and the common suffix.
 function hunk (a, b) {
   let pre = 0
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++
@@ -39,7 +32,6 @@ function hunk (a, b) {
   return out
 }
 
-// A unified diff of one path from `before` to `after` (null: absent).
 function fileDiff (p, before, after) {
   if (before === after) return ''
   const head = `diff --git a/${p} b/${p}\n`
@@ -52,8 +44,6 @@ function fileDiff (p, before, after) {
   return head + `--- a/${p}\n+++ b/${p}\n` + hunk(lines(before), lines(after))
 }
 
-// snapshots: [{snap, t, files, exists}]; baseFiles: {path: text}; weaveOpsLines: the raw
-// weave-ops.jsonl lines. Answers the contents of snapshots.jsonl and weave-ops.digest.jsonl.
 export function compactRecord (snapshots, baseFiles, weaveOpsLines) {
   let bytes = 0
   let prev = { ...baseFiles }; let prevSnap = 'base'

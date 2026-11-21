@@ -1,9 +1,3 @@
-/**
- * A stories-v1 plan with a `## Numbers` section is refused at launch, before
- * the compiler runs: the fleet has no Numbers checker yet (story-planning,
- * after sub-project 2). A stories-v1 plan without one launches: its probes
- * are read by factory/stack/tinyapp/check.ts (2026-09-27).
- */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,8 +8,6 @@ import {
   answer, cleanup, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 } from './_lobby_helpers.mjs'
 
-// The operator's evidence repository: an owner unlike the target's, its URL
-// routed to a local bare of its own.
 const EVIDENCE = 'ops/evidence'
 const EVIDENCE_URL = `https://github.com/${EVIDENCE}.git`
 const INTEGRATIONS = answer([
@@ -53,9 +45,6 @@ assert.equal(err.exitCode, 2)
 assert.match(String(err.message), /has a Numbers section; the fleet has no Numbers checker yet/)
 assert.ok(!exec.calls.some((c) => /python3/.test(c.line)), 'the plan is never compiled')
 
-// A claims-v1 plan that merely quotes `**Grammar:** stories-v1` inside a
-// fenced example is not refused with the stories message — the launcher
-// reads the plan header's own Grammar line, not any occurrence in the body.
 const root2 = tempDir('stories-fenced-')
 const repo2 = makeTargetRepo({ root: root2, files: { 'README.md': 'x\n' } })
 repo2.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])

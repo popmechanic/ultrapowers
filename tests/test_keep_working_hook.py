@@ -1,4 +1,3 @@
-"""Tests for hooks/keep_working.sh, the Stop hook ultrawrite/ultrapowers declare."""
 import json
 import pathlib
 import subprocess

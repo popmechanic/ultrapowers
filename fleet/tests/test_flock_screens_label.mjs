@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// The screens check is the last fact of a stories-v1 task and has no clause (#1523): when it is the
-// red fact, the parked reason names it `(screens)`, not `(undefined)`. `bun` is a fake on PATH that
-// passes every call but the screens check, which prints one finding and exits 1.
-// Prints `ALL TESTS PASSED` and exits 0, or `FAIL screens label: ...` and exits 1.
 import fs from 'node:fs'
 import path from 'node:path'
 import { simEnv } from './_helpers.mjs'

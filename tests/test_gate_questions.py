@@ -1,5 +1,3 @@
-"""The authoring gate's caught_v2 question exempts only wiring (#1528), as the gate rule
-in skills/ultrawrite/SKILL.md does."""
 import json
 from pathlib import Path
 

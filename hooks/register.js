@@ -1,26 +1,20 @@
-// Intent tray mod: Claude shows a screen through the show_screen tool, the
-// operator picks a version and adds notes in a pane beside the chat (or in
-// the preview page, which appends to .ultrapowers/feedback.jsonl), and Send
-// hands everything to Claude as one prompt holding a ```json block.
-
 const PANE = { id: "intent-tray", title: "Intent tray", rows: 10 };
 const FEEDBACK = ".ultrapowers/feedback.jsonl";
 const FENCE = "`".repeat(3);
 
-const GONE_KEPT = 500; // ids of notes sent, cleared or dropped, kept so no session brings them back
+const GONE_KEPT = 500;
 
-let screen = null; // { name, stage, versions, url }
+let screen = null;
 let pick = null;
-let piece = null; // the piece a preview's pick was for, when it named one
-let notes = []; // { id, kind, target?, note }
-let gone = []; // ids of notes that left the tray, newest last
-let offset = 0; // bytes of the feedback file already taken (always ends at a newline)
-let mark = ""; // the feedback file's first whole line when `offset` was taken: a new one is a new file
+let piece = null;
+let notes = [];
+let gone = [];
+let offset = 0;
+let mark = "";
 let cwd = "";
 let sending = false;
-const changed = new Set(); // "screen", "pick": set here since the last save, so this session's value wins
+const changed = new Set();
 
-// One tray per working directory: sessions in other repos never see this one.
 function trayKey() {
   return `tray:${cwd.replace(/\/+$/, "")}`;
 }
@@ -31,7 +25,6 @@ function newId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}-${made}`;
 }
 
-// A note stored before notes carried ids gets one from its content, the same in every session.
 function withId(n) {
   return typeof n.id === "string" ? n : { ...n, id: `v0:${JSON.stringify(record(n))}` };
 }
@@ -40,9 +33,6 @@ function notesOf(v) {
   return Array.isArray(v) ? v.filter((n) => n && typeof n === "object").map(withId) : [];
 }
 
-// Fold in what other sessions in this repo stored: their notes join ours (none
-// that any session sent, cleared or dropped), and their screen and pick stand
-// unless this session changed its own since it last saved.
 function merge(held) {
   if (!held || typeof held !== "object") return;
   const left = new Set([...(Array.isArray(held.gone) ? held.gone.map(String) : []), ...gone]);
@@ -58,7 +48,6 @@ function merge(held) {
   if (held.mark === mark && Number(held.offset) > offset) offset = Number(held.offset);
 }
 
-// Store the tray merged with what is stored, so two sessions in one repo keep each other's notes.
 async function save($) {
   merge(await $.store.get(trayKey()));
   changed.clear();
@@ -98,7 +87,6 @@ function feedbackPath() {
   return cwd ? `${cwd.replace(/\/+$/, "")}/${FEEDBACK}` : FEEDBACK;
 }
 
-// "element: note" is an element note; text without a colon is a view note.
 function parseNote(text) {
   const s = String(text || "").trim();
   if (!s) return null;
@@ -138,12 +126,11 @@ function pickRecord() {
   return r;
 }
 
-// One Send at a time; what arrives while it is out stays for the next one.
 async function send($) {
   if (sending) return;
   sending = true;
   try {
-    await save($); // take in what other sessions sent or dropped
+    await save($);
     const sent = { screen, pick, piece, ids: notes.map((n) => n.id) };
     const recs = [];
     if (pick != null) recs.push(pickRecord());
@@ -157,7 +144,7 @@ async function send($) {
     try {
       entered = await $.prompt.submit({ text });
     } catch {
-      return; // the tray keeps its notes
+      return;
     }
     if (!entered || entered.drop != null) return;
     if (same(screen, sent.screen)) setScreen(null);
@@ -178,7 +165,6 @@ async function openTray($) {
   await $.ui.open({ ...PANE, focus: true });
 }
 
-// The file's bytes up to and including its last newline, or null when it cannot be read.
 async function wholeLines($) {
   let text;
   try {
@@ -190,7 +176,6 @@ async function wholeLines($) {
   return bytes.subarray(0, bytes.lastIndexOf(10) + 1);
 }
 
-// The first whole line: it names which file an offset was taken in.
 function markOf(bytes) {
   const end = bytes.indexOf(10);
   return end < 0 ? "" : new TextDecoder().decode(bytes.subarray(0, end));
@@ -201,12 +186,12 @@ async function readFeedback($) {
   if (!bytes) return;
   const now = markOf(bytes);
   if (now !== mark || bytes.length < offset) {
-    mark = now; // the file was replaced: its lines are all new
+    mark = now;
     offset = 0;
   }
   const held = await $.store.get(trayKey());
   if (held && typeof held === "object" && held.mark === mark && Number(held.offset) > offset) {
-    offset = Number(held.offset); // another session in this repo took them
+    offset = Number(held.offset);
   }
   if (bytes.length <= offset) return;
   const lines = new TextDecoder().decode(bytes.subarray(offset)).split("\n").filter((l) => l.trim());
@@ -219,7 +204,6 @@ async function readFeedback($) {
     }
     if (!r || typeof r !== "object") continue;
     if (r.kind === "pick") {
-      // {kind, piece, chose} from the preview; a line without a piece is from before #1532.
       if (r.chose != null) setPick(String(r.chose), r.piece != null ? String(r.piece) : null);
     } else if (r.note != null && String(r.note).trim()) {
       const note = String(r.note);
@@ -236,7 +220,6 @@ async function readFeedback($) {
   await save($);
 }
 
-// The Desktop app offers no $.process, so there the tray draws no Open screen button.
 function canRun($) {
   try {
     return "process" in $ && Boolean($.process);
@@ -245,7 +228,6 @@ function canRun($) {
   }
 }
 
-// Run one command to its end; true when it exits 0, false when it fails or cannot start.
 async function run($, argv) {
   try {
     const stream = $.process.spawn({ argv });
@@ -257,10 +239,8 @@ async function run($, argv) {
   }
 }
 
-// Only a preview on this machine is opened (#1530): the url comes from the model.
 const LOCAL_URL = /^http:\/\/(127\.0\.0\.1|localhost):\d+(\/|$)/;
 
-// macOS has `open`; elsewhere (Debian's `open` is openvt) fall back to xdg-open.
 async function openScreen($) {
   const url = screen && screen.url;
   if (!url || !LOCAL_URL.test(url)) return;
@@ -361,7 +341,6 @@ export function register(on) {
     cwd = (e && e.cwd) || "";
     const saved = await $.store.get(trayKey());
     if (!saved || typeof saved !== "object") {
-      // Lines written before this repo's first session are history.
       const bytes = await wholeLines($);
       offset = bytes?.length ?? 0;
       mark = bytes ? markOf(bytes) : "";
@@ -376,7 +355,6 @@ export function register(on) {
       if (typeof saved.mark === "string") {
         mark = saved.mark;
       } else {
-        // Stored before the mark: the offset was taken in the file that is there now.
         const bytes = await wholeLines($);
         mark = bytes ? markOf(bytes) : "";
       }
@@ -407,7 +385,6 @@ export function register(on) {
     return next(e);
   });
 
-  // A registered command is answered by a command.run hook; CommandSpec has no callback field.
   on("command.run", { command: "tray" }, async ($) => {
     await openTray($);
     return {};

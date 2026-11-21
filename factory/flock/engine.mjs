@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-// The Flock engine (map #1292), the one engine every launch boots. Grown from the laptop prototype
-// (flock-runroom's host.mjs).
-//
-//   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
-//        [--builder sdk|scripted:<json>] [--clock 13800]
-//
-// With N builders working one plan together, each on its own copy, merging with each other
-// between tool batches, the swarm settles on green code; the engine then leaves the target one
-// commit ahead of --base and writes the rows the pull request card reads (events.jsonl).
-//
-// The engine is code, not a model: it seeds the board, runs each builder's session,
-// keeps every copy's weave (factory/flock/weave.py), merges peers after each tool
-// batch, and tests every published snapshot at the edge. Builders pull their own
-// work from the board and never run git.
 import { spawnSync } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
@@ -42,71 +28,33 @@ const TARGET = path.resolve(need('target'))
 const BASE_SHA = need('base')
 if (!/^[0-9a-f]{40}$/.test(BASE_SHA)) { console.error('engine: --base must be a 40-hex sha'); process.exit(2) }
 const RUN_DIR = path.resolve(need('run-dir'))
-// `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
-// task id to {path: text}, which the session writes and then finishes as a `done` call would.
 const BUILDER = arg('builder', 'sdk')
 const SCRIPT = BUILDER.startsWith('scripted:') ? JSON.parse(fs.readFileSync(BUILDER.slice('scripted:'.length), 'utf8')) : null
 if (!SCRIPT && BUILDER !== 'sdk') { console.error('engine: --builder is sdk or scripted:<json>'); process.exit(2) }
-// the SDK and zod load only for model builders: a scripted run needs neither
 const { query, createSdkMcpServer, tool } = SCRIPT ? {} : await import('@anthropic-ai/claude-agent-sdk')
 const { z } = SCRIPT ? {} : await import('zod')
 const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN, arg('plan-json')) }
 for (const t of W.tasks) t.id = String(t.id)
 for (const t of W.tasks) t.depends_on = t.depends_on.map(String)
-// The round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26) is the only behaviour (operator 2026-09-29,
-// the switches no launch set are gone): an elastic pool, a builder opening whenever a ready task has
-// no free builder to take it, up to CAP (an idle builder holds no session, so it costs no tokens); a
-// builder publishes when it calls publish (and the engine publishes at session end, released or
-// done); settling `tested`, as soon as the last tested hash is green with nothing published after it;
-// `done` publishes, marks the task done and ends the copy's changes (later edits refused); the
-// builder's own tools load up front (no ToolSearch step); the opening message carries a digest; every
-// Bash command runs with stdin closed, so a stdin read fails fast; an open conflict closes as a fact
-// the moment a publish shows its merged text is a builder's own writing over both sides (see
-// earlyClose); the board offers the ready set longest remaining chain first (flock_board.mjs).
 const CAP = 16
 const MODEL = 'claude-opus-5-5'
-// under the boot's 14400 s unit limit
 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
-// The settled cells (operator 2026-11-14, n=110 Flock runs 2026-09-26..11-15; each mode no run
-// used was cut, and the way back is a checkout before the cut): a builder is told only of the peer
-// changes its work touches (pulls.mjs; 72 runs, 146 changes held quiet); a change outside every
-// task's Files that no builder wrote fails the edge (scope.mjs; 0 refusals); a builder's loose ends
-// become the task `L:loose` at the first green (7 runs, 5 settled green, 2 drafted for other
-// reasons); a builder may object to a plan it cannot satisfy (2 objections, both the wrong-plans
-// test); and the run follows main as a peer from main's stored memory (13 moves, no clash drafted).
-// a path main and a builder each created apart is a conflict a builder makes one file
-// how often the run looks at the default branch: `--main-poll <seconds>`, else the policy cell
-// flock.main.poll_seconds, else 60
 const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
 if (!Number.isFinite(MAIN_POLL_MS) || MAIN_POLL_MS < 1000) { console.error('engine: --main-poll (or flock.main.poll_seconds) is a number of seconds, 1 or more'); process.exit(2) }
-// `run-312` -> 312: a stored line's author is `@r312:<task>`
 const RUN_NO = (process.env.ULTRAPOWERS_FLEET_RUN || '').replace(/^run-/, '') || '?'
-const touched = {}   // per builder: the paths it has read or edited in its copy
+const touched = {}
 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 const MAX_REOPEN = 3
-// A task a builder gives back goes straight back on the ready list, and nothing capped that: on
-// ultrapowers run-252 (2026-09-27) a check task no builder could fix was claimed and given back
-// ~1,150 times over the whole 3.8 h clock, $80.57 of sessions. After MAX_RELEASE give-backs the
-// task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
 const MAX_RELEASE = 3
-// no progress (#1334): a run whose best-green count has not risen for this many minutes ends a
-// draft and interrupts every live session, instead of running to its clock. The policy cell
-// flock.stall.minutes, else 20. Readings: over 7 runs (247, 251-255, radio-station run-1) the longest
-// wait for a rise was 2.0 min; run-252 ran 229.7 min past its last; over 110 runs it never fired.
 const STALL_MIN = Number(POLICY_FLOCK?.stall?.minutes ?? 20)
 if (!Number.isFinite(STALL_MIN) || STALL_MIN <= 0) { console.error('engine: flock.stall.minutes is a number of minutes above 0'); process.exit(2) }
-// test seam: a scripted run's `@stall_ms` stands in for the policy's minutes, so a sim can read the stop
 const STALL_MS = (SCRIPT && Number(SCRIPT['@stall_ms'])) || STALL_MIN * 60000
 const OUT = RUN_DIR
 const WORK = path.join(RUN_DIR, 'work')
 const T0 = Date.now()
 const now = () => Date.now() - T0
-// every fact, the check and setup see the base they are judged against
 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
-// the commit the run's work sits on: --base, until a `peer` run's main moves (absorbMain)
 let BASE_NOW = BASE_SHA
-// agents never run git (#1443): a builder's PATH starts with a git that refuses, so git is refused
-// however it is reached — a script, a test, a Makefile. Facts, the check and setup keep RUN_ENV's git.
 const NOGIT = path.join(HERE, 'nogit')
 
 fs.mkdirSync(OUT, { recursive: true })
@@ -120,12 +68,7 @@ const ev = (kind, o = {}) => fs.writeSync(EV, JSON.stringify({ t: now(), kind, .
 const log = (...a) => console.log(util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-// #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), a fact
-// the record keeps. Jev's read of each, and the draft on a `loses` answer, were cut on 2026-11-14
-// (operator's pick: over 110 runs it drafted 4 green runs, two merged by hand, and caught no lost line)
-const taskOf = {}   // agent -> the task its current session holds
-// the weave's authorship label (weave.py task_label): `A.2` is builder A on task 2, so a reused
-// builder's later task meets its earlier task's lines as a peer's; a label's task is after the dot
+const taskOf = {}
 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
 const LOOSE_TITLE = 'Close the loose ends builders reported'
 function peerRewrites (agent, rel, rewrites) {
@@ -135,12 +78,6 @@ function peerRewrites (agent, rel, rewrites) {
   }
 }
 
-// ── the engine's own git, on the target ───────────────────────────────────────
-// A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
-// objects, so a plan's git-based line — `git diff --quiet $ULTRA_BASE -- <file>`, the shape the
-// authoring skill prescribes for "unchanged since base" — reads the base it names. Without it every
-// such check exited non-zero in a plain folder and the check task could never go green
-// (ultrapowers run-252, 2026-09-27). The weave never sees `.git` (SKIP).
 let TARGET_OBJECTS = null
 function gitCopy (dir) {
   if (TARGET_OBJECTS === null) TARGET_OBJECTS = path.resolve(TARGET, git(['rev-parse', '--git-common-dir']).trim(), 'objects')
@@ -151,7 +88,6 @@ function gitCopy (dir) {
 }
 const git = (args, opts) => gitIn(TARGET, args, opts).stdout
 
-// ── the weave keeper ──────────────────────────────────────────────────────────
 const keeper = startWeave()
 const OPS = fs.openSync(path.join(OUT, 'weave-ops.jsonl'), 'a')
 const weave = (o) => {
@@ -160,7 +96,6 @@ const weave = (o) => {
 }
 const must = async (o) => { const r = await weave(o); if (!r.ok) throw new Error('weave ' + o.op + ': ' + r.error); return r }
 
-// ── files ─────────────────────────────────────────────────────────────────────
 const SKIP = /(^|\/)(__pycache__|\.pytest_cache|node_modules|\.git)(\/|$)|\.pyc$/
 function walk (dir, rel = '') {
   const out = []
@@ -171,12 +106,8 @@ function walk (dir, rel = '') {
   }
   return out
 }
-// The weave merges text, line by line; a file that is not UTF-8 (an image, a .gz) is never handed to
-// it. Every copy and the edge start from BASE_DIR, so such a file stays exactly as it is at base, and
-// a builder's change to one is recorded, never merged (ultrapowers run-246: `docs/assets/dag.gif`
-// stopped the weave's `base` op with a UnicodeDecodeError before any builder opened).
-const textSeen = new Map()   // absolute path -> { key: size:mtime, text: boolean }
-const nonText = new Set()    // relative paths set aside, recorded once each
+const textSeen = new Map()
+const nonText = new Set()
 function isText (abs, rel) {
   let st
   try { st = fs.statSync(abs) } catch { return false }
@@ -191,9 +122,6 @@ function isText (abs, rel) {
 }
 const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
 const BASE_DIR = path.join(WORK, 'base')
-// BASE is the target's tree at --base, checked out by the engine's own git into BASE_DIR through a
-// scratch index (the target's own index and working tree are untouched): one process, modes and
-// symlinks as the tree has them
 function writeBase (dir, sha = BASE_NOW) {
   fs.mkdirSync(dir, { recursive: true })
   const index = path.join(WORK, 'base.index')
@@ -201,18 +129,11 @@ function writeBase (dir, sha = BASE_NOW) {
   fs.rmSync(index, { force: true })
 }
 writeBase(BASE_DIR)
-// the base's text paths and their text; both move with BASE_NOW. BASE_FILES_0 stays --base's, the
-// start of the compact record's patch chain.
 let BASE_PATHS = walk(BASE_DIR)
 let BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
 const BASE_FILES_0 = BASE_FILES
-// a workload with `setup` installs once into DEPS_DIR, and every copy the engine makes (each
-// builder's, the edge's) gets that install's node_modules dirs as symlinks, so the weave never sees
-// them (walk skips node_modules) and no copy pays a second install
 const DEPS_DIR = path.join(WORK, 'deps')
 let DEP_DIRS = []
-// the plan's own setup wins; without one, the target's tracked lockfile decides (a bun lockfile ->
-// bun install, package-lock.json -> npm ci; runroom-ab run-3: no install, the check exited 127 on every edge)
 const LOCK_CMD = BASE_PATHS.includes('bun.lock') || BASE_PATHS.includes('bun.lockb') ? 'bun install --frozen-lockfile'
   : BASE_PATHS.includes('package-lock.json') ? 'npm ci' : null
 const SETUP = W.setup || (LOCK_CMD && ['bash', '-lc', LOCK_CMD])
@@ -230,17 +151,14 @@ function depDirs () {
 }
 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 const agentDir = (a) => path.join(WORK, 'agents', a)
-// a copy of a snapshot ({files, exists}) at dir: base, the deps, the target's git at base, then the snapshot's files
 function freshCopy (dir, s) {
   fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
   writeFiles(dir, snapshotEntries(s))
 }
-const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
+const known = {}
 
-// ── the board: in memory; its moves are rows in events.jsonl. ──
 const board = new Board({ tasks: W.tasks, now })
 
-// ── facts ─────────────────────────────────────────────────────────────────────
 function runFacts (cwd, task) {
   return task.facts.map((cmd) => {
     const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: EXAM_MS.fact, env: RUN_ENV })
@@ -251,17 +169,12 @@ const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !==
 const redText = (task, red) => red.map((r) =>
   `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i] ?? 'screens'})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 
-// peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
-// the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by
-// two authors_keyed round trips per edit; over 1,040 edits (n=51 runs, 2026-09-26..30) the two
-// counts never differed.
 function peerOf (answers) {
   const peers = new Set()
   for (const r of answers) for (const o of r.peers || []) o.split('|').forEach((x) => peers.add(x))
   return { peer: answers.reduce((n, r) => n + (r.peer_lines_touched || 0), 0), peers: [...peers] }
 }
 
-// ── keeping a copy's weave in step with its files ─────────────────────────────
 async function syncFromDisk (agent) {
   const dir = agentDir(agent)
   const disk = walk(dir)
@@ -282,7 +195,6 @@ async function syncFromDisk (agent) {
   return drift
 }
 
-// editSpans lives in edit_spans.mjs since the replace-all fix (pinned by readings/replace_all_check.mjs)
 async function recordEditCall (agent, rel, before, edits) {
   let text = before
   const answers = []
@@ -297,14 +209,7 @@ async function recordEditCall (agent, rel, before, edits) {
   return peerOf(answers)
 }
 
-// ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
-// host keeps them: a conflict opens when a merge flags it and closes only when an agent
-// says so (resolve_conflict), or at once when both sides only added lines (the union) ──
-// ticket 5: the ledger is keyed by path AND region, the hash of the marked hunks' two sides
-// (sorted, so a pull's merge and the edge's merge name the same region). Manyana re-flags a
-// region it has already flagged on every merge; a closed region stays closed, and only a
-// DIFFERENT region on the same path opens a new entry. Closing a path closes its regions.
-const ledger = new Map()   // `${path}\u0000${region}` -> entry
+const ledger = new Map()
 function region (annotated) {
   const hunks = []
   let side = null, cur = null
@@ -319,9 +224,7 @@ function region (annotated) {
 async function openConflict (p, info) {
   const reg = region(info.annotated)
   const e = ledger.get(p + '\u0000' + reg)
-  if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
-  // a file main and a builder each began apart is two whole files, and no probe of this run speaks
-  // for main's: a builder makes them one (flock-baseline run-24, 2026-11-13: closed in 20 s, ready)
+  if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }
   const made = !!info.bothCreated
   if (info.addsOnly && !made) { ev('conflict:union', { path: p, ...info, annotated: undefined }); return }
   ledger.set(p + '\u0000' + reg, { path: p, region: reg, open: true, t: now(), annotated: info.annotated, between: info.between, party: info.party, made })
@@ -341,20 +244,10 @@ function closeEntries (p, by, note, via) {
   lastChange = now()
 }
 
-// ── early close (the final atlas race). On atlas every resolve task changed
-// nothing (n=5 runs): the conflicts were already resolved by the agents, and ~25 s went to handing
-// them out once everyone was idle. The fact that closes one early, per open conflict on path p, at
-// every edge: some agent S published p, S's last edit to p came after the last time a peer's side
-// of p reached S's copy with conflict marks (S wrote with both sides in view), and S's published
-// text of p is byte for byte the merged text of p. The merged text is then S's own writing over
-// both sides. A conflict seen first in one copy's pull also waits for that copy's next publish,
-// since its side of the conflict may not be published yet. `unflagged` (Manyana no longer marks the
-// region) is recorded as evidence only: it stops marking a blind conflict once one side pulls and
-// republishes, with nobody having looked (the control in readings/early_close_replay.py).
-const lastEditT = {}        // agent -> path -> t
-const lastMarkedT = {}      // agent -> path -> t: a peer's side arrived with conflict marks
-const lastPubT = {}         // agent -> t
-const pubHeld = {}          // agent -> path -> { text, held, t } as of its last publish
+const lastEditT = {}
+const lastMarkedT = {}
+const lastPubT = {}
+const pubHeld = {}
 function edited (agent, p) { (lastEditT[agent] = lastEditT[agent] || {})[p] = now() }
 async function publishCopy (agent) {
   await must({ op: 'publish', agent })
@@ -380,28 +273,24 @@ function earlyClose (m, snap) {
     lastChange = now()
   }
 }
-let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
-const live = new Set()      // agents with a session open right now
-const stops = new Map()     // agent -> interrupt() of its live session (the no-progress stop calls each)
-const stalls = []           // stall beliefs the host posted (attached to a draft PR)
+let lastChange = 0
+const live = new Set()
+const stops = new Map()
+const stalls = []
 async function stall (kind, evidence) {
   const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}` })
   stalls.push({ kind, evidence, t: now() }); ev('stall:' + kind, { evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
   return b
 }
 
-// ── the edge: every published snapshot is tested; main takes a green, settled one ──
 let edgeChain = Promise.resolve()
 let lastEdge = null
 const snapshots = []
-let bestGreen = -1, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
-let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
-const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
-const amendedSeen = new Set()  // paths already written as an `amendment` row this run
-// The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
-// writes build output. Returns the paths outside every task's Files that no builder wrote.
+let bestGreen = -1, lastRise = 0
+let lastSessionEnd = -1
+const edgeLatency = []
+const amendedSeen = new Set()
 function scopeAt (m, snap) {
-  // the weave reads an empty file as absent, so an empty base file is compared as absent too
   const text = (p) => p in m.files ? (m.exists[p] ? m.files[p] : '') : (BASE_FILES[p] ?? '')
   const changed = [...new Set([...Object.keys(m.files), ...BASE_PATHS])].filter((p) => text(p) !== (BASE_FILES[p] ?? ''))
   const files = [...board.tasks.values()].flatMap((t) => t.files || (String(t.id).startsWith('R:') ? [t.id.slice(2)] : []))
@@ -411,8 +300,6 @@ function scopeAt (m, snap) {
   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(',')) }
   return outside
 }
-// a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there,
-// undefined when no file has that exact path at the base or in the snapshot (the path cannot be read)
 function textAt (snap) {
   const s = snapshots.find((x) => x.snap === snap)
   return (p) => s && p in s.files ? (s.exists[p] ? s.files[p] : null) : p in BASE_FILES ? (BASE_FILES[p] ?? null) : undefined
@@ -424,9 +311,6 @@ function edge (reason) {
     const snap = crypto.createHash('sha1').update(JSON.stringify(m.files)).digest('hex').slice(0, 10)
     const outside = scopeAt(m, snap)
     if (lastEdge && lastEdge.snap === snap) {
-      // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
-      // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
-      // answer after 5 of 9 closes on the record, masked each time by a later content change.
       for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
       earlyClose(m, snap)
       const blocking = openConflicts()
@@ -437,7 +321,7 @@ function edge (reason) {
     lastChange = now()
     const dir = path.join(WORK, 'edge')
     freshCopy(dir, m)
-    const perTask = {}, red = []   // red: the facts that did not exit 0, kept for red-checks.json
+    const perTask = {}, red = []
     for (const t of board.tasks.values()) {
       const res = runFacts(dir, t)
       perTask[t.id] = res.map((r) => r.exit)
@@ -445,20 +329,15 @@ function edge (reason) {
     }
     const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: W.checkTimeoutMs ?? 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
-    // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
-    // let a NEW conflict on a once-closed path pass the edge unexamined.
     for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
     earlyClose(m, snap)
     const blocking = openConflicts()
     lastEdge = { snap, t: now(), reason, perTask, red, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
-    // survival: the lines a published copy's author wrote that this snapshot no longer shows, from
-    // the same `merged` answer that named the snapshot (a later ask could describe a later join)
     const lost = m.lost || []
     ev('survival', { snap, lost })
     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists, lost })
     edgeLatency.push(now() - asked)
-    // the best-green count (facts green, plus the check) the no-progress stop reads (#1334)
     const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
     if (g > bestGreen) { bestGreen = g; lastRise = now() }
     ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined, red: undefined })
@@ -468,7 +347,6 @@ function edge (reason) {
   return edgeChain
 }
 
-// ── one agent session on one claimed task ─────────────────────────────────────
 const usage = []
 let lastPublish = 0
 let settled = null
@@ -487,19 +365,9 @@ Rules:
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 
-// What a pull brought that its builder has not been told of yet: agent -> path -> the change.
 const unsaid = {}
-// Every published change reaches the copy, whatever the builder's task: a copy is a whole, current
-// tree, since its facts run on all of it. On flock-baseline run-10 (2026-11-13, n=1 run) a narrow
-// pull left task 7's builder without `atlas/geo.py`, written by a task it depended on only through
-// another, and read by it with `cat`: the file never arrived, the task was given back three times
-// over 22 minutes and the run ended a draft. The scope (pulls.mjs) narrows only what a builder is
-// TOLD: a change outside it lands silently and is told, with its conflict mark, once the path comes
-// into scope. Answers the changes told now; `.all` counts every change that reached the copy.
 async function pullInto (agent, task) {
-  // a resolve task (R:<path>) scopes to its own path
   if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
-  // new files peers created cannot conflict with anything here, so they are always in scope (#1405)
   const base = new Set(BASE_PATHS)
   const created = [...new Set(Object.entries(lastEditT).filter(([a]) => a !== agent).flatMap(([, ps]) => Object.keys(ps)))].filter((p) => !base.has(p))
   const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], created }) : null
@@ -512,7 +380,6 @@ async function pullInto (agent, task) {
   const mine = (unsaid[agent] = unsaid[agent] || new Map())
   for (const c of r.changed) {
     const was = mine.get(c.path)
-    // an untold conflict mark is kept until the builder is told, whatever arrives after it
     mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
   }
   const told = [...mine.values()].filter((c) => !quiet(c.path))
@@ -524,10 +391,6 @@ async function pullInto (agent, task) {
   return told
 }
 
-// ── ticket 2 fix (b): two agents inserting at one spot. The kernel orders such lines by their
-// text and an adds-only union hid it; the keeper now flags it (`siblings`, or `unified` when
-// one side's block starts with the other's line and the kernel flags nothing). Each distinct
-// spot becomes a fact on the board and a note to the agents whose copies carry it. ──
 const spots = new Map()
 const spotNotes = {}
 async function sameSpot (p, flags, between, agent) {
@@ -542,7 +405,6 @@ async function sameSpot (p, flags, between, agent) {
   }
 }
 
-// the round-3 brief: what a builder would have fetched with board_read, cut to what concerns it
 function brief (task) {
   const deps = task.depends_on.map((d) => `task ${d} ${board.tasks.get(d)?.state ?? '?'}`)
   const mine = new Set(task.files || [])
@@ -552,10 +414,6 @@ function brief (task) {
     ' board_read shows the whole board if you need it.' +
     (PAST ? `\nThe previous run on this repository, run-${PAST.run}, did not finish green. What it recorded:\n` + PAST.items.map((i) => i.text).join('\n') : '')
 }
-// `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
-// copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
-// A task the script does not name ends released.
-// Every give-back, scripted or model, goes through here, so MAX_RELEASE caps them all.
 async function giveBack (agent, task, why) {
   task.released = (task.released || 0) + 1
   if (task.released >= MAX_RELEASE) {
@@ -567,13 +425,7 @@ async function giveBack (agent, task, why) {
   await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
 }
 
-// A builder's objection: its task's plan cannot be satisfied as written, by any code: two clauses
-// that cannot both hold, or a proof nothing can pass. The task parks at once and the run, when
-// nothing else is left to do, ends a draft that says so. A give-back hands the task to the next
-// builder, who meets the same wall: on flock-baseline run-32 (2026-11-13, n=1 run) the builder named
-// the contradiction in its first note, the task was given back three times over 24 s, and the run
-// ended `deadlock` without the reason.
-const objections = []   // { task, agent, reason }
+const objections = []
 async function objectTo (agent, task, why) {
   const reason = String(why).replace(/\s+/g, ' ').trim().slice(0, 600)
   objections.push({ task: task.id, agent, reason })
@@ -583,10 +435,6 @@ async function objectTo (agent, task, why) {
   await stall('objection', { task: task.id }); log(agent, 'objects to', task.id, '—', reason)
 }
 
-// A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
-// it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
-// held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
-// answers the loose-end reading's "does the file still contain it".
 async function postBelief (agent, a) {
   const stale = typeof a.stale === 'string' ? a.stale.slice(0, 300) : a.stale
   const b = await board.post({ by: agent, claim: a.claim, task: a.task, about: a.about, path: a.path, stale })
@@ -600,9 +448,7 @@ async function scriptedSession (agent, task) {
   ev('session:start', { agent, task: task.id, builder: 'scripted' })
   log(agent, 'claims task', task.id, '(scripted)')
   live.add(agent)
-  // test seam (#1334): `@hold_ms` holds the session that long before it writes, standing in for a
-  // builder that makes no progress; the no-progress stop cuts it short, and it ends writing nothing.
-  const H = SCRIPT['@hold_ms'], hold = H && typeof H === 'object' ? H[task.id] : H   // a number holds every task; a map, the tasks it names
+  const H = SCRIPT['@hold_ms'], hold = H && typeof H === 'object' ? H[task.id] : H
   if (hold) {
     let wake
     const held = new Promise((r) => { wake = r; setTimeout(r, hold) })
@@ -614,13 +460,9 @@ async function scriptedSession (agent, task) {
       ev('session:end', { agent, task: task.id, released: 'run ended', done: false })
       live.delete(agent); return
     }
-    // a held session takes in what its peers published meanwhile, as a model builder's pull after
-    // each tool batch would, so its write can land over a peer's lines (#1401)
     await pullInto(agent, task)
   }
-  // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
-  // test seam: `@object` maps a task to the objection its session files instead of writing
   const objected = (SCRIPT['@object'] || {})[task.id]
   if (objected) {
     usage.push({ agent, task: task.id, turns: 0, subtype: 'scripted', cost_usd: 0 })
@@ -630,7 +472,6 @@ async function scriptedSession (agent, task) {
     return
   }
   if (files) {
-    // a path mapped to null is deleted, as a builder's delete_file would
     writeFiles(cwd, Object.entries(files))
     const red = redOf(runFacts(cwd, task))
     if (red.length) {
@@ -642,8 +483,6 @@ async function scriptedSession (agent, task) {
       return
     }
     await syncFromDisk(agent)
-    // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
-    // call), standing in for a weave fault like run-247's. It passes no task: its lines stay unlabelled by task.
     for (const [p, text] of Object.entries(SCRIPT['@unwritten'] || {})) await must({ op: 'rewrite', agent, path: p, content: text })
     await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' })
     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
@@ -676,9 +515,6 @@ async function session (agent, task) {
         ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
       }),
-    // ticket 4 follow-up: waiting for a peer. Peers' work reaches a copy only between tool calls,
-    // so a shell `sleep` loop never sees it (a full 300 s in 4 of 10 ledger runs, n=5 per arm).
-    // This tool keeps merging peers into the copy while it waits, and returns once the fact holds.
     tool('wait_for', 'Wait until a fact holds, while the other agents\' published work keeps merging into your copy. Use this instead of any shell sleep or polling loop. A fact is one of: a task is done (kind "task_done", task); a text or regular expression appears in a file of your copy (kind "text", path, pattern); a task\'s facts pass on your copy (kind "proof", task). Returns as soon as it holds, or after timeout_s (default 120, at most 300) with what it last saw.',
       { kind: z.enum(['task_done', 'text', 'proof']), task: z.string().optional(), path: z.string().optional(), pattern: z.string().optional(), timeout_s: z.number().optional() },
       async (a) => {
@@ -714,7 +550,7 @@ async function session (agent, task) {
           await sleep(1000)
           const changed = await pullInto(agent, task)
           for (const c of changed) merged.set(c.path, c)
-          if (changed.all) proofChanged = true   // a change the builder was not told of still changes what its facts read
+          if (changed.all) proofChanged = true
           spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
           held = holds()
         }
@@ -725,9 +561,6 @@ async function session (agent, task) {
           (merged.size ? `\nMerged into your copy while waiting: ${[...merged.values()].map((c) => `${c.path} (from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ')}. Re-read before editing those files.` : '') +
           (spotted.length ? '\nSame-spot insertions in your copy: ' + spotted.join('; ') : ''))
       }),
-    // run-262 (2026-09-29): a plan that deletes files parked because no builder tool removed one and
-    // the shell hook refuses `rm`. The file leaves the copy on disk; syncFromDisk records the delete
-    // in the weave (rewrite with content null) exactly as it records any other change.
     tool('delete_file', 'Delete an existing file in your copy (the shell may not delete one). Give its path relative to your copy.',
       { path: z.string() },
       async (a) => {
@@ -783,7 +616,6 @@ async function session (agent, task) {
       if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
       }
-      // the PATH shim cannot see a git named by its absolute path (`/usr/bin/git`)
       if (input.tool_name === 'Bash' && /(^|[^\w.-])\/[\w./-]*\/git(?![\w./-])/.test(ti.command || '')) {
         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'agents never run git' } }
       }
@@ -824,14 +656,12 @@ async function session (agent, task) {
           const view = (await must({ op: 'view', agent, path: rel })).text
           if (view !== readOr(fp)) { const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); how = 'edit-call-mismatch' }
         }
-        // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
         const outside = own ? !own.includes(rel) : false
         edited(agent, rel)
         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, outside })
         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, task: task.id })
       } else if (name === 'Read' && ti.file_path) {
-        // warn first: before a builder edits a peer's lines, it is told whose they are
         const fp = path.resolve(cwd, ti.file_path)
         if (!fp.startsWith(cwd + '/')) return {}
         const rel = fp.slice(cwd.length + 1)
@@ -865,7 +695,7 @@ async function session (agent, task) {
   const prompt = `You are agent ${agent}. You claimed task ${task.id}: ${task.title}.\n\n${task.body}\n` +
     (task.notes.length ? `\nNotes on this task from earlier attempts:\n- ${task.notes.slice(-3).join('\n- ')}\n` : '') +
     brief(task)
-  if (outcome) return   // the run ended while this builder was pulling: start no session
+  if (outcome) return
   ev('session:start', { agent, task: task.id })
   log(agent, 'claims task', task.id)
   const q = query({ prompt, options: {
@@ -873,22 +703,18 @@ async function session (agent, task) {
     maxTurns: 80, systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM },
     mcpServers: { flock: createSdkMcpServer({ name: 'flock', tools }) },
     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
-    // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
-    // spelt in parts so no line names the retired switch's constant.
     env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ENABLE_TOOL_SEARCH: 'false' },
   } })
   let result = null
   live.add(agent)
   const killer =setTimeout(() => { q.interrupt().catch(() => {}) }, Math.max(1000, CLOCK_MS - now()))
   stops.set(agent, () => q.interrupt().catch(() => {}))
-  if (outcome) q.interrupt().catch(() => {})   // the stop landed between query() and stops.set
+  if (outcome) q.interrupt().catch(() => {})
   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
   clearTimeout(killer); stops.delete(agent)
   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0 })
   ev('session:end', { agent, task: task.id, released: st.released, objected: st.objected, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
-  // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
-  // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
@@ -910,19 +736,8 @@ async function agentLoop (agent) {
   }
 }
 
-// ── main is a peer (the main-is-a-peer design, stage 3) ───────────────────────
-// A `peer` run follows the target's default branch: a look before its first builder opens, one
-// every MAIN_POLL_MS, and one before a green settle. When it moves, the moved main's stored weaves
-// are published into the run as the peer `main` (keeper op `main`), so every copy takes its text in
-// through the pulls it already makes, a clash with a builder is an ordinary conflict with builders
-// alive to resolve it, and the run's base moves to the new tip: the scope rule, every fact's
-// ULTRA_BASE, each copy's git index and the landing commit all read it. What the weave does not
-// carry (a file that is not text) is copied into each copy as it is on main. Nothing here fails a
-// run: a move that cannot be taken in ends the following, with its reason on a `main:off` row, and
-// the publish's catch-up meets the moved main as it did before.
-let MAIN_BRANCH = null    // the default branch a `peer` run follows; null follows nothing
-let mainOff = null        // why this run stopped following main
-// a changed file that means the installed dependencies may be stale: the setup runs again
+let MAIN_BRANCH = null
+let mainOff = null
 const MANIFEST = /(^|\/)(package\.json|bun\.lockb?|package-lock\.json|requirements[^/]*\.txt|pyproject\.toml|uv\.lock|poetry\.lock|Pipfile\.lock|Cargo\.(toml|lock)|go\.(mod|sum))$/
 function followMain () {
   if (!MEMORY) return
@@ -936,13 +751,10 @@ function stopFollowing (reason, more = {}) {
   ev('main:off', { reason, ...more }); log('main: no longer followed —', reason)
   return false
 }
-// the default branch's tip as the remote has it now, or null when it cannot be read
 function mainTip () {
   const r = spawnSync('git', ['-C', TARGET, 'fetch', '-q', 'origin', `refs/heads/${MAIN_BRANCH}`], { encoding: 'utf8', timeout: 60000 })
   return r.status === 0 ? gitIn(TARGET, ['rev-parse', 'FETCH_HEAD']).stdout.trim() : null
 }
-// Looks at main once and takes a move in. True when the base moved (the caller then asks for an
-// edge). It runs on the edge chain, so no edge is copying the base while it is replaced.
 function absorbMain (why) {
   if (!MAIN_BRANCH || mainOff || outcome) return Promise.resolve(false)
   const moved = edgeChain.then(() => absorb(why)).catch((e) => stopFollowing('the move could not be taken in: ' + String(e && e.message || e).slice(0, 300)))
@@ -955,7 +767,6 @@ async function absorb (why) {
   if (!tip || tip === BASE_NOW) return false
   if (gitIn(TARGET, ['merge-base', '--is-ancestor', BASE_NOW, tip], { ok: true }).status !== 0) return stopFollowing('main no longer holds the commit this run is based on', { tip })
   const changed = git(['diff', '--name-only', '--no-renames', BASE_NOW, tip]).split('\n').filter(Boolean)
-  // the moved base is laid out beside the old one, and the keeper asked, before anything is replaced
   const next = BASE_DIR + '.next'
   fs.rmSync(next, { recursive: true, force: true })
   writeBase(next, tip)
@@ -965,16 +776,13 @@ async function absorb (why) {
     fs.rmSync(next, { recursive: true, force: true })
     return stopFollowing(r.ok ? r.reason : String(r.error).slice(0, 300), { tip, paths: r.paths })
   }
-  // the keeper holds main's weaves now: the base moves
   const from = BASE_NOW
   const wasText = new Set(BASE_PATHS), isTextNow = new Set(nextPaths)
   fs.rmSync(BASE_DIR, { recursive: true, force: true }); fs.renameSync(next, BASE_DIR)
   BASE_NOW = tip; RUN_ENV.ULTRA_BASE = tip
   BASE_PATHS = nextPaths
   BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
-  git(['checkout', '-q', '--detach', tip])   // the landing commit goes on the moved main
-  // the installed dependencies, again, when main changed what they are read from; the old ones
-  // stay in place when the setup fails on the moved main
+  git(['checkout', '-q', '--detach', tip])
   let setup = null
   if (SETUP && changed.some((p) => MANIFEST.test(p))) {
     const old = DEPS_DIR + '.old'
@@ -988,7 +796,6 @@ async function absorb (why) {
     else { fs.rmSync(DEPS_DIR, { recursive: true, force: true }); fs.renameSync(old, DEPS_DIR) }
     DEP_DIRS = depDirs()
   }
-  // what the weave does not carry: a file that is text neither at the old base nor at the new
   const other = changed.filter((p) => !SKIP.test(p) && !wasText.has(p) && !isTextNow.has(p))
   for (const a of pool) {
     const dir = agentDir(a)
@@ -1000,7 +807,7 @@ async function absorb (why) {
     gitIn(dir, ['read-tree', tip]); gitIn(dir, ['update-index', '-q', '--refresh'], { ok: true })
     if (setup) linkDeps(dir)
   }
-  fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')   // the boot publishes against this base
+  fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')
   ev('main:moved', { from, to: tip, why, changed: changed.length, woven: r.paths, other, via: r.via, setup })
   log('main moved', from.slice(0, 12), '->', tip.slice(0, 12), `(${changed.length} file(s), ${r.paths.length} merged as a peer's)`)
   await board.post({ by: 'host', claim: `main moved to ${tip.slice(0, 12)}: ${changed.length} file(s) changed there (${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}). They merge into every copy like a peer's work, from \`main\`` })
@@ -1009,27 +816,21 @@ async function absorb (why) {
 }
 async function mainWatcher () {
   while (MAIN_BRANCH && !mainOff && !settled && !outcome && now() < CLOCK_MS) {
-    // the next look is due by the clock, in short sleeps so a run that ends is not kept waiting.
-    // Counting the sleeps ran late: each one stretches while an edge's tests hold the loop
-    // (flock-baseline run-12, 2026-11-13: the 60 s look had not come by 72.6 s, and the look before
-    // settling took the move in).
     const due = now() + MAIN_POLL_MS
     while (now() < due && !settled && !outcome) await sleep(500)
     if (await absorbMain('poll')) edge('main moved')
   }
 }
 
-// ── settling ──────────────────────────────────────────────────────────────────
-let outcome = null   // ticket 5: { pr: 'ready' | 'draft', why, snap }
+let outcome = null
 function debounceMs () {
   const xs = [...edgeLatency].sort((a, b) => a - b)
   const p90 = xs.length ? xs[Math.min(xs.length - 1, Math.floor(0.9 * xs.length))] : 500
   return Math.max(1000, 2 * p90)
 }
-let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
-let fellBack = false  // the run already ends on preLoose: a draft after that stands
+let preLoose = null
+let fellBack = false
 function terminal (pr, why, r) {
-  // any draft after the loose-ends task was added lands the green snapshot from before it instead (#1521)
   if (pr === 'draft' && preLoose && !fellBack) {
     fellBack = true
     ev('loose:fallback', { snap: preLoose.snap, from: r && r.snap, why })
@@ -1045,34 +846,24 @@ async function settle () {
     await sleep(500)
     const stalled = () => now() - lastRise > STALL_MS && lastSessionEnd > lastRise
     if (stalled() && (await edgeChain, stalled())) {
-      // no progress (#1334): the best-green count has not risen within the limit, a builder session
-      // has ended since it last did, and no queued snapshot raised it (the edge chain is drained)
       await stall('no-progress', { since_rise_ms: now() - lastRise, limit_ms: STALL_MS, best: bestGreen, live: [...live] })
       terminal('draft', `no progress: the green count has not risen for ${Math.round((now() - lastRise) / 1000)} s`, lastEdge)
       for (const stop of stops.values()) stop()
       break
     }
     const all = [...board.tasks.values()]
-    // rule S1: nothing can change the code any more.
-    // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
-    // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
     const claimed = all.some((t) => t.state === 'claimed')
     if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
-      // nothing left that anyone can do. An objection is why: the run says so in the builder's words.
       if (objections.length) {
         const o = objections[0], more = objections.length - 1
         terminal('draft', `objection on task ${o.task}: ${o.reason}${more ? ` (and ${more} more)` : ''}`, lastEdge); break
       }
-      // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
       await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
       terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
     }
-    // round 3, `tested`: once the last tested hash is green and nothing was published after it,
-    // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
     const tested = lastEdge && lastEdge.green && lastEdge.t >= lastPublish
     if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
     const r = await edge('settle check')
-    // one more look at main before a green run ends: a move is taken in and tested like any other
     if (r.green && await absorbMain('settle')) { edge('main moved'); continue }
     if (r.green && !board.tasks.has('L:loose')) {
       const loose = looseEnds(board.beliefs, textAt(r.snap)).filter((x) => x.state !== 'resolved')
@@ -1084,8 +875,6 @@ async function settle () {
           `\n\nFix each that is still wrong. Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.`
         await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths, body })
         ev('loose-task', { snap: r.snap, paths, body }); log('loose-ends task for', paths.join(','))
-        // the cleanup adds no facts, so the green count cannot rise during it: it gets its own window
-        // from now, not the rest of the one that began at the first green (#1531)
         lastRise = now()
         continue
       }
@@ -1098,9 +887,6 @@ async function settle () {
       if (t.reopen >= MAX_REOPEN) continue
       acted = true
       t.reopen += 1
-      // the merge orders two insertions at one spot by their text, which no builder chose: a task
-      // reopened red is told of each such spot in its files (flock-baseline run-10: tasks 12 and 13
-      // each added one rule to one list, the merge put them in alphabetical order, both went red)
       const here = [...spots.values()].filter((x) => (t.files || []).includes(x.p)).map((x) => x.text)
       await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}` +
         (here.length ? `. Look here first: ${here.join('; ')}` : ''))
@@ -1120,8 +906,6 @@ async function settle () {
       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
     }
     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
-      // ticket 5: the check is red with every fact green. The old loop restarted the quiet
-      // window and told nobody, so the run waited for its clock. Now the check owns a task.
       ev('red-check-only', { snap: r.snap, tail: r.checkTail }); log('check red with every fact green')
       const prev = board.tasks.get('C:check')
       if (!prev || (prev.state === 'done' && prev.reopen < MAX_REOPEN)) {
@@ -1132,8 +916,6 @@ async function settle () {
       }
     }
     if (!acted) {
-      // exhausted: red or blocked, and every lever (reopen, resolve task, check task) is spent.
-      // Waiting for the clock buys nothing: publish the draft now with the beliefs attached.
       await stall('exhausted', { snap: r.snap, perTask: r.perTask, check: r.check, blocking: r.blocking })
       terminal('draft', 'exhausted: red or blocked with every retry spent', r); break
     }
@@ -1141,21 +923,13 @@ async function settle () {
   if (!outcome) terminal('draft', 'clock', lastEdge)
 }
 
-// ── run ───────────────────────────────────────────────────────────────────────
 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-// the run's weaves begin from main's memory: a store that cannot be read leaves them begun from the
-// base's text, with the reason on the row, and the run follows nothing (followMain)
 const memoryRead = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
 const MEMORY = !!(memoryRead.ok && memoryRead.memory)
 ev('weave:memory', memoryRead.ok ? { ...memoryRead, ok: undefined } : { memory: false, reason: String(memoryRead.error).slice(0, 300) })
 log('memory', MEMORY ? `${memoryRead.via} entry, ${memoryRead.installed} of ${memoryRead.stored} stored paths at base` : 'none: ' + (memoryRead.reason || memoryRead.error))
 ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: 'narrow', chain: Object.fromEntries(board.cp) })
 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
-// the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
-// (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
-// --past-dir <dir> (basename = the run number); read what it recorded (status, events, red
-// checks) and brief every builder with it. No --past-dir reads nothing. Any failure (a missing
-// directory or file) is logged once and leaves the brief as it was.
 let PAST = null
 {
   const dir = arg('past-dir')
@@ -1166,7 +940,6 @@ let PAST = null
       const text = (f) => fs.readFileSync(path.join(dir, f), 'utf8')
       const status = JSON.parse(text('status.json'))
       const events = readEventRows(path.join(dir, 'events.jsonl'))
-      // optional: runs before #1352 have no red-checks.json; pastItems reads null as none
       let redChecks = null
       try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
       const items = pastItems({ status, events, redChecks })
@@ -1179,10 +952,6 @@ let PAST = null
     } catch (e) { log('past: nothing read —', String(e.message || e).split('\n')[0]) }
   }
 }
-// a stories-v1 run proves the checker can run here before any builder spends anything:
-// exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
-// missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
-// not the app, and stops the run before it starts.
 if (W.stories) {
   const first = W.tasks.find((t) => t.facts.length)
   const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
@@ -1194,15 +963,14 @@ if (W.stories) {
 }
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = []
-lastRise = now()   // setup and the checker preflight do not count against the first window
+lastRise = now()
 const loops = []
 let buildersMax = pool.length
-// a builder is busy while it has a session open or a task claimed in its name
 const busy = (a) => live.has(a) || [...board.tasks.values()].some((t) => t.state === 'claimed' && t.owner === a)
 function openBuilder () {
   const a = pool.length < 26 ? LETTERS[pool.length] : LETTERS[pool.length % 26] + Math.floor(pool.length / 26)
   fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a))
-  known[a] = new Set(BASE_PATHS)   // its first session pulls every published change (session -> pullInto)
+  known[a] = new Set(BASE_PATHS)
   pool.push(a); buildersMax = Math.max(buildersMax, pool.length)
   ev('builder:open', { agent: a, pool: pool.length, ready: board.readyNow().length, busy: pool.filter(busy).length })
   log('opens builder', a, '(pool ' + pool.length + ')')
@@ -1216,32 +984,23 @@ async function spawner () {
   }
 }
 followMain()
-// a run launched behind main takes the move in before its first builder opens, so every copy starts
-// from the main that is there now (run-12 started one commit behind and met it only at the end)
 await absorbMain('start')
 await Promise.all([spawner(), settle(), mainWatcher()])
 await Promise.all(loops)
 await edgeChain
-// every step's receipt, green or red: what its latest checker result says it changed
 for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
-// checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
 try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
-// the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 ev('loose-ends', { snap: looseSnap, items: looseItems })
-// the screen parts builders added (#1491), read on the same snapshot: the PR lists them for the operator
 const addedParts = newParts(BASE_FILES[DRAWS] ?? null, textAt(looseSnap)(DRAWS))
 if (addedParts.length) ev('parts:new', { snap: looseSnap, parts: addedParts })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
-  // the commit the work sits on: --base, or the main a `peer` run moved to
   base: BASE_NOW,
   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
   snapshots: snapshots.length, beliefs: board.beliefs.length,
   loose_ends: { reported: looseItems.length, resolved: looseItems.filter((x) => x.state === 'resolved').length },
-  // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
-  // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
   outcome, debounce_ms: debounceMs(),
   attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
   tokens: usage.reduce((a, u) => ({ input: a.input + (u.usage?.input_tokens || 0), output: a.output + (u.usage?.output_tokens || 0), cache_read: a.cache_read + (u.usage?.cache_read_input_tokens || 0), cache_write: a.cache_write + (u.usage?.cache_creation_input_tokens || 0) }), { input: 0, output: 0, cache_read: 0, cache_write: 0 }),
@@ -1253,14 +1012,11 @@ fs.writeFileSync(path.join(OUT, 'board.json'), JSON.stringify(await board.read()
 writeCompactRecord()
 writeFailureRecord()
 log('summary', JSON.stringify(summary))
-// the join's blame and text, asked before the weave closes, for provenance.json at landing
 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
 const landed = await land()
 keeper.end()
 process.exit(landed)
 
-// ── the compact record: each tested snapshot's patch against the previous one, and the weave's
-// ops with file texts as fingerprints (compact_record.mjs) ──
 function writeCompactRecord () {
   const lines = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n')
   const rec = compactRecord(snapshots, BASE_FILES_0, lines)
@@ -1268,10 +1024,6 @@ function writeCompactRecord () {
   fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), rec.digest)
 }
 
-// ── the ending: one commit on the target, and the rows the pull request card reads ──
-// Writes a snapshot's files into the target's working tree (the ones that exist; deletes the
-// ones that don't) and commits once with the engine's own git. Answers the commit's sha, or
-// null when the snapshot leaves the tree as it is at base.
 function commitSnapshot (snap, message) {
   const s = snapshots.find((x) => x.snap === snap)
   if (!s) return null
@@ -1281,9 +1033,6 @@ function commitSnapshot (snap, message) {
   git(['commit', '-qm', message], { identity: true })
   return git(['rev-parse', 'HEAD']).trim()
 }
-// The landed commit's entry in main's memory: the join's weaves, authored by this run's tasks. The
-// boot's publish pushes it before the merge request. A join that is not the landed text (a draft
-// that fell back to an earlier snapshot) stores nothing; the next reader replays the commit instead.
 async function storeEntry (sha) {
   if (!MEMORY) return
   const r = await weave({ op: 'store', repo: TARGET, commit: sha, run: RUN_NO }).catch((e) => ({ ok: false, error: String(e) }))
@@ -1293,15 +1042,10 @@ async function storeEntry (sha) {
 async function land () {
   if (outcome && outcome.pr === 'ready' && outcome.snap) {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
-    // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
-    // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
-    // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
     if (!sha) {
       ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
-      // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
       return W.grammar === 'stories-v1' ? 0 : 1
     }
-    // one `landing` row per task: the settled commit it landed in
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     await storeEntry(sha)
     writeProvenance(outcome.snap)
@@ -1320,8 +1064,6 @@ async function land () {
   return 1
 }
 
-// provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task and the surprises.
-// The join's blame is kept only for paths whose text is the landed text.
 function writeProvenance (snap) {
   try {
     const s = snapshots.find((x) => x.snap === snap)
@@ -1336,10 +1078,6 @@ function writeProvenance (snap) {
   }
 }
 
-// ── what went wrong: red-checks.json on every run ──────
-// red-checks.json holds the last tested snapshot's red facts and the run-wide check when it was
-// red, each with the checker's own result JSON when it wrote one (at most 8 KiB); entries are
-// added in order while the whole stays within 64 KiB, and one that would pass it is left out.
 function writeFailureRecord () {
   const LIMIT = 65536
   const rec = { snap: lastEdge ? lastEdge.snap : null, limit_bytes: LIMIT, truncated: false, red: [] }

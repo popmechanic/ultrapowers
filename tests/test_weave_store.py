@@ -1,4 +1,3 @@
-"""The weave store (factory/flock/weave_store.py): main's memory, on real git repositories."""
 import json
 import os
 import subprocess
@@ -15,7 +14,6 @@ M = S.M
 
 @pytest.fixture(autouse=True)
 def plain_git(monkeypatch):
-    # the laptop's own git config (signing, hooks, templates) stays out
     monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
     monkeypatch.setenv("GIT_CONFIG_SYSTEM", os.devnull)
     for k, v in {**S.IDENTITY}.items():
@@ -27,7 +25,6 @@ def sh(repo, *args):
 
 
 def commit(repo, files, msg="c"):
-    """One commit writing `files` ({path: text | bytes | None to delete}); its sha."""
     for path, content in files.items():
         f = os.path.join(str(repo), path)
         if content is None:
@@ -50,7 +47,6 @@ def lines(*xs):
     return "\n".join(xs) + "\n"
 
 
-# a history that makes a diff choose: a repeated line, a delete, the same text put back, a move
 HISTORY = [
     {"a.txt": lines("one", "two", "three", "", "four"), "b.txt": lines("x", "y")},
     {"a.txt": lines("one", "TWO", "three", "", "four", "five")},
@@ -74,7 +70,7 @@ def test_a_replayed_weave_shows_gits_text_and_is_stored_once(tmp_path):
     S.genesis(str(repo), shas[0])
     mem = S.resolve(str(repo), shas[-1])
     assert visible(mem, "a.txt") == HISTORY[4]["a.txt"]
-    assert M.current_lines(mem.states["b.txt"]) == []          # deleted: every line is still there, hidden
+    assert M.current_lines(mem.states["b.txt"]) == []
     assert [e[0] for e in M.deserialize_state(mem.states["b.txt"])] == ["x", "y", "z", ""]
     assert S.verify(str(repo), mem) == []
     before = sh(repo, "rev-parse", S.REF)
@@ -104,7 +100,7 @@ def test_a_replayed_line_names_the_commit_that_wrote_it(tmp_path):
     state = M.deserialize_state(mem.states["a.txt"])
     by_text = {e[0]: k for e, k in zip(state, S.W.line_keys(state))}
     assert mem.auth["a.txt"][by_text["TWO"]] == {"@c:" + shas[1][:12]}
-    assert by_text["one"] not in mem.auth["a.txt"]             # a genesis line has no author: it reads as base
+    assert by_text["one"] not in mem.auth["a.txt"]
     assert mem.dels["a.txt"][by_text["two"]] == {"@c:" + shas[1][:12]}
 
 
@@ -154,7 +150,7 @@ def test_two_sandboxes_replaying_one_commit_push_one_entry_and_no_fork(tmp_path)
     origin, a, b, shas = two_sandboxes(tmp_path)
     assert S.open_store(str(a), shas[0], "origin").via == "genesis"
     S.open_store(str(b), shas[3], "origin")
-    S.sync(str(a), "origin")                       # a has the beginning; b has not pushed its replay yet
+    S.sync(str(a), "origin")
     S.resolve(str(a), shas[3])
     assert S.push(str(a), "origin") == {"pushed": True, "forks": []}
     assert S.push(str(b), "origin") == {"pushed": True, "forks": []}
@@ -175,9 +171,9 @@ def test_entries_for_different_trees_both_reach_the_remote(tmp_path):
 
 def test_two_beginnings_end_as_one(tmp_path):
     origin, a, b, shas = two_sandboxes(tmp_path)
-    S.genesis(str(b), shas[2])                     # b begins a store and has not pushed it
+    S.genesis(str(b), shas[2])
     assert S.open_store(str(a), shas[0], "origin").via == "genesis"
-    mem = S.open_store(str(b), shas[2], "origin")  # b meets a's beginning: its own is dropped
+    mem = S.open_store(str(b), shas[2], "origin")
     assert mem.via == "replay" and "a.txt" in mem.states
     S.push(str(b), "origin")
     vias = [json.loads(sh(origin, "show", e + ":meta.json"))["via"] for e in S.entries(str(origin)).values()]
@@ -194,15 +190,10 @@ def test_the_cli_opens_a_store_and_says_what_it_holds(tmp_path):
     assert later["via"] == "replay" and later["stored"] == 3
 
 
-# ── stage 2: a run starts from the store and lands into it; the catch-up joins real weaves ──
-
 BODY = ["alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta"]
 
 
 def flock_run(repo, base, run, edits):
-    """What the engine does around the keeper, by hand: the tree checked out at `base`, the keeper
-    seeded from its text and then from main's memory, each agent's rewrite published, the join's
-    text committed, and that commit's entry stored. Returns (commit, memory answer, store answer, keeper)."""
     sh(repo, "checkout", "-q", "--detach", base)
     k = S.W.Keeper()
     k.r_base(str(repo), sh(repo, "ls-files").split("\n"))
@@ -230,7 +221,6 @@ def test_a_run_lands_its_weave_and_the_next_run_starts_from_it(tmp_path):
     assert labels(repo, one, "a.txt") == {"@r1:2"}
     two, began, stored, k = flock_run(repo, one, "2", [("A", "5", "a.txt", lines("ALPHA", *BODY[1:-1], "THETA"))])
     assert began["via"] == "run" and began["installed"] == 1
-    # inside run 2 a line run 1 wrote reads as base: only this run's own lines have a peer's name
     assert k.r_authors_keyed("B", "a.txt")["authors"][0] == "base"
     assert stored["stored"] and labels(repo, two, "a.txt") == {"@r1:2", "@r2:5"}
     mem = S.resolve(str(repo), two)
@@ -240,7 +230,7 @@ def test_a_run_lands_its_weave_and_the_next_run_starts_from_it(tmp_path):
 def two_runs_from_one_base(tmp_path, mine, theirs):
     repo = new_repo(tmp_path / "r")
     c0 = commit(repo, {"a.txt": lines(*BODY)})
-    landed, _, _, _ = flock_run(repo, c0, "1", [("A", "1", "a.txt", theirs)])   # this one reaches main first
+    landed, _, _, _ = flock_run(repo, c0, "1", [("A", "1", "a.txt", theirs)])
     run, _, _, _ = flock_run(repo, c0, "2", [("A", "1", "a.txt", mine)])
     return repo, landed, run
 

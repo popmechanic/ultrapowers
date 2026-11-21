@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-// The scope sim (#1333, #1346): a Flock run never settles green on a change nobody planned or wrote.
-// It builds a throwaway target in a temp dir whose base holds keep.txt, gone.txt and other.txt, and
-// a one-task plan that deletes gone.txt and rewrites keep.txt. The scripted builder does exactly
-// that, so the task's probe and the run-wide check pass; the script's `@unwritten` seam also puts
-// text into other.txt with no builder edit, standing in for run-247's weave fault. Checks:
-//   - the engine exits non-zero and summary.json's outcome is a draft;
-//   - events.jsonl holds a scope:outside row, and every one names exactly other.txt;
-//   - no amendment row names gone.txt (a Delete: path is the task's own).
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'

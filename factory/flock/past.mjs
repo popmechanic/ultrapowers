@@ -1,8 +1,3 @@
-// A failed run's record as at most ten short items, in the order a fixer needs them.
-//
-// pastItems({ status, events, redChecks }) -> null when the run is done, else
-// [{ kind, text, task?, about? }]: why it stopped, each red check, each agent belief
-// (the host's own left out), then each stall. Pure: no I/O. `redChecks` may be null.
 const MAX_TEXT = 300
 const MAX_ITEMS = 10
 

@@ -1,10 +1,4 @@
 #!/usr/bin/env bun
-// The state-probe checker: does this story step come true in this copy of the
-// app? Builds the page to a temp dir, serves it on loopback, starts celld on a
-// temp copy of the server, sets the scene through the page's own actions,
-// checks the ending is not already true, does the step by role and name,
-// checks the store and the screen, restarts celld and reads the store back in
-// a fresh browser. Exit 0 pass, 1 a finding about the app, 2 could not run.
 import {mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {basename, dirname, join, resolve} from 'node:path';
@@ -38,9 +32,6 @@ const DEADLINE = Date.now() + BUDGET_MS;
 const cleanups: (() => Promise<unknown>)[] = [];
 const ctx: Partial<Result> = {};
 
-// Past the budget, main stops waiting on the run, but the run is still going:
-// it must start nothing more, and whatever it is starting right now must be
-// owned before cleanup, or a celld or a browser outlives the check.
 let aborted = false;
 const starting = new Set<Promise<unknown>>();
 
@@ -50,7 +41,6 @@ const alive = () => {
   if (aborted) throw new Aborted('past the budget');
 };
 
-/** Starts a process-backed thing and registers its stop before anything else runs. */
 const own = <T>(start: () => Promise<T>, stop: (t: T) => Promise<unknown>): Promise<T> => {
   alive();
   const p = start().then((t) => {
@@ -89,7 +79,6 @@ const locatorWords = (d: UiStep) => {
 async function build(): Promise<string> {
   const out = mkdtempSync(join(tmpdir(), 'tinyapp-page-'));
   cleanups.push(async () => rmSync(out, {recursive: true, force: true}));
-  // Spawned, not spawnSync: a synchronous build would hold the budget timer.
   const cmd = existsSync(join(COPY, 'scripts', 'build-client.ts'))
     ? [process.execPath, 'scripts/build-client.ts', out]
     : [process.execPath, 'build', './client/index.html', '--outdir', out];
@@ -143,7 +132,6 @@ async function open(b: Browser, origin: string, celld: Celld): Promise<Page> {
   return page;
 }
 
-// Who is signed in: the page hook's `who`, which the page passes to every action.
 const signIn = (page: Page, who: string | null) =>
   page.evaluate(`window.__TINYAPP__.who = ${JSON.stringify(who)}; true`);
 
@@ -214,8 +202,6 @@ async function run(probe: Probe): Promise<Result> {
   await page.close();
   alive();
   await celld.stop(true);
-  // Its cleanup stays registered: stopping a stopped celld is a no-op, and the
-  // restarted one's own cleanup, which runs first, removes the shared dir.
   celld = await celldAt({dir: celld.dir, clean: false});
   const second = await browser();
   const fresh = await open(second, origin, celld).catch((e) => {
@@ -224,7 +210,6 @@ async function run(probe: Probe): Promise<Result> {
   const end = Date.now() + 10000;
   let bad: string[] = [];
   for (;;) {
-    // the same aliases: the saved rows are the rows made before the restart
     const renamed = aliases.rename(await read(fresh));
     ctx.saved = renamed;
     bad = failing(probe, renamed, ctx.before);
@@ -236,8 +221,6 @@ async function run(probe: Probe): Promise<Result> {
 }
 
 function write(r: Result) {
-  // A guard clause's id (e.g. `G:p0/S2.3`) carries a `/`; a result file is one
-  // path segment, so every `/` in the clause becomes `_`.
   const safeClause = r.clause.replace(/\//g, '_');
   const out = arg('out') ?? (process.env.FLOCK_CHECK_OUT ? join(process.env.FLOCK_CHECK_OUT, `${safeClause}@${basename(COPY)}.json`) : undefined);
   if (out) { mkdirSync(dirname(out), {recursive: true}); writeFileSync(out, JSON.stringify(r)); }
@@ -259,10 +242,6 @@ async function main() {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let resolveStopped!: (r: Result) => void;
   const stopped = new Promise<Result>((res) => { resolveStopped = res; });
-  // The budget timeout and a SIGTERM/SIGINT (the Flock's 60 s runFacts timeout
-  // sends SIGTERM) both stop the run the same way: mark aborted so in-flight
-  // starts are owned before cleanup, then resolve the race with an exit-2 env
-  // finding, never leaving a celld or browser running past the process.
   const stopWith = (message: string) => {
     aborted = true;
     resolveStopped({clause, exit: 2, stage: 'env', message, did: probe?.do ?? [], ...ctx} as Result);
@@ -280,9 +259,6 @@ async function main() {
   process.off('SIGTERM', onSignal);
   process.off('SIGINT', onSignal);
   if (aborted) {
-    // Whatever the run was starting when the budget ran out is owned once it
-    // settles; each start is itself bounded by the budget (readyMs) or a
-    // fixed launch timeout.
     while (starting.size) await Promise.allSettled([...starting]);
   }
   await cleanup();

@@ -1,5 +1,3 @@
-// What a story step changed: every table cell and store value whose JSON differs
-// between the state before the step and the state after it.
 import type {Content} from './probe';
 
 export type DiffEntry = {

@@ -1,12 +1,3 @@
-/** Draws each catalog entry with the 1st-Pouf component it is named for.
- *
- * ActionButton, ActionCheckbox and ActionSelect run their card action through the page's
- * handler (`useActions().handlers[action]`, which answers true or false) and
- * emit only on true, so a spec's `on` draft writes run after the action
- * succeeded. Actions take `args` rather than an `on` binding because inside
- * action params json-render 0.21.0 resolves `$item` to a state path, while
- * inside props it resolves to the item's value.
- */
 import { defineRegistry, useActions, useBoundProp } from '@json-render/react'
 import { useState } from 'react'
 import {
@@ -71,11 +62,6 @@ export const { registry } = defineRegistry(baseCatalog, {
         <Eyebrow>{props.text}</Eyebrow>
       </span>
     ),
-    // A line of text is a line of its own wherever it sits: 1st-Pouf's Text is a
-    // span, so two of them placed straight in a Card would run together. The
-    // reading parts carry data-part="text": the checker and the preview count a
-    // story's text lines among them only, as storyui names them from draws.json,
-    // so a picker's face that happens to read "Ann" is not a line.
     Text: ({ props }) => (
       <div className="min-w-0" data-part="text">
         <Text
@@ -129,7 +115,6 @@ export const { registry } = defineRegistry(baseCatalog, {
     ActionSelect: ({ props, emit }) => {
       const { run, busy } = useRun(props.action, props.args)
       const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
-      // Its words show above it, as a text box's do; they are also its accessible name.
       return (
         <Field label={props.label}>
           {(id, describedBy) => (

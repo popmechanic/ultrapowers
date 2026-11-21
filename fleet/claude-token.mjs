@@ -1,52 +1,4 @@
 #!/usr/bin/env node
-// The Claude Max credential for the fleet, the loom way.
-//
-//   node fleet/claude-token.mjs login     browser consent → code from the clipboard →
-//                                         tokens → the edge proxy; nothing printed
-//   node fleet/claude-token.mjs login --code-from-clipboard
-//                                         the same, with no question at the terminal:
-//                                         the process polls the clipboard until the
-//                                         copied `code#state` carries THIS login's state
-//   node fleet/claude-token.mjs refresh   install the keychain's access token at the
-//                                         edge before a run, rotating it first when
-//                                         < 4 h remain — held instead, with the
-//                                         cached token installed, while a fleet VM
-//                                         is listed and 90 min or more remain; refused
-//                                         under 90 minutes with a fleet VM listed
-//   node fleet/claude-token.mjs status    when the current access token expires
-//   node fleet/claude-token.mjs accounts  every account the keychain holds, and whether
-//                                         its access token is still fresh (`--json`)
-//   node fleet/claude-token.mjs usage     one `/api/oauth/usage` read per account, as one
-//                                         table (`--json`)
-//
-// The keychain holds ONE ITEM PER ACCOUNT: service `ultrapowers-claude-oauth`,
-// account `<name>`, which is `ultrapowers` (DEFAULT_ACCOUNT) when no `--account`
-// is given. `login`, `refresh` and `status` take `--account <name>`; `accounts`
-// enumerates the items under the service and `usage` meters each one.
-//
-// Why this exists: exe.dev has no account-linked Claude integration (it has one
-// for ChatGPT), the catalog `anthropic` object is API-key billing, and an
-// http-proxy's bearer never refreshes on its own. So the laptop owns the OAuth
-// dance and the refresh; exe.dev owns injection at the edge. The access token
-// reaches exactly two places — the keychain and `integrations … --bearer -` on
-// stdin — and the refresh token rotates on every refresh (a consumed copy is
-// dead), so the keychain entry is rewritten each time.
-//
-// The record grew an `accessToken` so `usage` can meter a fresh account without
-// spending a refresh grant. Metering never installs: the edge carries the
-// account a launch chose, and installing a second account's bearer to read its
-// usage would switch every live sandbox to that account mid-run (the prompt
-// cache is per account). So rotation and installation are separate — `refresh`
-// installs unless `--no-install`, and `usage` rotates with `install: false`.
-// Installation is unconditional, rotation is not: `refresh` installs the record's
-// access token even when the record is fresh and nothing rotates, because a
-// `usage` read minutes earlier may have rotated that account with
-// `install: false` and left the edge carrying a revoked bearer (run-100,
-// 2026-09-11). One idempotent `integrations edit … --bearer -` per launch is the
-// price of a launch line that is honest about what the edge carries.
-//
-// The flow, constants and request shapes are popmechanic/loom's
-// (skills/loom/references/oauth-reference.md), measured there against claude.ai.
 
 import { createHash, randomBytes } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
@@ -71,34 +23,11 @@ const KEYCHAIN = Object.freeze({ service: 'ultrapowers-claude-oauth' })
 export const USAGE_URL = 'https://api.anthropic.com/api/oauth/usage'
 const LOCK_PATH = path.join(os.homedir(), '.ultrapowers', 'claude-token.lock')
 const LOCK_STALE_MS = 2 * 60 * 1000
-// A launch rotates the access token when fewer than this remain. Four hours,
-// not thirty minutes: the token lives eight hours and nothing refreshes it
-// mid-run, so a run launched with thirty-one minutes left dies at minute
-// thirty-one with a 401 to whichever worker is mid-call. Run-92
-// (2026-09-11 00:28 UTC) did exactly that on the token run-88's launch had
-// minted at 16:28; the five launches between them each found more than
-// thirty minutes remaining and rotated nothing. Four hours is the longest
-// run on record (about ninety minutes) with room to spare, and a rotation is
-// one refresh grant behind the single-flight lock — cheap. But inside this
-// window, with a fleet VM up, the rotation is held instead (see
-// LIVE_FLOOR_MS): the refresh grant revokes the previous access token at
-// once and the edge carries one bearer for every run, so rotating while a
-// run is in flight kills it on its next call with a 401.
 const REFRESH_AHEAD_MS = 4 * 60 * 60 * 1000
-// Below REFRESH_AHEAD_MS, a listed fleet VM changes what `refresh` will do:
-// with at least this much left on the cached access token, the rotation is
-// held (the cached token is installed, nothing is spent); under it, `refresh`
-// refuses outright rather than revoke a bearer a live run may call next.
-// Ninety minutes is the longest run on record (see REFRESH_AHEAD_MS above) —
-// runs 92, 100, 103 and 178 (2026-09-11 to 2026-09-17) were all killed by a
-// rotation landing while a run was up.
 const LIVE_FLOOR_MS = 90 * 60 * 1000
-// `login --code-from-clipboard` reads the clipboard every POLL and gives up after WAIT.
 const CLIPBOARD_POLL_MS = 2 * 1000
 const CLIPBOARD_WAIT_MS = 10 * 60 * 1000
 
-// An account name is the keychain item's `acct` and rides `--comment account=`
-// into a lobby verb, so it is checked before anything else happens.
 export const ACCOUNT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
 
 const b64url = (buf) => buf.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
@@ -123,18 +52,8 @@ function authorizeUrlFor ({ challenge, state }) {
   return `${OAUTH.authorizeUrl}?${q}`
 }
 
-// The callback page shows `code#state`; the fragment is not part of the code.
 const cleanCode = (pasted) => String(pasted).trim().split('#')[0].trim()
 
-// Matching on the state is what makes polling safe: nothing already on the
-// clipboard can carry a state minted milliseconds ago, and neither can a code
-// from someone else's flow — so the poll never exchanges a stray value. A value
-// with no `#`, or with a different state, answers null and is skipped.
-// A value with more than one # is rejected on the same ground: a code#state#extra
-// is not this login's code#state. Skipping it is the safe failure — the poll
-// waits on until a matching value appears or CLIPBOARD_WAIT_MS elapses, where
-// exchanging a value we cannot vouch for would spend the login on a stray code.
-// `cleanCode` keeps the looser first-`#` split, and that difference is deliberate.
 function codeForState (pasted, state) {
   const [code, fragment, ...rest] = String(pasted).trim().split('#')
   if (rest.length || fragment === undefined) return null
@@ -143,10 +62,6 @@ function codeForState (pasted, state) {
   return clean || null
 }
 
-// `security dump-keychain` (no `-d`, so no secret is dumped) answers a sequence
-// of items, each opened by a `class: "genp"` line and carrying attribute lines
-// like `    "acct"<blob>="ultrapowers"` and `    "svce"<blob>="…"`; the `svce`
-// line may follow the `acct` line, so an item is only judged when it ends.
 function parseKeychainDump (out, service = KEYCHAIN.service) {
   const names = []
   let acct = null
@@ -166,8 +81,6 @@ function parseKeychainDump (out, service = KEYCHAIN.service) {
   close()
   return names
 }
-
-// ---- seams: everything that touches the world goes through `deps` ------------
 
 function defaultDeps () {
   return {
@@ -190,30 +103,17 @@ function defaultDeps () {
       const r = spawnSync('security', ['find-generic-password', '-a', name, '-s', KEYCHAIN.service, '-w'], { encoding: 'utf8' })
       return r.status === 0 ? r.stdout.trim() : null
     },
-    // `-U` updates in place; the value rides argv for the life of one short
-    // process, which is the trade for not writing a file.
     keychainWrite: (name, value) => spawnSync('security', ['add-generic-password', '-U', '-a', name, '-s', KEYCHAIN.service, '-w', value], { stdio: 'ignore' }).status === 0,
-    // The accounts under the service, from the attribute dump — never `-d`, so
-    // the dump carries names and no secrets.
     keychainList: () => {
       const r = spawnSync('security', ['dump-keychain'], { encoding: 'utf8' })
       return r.status === 0 ? parseKeychainDump(r.stdout) : []
     },
-    // The lobby verb runs with the secret on STDIN (`--bearer -`), never in argv.
     lobby: (verb, input) => {
       const r = spawnSync('ssh', [EXE_HOST, verb], { encoding: 'utf8', input })
       return { code: r.status ?? 1, out: `${r.stdout ?? ''}${r.stderr ?? ''}` }
     },
     log: (line) => process.stderr.write(`${line}\n`),
-    // The tables go to stdout so a reader can parse them; every human line goes
-    // to stderr through `log`.
     stdout: (text) => process.stdout.write(text),
-    // Single-flight across processes: two launches inside the refresh window
-    // would both refresh, and the second would spend a refresh token the first
-    // had already rotated away. The lock is a directory (mkdir is atomic on every
-    // filesystem); a lock older than LOCK_STALE_MS belongs to a dead process.
-    // One lock for every account: two accounts rotating at once serialize, which
-    // is fine, and the single-flight legs stay true.
     lock: () => {
       fs.mkdirSync(path.dirname(LOCK_PATH), { recursive: true })
       const deadline = Date.now() + LOCK_STALE_MS
@@ -231,8 +131,6 @@ function defaultDeps () {
     }
   }
 }
-
-// ---- the token endpoint -------------------------------------------------------
 
 async function tokenRequest (deps, body) {
   const resp = await deps.fetch(OAUTH.tokenUrl, {
@@ -271,8 +169,6 @@ const refreshGrant = (deps, refreshToken) => tokenRequest(deps, {
   scope: OAUTH.scopes
 })
 
-// ---- the edge ---------------------------------------------------------------
-
 function integrationExists (deps) {
   const r = deps.lobby('integrations list --json')
   if (r.code !== 0) throw new Error(`exe.dev integrations list failed (exit ${r.code}):\n${r.out}`)
@@ -282,12 +178,6 @@ function integrationExists (deps) {
   return rows.some((row) => row?.name === INTEGRATION)
 }
 
-// Add or edit — either way the bearer arrives on stdin and is the ONLY header
-// the proxy injects: an injected header replaces the client's same-named one
-// (measured 2026-09-03), so an injected anthropic-beta list would destroy the
-// flags Claude Code sends. `--comment account=<name>` is the one thing in the
-// verb that names the account, and it is what lets the doctor say which account
-// the edge carries; the token still rides stdin.
 export function installBearer (deps, accessToken, account = DEFAULT_ACCOUNT) {
   const comment = `--comment account=${account}`
   const verb = integrationExists(deps)
@@ -298,13 +188,6 @@ export function installBearer (deps, accessToken, account = DEFAULT_ACCOUNT) {
   return verb.startsWith('integrations add') ? 'added' : 'edited'
 }
 
-// The same verb `fleet/lobby.mjs`'s `listVms` issues, read here for the one
-// question `refresh` needs answered: which VMs are up. A row's `status` is
-// not read — the lobby's status vocabulary beyond `running` is not on record,
-// and the launcher's janitor pass has already reaped the VMs of finished
-// runs, so every row with a `vm_name` counts as a live run. A listing that
-// exits non-zero, or whose `out` is not JSON, is an Error — never read as an
-// empty fleet, since that would spend a grant a live run could be killed by.
 function listLiveFleet (deps) {
   const verb = `ls '${FLEET_PATTERN}' --json`
   const r = deps.lobby(verb)
@@ -314,8 +197,6 @@ function listLiveFleet (deps) {
   const vms = Array.isArray(payload?.vms) ? payload.vms : []
   return vms.map((row) => row?.vm_name).filter((name) => typeof name === 'string')
 }
-
-// ---- keychain record ----------------------------------------------------------
 
 function readRecord (deps, account = DEFAULT_ACCOUNT) {
   const raw = deps.keychainRead(account)
@@ -337,12 +218,6 @@ function writeRecord (deps, rec, account = DEFAULT_ACCOUNT) {
 const iso = (ms) => new Date(ms).toISOString()
 const minutes = (ms) => Math.round(ms / 60000)
 
-// ---- verbs ----------------------------------------------------------------
-
-// The chat-driven wait: the agent runs this from a Bash tool that has no
-// interactive stdin, so nobody can press Enter. The process polls the clipboard
-// itself and only exchanges a value whose `#state` is this login's, which is why
-// waiting is safe — see `codeForState`. Returns the clean code.
 async function pollClipboardForCode (deps, state) {
   const deadline = deps.now() + CLIPBOARD_WAIT_MS
   for (;;) {
@@ -371,8 +246,6 @@ export async function login (deps, { codeFromClipboard = false, account = DEFAUL
   }
   const tokens = await exchange(deps, { code, verifier: p.verifier, state: p.state })
   writeRecord(deps, tokens, account)
-  // `--no-install` adds an account without moving the edge: the keychain grows
-  // an item and no lobby verb is issued at all.
   const how = install ? installBearer(deps, tokens.accessToken, account) : null
   deps.log(how
     ? `${INTEGRATION}: bearer ${how} for ${account}; access token fresh until ${iso(tokens.expiresAt)}; refresh token in the keychain.`
@@ -381,31 +254,18 @@ export async function login (deps, { codeFromClipboard = false, account = DEFAUL
 }
 
 export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT, install = true } = {}) {
-  // The record is read AFTER the lock is held: a launch that queued behind a
-  // sibling's refresh sees the rotated pair and finds nothing to do.
   const release = deps.lock ? deps.lock() : () => {}
   try {
     const rec = readRecord(deps, account)
     if (!rec) throw new Error('no refresh token in the keychain — run `node fleet/claude-token.mjs login` first')
     const remaining = rec.expiresAt - deps.now()
-    // A record with no `accessToken` is the pre-`usage` shape (`readRecord` asks
-    // only for `refreshToken` and `expiresAt`): there is nothing to install, so
-    // it rotates as if it were inside the window.
     if (!force && remaining > REFRESH_AHEAD_MS && typeof rec.accessToken === 'string') {
-      // Fresh, so no grant is spent — but the bearer still goes on, because the
-      // edge may be carrying a token something else rotated away (see the header).
       const how = install ? installBearer(deps, rec.accessToken, account) : null
       deps.log(how
         ? `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — bearer ${how} for ${account}`
         : `${INTEGRATION}: access token fresh until ${iso(rec.expiresAt)} — nothing to do`)
       return { refreshed: false, installed: install, expiresAt: rec.expiresAt }
     }
-    // The function has now decided it would spend a grant — so the fleet is
-    // checked BEFORE it does. Anthropic's refresh grant revokes the previous
-    // access token at once, and the edge carries one bearer for every run, so
-    // rotating while a run is up kills it on its next call (runs 92, 100,
-    // 103, 178). The two log/error lines below are shared, byte for byte,
-    // with the launcher, which greps this tool's output for them.
     const liveVms = listLiveFleet(deps)
     if (liveVms.length > 0) {
       if (remaining >= LIVE_FLOOR_MS && typeof rec.accessToken === 'string') {
@@ -416,9 +276,6 @@ export async function refresh (deps, { force = false, account = DEFAULT_ACCOUNT,
       throw new Error(`token: expires ${iso(rec.expiresAt)}; ${liveVms.length} run(s) live (${liveVms.join(', ')}) — not rotated; under 90 minutes is too short to launch on, so wait for the runs to end or remove their VMs`)
     }
     const tokens = await refreshGrant(deps, rec.refreshToken)
-    // The rotated pair replaces the old one BEFORE the edge is touched: a consumed
-    // refresh token is dead, so a crash between the two steps must not leave the
-    // keychain holding it.
     writeRecord(deps, tokens, account)
     if (install) installBearer(deps, tokens.accessToken, account)
     deps.log(`${INTEGRATION}: refreshed ${account}; fresh until ${iso(tokens.expiresAt)}`)
@@ -435,8 +292,6 @@ export function status (deps, { account = DEFAULT_ACCOUNT } = {}) {
   return { present: true, expiresAt: rec.expiresAt }
 }
 
-// One entry per keychain item under the service. Synchronous over the seams: a
-// list, then one read each. A name whose record does not parse is skipped.
 export function accounts (deps) {
   const rows = []
   for (const name of deps.keychainList() ?? []) {
@@ -447,11 +302,6 @@ export function accounts (deps) {
   return rows
 }
 
-// One row per entry. An entry whose record already holds an unexpired access
-// token is read with it; any other is rotated first — under the lock, one grant,
-// and never installed at the edge (see the header) — unless `rotate` is false,
-// in which case an expired (or accessToken-less) record answers `unread`
-// without ever touching `refresh`: no lock, no grant, no keychain write.
 async function usageRow (deps, name, { rotate = true } = {}) {
   const unread = (reason) => ({ name, fiveHour: null, sevenDay: null, unread: true, reason })
   const rec = readRecord(deps, name)
@@ -482,27 +332,19 @@ async function usageRow (deps, name, { rotate = true } = {}) {
   const window = (w) => (w && typeof w === 'object' ? { utilization: w.utilization, resetsAt: w.resets_at } : null)
   const fiveHour = window(body?.five_hour)
   const sevenDay = window(body?.seven_day)
-  // A null or absent window is one the account does not have; the row is
-  // unread only when it has neither.
   if (!fiveHour && !sevenDay) return unread('usage answered without five_hour/seven_day')
   return { name, fiveHour, sevenDay, unread: false, reason: null }
 }
 
 export async function usage (deps, { account = null, rotate = true } = {}) {
   const rows = []
-  // `account` given: meter only that name, whether or not `keychainList()`
-  // lists it (an account added with `login --no-install` still meters).
-  // `account` null: every listed name, today's behaviour.
   const names = account != null ? [account] : (deps.keychainList() ?? [])
-  // Serial, not parallel: the rotation legs share one lock, and a row that
-  // cannot be read is still answered, so no failure takes the table down.
   for (const name of names) rows.push(await usageRow(deps, name, { rotate }))
   return rows
 }
 
 const USAGE_HEADER = 'account | 5h % | 5h resets | 7d % | 7d resets'
 
-// A window the account does not have prints `none` in both of its cells.
 const windowCells = (w) => (w ? [`${w.utilization}`, `${w.resetsAt}`] : ['none', 'none'])
 
 function renderUsage (rows) {
@@ -516,13 +358,9 @@ function renderUsage (rows) {
   return lines.join('\n')
 }
 
-// ---- the command line ---------------------------------------------------------
-
 const VERBS = ['login', 'refresh', 'status', 'accounts', 'usage']
 const USAGE_LINE = 'usage: node fleet/claude-token.mjs login [--code-from-clipboard] [--account <name>] [--no-install] | refresh [--force] [--account <name>] [--no-install] | status [--account <name>] | accounts [--json] | usage [--json] [--account <name>] [--no-rotate]'
 
-// `--account` takes the token after the flag; the rest are bare. Every value is
-// checked here, which is before any keychain read, token request or lobby verb.
 const BARE = { 'no-install': ['install', false], force: ['force', true], 'code-from-clipboard': ['codeFromClipboard', true], json: ['json', true], 'no-rotate': ['rotate', false] }
 
 function parseArgs (rest) {
@@ -563,7 +401,5 @@ export async function main (argv, deps = defaultDeps()) {
 }
 
 if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
-  // `process.exit` after the exit code is set: a login's clipboard poll or
-  // prompt must not hold the process open once `main` has answered.
   runCli(main, process.argv.slice(2)).then(() => process.exit())
 }

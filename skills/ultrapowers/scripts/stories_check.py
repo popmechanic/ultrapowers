@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""The laptop's check of a stories-v1 plan: the signed store module is the one
-the plan names, and every probe calls only the tools its tasks list. The
-probes themselves were derived by compile.ts from that store; hollowness is
-refused there and measured again by the Flock's start-of-run check."""
 import hashlib
 import os
 

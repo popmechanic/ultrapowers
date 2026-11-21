@@ -1,37 +1,3 @@
-"""The authoring census: one table per release, the register, and the fetch.
-
-The exam for `skills/ultrawrite/scripts/authoring_census.py`, leg by leg:
-
-  * (a)/[M1] three run directories under one root — `run-131` carrying the
-    Context's example record, `run-133` carrying a record whose `tally` lacks
-    `rejected` and whose first question has no `recommended`, and `run-9`
-    carrying a record from before this plan, with no `authoring` key at all —
-    print the header line exactly, one row per directory in ascending numeric
-    N, and the `totals:` line.
-  * (b)/[M1] a `run-<N>` directory that holds no `gate-verdicts.json` earns no
-    row and is not counted in `plans` — asserted as: the same root plus such a
-    directory prints byte-for-byte what (a) printed.
-  * (c)/[M2] `--register` prints one line per option of every question of every
-    row, in row order then question order then option order, and no header.
-  * (d)/[M3] `--fetch o/r --runs 131..133 --into <dir> --gh <fake>` writes the
-    record and the status from the run's folder in the evidence
-    repository (#1395), skips the run with no record with one stderr line
-    naming it,
-    invokes the binary `--gh` names and no other, and then prints the M1 table
-    over `<dir>`.
-
-The script is driven as a subprocess over directories built under `tmp_path`,
-with a fake `gh` written there that answers from a table keyed on the `ref=`
-and path of its argv — the shape the task's Context asks for.
-
-Two readings this file pins, both from the task's own words:
-
-  * `run-131`'s `status.json` spans 16m30s, not a whole 16 — M1 pins `run_min`
-    as "the whole minutes, rounded down", so the floor is live, and leg (a)'s
-    `16` is the value either way.
-  * `run-9` carries `rejected` 0, which prints `0` and not `-`: `-` is "the
-    run's files do not carry it", which zero is not.
-"""
 import importlib.util
 import json
 import os
@@ -48,10 +14,6 @@ def tsv(*cells):
     return "\t".join(cells)
 
 
-# ---------------------------------------------------------------- the records
-
-# The record shape is the one literal every task in this plan shares: the
-# `authoring` object sits at the top level beside `tasks` and `tally`.
 RECORD_131 = {
     "tasks": [{"id": "1", "verdict": "pass"}],
     "tally": {"dispatched": 4, "rejected": 1},
@@ -65,9 +27,6 @@ RECORD_131 = {
     },
 }
 
-# A `tally` that lacks `rejected`, a `width` routing, and two questions: one
-# whose `recommended` is null (the question carried no recommended option) and
-# one whose `picked` equals its `recommended`.
 RECORD_133 = {
     "tasks": [{"id": "1", "verdict": "pass"}],
     "tally": {"dispatched": 2},
@@ -84,15 +43,11 @@ RECORD_133 = {
     },
 }
 
-# A record older than this plan: no `authoring` key. Its row is `-` everywhere
-# except `dispatched`/`rejected`, which it does carry — `rejected` as 0.
 RECORD_9 = {
     "tasks": [{"id": "1", "verdict": "pass"}],
     "tally": {"dispatched": 3, "rejected": 0},
 }
 
-# `fleet/CONTRACT.md`'s shape: ISO-8601 with a `Z` suffix. 22:40:00 to
-# 22:56:30 is 16 whole minutes once the half is floored away.
 STATUS_131 = {
     "run": "131",
     "state": "done",
@@ -109,41 +64,25 @@ STATUS_131 = {
 
 
 def blob(obj):
-    """One record, as the bytes that land on disk — the fetch leg compares the
-    file it wrote against exactly this."""
     return (json.dumps(obj, indent=2) + "\n").encode("utf-8")
 
 
-# ------------------------------------------------------------ the M1 expected
-
-#: `COLUMNS`, in order, `explain_rounds` (#526) last.
 COLUMN_NAMES = ("run", "authoring_min", "dispatched", "rejected",
                 "routing", "lane", "questions", "recommended_picked",
                 "run_min", "explain_rounds")
 
 HEADER = tsv(*COLUMN_NAMES)
 
-# (a): the no-`authoring` record — `-` in every authoring column, its tally
-# read, and `-` for `run_min` (it carries no `status.json`).
 ROW_9 = tsv("9", "-", "3", "0", "-", "-", "-", "-", "-", "-")
-# (a): the leg's row, verbatim. Its question carries `explain_rounds: 2`.
 ROW_131 = tsv("131", "118", "4", "1", "risk", "ultrapowers", "1",
               "1/1", "16", "2")
-# (a): `rejected` and `run_min` both `-`, `recommended_picked` 1/1 — the
-# null-recommended question counts in neither p nor q. Neither of its
-# questions carries `explain_rounds`, so the cell is `0`, not `-`.
 ROW_133 = tsv("133", "47", "2", "-", "width", "ultrapowers", "2",
               "1/1", "-", "0")
-# (a): m = the rows with a routing record (131, 133), k = those whose branch
-# is `risk` (131); p/q summed over every row; 118 + 47 = 165; 16 is the one
-# row carrying a `run_min`.
 TOTALS = ("totals: plans=3 runs=9..133 risk_override=1/2 "
           "recommended_picked=2/2 authoring_min=165 run_min=16 "
           "explain_rounds=2")
 
 TABLE = [HEADER, ROW_9, ROW_131, ROW_133, TOTALS]
-
-# ------------------------------------------------------------ the M2 expected
 
 REGISTER = [
     tsv("run-131", "q1", "Claim and summary", "A", "rec", "picked"),
@@ -156,10 +95,7 @@ REGISTER = [
 ]
 
 
-# ------------------------------------------------------------------- the seam
-
 def census(*args, env=None):
-    """The script, as a subprocess. Nothing here reaches into its internals."""
     assert CENSUS.is_file(), (
         "the census script does not exist yet: %s" % CENSUS)
     return subprocess.run([sys.executable, str(CENSUS), *args],
@@ -167,8 +103,6 @@ def census(*args, env=None):
 
 
 def write_run(root, number, record, status=None):
-    """One `run-<N>` directory: the record, and beside it the `status.json`
-    when given."""
     d = root / ("run-%s" % number)
     d.mkdir(parents=True)
     if record is not None:
@@ -179,9 +113,6 @@ def write_run(root, number, record, status=None):
 
 
 def build_root(tmp_path, name="census", runs=None):
-    """Run directories under one root. `runs` is a list of
-    `(number, record, status)`; it defaults to leg (a)'s three run
-    directories, which carry no status but 131's."""
     if runs is None:
         runs = [(131, RECORD_131, STATUS_131),
                 (133, RECORD_133, None),
@@ -200,9 +131,6 @@ exit 1
 
 
 def decoy_env(tmp_path, name="decoy"):
-    """A `gh` first on PATH that logs and fails. `--gh` names a binary, so the
-    real one is never resolved by bare name — the seam `check_provenance.py`
-    gives its own `--gh`. Returns (env, the log that must never appear)."""
     bindir = tmp_path / name
     bindir.mkdir()
     log = bindir / "bare-gh.log"
@@ -243,8 +171,6 @@ sys.stdout.write(json.dumps({
 
 
 def fake_gh(tmp_path, answers, name="fakebin"):
-    """The fake, plus the table it answers from. Returns (its path, its call
-    log)."""
     bindir = tmp_path / name
     bindir.mkdir()
     (bindir / "answers.json").write_text(json.dumps(answers))
@@ -254,8 +180,6 @@ def fake_gh(tmp_path, answers, name="fakebin"):
     return gh, bindir / "calls.jsonl"
 
 
-#: The operator's evidence repository the fetch tests read from (#1395): the
-#: run folders live there, never in the target `o/r`.
 EVIDENCE = "ops/evidence"
 
 
@@ -281,11 +205,7 @@ def lines(text):
     return text.splitlines()
 
 
-# ------------------------------------------------------------------- leg (a)
-
 def test_a_the_table_over_three_runs(tmp_path):
-    """(a)/[M1]: the header exactly, rows for 9, 131 and 133 in that order,
-    and the `totals:` line — the whole of stdout, nothing beside it."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert p.returncode == 0, p.stdout + p.stderr
@@ -293,9 +213,6 @@ def test_a_the_table_over_three_runs(tmp_path):
 
 
 def test_a_the_header_line_is_exact(tmp_path):
-    """(a)/[M1]: the first line is the tab-separated column names, in the
-    clause's order, `explain_rounds` last — read on its own so a drift there
-    reads as a drift there."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert lines(p.stdout)[0] == HEADER, p.stdout
@@ -303,51 +220,33 @@ def test_a_the_header_line_is_exact(tmp_path):
 
 def test_a_a_record_without_an_authoring_key_is_dashes_but_for_its_tally(
         tmp_path):
-    """(a)/[M1]: `run-9`'s record predates this plan. Every authoring column is
-    `-`; `dispatched` and `rejected` are its tally's, and `rejected` 0 prints
-    as `0` — `-` is "the run's files do not carry it", which zero is not."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert ROW_9 in lines(p.stdout), p.stdout
-    # The row for 9 comes first: ascending numeric N, not lexical.
     assert lines(p.stdout)[1] == ROW_9, p.stdout
 
 
 def test_a_a_tally_without_rejected_and_a_run_without_status_are_dashes(
         tmp_path):
-    """(a)/[M1]: `run-133` carries no `rejected` and no `status.json`, so both
-    columns are `-`, and its `recommended_picked` is 1/1 — the question whose
-    `recommended` is null counts in neither p nor q."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert ROW_133 in lines(p.stdout), p.stdout
 
 
 def test_a_run_min_is_whole_minutes_rounded_down(tmp_path):
-    """(a)/[M1]: 2026-08-30T22:40:00Z to 2026-08-30T22:56:30Z is 16.5 minutes,
-    and the column carries "the whole minutes, rounded down" — 16."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert ROW_131 in lines(p.stdout), p.stdout
-    # `run_min` is the cell before `explain_rounds`, which closes the row.
     assert lines(p.stdout)[2].split("\t")[-2] == "16", p.stdout
 
 
 def test_a_the_totals_line_is_exact(tmp_path):
-    """(a)/[M1]: `plans` counts the rows, `risk_override` is the `risk` rows
-    over the rows with a routing record, `recommended_picked` sums p and q over
-    every row, and each minute sum is over the rows carrying that value."""
     root = build_root(tmp_path)
     p = census("--from", str(root))
     assert lines(p.stdout)[-1] == TOTALS, p.stdout
 
 
-# ------------------------------------------------------------------- leg (b)
-
 def test_b_a_run_directory_without_a_record_earns_no_row(tmp_path):
-    """(b)/[M1]: `run-150` holds a `status.json` and no `gate-verdicts.json`.
-    It yields no row and is not counted in `plans` — so the output is what
-    (a) printed, line for line, `plans=3` included."""
     root = build_root(tmp_path)
     write_run(root, 150, None, STATUS_131)
     p = census("--from", str(root))
@@ -356,11 +255,7 @@ def test_b_a_run_directory_without_a_record_earns_no_row(tmp_path):
     assert "150" not in p.stdout, p.stdout
 
 
-# ------------------------------------------------------------------- leg (c)
-
 def test_c_register_prints_one_line_per_option(tmp_path):
-    """(c)/[M2]: one line per option of every question of every row, in row
-    order then question order then option order, and no table header."""
     root = build_root(tmp_path)
     p = census("--register", "--from", str(root))
     assert p.returncode == 0, p.stdout + p.stderr
@@ -370,9 +265,6 @@ def test_c_register_prints_one_line_per_option(tmp_path):
 
 
 def test_c_register_marks_the_recommended_and_the_picked_option(tmp_path):
-    """(c)/[M2]: `run-131`'s two lines, verbatim — `rec` on the option equal to
-    the question's `recommended` and `-` on the others, `picked` on the option
-    equal to `picked` and `-` on the others."""
     root = build_root(tmp_path)
     p = census("--register", "--from", str(root))
     got = [line for line in lines(p.stdout) if line.startswith("run-131\t")]
@@ -384,9 +276,6 @@ def test_c_register_marks_the_recommended_and_the_picked_option(tmp_path):
 
 def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
         tmp_path):
-    """(c)/[M2]: `run-133`'s first question carried no recommended option, so
-    every one of its three lines is `-` in the `rec` column and exactly one
-    is `picked`; `<i>` counts from 1, so its second question is `q2`."""
     root = build_root(tmp_path)
     p = census("--register", "--from", str(root))
     q1 = [line.split("\t") for line in lines(p.stdout)
@@ -401,12 +290,7 @@ def test_c_register_leaves_the_rec_column_dashed_for_a_null_recommended(
     ], p.stdout
 
 
-# ------------------------------------------------------------------- leg (d)
-
 def fetch_answers():
-    """The fake's table: the plan record for 131 and 133, a `status.json` for
-    131 only. Run 132's plan tag and run 133's status are absent, so the fake
-    exits 1 for them."""
     return {
         plan_path(131): blob(RECORD_131).decode("utf-8"),
         plan_path(133): blob(RECORD_133).decode("utf-8"),
@@ -416,15 +300,11 @@ def fetch_answers():
 
 def run_fetch(tmp_path, answers=None, runs="131..133",
               repo_args=("--evidence-repo", EVIDENCE)):
-    """`--fetch` over the fake: `answers` defaults to part one's table, and
-    `repo_args` name the evidence repository (the flag, by default)."""
     into = tmp_path / "fetched"
     into.mkdir()
     gh, calls = fake_gh(tmp_path, fetch_answers() if answers is None
                         else answers)
     env, bare_log = decoy_env(tmp_path)
-    # The laptop's own `~/.ultrapowers/fleet.json` is never read: HOME is
-    # the test's.
     env["HOME"] = str(tmp_path / "home")
     p = census("--fetch", "o/r", "--runs", runs, "--into", str(into),
                "--gh", str(gh), *repo_args, env=env)
@@ -432,8 +312,6 @@ def run_fetch(tmp_path, answers=None, runs="131..133",
 
 
 def test_d_fetch_writes_the_decoded_files(tmp_path):
-    """(d)/[M3]: both files for 131 and the record for 133, each the decoded
-    bytes of the answer's base64 `content`."""
     p, into, _calls, _bare = run_fetch(tmp_path)
     assert (into / "run-131/gate-verdicts.json").read_bytes() == \
         blob(RECORD_131), p.stdout + p.stderr
@@ -445,8 +323,6 @@ def test_d_fetch_writes_the_decoded_files(tmp_path):
 
 def test_d_a_plan_tag_without_a_record_is_skipped_with_one_stderr_line(
         tmp_path):
-    """(d)/[M3]: run 132's plan tag answers non-zero — nothing is written for
-    it, and exactly one stderr line names it."""
     p, into, _calls, _bare = run_fetch(tmp_path)
     assert not (into / "run-132").exists(), sorted(
         q.name for q in into.iterdir())
@@ -455,15 +331,12 @@ def test_d_a_plan_tag_without_a_record_is_skipped_with_one_stderr_line(
 
 
 def test_d_a_missing_status_leaves_the_file_unwritten(tmp_path):
-    """(d)/[M3]: run 133's evidence tag answers non-zero for `status.json`
-    alone — that file is unwritten, and the row's `run_min` is `-`."""
     p, into, _calls, _bare = run_fetch(tmp_path)
     assert not (into / "run-133/status.json").exists(), p.stdout + p.stderr
     assert ROW_133 in lines(p.stdout), p.stdout
 
 
 def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
-    """(d)/[M3]: the M1 table over `<dir>`, with rows for 131 and 133 only."""
     p, _into, _calls, _bare = run_fetch(tmp_path)
     assert lines(p.stdout) == [
         HEADER, ROW_131, ROW_133,
@@ -474,11 +347,6 @@ def test_d_fetch_then_prints_the_table_over_the_directory(tmp_path):
 
 
 def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
-    """(d)/[M3]: each call's first two arguments are `api` and a
-    `repos/ops/evidence/contents/runs/o-r/<N>/` path at the run's tag
-    `o-r/run-<N>` — the record and the status in the one folder — and no argv
-    names any other repository. The three record reads and the two status
-    reads the leg asks for are all made."""
     p, _into, calls, _bare = run_fetch(tmp_path)
     argvs = [json.loads(line) for line in lines(calls.read_text())
              if line.strip()]
@@ -497,23 +365,15 @@ def test_d_every_gh_call_is_an_api_read_of_the_expected_ref(tmp_path):
     for required in (plan_path(131), plan_path(132), plan_path(133),
                      status_path(131), status_path(133)):
         assert required in made, sorted(made)
-    # 132's plan tag carries no record, so the run is skipped whole: its
-    # status is never read.
     assert status_path(132) not in made, sorted(made)
 
 
 def test_d_the_bare_gh_on_path_is_never_resolved(tmp_path):
-    """(d)/[M3]: the script invokes the binary `--gh` names and no other — the
-    decoy first on PATH is never run."""
     p, _into, _calls, bare_log = run_fetch(tmp_path)
     assert not bare_log.exists(), bare_log.read_text() + p.stdout + p.stderr
 
 
-# ------------------------------------------- the evidence repository (#1395)
-
 def test_the_contents_path_is_byte_exact():
-    """[M1]: one run file's `gh api` path, in the evidence repository's run
-    folder at the run's tag."""
     module = load_module()
     assert module.evidence_contents_path(
         "ops/evidence", "o/r", 5, "status.json") == \
@@ -521,8 +381,6 @@ def test_the_contents_path_is_byte_exact():
 
 
 def test_the_flag_asks_for_exactly_the_two_run_folder_paths(tmp_path):
-    """[M2]: `--runs 5..5 --evidence-repo ops/evidence` asks `gh api` for the
-    record and the status of run 5 — those two, no other."""
     answers = {
         plan_path(5): blob(RECORD_131).decode("utf-8"),
         status_path(5): blob(STATUS_131).decode("utf-8"),
@@ -536,8 +394,6 @@ def test_the_flag_asks_for_exactly_the_two_run_folder_paths(tmp_path):
 
 
 def test_the_config_key_steers_the_reads(tmp_path):
-    """[M3]: with no `--evidence-repo`, `--fetch` reads from the repository
-    the `evidence` key of `--config` names."""
     config = tmp_path / "fleet.json"
     config.write_text(json.dumps({"evidence": "cfg/ev"}))
     answers = {plan_path(5, "cfg/ev"): blob(RECORD_131).decode("utf-8")}
@@ -552,7 +408,6 @@ def test_the_config_key_steers_the_reads(tmp_path):
 
 
 def test_the_flag_wins_over_the_config(tmp_path):
-    """[M3]: `--evidence-repo` overrides the config's `evidence`."""
     config = tmp_path / "fleet.json"
     config.write_text(json.dumps({"evidence": "cfg/ev"}))
     p, _into, calls, _bare = run_fetch(
@@ -563,8 +418,6 @@ def test_the_flag_wins_over_the_config(tmp_path):
 
 
 def test_a_config_without_the_key_exits_2_naming_it_and_calls_no_gh(tmp_path):
-    """[M3]: a config that lacks `evidence` and no flag — exit 2, a stderr
-    line naming `evidence`, and the fake `gh` never invoked."""
     config = tmp_path / "fleet.json"
     config.write_text(json.dumps({"other": "x"}))
     p, _into, calls, bare_log = run_fetch(
@@ -576,8 +429,6 @@ def test_a_config_without_the_key_exits_2_naming_it_and_calls_no_gh(tmp_path):
 
 
 def test_a_missing_default_config_exits_2_and_calls_no_gh(tmp_path):
-    """[M3]: no flag, no `--config`, and no `~/.ultrapowers/fleet.json` under
-    the test's HOME — exit 2 naming `evidence`, no `gh` call."""
     p, _into, calls, bare_log = run_fetch(tmp_path, runs="5..5", repo_args=())
     assert p.returncode == 2, p.stdout + p.stderr
     assert "evidence" in p.stderr, p.stderr
@@ -585,10 +436,7 @@ def test_a_missing_default_config_exits_2_and_calls_no_gh(tmp_path):
     assert not bare_log.exists(), bare_log.read_text()
 
 
-# ------------------------------------------------------------- the Interfaces
-
 def load_module():
-    """The script as a module, for the clauses read at its own seam."""
     assert CENSUS.is_file(), (
         "the census script does not exist yet: %s" % CENSUS)
     spec = importlib.util.spec_from_file_location("authoring_census", CENSUS)

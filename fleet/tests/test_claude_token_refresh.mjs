@@ -1,44 +1,3 @@
-/**
- * fleet/tests/test_claude_token_refresh.mjs — the exam for "The credential tool
- * never rotates while a fleet VM is listed" (#1113).
- *
- * In-process only: `import { refresh, usage } from '../claude-token.mjs'`, and
- * every call is handed a fake `deps` — no child process is spawned, so there is
- * no `simEnv()` to route through (`fleet/claude-token.mjs`'s own `main()` is
- * guarded on `process.argv[1] === import.meta.url`, so importing the module
- * runs nothing by itself). `deps.lock` is omitted, matching `refresh`'s own
- * `deps.lock ? deps.lock() : () => {}` fallback.
- *
- * The Machine clauses under test, restated:
- *   M1 — a record with two hours left and one listed VM: no grant, no write,
- *        the cached token installed, the hold line logged, `refreshed: false`.
- *   M2 — the same, under `--force`, with six hours left: still held.
- *   M3 — a record with sixty minutes left and two listed VMs: refused, naming
- *        both VMs and the expiry, nothing spent or written or installed.
- *   M4 — an empty listing behaves exactly as base: one grant, one write, the
- *        new token installed, `refreshed: true`.
- *   M5 — the fleet listing is the first lobby verb issued on a call that would
- *        rotate; a non-zero-exit listing is an Error and spends no grant.
- *   M6 — `usage()` on an expired record with one listed VM answers an `unread`
- *        row carrying the refusal as `reason`, spending no grant.
- *
- * Legs, each naming the Machine clause it comes from:
- *   (a) [M1] the two-hour / one-VM call.
- *   (b) [M2] the six-hour / `force: true` call.
- *   (c) [M3] the sixty-minute / two-VM call.
- *   (d) [M4] the empty-listing call.
- *   (e) [M5] the first lobby verb of (a)'s call, and a non-zero-exit listing.
- *   (f) [M6] `usage()` over an expired record with one listed VM.
- *
- * What the exam assumes about the code under test: that `refresh` reads the
- * record and calls `deps.now()` itself (nothing here fakes `Date.now`
- * globally), that the fleet listing is read through `deps.lobby("ls 'fleet-r*'
- * --json")` with no stdin, and that `installBearer`'s own `integrations list
- * --json` probe is answered the same way on every call — none of that is
- * pinned as a clause here, only used as scaffolding to reach the clauses that
- * are.
- */
-
 import assert from 'node:assert/strict'
 
 import { refresh, usage } from '../claude-token.mjs'
@@ -50,14 +9,6 @@ const MIN = 60 * 1000
 
 const INTEGRATIONS_LIST_OK = { code: 0, out: JSON.stringify([{ name: 'claude-max' }]) }
 
-/**
- * A fake `deps` over one account ('acct') whose keychain record is `record`
- * and whose fleet listing (`ls 'fleet-r*' --json`) answers `vmNames` (an
- * array of `vm_name` strings) — or, when `lsResult` is given, that raw
- * `{ code, out }` instead, for the leg that needs a failing listing.
- * Records every lobby verb, every fetch call and every keychain write, plus
- * the logged lines, so a leg can assert on all four.
- */
 function makeDeps ({ record, vmNames = [], lsResult = null }) {
   const lobbyCalls = []
   const fetchCalls = []
@@ -94,9 +45,6 @@ function makeDeps ({ record, vmNames = [], lsResult = null }) {
 
 const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('integrations edit') || c.verb.startsWith('integrations add'))
 
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] two hours left, one VM listed: held, cached token installed
-// ══════════════════════════════════════════════════════════════════════════
 let legA
 {
   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 2 * HOUR }
@@ -124,9 +72,6 @@ let legA
     `(a) [M1] the call resolves with refreshed strictly false. Got: ${JSON.stringify(result)}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] --force, six hours left, one VM listed: still held
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 6 * HOUR }
   const rig = makeDeps({ record, vmNames: ['fleet-r1-2609211200-ab12'] })
@@ -138,9 +83,6 @@ let legA
     `(b) [M2] the hold line reflects the six-hour expiry, logged exactly. Got lines: ${JSON.stringify(rig.logLines)}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] sixty minutes left, two VMs listed: refused
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 60 * MIN }
   const vmNames = ['fleet-r7-2609211100-ab12', 'fleet-r8-2609211130-cd34']
@@ -168,9 +110,6 @@ let legA
     `(c) [M3] no \`integrations edit\` or \`integrations add\` verb is issued. Got: ${JSON.stringify(rig.lobbyCalls.map((c) => c.verb))}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (d) [M4] empty listing: behaves exactly as base — rotates
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 2 * HOUR }
   const rig = makeDeps({ record, vmNames: [] })
@@ -198,9 +137,6 @@ let legA
     `(d) [M4] the call resolves with refreshed strictly true. Got: ${JSON.stringify(result)}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (e) [M5] the fleet listing is issued first; a failing listing spends nothing
-// ══════════════════════════════════════════════════════════════════════════
 {
   assert.ok(legA.lobbyCalls.length > 0,
     "(e) [M5] leg (a)'s rotation-eligible call issued at least one lobby verb")
@@ -222,9 +158,6 @@ let legA
     `(e) [M5] the rejected listing spends zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (f) [M6] usage() over an expired record with one VM listed: unread, refused
-// ══════════════════════════════════════════════════════════════════════════
 {
   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS - HOUR }
   const rig = makeDeps({ record, vmNames: ['fleet-r1-2609211200-ab12'] })

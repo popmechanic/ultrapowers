@@ -1,25 +1,3 @@
-/**
- * fleet/tests/test_run_read.mjs — `fleet/run-read.mjs`: a run read from the evidence record.
- *
- *   (a) projectRun: a log with two plan tasks, a give-back, an objection, a moved main, a conflict,
- *       an engine-made task and the publish gives each task its state and one timeline line per
- *       row worth one, in log order, with the row's place as `n` and the row count as `cursor`.
- *   (b) renderRun: the header names the state, phase and pull request; `since` drops lines at or
- *       before that row; the last line is `cursor <rows>`.
- *   (c) readRunRecord: the tag is read first; when it holds neither file the live branch is read
- *       and the record says `live`; when neither ref holds the run the answer is null. Every read
- *       is `gh api` with the raw media type, and names the evidence repository, the run's folder
- *       and the ref.
- *   (d) listLive: the live branches of one target, as `{ target, run, branch }`, in run order.
- *   (e) main: `--run … --target …` prints the rendering; `--json` prints the projection with its
- *       `ref`; a run with no record is a refusal beginning `run-read:`; so is a missing `--run`.
- *   (f) follow: each timeline line prints once, in order, across looks; a claim older than the
- *       quiet window prints one `!` line; a run with no new line for the window prints one; the
- *       follow ends 0 with one `== run-<N> <state>` line when every run's status says it ended,
- *       and 3 with `== gave up` at the limit. A run with no record yet is waited for.
- *   (g) followReader: a run is asked on its live branch first, its tag only once that is gone,
- *       and its plan once; `--follow` through `main` prints the header and the lines.
- */
 import assert from 'node:assert/strict'
 
 import { projectRun, renderRun, readRunRecord, listLive, main, follow, followReader, parseArgs } from '../run-read.mjs'
@@ -45,7 +23,6 @@ const ROWS = [
 const STATUS = { run: '300', state: 'parked', phase: 'the pull request is open', pr: 'https://github.com/o/r/pull/7', merged: null, tasks: { 1: { state: 'folded' }, 2: { state: 'parked' } } }
 const PLAN = { tasks: [{ id: '1', title: 'Write A' }, { id: '2', title: 'Write B' }] }
 
-// ── (a) projectRun ──
 const p = projectRun({ run: 300, target: 'o/r', rows: ROWS, status: STATUS, plan: PLAN })
 {
   assert.equal(p.cursor, ROWS.length, '(a) cursor is the row count')
@@ -63,7 +40,6 @@ const p = projectRun({ run: 300, target: 'o/r', rows: ROWS, status: STATUS, plan
   assert.ok(bare.cursor === 0 && bare.tasks.length === 0 && bare.state === null, '(a) an empty record projects to nothing')
 }
 
-// ── (b) renderRun ──
 {
   const text = renderRun(p).split('\n')
   assert.equal(text[0], '== run-300 parked: the pull request is open  https://github.com/o/r/pull/7', `(b) the header — got ${text[0]}`)
@@ -75,7 +51,6 @@ const p = projectRun({ run: 300, target: 'o/r', rows: ROWS, status: STATUS, plan
     `(b) --since drops earlier lines — got ${JSON.stringify(later)}`)
 }
 
-// ── the gh stub: a table of `<path>?ref=<ref>` -> text ──
 const stub = (files, refs = []) => {
   const calls = []
   const exec = async (cmd, argv) => {
@@ -89,7 +64,6 @@ const stub = (files, refs = []) => {
 const at = (file, ref) => `repos/e/v/contents/runs/o-r/300/${file}?ref=${encodeURIComponent(ref)}`
 const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
 
-// ── (c) readRunRecord ──
 {
   const tagged = stub({ [at('events.jsonl', 'o-r/run-300')]: LOG, [at('status.json', 'o-r/run-300')]: JSON.stringify(STATUS), [at('plan.json', 'o-r/run-300')]: JSON.stringify(PLAN) })
   const rec = await readRunRecord({ exec: tagged.exec, evidence: 'e/v', target: 'o/r', run: 300 })
@@ -102,7 +76,6 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   assert.equal(await readRunRecord({ exec: stub({}).exec, evidence: 'e/v', target: 'o/r', run: 300 }), null, '(c) no ref holds the run: null')
 }
 
-// ── (d) listLive ──
 {
   const s = stub({}, ['refs/heads/live/o-r/run-31', 'refs/heads/live/o-r/run-4', 'refs/heads/live/o-r/notes'])
   const live = await listLive({ exec: s.exec, evidence: 'e/v', target: 'o/r' })
@@ -110,7 +83,6 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   assert.ok(s.calls[0].at(-1) === 'repos/e/v/git/matching-refs/heads/live/o-r/', '(d) one listing, of that target\'s live branches')
 }
 
-// ── (e) main ──
 {
   const s = stub({ [at('events.jsonl', 'o-r/run-300')]: LOG, [at('status.json', 'o-r/run-300')]: JSON.stringify(STATUS) })
   let out = ''
@@ -124,11 +96,9 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   await assert.rejects(() => main(['--target', 'o/r', '--evidence-repo', 'e/v'], { exec: stub({}).exec, write: () => {} }), (e) => /^run-read: --run and --target are required/.test(e.message), '(e) a missing --run is refused')
 }
 
-// ── (f) follow ──
 {
   const looksOf = (n, status) => [{ ...projectRun({ run: 300, target: 'o/r', rows: ROWS.slice(0, n), status, plan: PLAN }) }]
   const running = { state: 'running', phase: 'the engine is running' }
-  // three looks: nothing yet, six rows at work, the whole log ended
   const seq = [[null], looksOf(6, running), looksOf(6, running), looksOf(ROWS.length, STATUS)]
   let i = 0, clock = Date.parse(T('58:00')); const lines = []
   const rc = await follow({
@@ -143,7 +113,6 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   assert.ok(body[3].endsWith('task 2     claimed by B') && body[4].includes('main moved to 2fb0b33'), '(f) the second look prints only what the first did not')
   assert.equal(lines.at(-1), '== run-300 parked: the pull request is open  https://github.com/o/r/pull/7', `(f) the last line names the end — got ${lines.at(-1)}`)
 
-  // a claim that sits: one `!` for the claim, one for the quiet run, each once, then the limit
   let c2 = Date.parse(T('55:10')); const out2 = []
   const rc2 = await follow({
     read: async () => looksOf(6, running), write: (s) => out2.push(s.trimEnd()), runs: [300],
@@ -156,7 +125,6 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
     `(f) each warning once — got ${JSON.stringify(bangs)}`)
 }
 
-// ── (g) followReader, and --follow through main ──
 {
   const live = (file) => at(file, 'live/o-r/run-300')
   const files = { [live('events.jsonl')]: ROWS.slice(0, 6).map((r) => JSON.stringify(r)).join('\n') + '\n', [live('status.json')]: JSON.stringify({ state: 'running' }), [live('plan.json')]: JSON.stringify(PLAN) }
@@ -169,7 +137,6 @@ const LOG = ROWS.map((r) => JSON.stringify(r)).join('\n') + '\n'
   const second = await read()
   assert.deepEqual(s.calls.map((c) => c.at(-1)), [live('events.jsonl'), live('status.json')], '(g) the plan is read once')
   assert.equal(second[0].tasks[0].title, 'Write A', '(g) and its titles are kept')
-  // the run ends: the live branch is gone and the tag holds the record
   for (const k of Object.keys(files)) delete files[k]
   files[at('events.jsonl', 'o-r/run-300')] = LOG; files[at('status.json', 'o-r/run-300')] = JSON.stringify(STATUS)
   const third = await read()

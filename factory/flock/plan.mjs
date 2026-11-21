@@ -1,5 +1,3 @@
-// The plan reader: turns a signed plan into the Flock's workload, reading it
-// through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -10,14 +8,11 @@ const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
 
 const bash = (cmd) => ['bash', '-lc', cmd];
 
-// A stories-v1 plan's facts are checker calls, one per probe.
 const CHECKER = join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 export const checkerArgv = (planPath, clause) =>
   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 
-// A task that writes its piece's json-render screen (its own, or the one page client/src/screen.json) also runs the browser-free screens check,
-// last and with no clause (the engine pairs facts[i] with clauses[i]).
 const SCREENS = join(REPO, 'factory', 'stack', 'tinyapp', 'screens.ts');
 export const screensArgv = (planPath, piece) =>
   ['bun', SCREENS, '--plan', planPath, '--piece', piece, '--copy', '.'];
@@ -41,16 +36,12 @@ function storiesWorkload (parsed, planPath) {
     grammar: 'stories-v1',
     tasks,
     check: bash(['bun run typecheck', ...guards].join(' && ')),
-    // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
-    // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
     checkTimeoutMs: 120000 + 15000 * guards.length,
     setup: bash(parsed.bootstrapCmd),
     stories: { sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
   };
 }
 
-// The parser's JSON: the run's one parse when the boot wrote it (`planJson`, #1449), else
-// plan_parse.py over `planPath` (a hand run or a sim).
 export function parsedPlan(planPath, planJson) {
   if (planJson) return JSON.parse(readFileSync(planJson, 'utf8'));
   const r = spawnSync('python3', [PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

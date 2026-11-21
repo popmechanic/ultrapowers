@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// The Flock's run sims (#1447): the catch-up, a deleted path, the provenance record and its PR
-// section, peer rewrites and the loose ends. Each case builds a throwaway git target in a temp dir
-// (_flock_helpers.mjs); the engine runs with the scripted builder. Prints `ALL TESTS PASSED` and exits 0, or names each case
-// that differed and exits 1.
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -14,13 +10,6 @@ const cases = []
 const test = (name, fn) => cases.push([name, fn])
 const assert = (ok, why) => { if (!ok) throw new Error(why) }
 
-// ── the catch-up (catchup.mjs) ─────────────────────────────────────────────────
-// A base of five lines, a moved main beside it, and the run's own commit on the base.
-//   clean     main changed another line: exit 0, {caughtUp, head}, HEAD's one parent the moved main,
-//             the file carrying both sides' lines
-//   conflict  main changed the run's own line: {caughtUp: false, reason: conflict}, HEAD the run's commit
-//   red       the join is clean but the probe is red on it: {caughtUp: false, reason: red}
-//   remap     main puts M1, M2 above `one`: provenance.json's hunk at line 5 lands at line 7
 const MAIN = { clean: ['one', 'two', 'three', 'four', 'MAIN'], conflict: ['MAIN', 'two', 'three', 'four', 'five'], red: ['one', 'two', 'three', 'four', 'RED'], remap: ['M1', 'M2', 'one', 'two', 'three', 'four', 'five'] }
 for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
   const lines = (l) => l.join('\n') + '\n'
@@ -69,7 +58,6 @@ for (const CASE of Object.keys(MAIN)) test(`catchup ${CASE}`, () => {
   t.done()
 })
 
-// ── a deleted path lands as a deletion ─────────────────────────────────────────
 test('delete', async () => {
   const t = flockTarget({ 'keep.txt': 'kept\n', 'gone.txt': 'gone\n' })
   const plan = writePlan(t, {
@@ -87,7 +75,6 @@ test('delete', async () => {
   t.done()
 })
 
-// ── provenance.json: the landed lines by task (#1404) ──────────────────────────
 test('provenance run', async () => {
   const t = flockTarget({ 'README.md': 'sim\n' })
   const plan = writePlan(t, {
@@ -103,7 +90,6 @@ test('provenance run', async () => {
   t.done()
 })
 
-// ── the PR body's Provenance section (record.mjs pr-body --provenance) ───────────
 const PROV_PR = {
   full: [{ hunks: [{ path: 'a.js', lines: '3-4', task: '1' }, { path: 'b.js', lines: '7', task: '2' }], exceptions: [{ kind: 'contested', path: 'a.js' }, { kind: 'lost', path: 'b.js' }] },
     '3 changed lines from 2 tasks; exceptions: 1 contested, 1 lost, 0 ordered, 0 foreign.'],
@@ -124,15 +110,6 @@ for (const [CASE, [record, want]] of Object.entries(PROV_PR)) test(`provenance p
   t.done()
 })
 
-// ── give-backs, conflicts, peer rewrites and the loose ends ─────────────────────
-//   release  a one-task plan whose script names no files: given back until it parks (3)
-//   resolve  two tasks write into the same line of a.txt: a resolve task for a.txt
-//   peer     task 2, held until task 1 publishes `x ONE z`, writes `x ONEz TWO` over it (run-277):
-//            one peer:rewrite row naming task 1's line, one survival row per edge snapshot, the last
-//            losing task 1's line; the run ends ready (the Jev read that drafted it was cut, 2026-11-14)
-//   survival-restored  task 2 deletes task 1's line and task 3 writes it back: the survival row lists
-//                   the line lost, and the run ends ready
-//   reuse    task 2 consumes task 1's interface, so builder A does both: one peer:rewrite row (peers A.1)
 const word = (id, w, { iface, run } = {}) => task({ id, title: `Write ${w} into a.txt`, files: ['Modify: `a.txt`'], claim: `a.txt carries ${w}.`,
   run: run ?? `grep -q ${w} a.txt`, stale: 'path-absent: `a.txt`', iface })
 const PEER_SCRIPT = { 1: { 'a.txt': 'x ONE z\n' }, 2: { 'a.txt': 'x ONEz TWO\n' }, '@hold_ms': { 2: 3000 } }
@@ -181,8 +158,6 @@ for (const [CASE, s] of Object.entries(TRIALS)) test(`peer ${CASE}`, async () =>
   t.done()
 })
 
-// loose  task 2 posts a loose end on a.txt (the line task 1 wrote); the L:loose task narrows that line:
-//        one peer:rewrite row by L:loose, and the run lands the cleaned snapshot ready
 const note = task({ id: 2, title: 'Write NOTE into b.txt', files: ['Modify: `b.txt`'], claim: 'b.txt carries NOTE.', run: 'grep -q NOTE b.txt', stale: 'path-absent: `b.txt`' })
 test('loose', async () => {
   const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' })
@@ -201,10 +176,6 @@ test('loose', async () => {
   t.done()
 })
 
-// loose-window  the run is green early (task 2's fact holds at base) but its builder is held, so the
-//               cleanup opens about 3 s after the first green and takes 2.5 s: past a 4 s window counted
-//               from the first green, inside one counted from when it opened. The cleanup lands; no
-//               no-progress stop, no fallback (#1531)
 test('loose-window', async () => {
   const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'NOTE pending\n' })
   const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
@@ -221,8 +192,6 @@ test('loose-window', async () => {
   t.done()
 })
 
-// loose-stalled  the script names no files for L:loose, so its builder ends without publishing and the run deadlocks with its last edge the
-//                pre-cleanup snapshot: the draft lands that snapshot ready, once, and the PR body says the cleanup was dropped (#1521)
 test('loose-stalled', async () => {
   const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' })
   const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
@@ -250,7 +219,7 @@ test('empty landing claims-v1', async () => {
     claim: 'a.txt reads DONE.', check: 'test -f a.txt',
     tasks: [task({ id: 1, title: 'Mark the file', files: ['Modify: `a.txt`'], claim: 'a.txt reads DONE.', stale: 'path-absent: `a.txt`', run: 'test -f a.txt' })],
   })
-  const r = await flockRun(t, { plan, script: { 1: {} } })   // a builder that writes nothing
+  const r = await flockRun(t, { plan, script: { 1: {} } })
   const tail = `(exit ${r.code}; ${r.out.slice(-600)})`
   assert(r.code === 1, `a claims-v1 run that lands nothing exits 1, got ${r.code} ${tail}`)
   const empty = r.of('landing:empty')
@@ -260,8 +229,6 @@ test('empty landing claims-v1', async () => {
   t.done()
 })
 
-// loose-fallback-empty  every proof already holds at the base and the loose-ends task publishes nothing: the fallback's pre-cleanup
-//                       snapshot is the base, so a claims-v1 run lands nothing and exits 1 with a landing:empty row (#1522)
 test('loose-fallback-empty', async () => {
   const t = flockTarget({ 'a.txt': 'x WIPE z\n', 'b.txt': 'NOTE\n' })
   const plan = writePlan(t, { claim: 'a.txt and b.txt say what the tasks write.', check: 'test -f a.txt', tasks: [word(1, 'WIPE'), note] })
@@ -276,9 +243,6 @@ test('loose-fallback-empty', async () => {
   t.done()
 })
 
-// checker-cannot-run  a stories-v1 run whose checker exits 127 on the starting app (a fake `bun` on PATH): the
-//                     preflight ends the run before any builder opens, one draft terminal row naming the checker,
-//                     and no loose:fallback (#1532)
 test('checker-cannot-run', async () => {
   const F = '```'
   const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'

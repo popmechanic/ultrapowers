@@ -1,37 +1,18 @@
-/**
- * factory/record.mjs — the run's renderer (#1167, #1205, #1222).
- *
- * This module decides nothing: it takes what the boot and `factory/publish.mjs` already know
- * and turns it into the bytes they write — the twelve-cell status page (`status`, the
- * projection over `events.jsonl` the boot commits) and the pull request body (`pr-body`, the
- * plan's summary, the receipt, provenance, a draft's reason and the closes) and the run's view (`view`, `factory/view.mjs`'s `renderView`). Nothing here writes a file or reads an environment variable; each subcommand prints
- * one thing to stdout and its exit code says whether that printing happened. The JSON the
- * publish used to build here by hand is `publish.mjs`'s own now (#1441).
- */
-
 import { readFileSync } from 'node:fs'
 import { readEventRows } from './flock/io.mjs'
 import { parsedPlan } from './flock/plan.mjs'
 import { renderView } from './view.mjs'
 
-/** A `key=value` token split at its FIRST `=`; a token with no `=` is the
- *  whole token as the key and an empty string as the value. */
 function splitToken (token) {
   const idx = token.indexOf('=')
   if (idx === -1) return [token, '']
   return [token.slice(0, idx), token.slice(idx + 1)]
 }
 
-/** One `{"key":value,...}` object, keys and values rendered in the order
- *  given — never a plain JS object, whose own key order reorders an
- *  integer-looking string key ahead of insertion order. */
 function renderObject (entries) {
   return '{' + entries.map(([k, v]) => JSON.stringify(k) + ':' + JSON.stringify(v)).join(',') + '}'
 }
 
-/** The status page's `tasks` cell: one entry per task a `landing` or
- *  `parked` row names, in the order each task first appears, its state and
- *  park overwritten (position kept) by a later row for the same task. */
 export function projectTasks (eventsPath) {
   const order = []
   const state = {}
@@ -58,19 +39,14 @@ export function projectTasks (eventsPath) {
   return tasks
 }
 
-/** A field the boot handed over as `key=` — a string, or `null` when the
- *  value is absent or empty. */
 function stringOrNull (value) {
   return value === undefined || value === '' ? null : value
 }
 
-/** A field that is always a string on the page — `""` when absent or empty. */
 function stringOrEmpty (value) {
   return value === undefined ? '' : value
 }
 
-/** `status key=value ... --events <file>` — the twelve-cell page, `tasks`
- *  last, `updatedAt` stamped fresh on every call. */
 export function renderStatus (fields, eventsPath) {
   const tasks = eventsPath ? projectTasks(eventsPath) : {}
   const entries = [
@@ -90,9 +66,6 @@ export function renderStatus (fields, eventsPath) {
   return renderObject(entries)
 }
 
-/** The plan's `**Summary:**` paragraph: that line (its prefix and one
- *  optional following space removed) down to but not including the first
- *  blank line, each kept verbatim; no such line gives no lines at all. */
 function planSummaryLines (planText) {
   const lines = planText.split('\n')
   let started = false
@@ -111,8 +84,6 @@ function planSummaryLines (planText) {
   return out
 }
 
-/** Exactly one line of the plan: the first `**Closes:**` after the first
- *  `**Goal:**` and before the first `### `. Never a regex over the body. */
 function planClosesLine (planText) {
   const lines = planText.split('\n')
   let goal = false
@@ -124,8 +95,6 @@ function planClosesLine (planText) {
   return null
 }
 
-/** `Closes #<n>` per `#<digits>` match on the plan's `**Closes:**` line;
- *  no such line gives no lines at all. */
 function planClosesLines (planText) {
   const line = planClosesLine(planText)
   if (line == null) return []
@@ -133,18 +102,12 @@ function planClosesLines (planText) {
   return matches.map((m) => `Closes ${m}`)
 }
 
-/** A row cell: a string prints raw, a number/boolean/null prints as its JSON
- *  text, and an absent field prints as nothing between the two spaces. */
 function cellText (value) {
   if (value === undefined) return ''
   if (typeof value === 'string') return value
   return JSON.stringify(value)
 }
 
-/** The plan's probes, per task in plan order, off the run's one parse (or the
- *  parser the sandbox runs, with none): `{id, probes: [{cmd, proves}], extra}`. A
- *  stories-v1 task's probes are its checker calls. A plan the parser refuses
- *  gives `null`, and the receipt then shows exits without probe text. */
 function planProbes (planPath, planJson) {
   let parsed
   try { parsed = parsedPlan(planPath, planJson) } catch { return null }
@@ -157,8 +120,6 @@ function planProbes (planPath, planJson) {
   }))
 }
 
-/** The edge row the receipt reads: the one whose `snap` is the last `settled`
- *  row's, or the last `edge` row when nothing settled; `null` without edges. */
 function receiptEdge (rows) {
   let settled = null
   const edges = []
@@ -178,9 +139,6 @@ function receiptEdge (rows) {
 const receiptCell = (text) => String(text).replace(/\|/g, '\\|')
 const probeCell = (cmd) => '`' + receiptCell(cmd.length > 60 ? cmd.slice(0, 59) + '…' : cmd) + '`'
 
-/** `### Receipt` — one row per probe the plan named, with the exit it got on the
- *  settled snapshot, then the run-wide checks' exit and the `**Evidence:**` link
- *  when one was given. No edge row gives no receipt, only the link. */
 function receiptLines (planPath, planJson, rows, evidenceUrl) {
   const out = []
   const edge = receiptEdge(rows)
@@ -203,9 +161,6 @@ function receiptLines (planPath, planJson, rows, evidenceUrl) {
   return out
 }
 
-/** A draft's reason: the last `terminal` row, when it reads `pr: "draft"`, as one bold line
- *  naming why, then the `stall:<kind>` rows the run wrote, so the operator reads why the run
- *  stopped on the PR itself. A ready run, or a log with no `terminal` row, adds nothing. */
 function draftReasonLines (rows) {
   let term = null
   const stalls = []
@@ -220,16 +175,12 @@ function draftReasonLines (rows) {
   return out
 }
 
-/** How many lines a provenance `lines` value names: `a-b` is b-a+1, `a` is 1, anything else 0. */
 function lineCount (lines) {
   const m = /^(\d+)(?:-(\d+))?$/.exec(String(lines ?? ''))
   if (!m) return 0
   return m[2] === undefined ? 1 : Math.max(0, Number(m[2]) - Number(m[1]) + 1)
 }
 
-/** The `### Provenance` section over the engine's `provenance.json` (#1404): the heading, an
- *  empty line and one counts line — changed lines, the tasks that changed them and the exceptions
- *  by kind. An absent, missing or unparseable file adds nothing. */
 function provenanceLines (provenancePath) {
   if (!provenancePath) return []
   let prov
@@ -237,7 +188,6 @@ function provenanceLines (provenancePath) {
   if (!prov || typeof prov !== 'object') return []
   const hunks = Array.isArray(prov.hunks) ? prov.hunks : []
   const changed = hunks.reduce((n, h) => n + lineCount(h && h.lines), 0)
-  // A hunk of `1|2` holds lines two tasks wrote identically: each counts once.
   const tasks = new Set(hunks.filter((h) => h && h.task !== undefined).flatMap((h) => String(h.task).split('|'))).size
   const kinds = { contested: 0, lost: 0, ordered: 0, foreign: 0 }
   for (const e of Array.isArray(prov.exceptions) ? prov.exceptions : []) {
@@ -247,27 +197,15 @@ function provenanceLines (provenancePath) {
     `${changed} changed lines from ${tasks} tasks; exceptions: ${kinds.contested} contested, ${kinds.lost} lost, ${kinds.ordered} ordered, ${kinds.foreign} foreign.`]
 }
 
-/** The most characters the body holds (#1529): GitHub refuses one over about 65,536, and then
- *  no pull request opens. One builder value is cut at `VALUE_CAP`. */
 const BODY_CAP = 60000
 const VALUE_CAP = 500
 
-/** Builder text or app data as one harmless run of body text (#1529): any value prints as its
- *  `cellText`, line breaks become spaces (no injected heading or list), `<` becomes `&lt;` (no
- *  HTML comment hiding the rest), a `#` before a digit is escaped (no `Fixes #3` closing an
- *  issue) and the text is cut at `VALUE_CAP` with an ellipsis. Plain text passes unchanged. */
 function safeText (value) {
   let text = cellText(value).replace(/[^\S ]+/g, ' ')
-  /* every whitespace but a space, so line breaks such as [\r\n  ] */
   if (text.length > VALUE_CAP) text = text.slice(0, VALUE_CAP - 1) + '…'
   return text.replace(/</g, '&lt;').replace(/#(?=\d)/g, '\\#')
 }
 
-/** The `### Loose ends` section over the last `loose-ends` row (#1419): the heading, an empty
- *  line, a counts line, then one line per open or unchecked item in row order — a resolved item
- *  gets none. No row, or a row with no items, adds nothing. A `loose:fallback` row (#1521) adds a
- *  closing line saying the cleanup was dropped and which snapshot landed, or, with no `terminal` row
- *  (an engine killed before its end), that the run ended before its outcome was recorded. */
 function looseEndsLines (events) {
   const row = events.filter((r) => r && r.kind === 'loose-ends').at(-1)
   const items = row && Array.isArray(row.items) ? row.items.filter((i) => i && typeof i === 'object') : []
@@ -291,10 +229,6 @@ function looseEndsLines (events) {
   return out
 }
 
-/** The `### What each step changed` section over the `step:receipt` rows: the heading, an empty
- *  line, then one line per row in file order naming each diff entry, `no change` for an empty
- *  diff, `stopped at <stage> before changing anything` for a row with no diff (#1491), and a
- *  trailing `; and more not shown` when truncated. No such row adds nothing. */
 function stepReceiptLines (events) {
   const receipts = events.filter((r) => r && r.kind === 'step:receipt')
   if (!receipts.length) return []
@@ -314,9 +248,6 @@ function stepReceiptLines (events) {
   return out
 }
 
-/** The `### New screen parts` section over the last `parts:new` row (#1491): the heading, an empty
- *  line, one line per part a builder added (its name, the role it draws, the props naming it), then
- *  a line on keeping it. No row adds nothing. */
 function newPartsLines (events) {
   const row = events.filter((r) => r && r.kind === 'parts:new').at(-1)
   const parts = row && Array.isArray(row.parts) ? row.parts.filter((p) => p && typeof p === 'object') : []
@@ -330,10 +261,6 @@ function newPartsLines (events) {
   return out
 }
 
-/** `pr-body <plan.md> [--plan-json <parse>] --events <file> [--evidence <url>] [--provenance <file>]` — the paragraph, an
- *  empty line, the receipt, an empty line, the closes; every line, including
- *  the two empty ones, ends in a newline. The provenance section follows the receipt, the loose
- *  ends follow that, and a draft's reason follows that. */
 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -360,7 +287,6 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   }
   const whole = assemble()
   if (whole.length <= BODY_CAP) return whole
-  // Too long for GitHub (#1529): the builders' lines give way, never the author's summary or closes.
   const fullLoose = looseEnds
   const fullChanges = changes
   looseEnds = looseEnds.filter((l) => !isItem(l))
@@ -375,8 +301,6 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
 const isItem = (line) => line.startsWith('- ')
 const itemsLength = (lines) => lines.filter(isItem).reduce((n, l) => n + l.length + 1, 0)
 
-/** `lines` with as many leading `- ` items as fit in `budget` characters, the rest replaced by
- *  one line counting them and pointing at the evidence; everything else is kept. */
 function cutItems (lines, budget, evidenceUrl) {
   const total = lines.filter(isItem).length
   const note = (n) => `- and ${n} more not shown${evidenceUrl ? `; the evidence holds them all: ${evidenceUrl}` : '.'}`
@@ -397,8 +321,6 @@ function cutItems (lines, budget, evidenceUrl) {
   return out
 }
 
-/** The tokens after a subcommand, split into plain tokens and the file named
- *  by a `--events <file>` pair wherever it falls among them. */
 function extractEvents (args) {
   const rest = []
   let eventsPath
@@ -413,21 +335,16 @@ function extractEvents (args) {
   return { rest, eventsPath }
 }
 
-/** A JSON file's value, or null when no path is given or the file is missing or not JSON. */
 function jsonFileOrNull (filePath) {
   if (!filePath) return null
   try { return JSON.parse(readFileSync(filePath, 'utf8')) } catch { return null }
 }
 
-/** One line on stderr and exit 2 — an unknown subcommand or a missing
- *  argument, never a stack trace. */
 function usageError (message) {
   process.stderr.write(`record: ${message}\n`)
   return 2
 }
 
-/** `node factory/record.mjs <subcommand> ...` — every subcommand writes only
- *  to stdout and exits 0 on success. */
 export function main (argv) {
   const args = argv.slice(2)
   const subcommand = args[0]

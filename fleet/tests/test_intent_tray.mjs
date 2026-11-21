@@ -1,35 +1,3 @@
-/**
- * fleet/tests/test_intent_tray.mjs — the exam for `hooks/register.js`, the
- * intent tray mod (#1495, #1526).
- *
- * The module runs inside Claude Code, which this sim does not have. It is
- * imported under Node and driven through a stand-in `$` that offers only the
- * calls the tray may make, each refusing a shape the hooks API types refuse
- * (the plugin-authoring skill's `types/claude-code.d.ts`, Claude Code 2.1.286):
- * an unknown `$` noun throws, a Button hotkey other than one digit or one
- * lowercase letter throws, a value `$.store` cannot keep as JSON throws.
- * Each `load()` imports a fresh copy of the module (a query string on the
- * URL), so one copy is one session; copies sharing a `store` Map are sessions
- * sharing the plugin's one store file.
- *
- * Legs:
- *   (z) the stand-in refuses wrong shapes
- *   (a) Send clears the screen; the band is hidden after it
- *   (b) Clear clears the screen; the band is hidden after it
- *   (c) the tray is kept per working directory; the old global `tray` key is ignored
- *   (d) band buttons carry no bare-digit hotkey: n, s, c
- *   (e) feedback is read by byte offset, only up to the last newline
- *   (f) a repo's feedback history from before the first session is not taken
- *   (g) a second repo's feedback is read from its own offset
- *   (h) two sessions in one repo take a feedback line once
- *   (i) a dropped or failed submit keeps the tray
- *   (j) Open screen is drawn only where $.process is offered (not the Desktop app)
- *   (k) a Send while one is out is ignored; a note that arrives meanwhile stays
- *   (l) two sessions in one repo keep each other's notes; a sent note stays gone
- *   (m) a replaced feedback file is read from its start
- *   (n) a preview pick names its piece, and a pick without one still reads
- */
-
 import assert from 'node:assert/strict'
 
 const MODULE = new URL('../../hooks/register.js', import.meta.url).href
@@ -41,8 +9,6 @@ async function load() {
   copies += 1
   return import(`${MODULE}?session=${copies}`)
 }
-
-// ── the stand-in $ ───────────────────────────────────────────────────────
 
 function strict(obj, where) {
   return new Proxy(obj, {
@@ -110,8 +76,6 @@ function elements() {
   }
 }
 
-/** One host: a store (shared between sessions when passed in), a file system
- *  of absolute path → text, and how `prompt.submit` answers. */
 function host({ store = new Map(), files = new Map(), submit = 'ok', process = false } = {}) {
   const h = { store, files, submits: [], opens: [], ticks: [], spawns: [], submit }
   const missing = (p) => Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
@@ -206,7 +170,6 @@ function host({ store = new Map(), files = new Map(), submit = 'ok', process = f
   return h
 }
 
-/** One session: a fresh copy of the module on a host, started in `cwd`. */
 async function session(h, cwd) {
   const { register } = await load()
   const hooks = []
@@ -261,7 +224,6 @@ const press = async (s, where, key) => {
   return node.props.onPress ? node.props.onPress() : undefined
 }
 
-// (z) the stand-in refuses wrong shapes
 {
   const h = host()
   assert.throws(() => h.$.session, /not offered/, '(z) an unknown $ noun throws')
@@ -272,7 +234,6 @@ const press = async (s, where, key) => {
   await assert.rejects(h.$.fs.read('/nowhere/x'), /ENOENT/, '(z) a missing file rejects')
 }
 
-// (a) Send clears the screen; the band is hidden after it
 {
   const h = host()
   const s = await session(h, '/work/a')
@@ -285,7 +246,6 @@ const press = async (s, where, key) => {
   assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'No screen shown', '(a) after Send the pane shows no screen')
 }
 
-// (b) Clear clears the screen; the band is hidden after it
 {
   const h = host()
   const s = await session(h, '/work/a')
@@ -296,7 +256,6 @@ const press = async (s, where, key) => {
   assert.equal(label(await s.band()), 'hidden', '(b) after Clear the band is hidden')
 }
 
-// (c) the tray is kept per working directory; the old global `tray` key is ignored
 {
   const store = new Map([['tray', JSON.stringify({ screen: { name: 'Old', stage: '', versions: [], url: '' }, pick: null, notes: [], taken: 0 })]])
   const a = await session(host({ store }), '/work/a')
@@ -308,7 +267,6 @@ const press = async (s, where, key) => {
   assert.equal(label(await a2.band()), 'Intent tray: Todo list, 1 item', '(c) a later session in the same repo gets its tray back')
 }
 
-// (d) band buttons carry no bare-digit hotkey
 {
   const s = await session(host(), '/work/a')
   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
@@ -316,7 +274,6 @@ const press = async (s, where, key) => {
   assert.deepEqual(keys, ['band-note=n', 'band-send=s', 'band-clear=c'], '(d) band hotkeys are n, s, c')
 }
 
-// (e) feedback is read by byte offset, only up to the last newline
 {
   const h = host()
   const s = await session(h, '/work/a')
@@ -334,7 +291,6 @@ const press = async (s, where, key) => {
   assert.equal(label(await s.band()), 'hidden', '(e) nothing is taken twice')
 }
 
-// (f) a repo's feedback history from before the first session is not taken
 {
   const h = host()
   h.files.set(feed('/work/a'), line({ note: 'old one' }) + line({ note: 'old two' }))
@@ -346,7 +302,6 @@ const press = async (s, where, key) => {
   assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(f) a line written after the start is taken')
 }
 
-// (g) a second repo's feedback is read from its own offset
 {
   const store = new Map()
   const ha = host({ store })
@@ -361,7 +316,6 @@ const press = async (s, where, key) => {
   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(g) repo b takes its own line')
 }
 
-// (h) two sessions in one repo take a feedback line once
 {
   const store = new Map()
   const files = new Map()
@@ -374,7 +328,6 @@ const press = async (s, where, key) => {
   assert.deepEqual(held, ['Intent tray: feedback, 1 item', 'hidden'], '(h) the line is taken by one session only')
 }
 
-// (i) a dropped or failed submit keeps the tray
 for (const mode of ['drop', 'throw']) {
   const h = host({ submit: mode })
   const s = await session(h, '/work/a')
@@ -389,7 +342,6 @@ for (const mode of ['drop', 'throw']) {
   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
 }
 
-// (j) Open screen is drawn only where $.process is offered (not the Desktop app)
 {
   const url = 'http://127.0.0.1:4100/compare'
   const desk = await session(host(), '/work/a')
@@ -404,7 +356,6 @@ for (const mode of ['drop', 'throw']) {
   assert.deepEqual(h.spawns, [['open', url]], '(j) Open screen opens the preview url')
 }
 
-// (k) a Send while one is out is ignored; a note that arrives meanwhile stays
 {
   let enter
   const h = host({ submit: (o) => new Promise((done) => { enter = () => done({ text: o.text }) }) })
@@ -431,7 +382,6 @@ for (const mode of ['drop', 'throw']) {
   assert.match(h.submits[1], /too small/, '(k) and carries the late note')
 }
 
-// (l) two sessions in one repo keep each other's notes; a sent note stays gone
 {
   const store = new Map()
   const files = new Map()
@@ -451,7 +401,6 @@ for (const mode of ['drop', 'throw']) {
   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(l) the other session drops the sent notes too')
 }
 
-// (m) a replaced feedback file is read from its start
 {
   const h = host()
   const s = await session(h, '/work/a')
@@ -465,7 +414,6 @@ for (const mode of ['drop', 'throw']) {
   assert.match(h.submits[1], /second file/, '(m) its first line is read')
 }
 
-// (n) a preview pick names its piece, and a pick without one still reads
 {
   const h = host()
   const s = await session(h, '/work/a')

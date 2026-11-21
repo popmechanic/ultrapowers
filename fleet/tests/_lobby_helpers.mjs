@@ -1,22 +1,3 @@
-/**
- * fleet/tests/_lobby_helpers.mjs — the fixture the four laptop CLIs' exams share.
- *
- * Two pieces, and the launch sims' shared rig (at the bottom):
- *
- *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
- *   appended to `exec.calls`, options included, so a leg can read the stdin a
- *   lobby verb was given; a matching rule answers it; anything unmatched runs
- *   for real when its command is in `passthrough` (`git`, so a plan commit in a
- *   test is a real commit in a real repository) and otherwise answers empty and
- *   green. No rule ever runs `ssh`, `gh` or `curl`: the exams touch no network.
- *   Two kinds of ssh are told apart by their first argument: `ssh exe.dev …` is
- *   a lobby verb, `ssh <ssh_dest> …` is a command on a VM.
- *
- *   `makeTargetRepo` — a temporary *target* repository with a real bare origin
- *   behind it, so a launch's plan push is a real push, `base` is a sha git
- *   actually made, and `branches()` reads the origin's own refs.
- */
-
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -25,7 +6,6 @@ import { spawnSync } from 'node:child_process'
 import { EXE_HOST, defaultExec } from '../lobby.mjs'
 import { simEnv } from './_helpers.mjs'
 
-/** A canned answer. `stdout` may be a string or a value to JSON.stringify. */
 export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
   code,
   stdout: typeof stdout === 'string' ? stdout : JSON.stringify(stdout),
@@ -34,21 +14,16 @@ export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
 
 const isLobby = (cmd, argv) => cmd === 'ssh' && argv[0] === EXE_HOST
 
-/** A rule matching one lobby verb by the prefix of its remote command string. */
 export const sshRule = (prefix, res) => ({
   when: (cmd, argv) => isLobby(cmd, argv) && String(argv[1] ?? '').startsWith(prefix),
   answer: res
 })
 
-/** A rule matching a local command by its first argument. */
 export const cmdRule = (cmd, first, res) => ({
   when: (c, argv) => c === cmd && argv[0] === first,
   answer: res
 })
 
-/** One `ls --json` row in the shape exe.dev documents. `ssh_dest` is
- *  deliberately not `<name>.exe.xyz`, so a tool that derives the destination
- *  from the name instead of reading the row is caught. */
 export const vmRow = (name, extra = {}) => ({
   vm_name: name,
   ssh_dest: `exedev@${name}.ssh.exe.xyz`,
@@ -57,13 +32,8 @@ export const vmRow = (name, extra = {}) => ({
   ...extra
 })
 
-/** The `ls --json` envelope: fleet rows under `vms`, other people's under `shared_vms`. */
 export const vmsPayload = (vms = [], shared = []) => answer({ shared_vms: shared, vms })
 
-/**
- * The recording seam. `rules` are tried in order; the first match answers.
- * `passthrough` names commands that really run when nothing matched.
- */
 export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
   const calls = []
   const exec = async (cmd, argv = [], options = undefined) => {
@@ -77,18 +47,13 @@ export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
     return { code: 0, stdout: '', stderr: '' }
   }
   exec.calls = calls
-  /** Every remote command string issued as a lobby verb, in order. */
   exec.lobby = () => calls.filter((c) => isLobby(c.cmd, c.argv)).map((c) => c.argv[1])
-  /** The mutating lobby verbs only — what a refusal must never have issued. */
   exec.mutating = () => exec.lobby().filter((line) =>
     /^(cp|rm|comment|rename|new|tag) /.test(line) || /^integrations (add|attach|detach|edit) /.test(line)
   )
   return exec
 }
 
-// The environment every git below runs under: a HOME of the fixture's own, so
-// no ~/.gitconfig of the box reaches a repository an exam builds — each one
-// sets its own identity a few lines down. `env` last, so a caller can override.
 const GIT_HOME = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fleet-lobby-home-'))
 export const gitEnv = (env) => ({ ...simEnv({ home: GIT_HOME }), ...env })
 
@@ -100,26 +65,10 @@ const run = (cwd, argv, env) => {
   return res.stdout
 }
 
-/** A throwaway directory, removed by `cleanup()`. */
 export function tempDir (prefix = 'fleet-lobby-') {
-  // realpath: on macOS /tmp is a symlink, and git resolves it — a path git
-  // reports would otherwise not compare equal to the one the test built.
   return fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), prefix))
 }
 
-/**
- * A real *target* repository: a bare origin with one seed commit on `main`, and
- * a clone of it. `files` is the seed commit's content (default one README);
- * `base` is the sha git made for it, which is what a run's `base=` names.
- *
- *   `origin`     the bare repository's path — the clone's `origin` remote
- *   `dir`        the clone, with `user.name`/`user.email` already set
- *   `git(argv)`  a git command in the clone, answering its trimmed stdout
- *   `branches()` the origin's `refs/heads/*` as `{ '<name>': '<sha>' }`
- *
- * Everything is local git against a path, so a push in an exam is a real push
- * and no socket is opened.
- */
 export function makeTargetRepo ({ root, files } = {}) {
   const root_ = root ?? tempDir('fleet-target-')
   const origin = path.join(root_, 'origin.git')
@@ -155,18 +104,6 @@ export function makeTargetRepo ({ root, files } = {}) {
   }
 }
 
-/**
- * A real *evidence* repository: a bare repository with one seed commit on
- * `main` (the hand archive's branch — no launch may write it), standing in for
- * `https://github.com/<name>.git`. Hand it to `localRemote`/`pointAtOrigin` and
- * that URL is routed here.
- *
- *   `name`            the `<owner>/<repo>` it stands in for
- *   `bare`            the bare repository's path
- *   `git(argv)`       a git command against the bare, answering trimmed stdout
- *   `refs()`          every ref as `{ '<refname>': '<sha>' }`
- *   `seed(ref, files, message)`  a parentless commit of `files` at `ref`; the sha
- */
 export function makeEvidenceRepo ({ root, name = 'ops/evidence' } = {}) {
   const root_ = root ?? tempDir('fleet-evidence-')
   const bare = path.join(root_, `evidence-${name.replace('/', '-')}.git`)
@@ -207,10 +144,8 @@ export function makeEvidenceRepo ({ root, name = 'ops/evidence' } = {}) {
   }
 }
 
-/** Remove a temp tree. */
 export const cleanup = (dir) => fs.rmSync(dir, { recursive: true, force: true })
 
-/** Run `body`, answering the error it threw (or null when it did not throw). */
 export async function thrown (body) {
   try {
     await body()
@@ -220,49 +155,29 @@ export async function thrown (body) {
   return null
 }
 
-// ── The launch sims' shared rig ─────────────────────────────────────────────
-// test_launch_credential/duplicate/evidence/plan_path/probe_runners all drive
-// `launch()` over the same seam; what they share lives here, once.
-
-/** An account whose billing caps clear every launch. */
 export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
 
-/** The compiled plan the stubbed compiler answers: one task, width one. */
 export const ONE_TASK = {
   tasks: [{ id: '1', title: 'task 1', files: ['f1.txt'], wave: 1, proofRuns: [], proofRunClauses: [] }],
   dag_edges: [],
   width: 1
 }
 
-/** `new` answers the VM it was asked to make, running. */
 export const NEW_OK = (cmd, argv) =>
   answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
 
-/** The engine repository's `ls-remote` answers `engine` as its HEAD. */
 export const engineRule = (engine) => ({
   when: (cmd, argv) =>
     cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
   answer: answer(`${engine}\tHEAD\n`)
 })
 
-/**
- * The compiler the launcher fetches at `engine=`. At a fake engine sha the
- * real `git show` in this checkout fails, so the `gh api` contents call is what
- * answers — and it must answer BEFORE a sim's `recordRule`, whose empty page
- * would otherwise read as a compiler that could not be fetched and refuse the
- * launch. The body is never run: a sim's `compilerRule` answers every `python3`.
- */
 export const COMPILER_FETCH = {
   when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
     argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
   answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
 }
 
-/**
- * A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch
- * made a full refspec. `evidence` is one `makeEvidenceRepo` or a list of them:
- * the `github.com` URL of each is routed to its own bare instead.
- */
 export const pointAtOrigin = (repo, argv, evidence = []) => {
   const evidences = Array.isArray(evidence) ? evidence : [evidence]
   const bareFor = (a) => {
@@ -280,9 +195,6 @@ export const pointAtOrigin = (repo, argv, evidence = []) => {
   return pointed
 }
 
-/** The target's push, ls-remote and fetch, really run against its local bare
- *  origin — and the evidence repository's (`evidence`, as `pointAtOrigin`
- *  takes it) against its own bare. */
 export const localRemote = (repo, evidence = []) => ({
   when: (cmd, argv) => cmd === 'git' &&
     (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
@@ -291,7 +203,6 @@ export const localRemote = (repo, evidence = []) => ({
   answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv, evidence), options ?? {})
 })
 
-/** What a git that would open a socket answers instead. */
 export const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
 export const NO_REMOTE_OPS = {
   when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
@@ -302,29 +213,18 @@ export const NO_NETWORK_GIT = {
   answer: OFFLINE
 }
 
-/** The seed of a launch sim's target, and the plan it launches. */
 export const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 export const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 
-/** Every `python3` run of the compiler: `plan_check.py` passes, `plan_parse.py`
- *  answers `compiled`. */
 export const compilerRule = (compiled) => ({
   when: (cmd) => cmd === 'python3',
   answer: (cmd, argv) =>
     argv.some((a) => String(a).endsWith('plan_check.py')) ? answer('PLAN OK\n') : answer(JSON.stringify(compiled))
 })
 
-/** `gh api …` answering `res` for every call; `NO_RECORD` is an empty page. */
 export const recordRule = (res) => cmdRule('gh', 'api', res)
 export const NO_RECORD = answer('')
 
-/**
- * The seam a good launch reads through, in the order the launch sims need it
- * (`COMPILER_FETCH` before `recordRule`, see above). `gh` is the target's
- * integration name, and `integrations` replaces the default three rows; `rows`
- * is what `ls` answers and `record` what `gh api` answers. With no `engine` the
- * engine's `ls-remote` rule is left out.
- */
 export const launchRules = ({
   engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, compiled = ONE_TASK
 }) => [
@@ -343,12 +243,6 @@ export const launchRules = ({
   NO_NETWORK_GIT
 ]
 
-/**
- * A launch sim's workspace under a fresh temp root: a target seeded with
- * `seed` whose origin URL then reads `originUrl`, an evidence repository named
- * `evidence`, and — unless `plan` is null — the plan at `plans-src/a-plan.md`,
- * outside the target. Answers `{ root, repo, evidence, planPath, cleanup }`.
- */
 export function launchWorkspace ({ prefix, originUrl, seed = SEED, evidence = 'ops/evidence', plan = PLAN }) {
   const root = tempDir(prefix)
   const repo = makeTargetRepo({ root, files: { ...seed } })
@@ -364,8 +258,6 @@ export function launchWorkspace ({ prefix, originUrl, seed = SEED, evidence = 'o
   return { root, repo, evidence: evidenceRepo, planPath, cleanup: () => cleanup(root) }
 }
 
-/** Every `git push` the seam recorded. */
 export const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
 
-/** The `--comment '<...>'` value off a recorded `new` call. */
 export const commentOf = (call) => /--comment '([^']*)'/.exec(String(call?.argv[1] ?? ''))?.[1]

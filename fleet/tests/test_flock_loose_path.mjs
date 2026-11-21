@@ -1,12 +1,4 @@
 #!/usr/bin/env node
-// The loose-path sim (#1531): a loose end whose path the run cannot read is reported as not checked,
-// never counted as resolved. The base holds a.txt (`x y z`) and b.txt (`b`); task 1 writes `x WIPE z`
-// into a.txt and task 2 writes an empty b.txt, which the weave reads as the file gone. Three loose ends
-// are posted, and the run's last `loose-ends` row reads:
-//   - `./a.txt` (no file has that exact path at the base or in the settled snapshot): unchecked;
-//   - `b.txt`, stale `b` (at the base, gone from the settled snapshot): resolved;
-//   - `a.txt`, stale `x WIPE z` (still in the settled a.txt): open.
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import { flockTarget, flockRun, task, writePlan } from './_flock_helpers.mjs'
 
 const t = flockTarget({ 'a.txt': 'x y z\n', 'b.txt': 'b\n' })

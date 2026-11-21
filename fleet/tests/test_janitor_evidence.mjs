@@ -1,18 +1,4 @@
 #!/usr/bin/env node
-/**
- * fleet/tests/test_janitor_evidence.mjs — the janitor reads a run's record,
- * and writes its end (the death and the close-out), in the operator's evidence
- * repository (#1395), never the target's; and it deletes a target's
- * integration branch whose pull request closed unmerged, and nothing else there.
- *
- * The evidence record is the one source: a done and a parked run are reaped, a
- * running one left, an unread one never touched (E1–E3); a run that ended with
- * its live branch left and no tag is sealed (S1–S4).
- *
- * Every call goes through a recording exec stub: the lobby's `ls`, the unit
- * reads over ssh, and `gh api` answered by path. No socket is opened; the
- * config files live in a temp dir.
- */
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -45,11 +31,6 @@ const livePage = (updatedAt = '2026-09-30T11:55:00Z') => ({ state: 'running', up
 const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' })
 const notFound = () => ({ code: 1, stdout: '', stderr: 'gh: Not Found (HTTP 404)' })
 
-/**
- * A recording exec. `gh` answers are keyed `<METHOD> <path>` (GET for a plain
- * `gh api <path>`); anything unkeyed is a 404. `vms` is the lobby listing,
- * `unit` the ActiveState the VM reports for the run's unit.
- */
 function stub ({ vms = [], unit = 'active', gh = {} } = {}) {
   const calls = []
   const exec = async (cmd, args = []) => {
@@ -91,7 +72,6 @@ const ROW = { vm_name: VM, ssh_dest: DEST, comment: `run=${RUN} target=${TARGET}
 const STATUS = (repo) => `repos/${repo}/contents/runs/o-r/5/status.json`
 const JOURNAL = (repo) => `repos/${repo}/contents/runs/o-r/5/janitor-journal.txt`
 
-/** The seal's refs-API answers in `repo`, the tag verified at HEAD_SHA. */
 const sealAnswers = (repo) => ({
   [`GET repos/${repo}/git/ref/heads/live/o-r/run-5`]: ok(JSON.stringify({ object: { sha: HEAD_SHA } })),
   [`POST repos/${repo}/git/refs`]: ok(JSON.stringify({ ref: 'refs/tags/o-r/run-5' })),
@@ -106,7 +86,6 @@ const test = async (name, fn) => {
   process.stdout.write(`ok - ${name}\n`)
 }
 
-// M1 — the tag read, then the live-branch read, both in the evidence repo.
 await test('M1: the status reads go to the evidence repository, tag then live branch', async () => {
   const { exec, calls } = stub({
     vms: [ROW],
@@ -124,7 +103,6 @@ await test('M1: the status reads go to the evidence repository, tag then live br
   assert.equal(result.deaths.length, 0)
 })
 
-// M2 — the death: both PUTs on the live branch, then the tag, then the delete.
 await test('M2: a dead unit under a running page writes the death and seals the run', async () => {
   const { exec, calls } = stub({
     vms: [ROW],
@@ -157,7 +135,6 @@ await test('M2: a dead unit under a running page writes the death and seals the 
   assert.deepEqual(ghPaths(calls).filter((p) => p.startsWith('repos/o/r/contents/')), [])
 })
 
-// M3 — the orphan listing names the evidence repository's live prefix.
 await test('M3: the orphan close-out lists the evidence repository\'s live branches', async () => {
   const { exec, calls } = stub({ vms: [ROW], unit: 'active' })
   await janitor({ argv: ['--json'], exec, now, evidence: 'ops/evidence', configPath: NO_CONFIG })
@@ -165,7 +142,6 @@ await test('M3: the orphan close-out lists the evidence repository\'s live branc
   assert.ok(!ghPaths(calls).some((p) => p.startsWith('repos/o/r/git/matching-refs/heads/ultra/evidence')))
 })
 
-// M3, driven: an orphan found there is closed out in the evidence repository.
 await test('M3: an orphan found on the live prefix is closed out there', async () => {
   const other = { vm_name: 'fleet-r9-1234567890-abcd', ssh_dest: 'x', comment: `run=9 target=${TARGET}` }
   const { exec, calls } = stub({
@@ -185,8 +161,6 @@ await test('M3: an orphan found on the live prefix is closed out there', async (
   assert.ok(ghCalls(calls).some((c) => methodOf(c) === 'DELETE' && c.args.includes('repos/ops/evidence/git/refs/heads/live/o-r/run-5')))
 })
 
-// M4 — the orphan's end: failed written to the live branch, tag cut, branch
-// deleted, and no git at all (folded from close-out.mjs's own leg).
 await test('M4: an orphan is written failed, tagged, its live branch deleted, with no git', async () => {
   const { exec, calls } = stub({
     vms: [{ vm_name: 'fleet-r9-1234567890-abcd', ssh_dest: 'x', comment: `run=9 target=${TARGET}` }],
@@ -215,8 +189,6 @@ await test('M4: an orphan is written failed, tagged, its live branch deleted, wi
   assert.ok(!calls.some((c) => c.cmd === 'git'), 'no git at all')
 })
 
-// M4, raced: a VM that came up for the orphan since the pass listed the fleet
-// is not an orphan — nothing is written.
 await test('M4: an orphan the fleet carries when listed again is left alone', async () => {
   let listings = 0
   const late = { vm_name: 'fleet-r5-1234567891-abcd', ssh_dest: DEST, comment: `run=${RUN} target=${TARGET}` }
@@ -242,7 +214,6 @@ await test('M4: an orphan the fleet carries when listed again is left alone', as
   assert.ok(!ghCalls(base.calls).some((c) => methodOf(c) === 'PUT'), 'no PUT')
 })
 
-// The seal keeps the branch when the tag cannot be verified.
 await test('sealRun: a tag that does not name the head keeps the live branch', async () => {
   const answers = sealAnswers('ops/evidence')
   answers['POST repos/ops/evidence/git/refs'] = { code: 1, stdout: '', stderr: 'gh: Reference already exists (HTTP 422)' }
@@ -264,9 +235,6 @@ await test('sealRun: a tag that does not name the head keeps the live branch', a
   assert.ok(!ghCalls(calls).some((c) => methodOf(c) === 'DELETE'))
 })
 
-// R1 — the integration-branch sweep (folded from test_retire_integration_only):
-// a closed, unmerged pull request's branch is the ONE thing deleted on the
-// target; no tag, no PATCH, nothing naming a plan or evidence branch.
 const PULLS = 'GET repos/o/r/pulls?state=all&per_page=100&head=o:ultra/integration-run-3'
 const sweepAnswers = (pulls) => ({
   'GET repos/o/r/git/matching-refs/heads/ultra/integration-run-': ok(JSON.stringify([
@@ -313,7 +281,6 @@ await test('R2: --target sweeps a target no VM names, and refuses one that is no
   await assert.rejects(janitor({ argv: ['--target', 'not a repo'], exec, now, configPath: NO_CONFIG }), /--target must be/)
 })
 
-// M5 — handed no evidence, the janitor reads the setting from its config file.
 await test('M5: the config file\'s evidence setting steers the status reads', async () => {
   const configPath = configAt('other.json', { evidence: 'ops/other' })
   const { exec, calls } = stub({ vms: [ROW], unit: 'active' })
@@ -323,7 +290,6 @@ await test('M5: the config file\'s evidence setting steers the status reads', as
   assert.equal(result.evidence, 'ops/other')
 })
 
-// M6 — no setting at all: no evidence read, and `evidence` null on the result.
 await test('M6: no setting reads nothing from any evidence repository', async () => {
   for (const configPath of [NO_CONFIG, configAt('empty.json', { cpu: '8' })]) {
     const { exec, calls } = stub({ vms: [ROW], unit: 'failed' })
@@ -334,8 +300,6 @@ await test('M6: no setting reads nothing from any evidence repository', async ()
     assert.equal(result.runs.length, 1)
   }
 })
-
-// ── The evidence record decides ────────────────────────────────────────────
 
 const EV = 'ops/evidence'
 const vmOf = (run) => `fleet-r${run}-1234567890-abcd`
@@ -348,8 +312,6 @@ const rmCommands = (calls) => calls
   .filter((c) => c.cmd === 'ssh' && c.args[0] === 'exe.dev' && /^rm /.test(c.args[1]))
   .map((c) => c.args[1])
 
-// E1 — one pass over a done, a parked, a running and an unreadable run. Only
-// `gh` and the lobby are asked: no other command leaves the laptop.
 await test('E1: a done and a parked run are reaped, a running one left, an unread one never touched', async () => {
   const { exec, calls } = stub({
     vms: [rowOf(1), rowOf(2), rowOf(3), rowOf(4)],
@@ -358,7 +320,6 @@ await test('E1: a done and a parked run are reaped, a running one left, an unrea
       ...atTag(1, { state: 'done', updatedAt: OLD }),
       ...atTag(2, { state: 'parked', updatedAt: OLD }),
       ...atLive(3, { state: 'running', updatedAt: '2026-09-30T11:59:00Z' })
-      // run 4: no page at its tag or its live branch.
     }
   })
   const result = await janitor({ argv: ['--json'], exec, now, evidence: EV, configPath: NO_CONFIG })
@@ -370,8 +331,6 @@ await test('E1: a done and a parked run are reaped, a running one left, an unrea
   assert.deepEqual(result.runs.map((r) => [r.run, r.live, r.state]), [[1, false, 'done'], [2, false, 'parked'], [3, true, 'running'], [4, null, null]])
 })
 
-// E2 — a read that fails is not a finished run: gh answering an error for
-// every status read removes nothing.
 await test('E2: a status read that fails removes nothing', async () => {
   const failed = { code: 1, stdout: '', stderr: 'gh: Server Error (HTTP 502)' }
   const { exec, calls } = stub({
@@ -387,15 +346,12 @@ await test('E2: a status read that fails removes nothing', async () => {
   assert.deepEqual(result.unread, [{ vm: vmOf(1), run: 1, target: TARGET }])
 })
 
-// E3 — a finished run inside its hour is pending, not removed.
 await test('E3: a done run inside --age is pending', async () => {
   const { exec, calls } = stub({ vms: [rowOf(1)], gh: atTag(1, { state: 'done', updatedAt: '2026-09-30T11:30:00Z' }) })
   const result = await janitor({ argv: ['--json'], exec, now, evidence: EV, configPath: NO_CONFIG })
   assert.deepEqual(rmCommands(calls), [])
   assert.deepEqual(result.pending, [{ vm: vmOf(1), run: 1, state: 'done', reapableAt: '2026-09-30T12:30:00.000Z' }])
 })
-
-// ── A run that ended with its live branch left and no tag is sealed ────────
 
 const liveRefs = (...runs) => ({
   [`GET repos/${EV}/git/matching-refs/heads/live/o-r/run-`]: ok(JSON.stringify(
@@ -410,9 +366,6 @@ const sealOf = (run) => ({
 })
 const writes = (calls) => ghCalls(calls).filter((c) => methodOf(c) !== 'GET').map((c) => `${methodOf(c)} ${c.args.find((a) => a.startsWith('repos/'))}`)
 
-// S1 — no VM carries run 7, its page says done and is over an hour old: the
-// tag is cut at the branch's head, verified, the branch deleted; the page is
-// not rewritten.
 await test('S1: an ended run no VM carries, its live branch left, is sealed and its page not rewritten', async () => {
   const { exec, calls } = stub({
     vms: [rowOf(9)],
@@ -427,8 +380,6 @@ await test('S1: an ended run no VM carries, its live branch left, is sealed and 
   assert.equal(field(post, 'sha'), HEAD_SHA)
 })
 
-// S2 — `--dry-run` names it and writes nothing; a page inside `--age` is the
-// sandbox still sealing, and is not named at all.
 await test('S2: --dry-run names the seal and writes nothing; a page inside --age is left to its sandbox', async () => {
   const dry = stub({ vms: [rowOf(9)], gh: { ...liveRefs(7), ...atLive(7, { state: 'parked', updatedAt: OLD }), ...sealOf(7) } })
   const named = await janitor({ argv: ['--json', '--dry-run'], exec: dry.exec, now, evidence: EV, configPath: NO_CONFIG })
@@ -440,7 +391,6 @@ await test('S2: --dry-run names the seal and writes nothing; a page inside --age
   assert.deepEqual(writes(young.calls), [])
 })
 
-// S3 — a seal the evidence repository refuses keeps the branch and says why.
 await test('S3: a refused seal keeps the live branch and reports the reason', async () => {
   const { exec, calls } = stub({
     vms: [rowOf(9)],
@@ -458,8 +408,6 @@ await test('S3: a refused seal keeps the live branch and reports the reason', as
   assert.ok(!writes(calls).some((w) => w.startsWith('DELETE')))
 })
 
-// S4 — `--target` reaches a target no VM names: its ended run is sealed too,
-// and a VM that still carries a run keeps that run's branch.
 await test('S4: --target seals on a target no VM names; a carried run is never sealed', async () => {
   const bare = stub({ vms: [], gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: OLD }), ...sealOf(7) } })
   const result = await janitor({ argv: ['--json', '--target', TARGET], exec: bare.exec, now, evidence: EV, configPath: NO_CONFIG })

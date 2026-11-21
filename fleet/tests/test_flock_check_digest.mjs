@@ -1,8 +1,4 @@
 #!/usr/bin/env node
-// checks-digest.json (#1491, factory/flock/check_digest.mjs): after a run the engine writes one row per
-// file of its checks/ folder, in file-name order. A claims-v1 run whose probe plants two results with
-// the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, one that is not JSON, and one whose name has no `@` (its copy is null).
-// Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 import fs from 'node:fs'
 import path from 'node:path'
 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'

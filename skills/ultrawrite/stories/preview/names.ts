@@ -1,18 +1,8 @@
-// The accessible role and name of a DOM element, the way the stories and the
-// browser checker name it: role from `role`, else the element's implicit one;
-// name from aria-label, then aria-labelledby, then a label[for] or wrapping
-// label, then the text, but only for a role named from its content (a list,
-// list item, row, table, form or landmark is not), then the title. Comment
-// mode and story play find elements with it.
-
 const INPUT_ROLES: Record<string, string> = {
   checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton',
   button: 'button', submit: 'button', reset: 'button', image: 'button', search: 'searchbox',
 };
 
-// The roles Chrome names from their content, which is what the checker counts
-// (factory/stack/tinyapp/browser.ts asks Chrome's accessibility tree). Read off
-// Chrome on 2026-11-20 (#1532): listitem, row and every landmark came back unnamed.
 const FROM_CONTENT = new Set([
   'button', 'cell', 'checkbox', 'columnheader', 'gridcell', 'heading', 'link', 'menuitem',
   'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'rowheader', 'switch', 'tab', 'term',
@@ -62,7 +52,6 @@ function textOf(el: Element): string {
   return clean(el.textContent);
 }
 
-/** A reading part's line (it carries data-part="text"), whitespace collapsed and trimmed; '' for any other element. */
 export function textLineOf(el: Element): string {
   return el.getAttribute('data-part') === 'text' ? clean(el.textContent ?? '') : '';
 }
@@ -92,7 +81,6 @@ export function nameOf(el: Element): string {
   return (FROM_CONTENT.has(roleOf(el)) ? textOf(el) : '') || clean(el.getAttribute('title'));
 }
 
-/** The nearest element, this one or an ancestor, that has both a role and a name. */
 export function named(el: Element | null): Element | null {
   for (let e = el; e; e = e.parentElement) {
     if (roleOf(e) && nameOf(e)) return e;
@@ -102,7 +90,6 @@ export function named(el: Element | null): Element | null {
 
 export const targetOf = (role: string, name: string): string => `${role} "${name}"`;
 
-/** The first element in the document with this role and name, or null. */
 export function find(role: string, name: string, root: ParentNode = document): Element | null {
   for (const el of root.querySelectorAll('*')) {
     if (roleOf(el) === role && nameOf(el) === name) return el;

@@ -1,4 +1,3 @@
-"""The stories-v1 parser, reached through plan_parse.py as the sandbox runs it."""
 import json
 import subprocess
 import sys
@@ -63,7 +62,6 @@ def test_claims_plans_still_parse_as_before():
 
 
 def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):
-    # fleet/compiler.mjs fetches plan_parse.py alone into a temp dir; it must not need stories_parse there.
     import shutil
     shutil.copy(PARSER, tmp_path / "plan_parse.py")
     res = subprocess.run([sys.executable, str(tmp_path / "plan_parse.py"),

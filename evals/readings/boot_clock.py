@@ -22,16 +22,15 @@ so every seconds figure carries whatever skew lies between the two."""
 import argparse, datetime, json, os, re, shutil, statistics, subprocess, sys, tempfile
 
 LOGS = ("fleet-setup.log", "fleet-boot.log")
-# Never wait on a person: no credential prompt, no ssh host-key question, and a bound on every call.
 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0",
            "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15"}
-REACH_S = 30     # the one remote check
-GIT_S = 120      # any other git call, a blob fetch included
+REACH_S = 30
+GIT_S = 120
 STAMP = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)\s+(.*)$")
 
 
 class Unreadable(Exception):
-    """A run the tool cannot read; the reading skips it and says why."""
+    pass
 
 
 def git(repo, *a, check=True):
@@ -45,10 +44,9 @@ def git(repo, *a, check=True):
 
 
 def when(s):
-    """An ISO time, second- or sub-second-resolution, `Z` or offset (naive reads as UTC)."""
     s = s.strip().replace("Z", "+00:00")
     m = re.match(r"^(.*T\d\d:\d\d:\d\d)(\.\d+)?(.*)$", s)
-    if m and m.group(2):                  # fromisoformat before 3.11 takes 3 or 6 digits only
+    if m and m.group(2):
         s = m.group(1) + (m.group(2) + "000000")[:7] + m.group(3)
     t = datetime.datetime.fromisoformat(s)
     return t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
@@ -100,19 +98,17 @@ def main():
     try:
         try:
             git(repo, "init", "-q")
-            # The fetch URL as a promisor remote, so blobs the blobless fetch skipped load on demand.
             git(repo, "remote", "add", "origin", a.remote)
             git(repo, "config", "remote.origin.promisor", "true")
             git(repo, "config", "remote.origin.partialclonefilter", "blob:none")
         except Unreadable as e:
             sys.exit(str(e))
-        # Reach the remote once, before any run: an unreachable remote is not n=0.
         try:
             r = subprocess.run(["git", "-C", repo, "ls-remote", "-q", "--exit-code", "origin", "HEAD"],
                                capture_output=True, env=GIT_ENV, timeout=REACH_S)
         except subprocess.TimeoutExpired:
             sys.exit(f"cannot reach the record at {a.remote}: no answer within {REACH_S} s")
-        if r.returncode not in (0, 2):    # 2: reached, but no HEAD ref
+        if r.returncode not in (0, 2):
             err = " ".join(r.stderr.decode("utf-8", "replace").split())
             sys.exit(f"cannot reach the record at {a.remote}: {err}")
         read = []

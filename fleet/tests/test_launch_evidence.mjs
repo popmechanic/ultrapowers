@@ -1,35 +1,3 @@
-/**
- * fleet/tests/test_launch_evidence.mjs — the exam for "The launcher pushes the
- * plan to the operator's evidence repository" (#1395).
- *
- * The run's record lives in the operator's evidence repository — the setting
- * `evidence` in `~/.ultrapowers/fleet.json`, or `--evidence-repo` for one
- * launch — and the launch writes nothing to the product repository. Legs:
- *
- *   (a) [M1] a launch on `o/r` with the setting `ops/evidence`, whose plan has
- *       a sibling gate record, pushes exactly one commit, to
- *       `refs/heads/live/o-r/run-1` of `ops/evidence`: parentless, its tree
- *       exactly `runs/o-r/1/plan.md` and `runs/o-r/1/gate-verdicts.json`, its
- *       message naming `o/r` and the base sha; the target's refs are the same
- *       after the launch as before it;
- *   (b) [M2] with the evidence repository holding `refs/tags/o-r/run-4` and
- *       `refs/heads/live/o-r/run-6`, a launch without `--run` takes run 7;
- *   (c) [M3] neither the setting nor `--evidence-repo`: refused naming
- *       `evidence`, `~/.ultrapowers/fleet.json` and `node fleet/doctor.mjs`,
- *       nothing pushed and no `new`;
- *   (e) [M5] `integrations list` naming `gh-o-r` and not `gh-ops-evidence`:
- *       refused naming `gh-ops-evidence`, nothing pushed and no `new`;
- *   (f) [M6] `--evidence-repo ops/other` over the setting `ops/evidence`: the
- *       plan commit goes to `ops/other`, the setup script the `new` verb
- *       carries names `ops/other`, and the `new` verb's comment carries no
- *       `evidence=` token either way.
- *
- * The rig: two local bares stand in for GitHub — the target's origin and the
- * evidence repository (`makeEvidenceRepo`, `main` seeded) — every lobby verb
- * and `gh api` is answered by the seam, and the compiler is stubbed. No socket
- * is opened.
- */
-
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -52,8 +20,6 @@ const NOW = new Date('2026-09-30T12:00:00.000Z')
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 const RECORD = '{"tasks": {}, "tally": {"dispatched": 0}}\n'
 
-// ── The seam's rules ────────────────────────────────────────────────────────
-
 const ALL_INTEGRATIONS = [
   { name: GH, attachments: [] }, { name: 'gh-ops-evidence', attachments: [] },
   { name: 'gh-ops-other', attachments: [] }, { name: 'claude-max', attachments: [] }
@@ -61,8 +27,6 @@ const ALL_INTEGRATIONS = [
 
 const readRules = ({ ws, integrations = ALL_INTEGRATIONS }) =>
   launchRules({ engine: ENGINE, repo: ws.repo, evidence: [ws.evidence, ws.other], integrations })
-
-// ── The workspace: a target, two evidence repositories, a plan and its record ─
 
 function workspace () {
   const ws = launchWorkspace({ prefix: 'fleet-launch-evidence-', originUrl: ORIGIN_URL, evidence: EVIDENCE })
@@ -112,9 +76,6 @@ const assertRefusedClean = (d, leg, needles) => {
   assert.deepEqual(d.exec.mutating(), [], `${leg} no mutating lobby verb at all`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] one parentless commit on the evidence live branch, nothing on the target
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   const targetBefore = ws.targetRefs()
@@ -154,14 +115,10 @@ const assertRefusedClean = (d, leg, needles) => {
   ws.cleanup()
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] run 7 over an evidence tag at 4 and a live branch at 6
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   ws.evidence.seed(`refs/tags/${SLUG}/run-4`, { [`runs/${SLUG}/4/plan.md`]: 'four\n' })
   ws.evidence.seed(`refs/heads/live/${SLUG}/run-6`, { [`runs/${SLUG}/6/plan.md`]: 'six\n' })
-  // Another target's higher run is not this target's.
   ws.evidence.seed('refs/heads/live/o-other/run-40', { 'runs/o-other/40/plan.md': 'other\n' })
   const d = await drive(ws)
   assert.equal(d.error, null, `(b) [M2] the launch resolves: ${d.error?.message ?? ''}`)
@@ -170,9 +127,6 @@ const assertRefusedClean = (d, leg, needles) => {
   ws.cleanup()
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] neither the setting nor the flag: refused, nothing pushed, no `new`
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   const d = await drive(ws, { config: { cpu: '6', memory: '8GB' } })
@@ -180,9 +134,6 @@ const assertRefusedClean = (d, leg, needles) => {
   ws.cleanup()
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (e) [M5] no integration for the evidence repository
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   const d = await drive(ws, {
@@ -192,9 +143,6 @@ const assertRefusedClean = (d, leg, needles) => {
   ws.cleanup()
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (f) [M6] --evidence-repo takes the push and the setup script; no evidence= anywhere
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   const evidenceBefore = ws.evidence.refs()
@@ -230,7 +178,6 @@ const assertRefusedClean = (d, leg, needles) => {
     `(f) [M6] the plain launch's setup script names the setting ${EVIDENCE}`)
   plain.cleanup()
 
-  // A malformed override is refused before anything is executed.
   const bad = workspace()
   const b = await drive(bad, { extra: ['--evidence-repo', 'not a repo'] })
   assert.ok(b.error instanceof Refusal, `(f) [M6] a malformed --evidence-repo is a Refusal: ${b.error?.message}`)

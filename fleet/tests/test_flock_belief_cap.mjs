@@ -1,10 +1,4 @@
 #!/usr/bin/env node
-// A belief's stale text is held to a length where it is recorded (#1529): a one-task scripted run
-// posts two beliefs through the `@beliefs` seam, one with a 5,000-character `stale` and one with a
-// 20-character `stale`. Checks the `belief` rows in events.jsonl:
-//   - the long one's `stale` is at most 300 characters and is the start of what was posted;
-//   - the short one's `stale` is byte-equal to what was posted.
-// Prints `ALL TESTS PASSED` and exits 0, or `FAIL belief cap: ...` and exits 1.
 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
 
 const LONG = Array.from({ length: 5000 }, (_, i) => 'abcdefghij'[i % 10]).join('')

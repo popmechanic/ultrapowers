@@ -1,5 +1,3 @@
-// One Jev question from the skill's own questions.json, asked over stdin's state: `ask.ts <set> <question>`.
-// Prints {"noul": <number|null>}; a failed call still prints null and exits 0. Bad input exits 2.
 import {join} from 'node:path';
 
 import {defaultAsk, loadQuestions, noul} from './jev';

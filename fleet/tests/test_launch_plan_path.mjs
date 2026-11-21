@@ -1,53 +1,3 @@
-/**
- * fleet/tests/test_launch_plan_path.mjs — the exam for "A relative plan path is
- * read from --repo, an absolute one as given, and the refusal names the path
- * that was tried" (#1188).
- *
- * On 2026-09-21 the operator skill's own written procedure — clone the target,
- * copy the plan into the clone, name that relative path with `--repo <clone>`
- * — died on `launch: cannot read plan docs/superpowers/plans/2026-09-21-...:
- * ENOENT`, because the plan is read against the process's working directory
- * while the two `python3` children that later need it run with `cwd: repoDir`.
- * The fix resolves the plan path once, against `repoDir`, and uses that
- * resolved path everywhere downstream: `path.resolve(repoDir, planPath)`
- * leaves an absolute path as it is, and with no `--repo` it resolves against
- * the working directory because that is what `repoDir` then is.
- *
- * A hermetic sim on the launch sims' shared rig (`launchRules`,
- * `launchWorkspace`): a stubbed lobby (`makeExec`), a real temporary
- * target repository with a bare origin (`makeTargetRepo`), and the compiler's
- * fetch and every `python3` run stubbed. It imports only `./_lobby_helpers.mjs` and never
- * chdirs: the sim's own working directory and R already differ, since R is a
- * fresh temp directory.
- *
- * Legs, each naming the Machine clause it comes from:
- *
- *   (a) [M1] a relative plan path `plans/a-plan.md`, with `--repo R` naming a
- *       target clone that is not the process's cwd and the plan on disk at
- *       `R/plans/a-plan.md`: the launch resolves with a string `runId`, and
- *       every recorded `python3` call's argv that carries a plan path carries
- *       the absolute `R/plans/a-plan.md` — never the bare relative string.
- *   (b) [M2] `plans/nope.md` with `--repo R`, where no such file exists on
- *       disk anywhere: a `Refusal`, exit 2, naming the absolute `R/plans/
- *       nope.md`, before any command is executed (zero recorded exec calls);
- *       the same plan path with no `--repo` at all names the absolute path
- *       under the process's own working directory instead.
- *   (c) [M3] an absolute plan path under a temp directory outside R, with
- *       `--repo R`: read as it is, and the launch resolves with a string
- *       `runId`.
- *   (d) a plan with a sibling `<stem>.gate-verdicts.json`: the plan commit on
- *       the evidence repository's `live/<slug>/run-<N>` carries it as
- *       `runs/<slug>/<N>/gate-verdicts.json`, byte for byte — the laptop's
- *       authoring census reads it off the run's tag
- *       (run-268 dropped it; runs 269–271 went without, 2026-09-29).
- *   (e) a flag outside the launcher's allow-list (`--tier x`, a knob the old
- *       engine read) is a `Refusal` whose message is exactly `launch: unknown
- *       flag --tier`, before any command is executed.
- *   (f) the assignment comment the `new` verb carries names `run=`, `plan=`,
- *       `target=`, `base=` and `engine=`, and `hold=1` only under `--hold`;
- *       it is the comment the launch result carries.
- */
-
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
@@ -67,11 +17,8 @@ const BASE_40HEX = 'e'.repeat(40)
 const NOW = new Date('2026-09-21T12:00:00.000Z')
 const EVIDENCE = 'ops/evidence'
 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
-// ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
 
 const readRules = ({ repo, evidence }) => launchRules({ engine: ENGINE, repo, evidence, gh: GH })
-
-// ── The workspace: one fresh target clone, R, that is never the process's cwd ─
 
 const workspace = () =>
   launchWorkspace({ prefix: 'fleet-launch-plan-path-', originUrl: ORIGIN_URL, evidence: EVIDENCE, plan: null })
@@ -87,16 +34,11 @@ const launchIn = (ws, { exec, planPath, extra = [] }) => launch({
 
 const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
 
-// ══════════════════════════════════════════════════════════════════════════
-// (a) [M1] a relative plan path resolves against --repo, not the cwd
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
-  // R (ws.repo.dir) is a fresh temp clone — never the process's own cwd.
   assert.notEqual(path.resolve(ws.repo.dir), path.resolve(process.cwd()),
     '(a) [M1] sanity: R is not the process\'s working directory')
 
-  // The plan lives inside R, at the relative path the launch line names.
   fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
   fs.writeFileSync(path.join(ws.repo.dir, 'plans', 'a-plan.md'), PLAN)
 
@@ -125,13 +67,7 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   ws.cleanup()
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (b) [M2] the refusal names the absolute path it actually tried, before
-//     anything is executed — against --repo when given, else the cwd
-// ══════════════════════════════════════════════════════════════════════════
 {
-  // No rig needed: the plan read fails before the first command runs, so a
-  // bare recording exec (answers nothing meaningful) is enough.
   const recordingExec = () => {
     const calls = []
     const exec = async (cmd, argv = [], options) => {
@@ -148,7 +84,6 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
     refreshCredential: () => ({ ok: true })
   }
 
-  // With --repo R: the message names R/plans/nope.md.
   const R = tempDir('fleet-launch-plan-path-nope-')
   const withRepoExec = recordingExec()
   const withRepoError = await thrown(() => launch({
@@ -169,7 +104,6 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
     `Got ${withRepoExec.calls.length} call(s): ${JSON.stringify(withRepoExec.calls)}`)
   cleanup(R)
 
-  // With no --repo at all: the message names <cwd>/plans/nope.md instead.
   const noRepoExec = recordingExec()
   const noRepoError = await thrown(() => launch({
     argv: ['plans/nope.md', '--target', TARGET, '--base', BASE_40HEX],
@@ -189,15 +123,11 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
     `Got ${noRepoExec.calls.length} call(s): ${JSON.stringify(noRepoExec.calls)}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (c) [M3] an absolute plan path outside R is read as it is
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   const planDir = tempDir('fleet-launch-plan-path-abs-')
   const planPath = path.join(planDir, 'a-plan.md')
   fs.writeFileSync(planPath, PLAN)
-  // Sanity: the absolute plan path sits outside R.
   assert.ok(!planPath.startsWith(path.resolve(ws.repo.dir)),
     '(c) [M3] sanity: the absolute plan path is outside R')
 
@@ -211,9 +141,6 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   cleanup(planDir)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (d) the gate record beside the plan rides the plan commit
-// ══════════════════════════════════════════════════════════════════════════
 {
   const ws = workspace()
   fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
@@ -234,7 +161,6 @@ const pythonCalls = (exec) => exec.calls.filter((c) => c.cmd === 'python3')
   ws.cleanup()
 }
 
-// A workspace with the plan at R/plans/a-plan.md, launched with `extra` flags.
 const launchWith = async (extra) => {
   const ws = workspace()
   fs.mkdirSync(path.join(ws.repo.dir, 'plans'), { recursive: true })
@@ -246,9 +172,6 @@ const launchWith = async (extra) => {
   return { exec, result, error }
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (e) a flag outside the allow-list is refused before anything runs
-// ══════════════════════════════════════════════════════════════════════════
 {
   const { exec, error } = await launchWith(['--tier', 'x'])
   assert.ok(error instanceof Refusal, `(e) \`--tier x\` is a Refusal. Got: ${error?.name}: ${error?.message}`)
@@ -259,9 +182,6 @@ const launchWith = async (extra) => {
     `(e) nothing was executed. Got: ${JSON.stringify(exec.calls.map((c) => c.line))}`)
 }
 
-// ══════════════════════════════════════════════════════════════════════════
-// (f) the assignment comment's keys, and hold=1 only under --hold
-// ══════════════════════════════════════════════════════════════════════════
 {
   const commentOn = (exec) =>
     /--comment '([^']*)'/.exec(exec.lobby().find((line) => line.startsWith('new ')) ?? '')?.[1]

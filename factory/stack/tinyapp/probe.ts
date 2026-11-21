@@ -1,14 +1,8 @@
-// The state-probe core: one probe read out of a stories-v1 plan, the closed
-// checks decided on TinyBase [tables, values] content, and row ids matched by
-// creation order. The one definition of probe semantics: compile.ts derives
-// probes with checksFor, and the checker decides them with holds.
 export type Row = Record<string, unknown>;
 export type Content = [Record<string, Record<string, Row>>, Record<string, unknown>];
 export type Check = Record<string, unknown>;
 export type Locator = {role: string; name: string};
 export type UiStep = {click: Locator} | {type: Locator & {text: string}} | {key: Locator & {key: string}} | {select: Locator & {option: string}};
-// `as` is who is signed in (an email, or null for nobody) from this call on;
-// absent, the page's own sign-in stands.
 export type ToolCall = {tool: string; args: Record<string, unknown>; as?: string | null};
 export type See = {role: string; name: string; count?: number};
 export type Probe = {
@@ -67,9 +61,6 @@ export function hollow(p: Probe, before: Content): boolean {
 
 const keysOf = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
 
-// The closed checks that say exactly how `after` differs from `before`: only
-// rows and cells that changed, so a cell another piece adds later never
-// breaks them. No difference at all is [{unchanged: true}].
 export function checksFor(before: Content, after: Content): Check[] {
   const [bt, bv] = before;
   const [at, av] = after;

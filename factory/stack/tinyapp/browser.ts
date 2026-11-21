@@ -1,23 +1,3 @@
-/**
- * The browser move's engine: the machine's own Chromium, driven over the
- * DevTools protocol with nothing between us and it.
- *
- * There is no client library here and no dependency to add — a CDP connection
- * is a WebSocket carrying `{id, method, params, sessionId?}` and replies
- * `{id, result|error}`, and Bun ships both the spawn and the socket. The
- * headless shell is asked for `--remote-debugging-port=0` and answers with the
- * port it chose on the `DevTools listening on ws://…` line of its stderr: Bun
- * cannot hand a child extra pipes, so the port form is the one available, and a
- * port of `0` keeps two exams running side by side from colliding.
- *
- * Nothing the page asks for leaves the machine. `openUrl` serves the page from
- * a loopback origin, and a blanket block would refuse the page's own document,
- * so every request is paused through the `Fetch` domain and judged one at a
- * time: continued when it is to that origin, failed in the browser otherwise.
- * The page bundles its own font, so it draws its real face from that origin
- * and dials nothing else.
- */
-
 import {existsSync, mkdtempSync, rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -31,13 +11,10 @@ export type Action =
   | {key: [Locator, string]}
   | {select: [Locator, string]};
 
-/** Where the fleet image keeps its headless shell. */
 const DEFAULT_BINARY = '/headless-shell/headless-shell';
 
 const MAC_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
-/** The browser to run: an explicit path, else TINYAPP_BROWSER, else the fleet
- *  image's headless shell, else a laptop's Chrome. Nothing is installed. */
 const resolveBinary = (
   explicit?: string,
   env: Record<string, string | undefined> = process.env,
@@ -47,51 +24,25 @@ const resolveBinary = (
   return existsSync(DEFAULT_BINARY) ? DEFAULT_BINARY : MAC_CHROME;
 };
 
-/** The line the shell prints once its debugging endpoint is listening. */
 const DEVTOOLS_LINE = /DevTools listening on (ws:\S+)/;
 
-/** How long that line may take. Measured at ~100 ms; this is the give-up point. */
 const DEVTOOLS_TIMEOUT_MS = 15_000;
 
-/** How long one protocol call may go unanswered before it is called a failure. */
 const CALL_TIMEOUT_MS = 30_000;
 
-/** How long `close()` waits for a polite `Browser.close` before it kills. */
 const EXIT_GRACE_MS = 2_000;
 
-/** How long a picker's option may take to appear once the picker is pressed. */
 const SELECT_OPEN_MS = 2_000;
 
-/** One open page: act on it, read from it, close it. */
 export interface Page {
-  /** Performs one action, rejecting when its locator matches nothing. */
   act(action: Action): Promise<void>;
-  /** The JSON value of `expression` evaluated in the page. */
   evaluate(expression: string): Promise<unknown>;
-  /** How many elements match this accessible role and name. */
   count(locator: {role: string; name: string}): Promise<number>;
-  /** Detaches from the target and closes it. */
   close(): Promise<void>;
 }
 
-/** One running browser process. */
 export interface Browser {
-  /** The arguments it was spawned with, `argv[0]` the binary. */
   readonly argv: string[];
-  /**
-   * Opens `url` in a page whose clock is pinned to `clock`, which runs `prelude`
-   * on every new document of it, and every request of which is refused in the
-   * browser unless it is to `origin` or to an origin `allow` lists.
-   *
-   * `allow` is how a page reaches a *second* loopback origin — the runtime a
-   * convergence exam syncs through — without the block being lifted: each entry
-   * is judged by the same rule `origin` is, so an origin not named is refused
-   * exactly as the whole world outside is.
-   *
-   * It resolves as soon as the navigation is under way rather than on a load event: the page it is
-   * meant for redirects on its first document, and the caller is polling the
-   * page for its own signal of readiness anyway.
-   */
   openUrl(opts: {
     url: string;
     origin: string;
@@ -99,11 +50,9 @@ export interface Browser {
     prelude?: string;
     allow?: string[];
   }): Promise<Page>;
-  /** Ends the process and removes its user data directory. */
   close(): Promise<void>;
 }
 
-/** A reply or an event off the wire. */
 type Incoming = {
   id?: number;
   result?: Record<string, unknown>;
@@ -113,18 +62,12 @@ type Incoming = {
   sessionId?: string;
 };
 
-/** The pieces of a connection the rest of this module speaks through. */
 type Connection = {
   send(
     method: string,
     params?: Record<string, unknown>,
     sessionId?: string,
   ): Promise<Record<string, unknown>>;
-  /**
-   * Calls `handler` for every `method` event on `sessionId`, until the
-   * connection closes: a request interceptor has to answer every paused
-   * request, not the first one.
-   */
   on(
     method: string,
     sessionId: string,
@@ -133,20 +76,12 @@ type Connection = {
   close(): void;
 };
 
-/** A promise that settles after `ms`, its timer unref'd so it holds nothing open. */
 const after = (ms: number): Promise<void> =>
   new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
     (timer as unknown as {unref?: () => void}).unref?.();
   });
 
-/**
- * The script installed on every new document of the page.
- *
- * It replaces `Date` before a line of the app runs, so `Date.now()` and a bare
- * `new Date()` are the exam's instant; `new Date(x)`, `Date.parse` and
- * `Date.UTC` keep working, inherited from the real constructor.
- */
 const clockPin = (clock: string): string => {
   const instant = Date.parse(clock);
   if (Number.isNaN(instant)) {
@@ -158,7 +93,6 @@ const clockPin = (clock: string): string => {
   );
 };
 
-/** Opens a CDP connection to `url` and resolves once it is talking. */
 const connect = async (url: string): Promise<Connection> => {
   const socket = new WebSocket(url);
   const pending = new Map<
@@ -238,12 +172,6 @@ const connect = async (url: string): Promise<Connection> => {
   };
 };
 
-/**
- * Reads the shell's stderr until the DevTools line, and keeps draining it after.
- *
- * The child blocks on a full stderr pipe, so the tail is read and dropped for
- * as long as the process lives.
- */
 const devtoolsUrl = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -258,7 +186,6 @@ const devtoolsUrl = async (stream: ReadableStream<Uint8Array>): Promise<string> 
       seen += decoder.decode(value, {stream: true});
       const found = DEVTOOLS_LINE.exec(seen);
       if (found !== null) {
-        // Nothing awaits this: it only keeps the pipe from filling.
         void (async () => {
           try {
             for (;;) {
@@ -284,18 +211,11 @@ const devtoolsUrl = async (stream: ReadableStream<Uint8Array>): Promise<string> 
   ]);
 };
 
-/**
- * How the DOM domain is told which element is meant: `DOM.getBoxModel`,
- * `DOM.focus` and `DOM.resolveNode` each take a `backendNodeId`, so the
- * resolver below hands back a parameter object and every call after it spreads it.
- */
 type NodeRef = {backendNodeId: number};
 
-/** How a locator reads in `act`'s rejection. */
 const spellLocator = (locator: Locator): string =>
   `role=${locator.role} name=${JSON.stringify(locator.name)}`;
 
-/** The document's root nodeId — the scope every query below starts from. */
 const rootOf = async (connection: Connection, sessionId: string): Promise<number> => {
   const document = (await connection.send('DOM.getDocument', {}, sessionId)) as {
     root?: {nodeId?: number};
@@ -303,17 +223,6 @@ const rootOf = async (connection: Connection, sessionId: string): Promise<number
   return document.root?.nodeId ?? 0;
 };
 
-/**
- * The first element `locator` names, or a rejection spelling it.
- *
- * `Accessibility.queryAXTree` answers the nodes whose computed role and
- * computed *accessible name* are both what was asked for, in tree order. The
- * accessible name is the browser's own computation and nothing a selector can
- * reach: a `<label for>` names its input, an `aria-label` names anything at
- * all, and a bare `placeholder` names a text input.
- *
- * `Accessibility.enable` is idempotent and cheap, so it is enabled on every call.
- */
 const nodeFor = async (
   connection: Connection,
   sessionId: string,
@@ -338,15 +247,6 @@ const nodeFor = async (
   return {backendNodeId};
 };
 
-/**
- * The centre of a node's content box, or `null` when it has no area.
- *
- * `content` is the quad x1 y1 x2 y2 x3 y3 x4 y4. An unstyled `<span
- * role="checkbox">` has a content box of zero width and height, and a mouse
- * event dispatched at the centre of that box lands on whatever is painted
- * underneath — `<body>`, not the span. So a degenerate box is reported as one
- * rather than clicked at, and `act` takes the other path for it.
- */
 const centreOf = async (
   connection: Connection,
   sessionId: string,
@@ -367,14 +267,6 @@ const centreOf = async (
   return {x: (content[0]! + content[4]!) / 2, y: (content[1]! + content[5]!) / 2};
 };
 
-/**
- * Calls `click()` on the element itself, in the page.
- *
- * The fallback for an element with no box to aim at: `DOM.resolveNode` turns
- * the id into a `Runtime` handle and `Runtime.callFunctionOn` invokes the
- * element's own method, which dispatches a trusted-enough `click` event through
- * the same listeners a mouse would have reached.
- */
 const clickInPage = async (
   connection: Connection,
   sessionId: string,
@@ -394,7 +286,6 @@ const clickInPage = async (
   );
 };
 
-/** Builds the `Page` facade over one attached target. */
 const pageOn = (
   connection: Connection,
   sessionId: string,
@@ -426,10 +317,7 @@ const pageOn = (
     return answer.result?.value;
   };
 
-  /** A mouse press and release at the node's centre, or `click()` when it has no box. */
   const clickNode = async (node: NodeRef): Promise<void> => {
-    // A box below the fold is off the viewport, and a mouse event aimed at
-    // it lands on nothing — so the element is scrolled into view first.
     await connection
       .send('DOM.scrollIntoViewIfNeeded', {...node}, sessionId)
       .catch(() => undefined);
@@ -448,11 +336,6 @@ const pageOn = (
     }
   };
 
-  /**
-   * The first shown element of role `option` named `name`, waiting up to `ms`
-   * for it. Ignored nodes are passed over: a picker may keep a hidden native
-   * `<select>` whose options carry the same names.
-   */
   const optionFor = async (name: string, ms: number): Promise<NodeRef | undefined> => {
     const end = Date.now() + ms;
     for (;;) {
@@ -474,9 +357,6 @@ const pageOn = (
     evaluate,
 
     count: async (locator) => {
-      // Chrome gives a run of text no role or name, so `text` is counted in the
-      // page: the reading parts inside #app (they carry data-part="text") whose
-      // text (whitespace collapsed, trimmed) equals the name.
       if (locator.role === 'text') {
         return (await evaluate(`(() => {
           const want = ${JSON.stringify(locator.name)};
@@ -506,15 +386,11 @@ const pageOn = (
       }
 
       if ('select' in action) {
-        // A Radix Select opens on a mouse pointerdown and picks on a pointerup;
-        // its listbox is rendered in a portal a frame or more after the press,
-        // so the option is looked for until it shows up.
         const [locator, option] = action.select;
         const combobox = await nodeFor(connection, sessionId, locator);
         await clickNode(combobox);
         let found = await optionFor(option, SELECT_OPEN_MS);
         if (found === undefined) {
-          // The keyboard path, for a picker the mouse did not open.
           await connection.send('DOM.focus', {...combobox}, sessionId).catch(() => undefined);
           for (const type of ['keyDown', 'keyUp'] as const) {
             await connection.send(
@@ -531,9 +407,6 @@ const pageOn = (
           );
         }
         await clickNode(found);
-        // While its listbox is open Radix hides the rest of the page from the
-        // accessibility tree, so the step ends only once the listbox is gone:
-        // the screen is then read as a person sees it after the pick.
         const end = Date.now() + SELECT_OPEN_MS;
         for (;;) {
           const open = (await connection.send('Accessibility.queryAXTree', {
@@ -556,8 +429,6 @@ const pageOn = (
         return;
       }
 
-      // `Enter` carries `\r` as its text, which is what a page's keypress
-      // handlers and a form's implicit submission read.
       const isEnter = argument === 'Enter';
       for (const type of ['keyDown', 'keyUp'] as const) {
         await connection.send(
@@ -584,19 +455,6 @@ const pageOn = (
   };
 };
 
-/**
- * Spawns a browser and resolves once its DevTools endpoint is answering.
- *
- * `binary` defaults to `env.TINYAPP_BROWSER` and then to the image's
- * `/headless-shell/headless-shell`; `env` defaults to the process's own. A
- * binary that is not there rejects with `browser: no such binary <path>` before
- * anything is spawned, so nothing is left running behind the rejection.
- *
- * The default sandbox mode launches on the fleet image, so no `--no-sandbox` is
- * passed. A machine that needs it — a laptop, a container without user
- * namespaces — opts in through `env.TINYAPP_BROWSER_ARGS`, space-separated
- * flags appended to the argv.
- */
 export const launchBrowser = async (opts?: {
   binary?: string;
   env?: Record<string, string | undefined>;
@@ -654,11 +512,6 @@ export const launchBrowser = async (opts?: {
       })) as {sessionId?: string};
       const sessionId = attached.sessionId ?? '';
 
-      // A page served from an origin cannot have its every request blocked the
-      // way a `data:` page can — its own document is a request. So each one is
-      // paused and judged instead: continued when it is to `origin` or to one
-      // of `allow`'s origins, and failed in the browser otherwise, before a byte
-      // of it leaves the machine.
       await connection.send('Fetch.enable', {patterns: [{urlPattern: '*'}]}, sessionId);
       const allowed = [origin, ...(allow ?? [])].map((each) => `${each}/`);
       connection.on('Fetch.requestPaused', sessionId, (params) => {
@@ -691,7 +544,6 @@ export const launchBrowser = async (opts?: {
     },
 
     close: async (): Promise<void> => {
-      // Asked politely first, so the shell takes its own children down with it.
       await connection.send('Browser.close').catch(() => {});
       await Promise.race([child.exited.catch(() => undefined), after(EXIT_GRACE_MS)]);
       connection.close();

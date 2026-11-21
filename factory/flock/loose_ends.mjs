@@ -1,8 +1,3 @@
-// The loose-end reading: each loose end a builder reported (a belief naming a path, optionally
-// with the stale text it saw there) reads as open, resolved or not checked against the code.
-// Pure: `text(path)` is supplied by the caller and returns the file's content in the snapshot
-// being read, null when the file does not exist there, or undefined when no file has that path at the
-// run's base or in that snapshot: such a path cannot be read, so its loose end is not checked.
 export function looseEnds(beliefs, text) {
   const items = []
   for (const b of beliefs || []) {

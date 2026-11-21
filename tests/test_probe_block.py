@@ -1,4 +1,3 @@
-"""The stories-v1 probe grammar: one JSON object per ```probe fence, closed checks."""
 import sys
 from pathlib import Path
 

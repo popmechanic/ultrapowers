@@ -1,31 +1,3 @@
-/**
- * fleet/lobby.mjs — the laptop's half of the fleet, in one place.
- *
- * There is no orchestrator and no control VM. A run is a number N per target;
- * its VM is `fleet-r<N>-<yymmddHHMM>-<4 hex>`, found again by `fleet-r<N>-*`.
- * Where its plan and record live (the operator's evidence repository; the
- * target receives only `ultra/integration-run-N`) is `fleet/CONTRACT.md`
- * section "The shape in one paragraph"; this file does not restate it.
- *
- * This module is what the laptop CLIs (`launch`, `janitor`, `target`, `doctor`,
- * `claude-token`, `run-read`) share: the exec seam, the config file, the name validators, the branch
- * names and the lobby readers.
- * It runs from the installed plugin cache, so every specifier is
- * `node:`-prefixed, and there are no npm dependencies.
- *
- * ## The exec seam
- *
- * One function, `exec(cmd, argv, options?)`, resolving `{ code, stdout, stderr }`
- * and never rejecting. It is `execFile`, never a shell string: nothing this
- * process builds is ever parsed by a local shell. `options.input` is the only
- * way a secret reaches a child — written to its stdin, never to its argv. The
- * exe.dev lobby still parses the remote half (`ssh exe.dev "new fleet-r7-… --json"`
- * is one argv element), so every value interpolated into that string is
- * validated first — `isSafeTarget`, `isFullSha`, `isRunNumber`, `isVmName` —
- * and the only quoted field (the assignment comment) is built exclusively from
- * validated parts.
- */
-
 import { execFile } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import fsp from 'node:fs/promises'
@@ -34,33 +6,15 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 
-// ── Names and shas ──────────────────────────────────────────────────────────
-
-/** `owner/repo`: exactly one slash, each half a git-safe name that starts and
- *  ends with a letter or digit — the only shape that may be interpolated into
- *  an ssh string, so `..` and a dot-led half are refused. */
 const TARGET = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?\/[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/
 export const isSafeTarget = (value) => typeof value === 'string' && TARGET.test(value)
 
-/** A git object name, as a pointer half. */
 export const isSafeSha = (value) => typeof value === 'string' && /^[0-9a-f]{7,64}$/.test(value)
 
-/**
- * The stricter shape the assignment comment carries. An abbreviation would let
- * two clones resolve one `base=` differently — so `base=` and `engine=` are
- * full shas or nothing.
- */
 export const isFullSha = (value) => isSafeSha(value) && value.length === 40
 
-/** A run number: a positive decimal integer with no leading zero. */
 export const isRunNumber = (value) => /^[1-9][0-9]*$/.test(String(value))
 
-/**
- * One incarnation of a run: `fleet-r<N>-<yymmddHHMM>-<4 hex>`. exe.dev does not
- * reserve a deleted name, but a name is still minted once per launch and never
- * derived from N alone — the run's durable identity is N, in the comment and in the
- * evidence repository's live branch and tag; the VM name is only where it is running this time.
- */
 const VM_NAME = /^fleet-r([1-9][0-9]*)-[0-9]{10}-[0-9a-f]{4}$/
 
 const stamp = (date) => {
@@ -73,102 +27,46 @@ export const vmNameFor = (run, now = new Date(), rand = randomBytes(2).toString(
 
 export const isVmName = (value) => typeof value === 'string' && VM_NAME.test(value)
 
-/** The run number a VM name carries, or null when the name is not a run's. */
 export const runOfVmName = (name) => {
   const match = VM_NAME.exec(String(name ?? ''))
   return match ? Number(match[1]) : null
 }
 
-/** The whole fleet, as the server-side `ls` pattern. */
 export const FLEET_PATTERN = 'fleet-r*'
 
-/** `<owner>/<repo>` → `<owner>-<repo>`, the slash-free half of an integration name
- *  and of every evidence ref and folder a run has. */
 export const targetSlug = (target) => String(target).replace('/', '-')
 
-/**
- * The ONE GitHub integration a target has: `gh-<owner>-<repo>`, `--act-as-user`,
- * writable, attached to `tag:fleet`. Named for the repository so
- * a plain `integrations list` shows two objects naming one repo without any
- * parsing — and two such objects on one VM is the fault the sandbox refuses
- * to boot into (measured 2026-09-03: the GitHub edge routes by repo path and
- * documents no tie-break between two integrations covering the same repo).
- */
 export const githubIntegrationFor = (target) => `gh-${targetSlug(target)}`
 
-// ── The refs a run has on the target ────────────────────────────────────────
-
-/**
- * The one branch a run pushes to the target: the work it integrated. It is
- * transient: delete-on-merge drops it, and the janitor deletes the
- * closed-unmerged ones.
- */
 export const integrationBranchFor = (run) => `ultra/integration-run-${run}`
 
-/** The integration branch, with or without a `refs/heads/` head. */
 const RUN_BRANCH = /^(?:refs\/heads\/)?ultra\/integration-run-([1-9][0-9]*)$/
 
-/**
- * The run an integration branch carries, or null: `main`, a non-numeric tail
- * like `ultra/integration-run-x` and every other shape answer null. A run
- * number is never guessed.
- */
 export const runOfBranch = (ref) => {
   const text = String(ref ?? '')
   const match = RUN_BRANCH.exec(text)
   return match ? Number(match[1]) : null
 }
 
-// ── The evidence repository ─────────────────────────────────────────────────
-
-/**
- * The evidence repository is the operator's setting (#1395): the key
- * `evidence` (`<owner>/<repo>`) in `~/.ultrapowers/fleet.json`, overridden for
- * one launch by `--evidence-repo`. Nothing derives it from the target, and
- * there is no default. Pure: the override when it is a safe target, else
- * `config.evidence` when it is one, else null.
- */
 export const evidenceRepoFor = (config, override = null) => {
   if (isSafeTarget(override)) return override
   const setting = config?.evidence
   return isSafeTarget(setting) ? setting : null
 }
 
-/**
- * The one reader of the `evidence` key: its value, or null when the file is
- * absent, unreadable or not a JSON object, names no key, or names a value
- * `isSafeTarget` refuses. Beside `loadFleetConfig`, which stays the pool's.
- */
 export async function readEvidenceSetting ({ path: configPath } = {}) {
   const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
   return parsed === null ? null : evidenceRepoFor(parsed)
 }
 
-/**
- * A run's place in the evidence repository, keyed by the TARGET's slug
- * (collision-free across owners — `facebook/react` lands in
- * `runs/facebook-react/<N>/`):
- *
- *   `runs/<slug>/<N>`       the run's folder
- *   `live/<slug>/run-<N>`   the branch the run writes while it flies
- *   `<slug>/run-<N>`        the tag that outlives it
- */
 export const runFolderFor = (target, run) => `runs/${targetSlug(target)}/${run}`
 export const liveBranchFor = (target, run) => `live/${targetSlug(target)}/run-${run}`
 export const runTagFor = (target, run) => `${targetSlug(target)}/run-${run}`
 export const evidenceUrlFor = (repo) => `https://github.com/${repo}.git`
-/** Where the plan lands in a run's folder: the launcher commits it there and
- *  the janitor's duplicate check reads it back. */
 export const PLAN_FILE = 'plan.md'
 
 const escapeRegex = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
-/**
- * The run an evidence-repository ref carries for `target`, or null — the live
- * branch or the tag, with or without its `refs/heads/` / `refs/tags/` head.
- * The slug is matched literally and as a whole path segment, so a foreign
- * slug, a peeled `^{}` line and a non-numeric tail are all null.
- */
 export const runOfEvidenceRef = (target, ref) => {
   const slug = escapeRegex(targetSlug(target))
   const shape = new RegExp(
@@ -178,31 +76,16 @@ export const runOfEvidenceRef = (target, ref) => {
   return match ? Number(match[1] ?? match[2]) : null
 }
 
-// ── Constants the whole laptop side agrees on ───────────────────────────────
-
 export const EXE_HOST = 'exe.dev'
 export const FLEET_TAG = 'fleet'
-/** The attachment every fleet integration carries (`integrations attach <name> tag:fleet`): the tag a fleet VM is created with. */
 export const FLEET_POLICY = `tag:${FLEET_TAG}`
-/** The http-proxy integration that carries the Claude bearer at the edge. */
 export const CLAUDE_INTEGRATION = 'claude-max'
 export const ENGINE_REPO = 'popmechanic/ultrapowers'
 export const ENGINE_URL = `https://github.com/${ENGINE_REPO}.git`
-/** The assignment comment's hard ceiling — exe.dev's `comment` field. */
 export const COMMENT_MAX_BYTES = 200
-/** The lobby-verb record: the flag set per lobby verb, captured from the live
- *  lobby and committed beside this file. `VERBS_RECORD` is how a message names it. */
 export const VERBS_RECORD = 'fleet/exe-verbs.json'
 export const VERBS_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'exe-verbs.json')
 
-// ── Config ──────────────────────────────────────────────────────────────────
-
-/**
- * The config file's two keys and their defaults — the size a run asks of the
- * plan's pool, and nothing else. An operator who followed the RUNBOOK needs no
- * `~/.ultrapowers/fleet.json` at all. `doctor.mjs` imports this literal, so
- * the doctor and the launcher read one config file with one set of defaults.
- */
 export const FLEET_DEFAULTS = Object.freeze({
   cpu: '8',
   memory: '16GB'
@@ -210,11 +93,6 @@ export const FLEET_DEFAULTS = Object.freeze({
 
 export const DEFAULT_CONFIG_PATH = () => path.join(os.homedir(), '.ultrapowers', 'fleet.json')
 
-/**
- * Read `~/.ultrapowers/fleet.json` (or `path`) over the defaults. An absent
- * file means all defaults; an unknown key is ignored; a key the file omits
- * stays at its default. The doctor reads the config through this function too.
- */
 export async function loadFleetConfig ({ path: configPath } = {}) {
   const parsed = await readFleetJson(configPath ?? DEFAULT_CONFIG_PATH())
   const config = { ...FLEET_DEFAULTS }
@@ -224,12 +102,6 @@ export async function loadFleetConfig ({ path: configPath } = {}) {
   return config
 }
 
-/**
- * The one read of `~/.ultrapowers/fleet.json` (or `configPath`): the parsed
- * JSON object, or null when the file is absent, unreadable, not JSON, or not a
- * JSON object. Every reader of the file — the pool, the evidence key, the
- * doctor's key names and the default account — goes through it.
- */
 export async function readFleetJson (configPath) {
   try {
     const parsed = JSON.parse(await fsp.readFile(configPath, 'utf8'))
@@ -239,17 +111,6 @@ export async function readFleetJson (configPath) {
   }
 }
 
-// ── The exec seam ───────────────────────────────────────────────────────────
-
-/**
- * The seam's real implementation: `execFile`, resolving, never a shell.
- *
- * `options.input` is written to the child's stdin and the stream is then
- * ended — a child that reads stdin to EOF (`cat`, `gh pr create --body-file -`)
- * must see one, or the promise never settles. Every other option is passed
- * through to `execFile`. Without `input` the child's stdin is left exactly as
- * `execFile` opened it.
- */
 export function defaultExec (cmd, argv = [], options = {}) {
   const { input, ...rest } = options ?? {}
   return new Promise((resolve) => {
@@ -274,19 +135,8 @@ export function defaultExec (cmd, argv = [], options = {}) {
   })
 }
 
-/** Everything a command printed, in one string — what an error carries. */
 export const output = (res) => `${res.stdout ?? ''}${res.stderr ?? ''}`.trim()
 
-/**
- * One lobby verb: `ssh exe.dev "<remote>"`, the remote half as ONE argv
- * element. A non-zero exit is a `LobbyError` carrying ALL of the output,
- * verbatim: exe.dev documents no error envelope, so nothing is parsed out and
- * nothing is dropped.
- *
- * `options.input` is handed to the seam as its third argument, so a verb that
- * must be fed a secret gets it on stdin and never in an argv a `ps` could read.
- * A verb with nothing to feed carries no third argument at all.
- */
 export async function lobby (exec, remote, { input } = {}) {
   const res = input === undefined
     ? await exec('ssh', [EXE_HOST, remote])
@@ -298,16 +148,8 @@ export async function lobby (exec, remote, { input } = {}) {
   return res
 }
 
-/** A git command against a checkout, through the same seam. */
 export const git = (exec, dir, argv) => exec('git', ['-C', dir, ...argv])
 
-// ── Refusals ────────────────────────────────────────────────────────────────
-
-/**
- * A refusal: one line naming why, exit 2, and — for the launcher — nothing on
- * exe.dev mutated. Distinguished from a failure (exit 1), which is a lobby verb
- * that ran and answered non-zero.
- */
 export class Refusal extends Error {
   constructor (message) {
     super(message)
@@ -320,7 +162,6 @@ export const refuse = (message) => {
   throw new Refusal(message)
 }
 
-/** A verb that ran and failed: exit 1, its whole output in the message. */
 export class LobbyError extends Error {
   constructor (message) {
     super(message)
@@ -329,7 +170,6 @@ export class LobbyError extends Error {
   }
 }
 
-/** Run a CLI `main`, print a refusal or failure verbatim, set the exit code. */
 export async function runCli (main, argv) {
   try {
     await main(argv)
@@ -339,13 +179,6 @@ export async function runCli (main, argv) {
   }
 }
 
-// ── Argument parsing ────────────────────────────────────────────────────────
-
-/**
- * `--key value`, `--key=value` and `--flag`. `flags` names the valueless ones;
- * everything else takes the next argv element. Unknown keys are kept, so each
- * CLI decides for itself what it refuses.
- */
 export function parseArgs (argv, { flags = [] } = {}) {
   const opts = {}
   const positional = []
@@ -376,7 +209,6 @@ export function parseArgs (argv, { flags = [] } = {}) {
   return { opts, positional }
 }
 
-/** `15m` → 900000 ms. Accepts s/m/h/d; anything else answers null. */
 export function parseDuration (text) {
   const match = /^([0-9]+)([smhd])$/.exec(String(text ?? ''))
   if (!match) return null
@@ -384,16 +216,12 @@ export function parseDuration (text) {
   return Number(match[1]) * unit
 }
 
-// ── Reading what the lobby answers ──────────────────────────────────────────
-
-/** Parse a `--json` payload, tolerating a leading banner line. Null on failure. */
 export function parseJson (stdout) {
   const text = String(stdout ?? '').trim()
   if (text === '') return null
   try {
     return JSON.parse(text)
   } catch {
-    // Some verbs print a line before the document; take from the first bracket.
     const start = text.search(/[[{]/)
     if (start === -1) return null
     try {
@@ -406,14 +234,6 @@ export function parseJson (stdout) {
 
 const str = (value) => (typeof value === 'string' && value !== '' ? value : null)
 
-/**
- * `ssh exe.dev "ls '<pattern>' --json"` → the rows under `.vms[]`, and ONLY
- * those: `.shared_vms[]` are other people's machines, and reading every array
- * in the envelope is how run-69 counted a shared VM as fleet. The pattern is
- * matched server-side, so the fleet is `fleet-r*` and one run is `fleet-r<N>-*`.
- * `vm_name`, `ssh_dest`, `ssh_host`, `status` are documented; `comment` and
- * `tags` are not, so they are read as optional and are null when absent.
- */
 export async function listVms (exec, pattern = FLEET_PATTERN) {
   const res = await lobby(exec, `ls '${pattern}' --json`)
   const payload = parseJson(res.stdout)
@@ -430,11 +250,6 @@ export async function listVms (exec, pattern = FLEET_PATTERN) {
     .filter((row) => row.name)
 }
 
-/**
- * One attachment, normalised to `{ kind, value }` where `kind` is `vm` or
- * `tag`. The listing may spell it as a string (`"vm:fleet-r7-…"`, `"tag:fleet"`)
- * or as an object (`{type,name}`, `{vm}`, `{tag}`); all four are read.
- */
 function normaliseAttachment (entry) {
   if (typeof entry === 'string') {
     const [kind, ...rest] = entry.split(':')
@@ -453,12 +268,8 @@ function normaliseAttachment (entry) {
   return null
 }
 
-/** The bearer the edge injects, as the listing spells it (spaces ignored). */
 const BEARER = 'Authorization:Bearer'
 
-/** Does this entry carry the Authorization bearer the edge injects? The
- *  measured listing spells it in `config_summary`; a listing that spells it in
- *  `config.headers[]` instead says the same thing. */
 function hasBearer (entry) {
   const carries = (text) => typeof text === 'string' && text.replace(/\s+/g, '').includes(BEARER)
   if (carries(entry?.config_summary)) return true
@@ -466,14 +277,6 @@ function hasBearer (entry) {
   return Array.isArray(headers) && headers.some(carries)
 }
 
-/**
- * `ssh exe.dev "integrations list --json"` →
- * `[{ name, repository, attachments, bearer, comment, tags }]`. `bearer` is
- * whether the entry carries the edge's Authorization bearer, `comment` its own
- * comment string or null (the credential tool writes `account=<name>` into
- * `claude-max`'s), and `tags` the tag names its attachments and its own `tags`
- * field name.
- */
 export async function listIntegrations (exec) {
   const res = await lobby(exec, 'integrations list --json')
   const payload = parseJson(res.stdout)
@@ -498,22 +301,10 @@ export async function listIntegrations (exec) {
   }).filter((row) => row.name)
 }
 
-// ── The assignment comment ──────────────────────────────────────────────────
-
-/** The comment's seven keys, in the order the contract spells them. The
- *  launcher always writes `kind=flock` (an older boot reads a missing `kind=`
- *  as the retired factory); `hold` is optional, and a comment read back may
- *  lack `kind=` when an older launcher wrote it. */
 export const COMMENT_KEYS = Object.freeze([
   'run', 'plan', 'target', 'base', 'engine', 'kind', 'hold'
 ])
 
-/**
- * Build the assignment comment: single line, space-separated `key=value`, keys
- * in contract order, optional `kind=` before optional `hold=` last. Every
- * value has already been validated by the caller; nothing here can introduce a
- * quote or a space.
- */
 export function buildComment (fields) {
   return COMMENT_KEYS
     .filter((key) => fields[key] !== undefined && fields[key] !== null && fields[key] !== '')
@@ -521,7 +312,6 @@ export function buildComment (fields) {
     .join(' ')
 }
 
-/** Read a comment back into its fields. Unknown keys are kept; junk is ignored. */
 export function parseComment (text) {
   const fields = {}
   for (const token of String(text ?? '').trim().split(/\s+/)) {
@@ -532,13 +322,6 @@ export function parseComment (text) {
   return fields
 }
 
-// ── Reading the target's runs ───────────────────────────────────────────────
-
-/**
- * The highest run `target` has in the evidence repository: one `ls-remote`
- * over its live branches and tags (run from `repoDir`), the highest
- * `runOfEvidenceRef` or 0. A non-zero listing is a refusal, never a zero.
- */
 export async function highestRunInEvidence (exec, repoDir, evidenceRepo, target) {
   const slug = targetSlug(target)
   const url = evidenceUrlFor(evidenceRepo)
@@ -560,27 +343,13 @@ export async function highestRunInEvidence (exec, repoDir, evidenceRepo, target)
   return best
 }
 
-// ── The plan's capacity ─────────────────────────────────────────────────────
-
 const num = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
 
-/**
- * `16GB` and `16G` are 16. A bare `16` carries no unit and a fractional
- * `1.5GB` is not a whole number of gigabytes — both answer null rather than a
- * number a caller would then size a VM with.
- */
 export const parseMemoryGb = (text) => {
   const match = /^([1-9][0-9]*)\s*G(?:B)?$/i.exec(String(text ?? '').trim())
   return match ? Number(match[1]) : null
 }
 
-/**
- * `ssh exe.dev "billing plan --json"` → the four fields a launch sizes a VM
- * against. The payload (measured 2026-09-04) is one flat object with a dozen
- * keys; these four are read and the rest ignored, so a new key upstream is not
- * a failure here. A payload with no numeric `max_cpus` is a `LobbyError`
- * carrying the whole output: the verb answered, but not with a plan.
- */
 export async function readPlanCapacity (exec) {
   const res = await lobby(exec, 'billing plan --json')
   const payload = parseJson(res.stdout)

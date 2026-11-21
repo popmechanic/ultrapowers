@@ -1,11 +1,3 @@
-/** The screens catalog: which 1st-Pouf pieces a screen may name, and their props.
- *
- * A screen is a json-render spec over this catalog. Its props mirror each
- * 1st-Pouf component's own variant props, so the registry hands them straight
- * through and `tsc` refuses a value 1st-Pouf would not accept.
- *
- * This file imports no React and no 1st-Pouf, so it loads in Bun with no DOM.
- */
 import { defineCatalog } from '@json-render/core'
 import { schema } from '@json-render/react/schema'
 import { z } from 'zod'
@@ -146,15 +138,12 @@ export const components = {
   },
 }
 
-/** json-render's built-in actions; a screen may use them to write under /draft/ only. */
 export const BUILT_IN = ['setState', 'pushState', 'removeState', 'validateForm']
 
-/** The catalog for a store whose actions are `tools`, in their order. */
 export function catalogFor(tools: { name: string; description: string }[]) {
   const actions: Record<string, { params: z.ZodType; description: string }> = {}
   for (const t of tools) actions[t.name] = { params: z.record(z.string(), z.unknown()), description: t.description }
   return defineCatalog(schema, { components, actions })
 }
 
-/** The catalog with no actions, which the registry draws. */
 export const baseCatalog = defineCatalog(schema, { components, actions: {} })

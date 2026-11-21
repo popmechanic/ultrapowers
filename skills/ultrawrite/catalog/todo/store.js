@@ -1,9 +1,5 @@
 import { createStore } from 'tinybase'
 
-// The todo piece's store module. Every action is a WebMCP-shaped tool:
-// a name, the piece it belongs to, a plain description, a typed input
-// schema, and run(store, args) -> true when it changed the store.
-// No schema defaults: a todo that was never ticked has no `completed` cell.
 export const TOOLS = [
   {
     name: 'addTodo',
