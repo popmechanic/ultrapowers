@@ -134,6 +134,16 @@ export const components = {
     slots: [],
     description: 'A text input whose `value` is bound with $bindState to a path under /draft/.',
   },
+  DraftNumber: {
+    props: z.object({
+      label: z.string(),
+      value: z.union([z.number(), z.string()]).nullish(),
+      placeholder: z.string().nullish(),
+    }),
+    slots: [],
+    description:
+      "A number input whose `value` is bound with $bindState to a path under /draft/; the path holds a number, '' when empty.",
+  },
 }
 
 /** json-render's built-in actions; a screen may use them to write under /draft/ only. */

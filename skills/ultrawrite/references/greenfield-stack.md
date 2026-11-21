@@ -169,7 +169,7 @@ experiment).
   json-render spec — `{root, elements, public?}`, where `public` lists the
   element ids whose subtrees a signed-out visitor sees on `/` — over the catalog in
   `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
-  store-bound `ActionButton`, `ActionCheckbox` and `DraftInput`. The page is
+  store-bound `ActionButton`, `ActionCheckbox`, `DraftInput` and `DraftNumber`. The page is
   React 19; a builder writes specs, and a part only when a story needs one.
 - **The parts list grows in the open (operator, 2026-11-20, #1491).** Each part has a
   line in `client/src/screens/draws.json` naming the accessibility role it draws and

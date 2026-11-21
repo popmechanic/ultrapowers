@@ -29,7 +29,8 @@
     {
      "tool": "addDish",
      "args": {
-      "name": "salad"
+      "name": "salad",
+      "serves": 4
      },
      "layer": "store"
     },
@@ -87,7 +88,8 @@
     {
      "tool": "addDish",
      "args": {
-      "name": "salad"
+      "name": "salad",
+      "serves": 4
      },
      "layer": "store"
     },

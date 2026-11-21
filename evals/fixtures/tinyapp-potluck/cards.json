@@ -68,6 +68,7 @@
    "tables": {
     "dishes": [
      "name",
+     "serves",
      "guestId"
     ]
    },
@@ -76,7 +77,7 @@
   "actions": [
    {
     "name": "addDish",
-    "description": "List a dish the party needs; nobody is bringing it yet.",
+    "description": "List a dish the party needs and how many it serves; nobody is bringing it yet.",
     "label": "Add dish",
     "inputSchema": {
      "type": "object",
@@ -84,14 +85,20 @@
       "name": {
        "type": "string",
        "x-label": "Dish"
+      },
+      "serves": {
+       "type": "number",
+       "x-label": "Serves"
       }
      },
      "required": [
-      "name"
+      "name",
+      "serves"
      ]
     },
     "refuses": [
-     "blank dish name"
+     "blank dish name",
+     "a dish that serves nobody"
     ]
    },
    {

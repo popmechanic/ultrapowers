@@ -122,6 +122,7 @@
    },
    "children": [
     "dishName",
+    "dishServes",
     "addDish"
    ]
   },
@@ -135,6 +136,16 @@
    },
    "children": []
   },
+  "dishServes": {
+   "type": "DraftNumber",
+   "props": {
+    "label": "Serves",
+    "value": {
+     "$bindState": "/draft/serves"
+    }
+   },
+   "children": []
+  },
   "addDish": {
    "type": "ActionButton",
    "props": {
@@ -143,17 +154,29 @@
     "args": {
      "name": {
       "$state": "/draft/addDish.name"
+     },
+     "serves": {
+      "$state": "/draft/serves"
      }
     }
    },
    "on": {
-    "press": {
-     "action": "setState",
-     "params": {
-      "statePath": "/draft/addDish.name",
-      "value": ""
+    "press": [
+     {
+      "action": "setState",
+      "params": {
+       "statePath": "/draft/addDish.name",
+       "value": ""
+      }
+     },
+     {
+      "action": "setState",
+      "params": {
+       "statePath": "/draft/serves",
+       "value": ""
+      }
      }
-    }
+    ]
    },
    "children": []
   },

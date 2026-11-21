@@ -14,6 +14,7 @@
     "ActionButton": {"role": "button", "name": ["name", "label"]},
     "ActionCheckbox": {"role": "checkbox", "name": ["label"]},
     "ActionSelect": {"role": "combobox", "name": ["label"]},
-    "DraftInput": {"role": "textbox", "name": ["label"]}
+    "DraftInput": {"role": "textbox", "name": ["label"]},
+    "DraftNumber": {"role": "spinbutton", "name": ["label"]}
   }
 }

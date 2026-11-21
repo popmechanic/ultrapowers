@@ -151,5 +151,28 @@ export const { registry } = defineRegistry(baseCatalog, {
         </Field>
       )
     },
+    DraftNumber: ({ props, bindings }) => {
+      const [value, setValue] = useBoundProp<number | string>(u(props.value), bindings?.value)
+      const write = (text: string) => {
+        const n = Number(text)
+        setValue(text.trim() !== '' && Number.isFinite(n) ? n : '')
+      }
+      return (
+        <Field label={props.label}>
+          {(id, describedBy) => (
+            <Input
+              id={id}
+              describedBy={describedBy}
+              label={props.label}
+              placeholder={asExample(props.placeholder)}
+              type="number"
+              inputMode="numeric"
+              value={value == null || value === '' ? '' : String(value)}
+              onChange={write}
+            />
+          )}
+        </Field>
+      )
+    },
   },
 })
