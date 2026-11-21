@@ -62,11 +62,9 @@ function textOf(el: Element): string {
   return clean(el.textContent);
 }
 
-/** The element's own text: its child text nodes joined, whitespace collapsed, trimmed. */
-export function ownTextOf(el: Element): string {
-  let own = '';
-  for (const c of el.childNodes) if (c.nodeType === Node.TEXT_NODE) own += c.nodeValue ?? '';
-  return clean(own);
+/** A reading part's line (it carries data-part="text"), whitespace collapsed and trimmed; '' for any other element. */
+export function textLineOf(el: Element): string {
+  return el.getAttribute('data-part') === 'text' ? clean(el.textContent ?? '') : '';
 }
 
 export function nameOf(el: Element): string {

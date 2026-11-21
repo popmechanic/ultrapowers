@@ -11,7 +11,7 @@
 // one that left with count 0). Names are read the way the browser and the checker
 // read them: the part's role and naming props from the app's draws.json, each
 // prop resolved by json-render against the state the page holds.
-import {copyFileSync, existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import {copyFileSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
 import {join, resolve} from 'node:path';
 import {parseArgs} from 'node:util';
 import {Aliases, type Content, type See, type UiStep} from '../../../factory/stack/tinyapp/probe';
@@ -114,7 +114,9 @@ function setPath(obj: Record<string, unknown>, path: string, value: unknown) {
 /** The number of `ui`-layer steps filled. */
 export async function storyUi(bundleDir: string, appDir: string): Promise<number> {
   const b = loadBundle(bundleDir);
-  const app = resolve(appDir);
+  // The real path: on macOS a temp dir is reached through the /var -> /private/var link, and the
+  // store module copied in under the linked path will not import.
+  const app = existsSync(appDir) ? realpathSync(resolve(appDir)) : resolve(appDir);
   const screenFile = join(b.dir, 'screens', 'screen.json');
   if (!existsSync(screenFile)) throw new CannotRun(`${screenFile} does not exist; pick a screen first`);
   const screen = JSON.parse(readFileSync(screenFile, 'utf8')) as Screen;

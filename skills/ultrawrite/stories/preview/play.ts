@@ -5,7 +5,7 @@
 // `select` entry opens its combobox and clicks the option in the listbox,
 // which renders in a portal outside #app. Store-step args name rows by alias,
 // as check.ts reads them, mapped to the store's own ids before each run.
-import {find, nameOf, ownTextOf, roleOf, targetOf} from './names';
+import {find, nameOf, roleOf, targetOf, textLineOf} from './names';
 import {Aliases, type Content} from './probe';
 
 type Target = {role: string; name: string};
@@ -21,9 +21,9 @@ const root = (): ParentNode => document.getElementById('app') ?? document;
 
 function count(role: string, name: string): number {
   let n = 0;
-  // A run of text has no role or name, so `text` counts elements by their own text.
+  // A run of text has no role or name, so `text` counts the reading parts by their line.
   const hit = role === 'text'
-    ? (el: Element) => ownTextOf(el) === name
+    ? (el: Element) => textLineOf(el) === name
     : (el: Element) => roleOf(el) === role && nameOf(el) === name;
   for (const el of root().querySelectorAll('*')) if (hit(el)) n++;
   return n;

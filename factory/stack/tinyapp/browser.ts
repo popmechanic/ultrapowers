@@ -475,17 +475,15 @@ const pageOn = (
 
     count: async (locator) => {
       // Chrome gives a run of text no role or name, so `text` is counted in the
-      // page: elements inside #app whose own text (child text nodes joined,
-      // whitespace collapsed, trimmed) equals the name.
+      // page: the reading parts inside #app (they carry data-part="text") whose
+      // text (whitespace collapsed, trimmed) equals the name.
       if (locator.role === 'text') {
         return (await evaluate(`(() => {
           const want = ${JSON.stringify(locator.name)};
           const root = document.getElementById('app') ?? document.body;
           let n = 0;
-          for (const el of root.querySelectorAll('*')) {
-            let own = '';
-            for (const c of el.childNodes) if (c.nodeType === 3) own += c.nodeValue;
-            if (own.replace(/\\s+/g, ' ').trim() === want) n++;
+          for (const el of root.querySelectorAll('[data-part="text"]')) {
+            if ((el.textContent ?? '').replace(/\\s+/g, ' ').trim() === want) n++;
           }
           return n;
         })()`)) as number;
