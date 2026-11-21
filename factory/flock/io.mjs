@@ -55,7 +55,7 @@ export function readEventRows (file) {
   const rows = []
   for (const line of text.split('\n')) {
     if (!line.trim()) continue
-    try { rows.push(JSON.parse(line)) } catch { /* a torn line is skipped */ }
+    try { rows.push(JSON.parse(line)) } catch {}
   }
   return rows
 }

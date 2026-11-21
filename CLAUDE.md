@@ -191,8 +191,8 @@ the engine's exit code is the merge decision.
 ## Conventions & gotchas
 
 - **No code comments (2026-11-21).** A decision the code cannot show goes in `docs/adr/`; a hack
-  goes in an issue, never a comment that excuses it. `lint/comments.py` holds every file at or
-  below `lint/comments-baseline.json` and only ever lowers it; `/delete-comment` sweeps the rest.
+  goes in an issue, never a comment that excuses it. `lint/comments-baseline.json` is empty, so
+  `tests/test_comment_ratchet.py` fails on any comment line; `/delete-comment` sweeps any that land.
 
 - **Releasing.** Only `plugin.json` carries the version (the marketplace entry has none,
   so they cannot drift). A release is one hand PR titled

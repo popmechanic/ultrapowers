@@ -1,7 +1,3 @@
-// Given code: one Durable Object holds the app's store, saved to its SQLite.
-// /me says who is signed in: the email Cloudflare Access vouches for, or null.
-// /public.json is the store's content as JSON; /health says the Worker is up;
-// any other path is the packed page (client-files.ts, written by `bun run pack`).
 import {createMergeableStore} from 'tinybase';
 import {createDurableObjectSqlStoragePersister} from 'tinybase/persisters/persister-durable-object-sql-storage';
 import {WsServerDurableObject, getWsServerDurableObjectFetch} from 'tinybase/synchronizers/synchronizer-ws-server-durable-object';

@@ -47,7 +47,7 @@ function fill(s: unknown) {
       const key = JSON.stringify([step.tool, step.args ?? {}]);
       if (seen.has(key)) continue;
       seen.add(key);
-      try { tool.run(s, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
+      try { tool.run(s, step.args ?? {}, null); } catch {}
     }
   }
 }

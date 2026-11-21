@@ -378,7 +378,7 @@ function runChild (cmd, args, { bin, home, env, timeoutMs } = {}) {
   child.stdout.on('data', (d) => { stdout += d })
   child.stderr.on('data', (d) => { stderr += d })
   const kill = () => {
-    try { process.kill(-child.pid, 'SIGKILL') } catch { /* the group is already gone */ }
+    try { process.kill(-child.pid, 'SIGKILL') } catch {}
   }
   const timer = setTimeout(kill, timeoutMs ?? 120000)
   const done = new Promise((resolve) => child.on('close', (code, signal) => {

@@ -222,3 +222,9 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Weave non text files
 
 - **isText** — The weave merges text line by line, so factory/flock/engine.mjs never hands it a file that is not UTF-8 (an image, a .gz): such a file stays exactly as it is at base in every copy and the edge, and a builder's change to one is recorded (non-text row), never merged. On run-246 a GIF in the target stopped the weave's base op with a UnicodeDecodeError before any builder opened.
+
+## Reads that may fail
+
+- **session** — When a builder session ends in factory/flock/engine.mjs `session`, a session already closed by its `done` call, or one ended because the run itself ended (`outcome` set), gives nothing back: only an objected, released or unfinished task is handed on.
+- **readEventRows** — factory/flock/io.mjs `readEventRows` skips a line of `events.jsonl` that does not parse: the file is appended while it is read, so its last line can be torn, and one torn row must not hide every row before it.
+- **makeJevClient refuse** — factory/jev-client.mjs logs each refusal as evidence only: a log callback that throws is ignored, so logging never changes the client's answer, which is `null` on anything unexpected.

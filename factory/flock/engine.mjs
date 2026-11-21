@@ -567,7 +567,7 @@ async function session (agent, task) {
         const fp = path.resolve(cwd, a.path || '')
         if (!fp.startsWith(cwd + '/')) return say('refused: ' + JSON.stringify(a.path) + ' is outside your copy')
         let isFile = false
-        try { isFile = fs.statSync(fp).isFile() } catch { /* absent */ }
+        try { isFile = fs.statSync(fp).isFile() } catch {}
         if (!isFile) return say('refused: ' + JSON.stringify(a.path) + ' is not an existing file in your copy')
         const rel = fp.slice(cwd.length + 1)
         touch(agent, rel); known[agent].add(rel)
@@ -717,7 +717,7 @@ async function session (agent, task) {
   ev('session:end', { agent, task: task.id, released: st.released, objected: st.objected, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
   live.delete(agent); if (!st.closed) lastChange = now()
-  if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
+  if (st.closed || outcome) {} else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
     const red = redOf(runFacts(cwd, task))
     if (red.length) {
       ev('facts:red', { agent, task: task.id, at: 'session-end', exits: red.map((r) => r.exit) })
@@ -941,7 +941,7 @@ let PAST = null
       const status = JSON.parse(text('status.json'))
       const events = readEventRows(path.join(dir, 'events.jsonl'))
       let redChecks = null
-      try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
+      try { redChecks = JSON.parse(text('red-checks.json')) } catch {}
       const items = pastItems({ status, events, redChecks })
       ev('past', { run: m, items: items ? items.length : 0 })
       if (items) {
@@ -1088,7 +1088,7 @@ function writeFailureRecord () {
     const e = { ...c }
     if (c.clause) {
       const f = path.join(CHECK_OUT, `${String(c.clause).replaceAll('/', '_')}@edge.json`)
-      try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* no checker result */ }
+      try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
     }
     const n = Buffer.byteLength(JSON.stringify(e)) + 1
     if (size + n > LIMIT) { rec.truncated = true; continue }

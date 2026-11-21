@@ -100,7 +100,7 @@ export async function play(
     await pause(GAP);
     for (const step of story.steps ?? []) {
       if (step.layer !== 'ui') {
-        try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch { /* a refused step changes nothing */ }
+        try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch {}
         aliases.learn(store.getContent());
         await pause(GAP);
         continue;

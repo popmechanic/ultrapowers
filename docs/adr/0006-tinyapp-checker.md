@@ -22,6 +22,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 - **launchBrowser** — launchBrowser in factory/stack/tinyapp/browser.ts rejects a missing binary before spawning anything, so nothing is left running. It passes no --no-sandbox because the default sandbox works on the fleet image; machines that need extra flags (a laptop, a container without user namespaces) add them via the space-separated TINYAPP_BROWSER_ARGS environment variable.
 - **Browser.openUrl** — openUrl in factory/stack/tinyapp/browser.ts enables Fetch interception for every URL and continues only requests to the origin or allow-listed origins, failing the rest with BlockedByClient, because a page served from an origin cannot have all requests blocked the way a data: page can: its own document is a request.
 - **Browser.close** — Browser.close in factory/stack/tinyapp/browser.ts sends a CDP Browser.close and waits up to EXIT_GRACE_MS before killing the process, so the headless shell takes its own child processes down with it.
+- **factory/stack/tinyapp/browser.ts** — Borrowed from popmechanic/tinyapp-fixture `packages/tinyapp-exam/src/browser.ts` at d71c037 (2026-09-27), with its two sibling imports inlined; a fix upstream is not picked up automatically.
 
 ## Tinyapp state probe
 
