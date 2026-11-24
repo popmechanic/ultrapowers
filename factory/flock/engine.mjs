@@ -106,6 +106,11 @@ function walk (dir, rel = '') {
   }
   return out
 }
+function ignoredIn (dir, paths) {
+  if (!paths.length) return new Set()
+  const r = spawnSync('git', ['-C', dir, 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return new Set(r.status === 0 ? r.stdout.split('\0').filter(Boolean) : [])
+}
 const textSeen = new Map()
 const nonText = new Set()
 function isText (abs, rel) {
@@ -179,12 +184,13 @@ async function syncFromDisk (agent) {
   const dir = agentDir(agent)
   const disk = walk(dir)
   for (const p of disk) known[agent].add(p)
+  const ignored = ignoredIn(dir, [...known[agent]])
   let drift = 0
   for (const p of known[agent]) {
     const text = readOr(path.join(dir, p))
     const view = (await must({ op: 'view', agent, path: p })).text
     const hasWeave = view !== '' || BASE_PATHS.includes(p)
-    if (text === null && !hasWeave) continue
+    if ((text === null || ignored.has(p)) && !hasWeave) continue
     if (text === view) continue
     const r = await must({ op: 'rewrite', agent, path: p, content: text, task: taskOf[agent]?.id })
     edited(agent, p)
@@ -647,6 +653,7 @@ async function session (agent, task) {
         const fp = path.resolve(cwd, ti.file_path)
         const rel = fp.slice(cwd.length + 1)
         known[agent].add(rel)
+        if (ignoredIn(cwd, [rel]).has(rel) && !BASE_PATHS.includes(rel) && (await must({ op: 'view', agent, path: rel })).text === '') return {}
         const before = pre.get(input.tool_use_id)
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
