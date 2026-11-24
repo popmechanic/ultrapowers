@@ -396,6 +396,64 @@
         "B": "The whole page grouped in cards, each text box side by side with its button.",
         "C": "The lists first and largest on the page, the controls that add to them below."
       }
+    },
+    "smoke_walk": {
+      "when": "Before the operator's smoke of a built app, once per run, by the session that serves the app (references/first-build.md)",
+      "reader": "skills/ultrawrite/stories/walk.ts",
+      "rollback": "skip the walk: nothing reads it, and the operator's smoke is the verdict as before",
+      "state": ["app", "claim"],
+      "provenance": "operator picks 2026-11-24 (#1609): these six, answered here before the smoke; the two Potluck apps of popmechanic-potluck-3 separated on undo, next_step and finished (n=1 walk per app, by hand)",
+      "calibrated": false,
+      "questions": {
+      "first_step": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "Is it obvious what to do first?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      },
+      "claim_doable": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "Can everything the Claim names be done from the page?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      },
+      "saved_visible": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "After each action, is what was saved visible on the page?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      },
+      "undo": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "Can a mistake be undone?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      },
+      "next_step": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "Does the page show what to do next or what is missing?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      },
+      "finished": {
+        "type": "choice",
+        "answers": ["yes", "partly", "no"],
+        "instructions": {
+          "question": "Does it look finished, not bare?",
+          "context": "`app` is the built app, served and opened in a browser; `claim` is the plan's Claim. Use the app as a first-time user would, doing each thing the Claim names, and answer from what the page showed."
+        }
+      }
+      }
     }
   }
 }

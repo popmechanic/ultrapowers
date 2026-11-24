@@ -6,6 +6,10 @@ Governs: `skills/ultrawrite/catalog/todo-tags/store.js`, `skills/ultrawrite/cata
 Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
 decision the code cannot show on its own. Symbols are named; line numbers are not.
 
+## Experience walk
+
+- **skills/ultrawrite/stories/walk.ts** — A run's probes show that an app works, not that it is good to use: on 2026-11-24 the Potluck app the operator judged far worse passed six of six probes and the better one five (n=1 run per arm), and on 2026-11-20 a page they called nonsensical passed seventeen of seventeen (#1609). So the session that serves a built app for the operator's smoke walks it first as a first-time user and answers the six `smoke_walk` questions of skills/ultrawrite/stories/questions.json, each yes, partly or no with one sentence of evidence. walk.ts makes no model or network call: it lists the questions, refuses an incomplete walk, renders the answers for a pull request comment, records the operator's own verdict beside the walk and counts agreement over `*.walk.json`. The walk reports and never gates. It is an experiment kept on the laptop until the walk and the operator have agreed on n=5 runs; moving it into the sandbox is a separate decision, and its rollback is removing the step.
+
 ## First build route
 
 - **routeOf** — A new app's first plan goes to one author. `routeOf` in skills/ultrawrite/stories/product.ts reads a product record with no built plan as a first build and prints the route from the `first_build.route` cell of the policy.json beside it: `solo` sends the author to skills/ultrawrite/references/first-build.md (a one-task claims-v1 plan from the ask and the app's rules, with no stories, parts kit, arranger or template), `stories` to the stories pipeline; a record with a built plan is always stories. On 2026-11-24 the operator judged a one-author Potluck entirely superior to a three-builder one in a blind smoke test, and both better than the stories-pipeline Potluck of 2026-11-20 (n=1 run per arm, popmechanic-potluck-3 run-1 and run-2, #1606), so the cell is an experiment whose rollback is `stories`.
