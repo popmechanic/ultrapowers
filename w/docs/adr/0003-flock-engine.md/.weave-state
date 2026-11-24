@@ -222,6 +222,7 @@
 221 < 1 ## Weave non text files
 222 < 1 
 223 < 1 - **isText** — The weave merges text line by line, so factory/flock/engine.mjs never hands it a file that is not UTF-8 (an image, a .gz): such a file stays exactly as it is at base in every copy and the edge, and a builder's change to one is recorded (non-text row), never merged. On run-246 a GIF in the target stopped the weave's base op with a UnicodeDecodeError before any builder opened.
+225 > 1 - **syncFromDisk non-text** — factory/flock/engine.mjs `syncFromDisk` checks every known path with `isText` before reading it, not only the paths `walk` lists: a path tracked at base whose bytes stop being UTF-8 during a run is skipped and recorded (non-text row), so the weave keeps its last text version and the run's commit holds it unchanged; a path missing from disk is still a deletion. Before, such a path was read lossily and rewritten (fallback row), landing U+FFFD bytes (#1610).
 224 < 1 
 226 > 1 ## Ignored files stay in their copy
 227 < 1 

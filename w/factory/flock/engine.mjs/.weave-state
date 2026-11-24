@@ -433,7 +433,10 @@
 389 > 1   const ignored = ignoredIn(dir, [...known[agent]])
 388 < 1   let drift = 0
 389 < 1   for (const p of known[agent]) {
-390 < 1     const text = readOr(path.join(dir, p))
+391 > 1     const abs = path.join(dir, p)
+392 < 1     if (fs.existsSync(abs) && !isText(abs, p)) continue
+393 < 1     const text = readOr(abs)
+390 < 2     const text = readOr(path.join(dir, p))
 391 < 1     const view = (await must({ op: 'view', agent, path: p })).text
 392 < 1     const hasWeave = view !== '' || BASE_PATHS.includes(p)
 394 > 1     if ((text === null || ignored.has(p)) && !hasWeave) continue
