@@ -45,6 +45,15 @@ Independence is a property of contracts, not of files.
    (`from tests.trends_fixtures import …`, `import('./lib/a.mjs')`) is a `proof-run` edge
    the parser derives and the engine keeps hard under live pairs (#1265), so write the
    probe as it is and list nothing under `Modify:` to force the wait — the wait is derived.
+   **One thing is not split: a design that must read as one thing.** A page a person uses,
+   or any piece judged as a whole and not by its parts, is one task for one builder. A
+   builder works toward its own probes and calls done when they are green, so splitting
+   such a design hands each builder a slice and nobody the whole, and sharing the files
+   does not mend it. In the Potluck comparison (2026-11-24, n=1 run per arm,
+   popmechanic-potluck-3 run-1 and run-2) three builders shared every file, one of them
+   owning the page; that builder called done at 134 s on its one green probe, and the
+   operator judged the one-author app entirely superior, blind. Split where the pieces are
+   independently checkable; keep whole what is judged whole.
 2. **Write no ordering.** An author writes no ordering: the parser derives the edges, the
    Flock seeds its board with them, and a task becomes claimable once every task it depends
    on is done; every other task is claimable at once, and builders merge each other's
