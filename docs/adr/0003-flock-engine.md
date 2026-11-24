@@ -223,6 +223,10 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 - **isText** — The weave merges text line by line, so factory/flock/engine.mjs never hands it a file that is not UTF-8 (an image, a .gz): such a file stays exactly as it is at base in every copy and the edge, and a builder's change to one is recorded (non-text row), never merged. On run-246 a GIF in the target stopped the weave's base op with a UnicodeDecodeError before any builder opened.
 
+## Ignored files stay in their copy
+
+- **ignoredIn** — factory/flock/engine.mjs `syncFromDisk` and the Write/Edit hook ask `git check-ignore` in the builder's own copy, at the moment of the sync, which paths its ignore rules cover (#1608); such a path that is not already in the weave is never taken into it, so it reaches no peer's copy, no events row and not the landed commit, even when the rule is written in the same batch. The copy's index is the run's base, so a file tracked at base still travels when a rule covers it. On popmechanic-potluck-3 run-2 builder B's ignored `server/.celld/dev/objects.sqlite3` was merged line by line with C's and the app failed with `database disk image is malformed`. A file already in the weave when a later rule covers it keeps travelling.
+
 ## Reads that may fail
 
 - **session** — When a builder session ends in factory/flock/engine.mjs `session`, a session already closed by its `done` call, or one ended because the run itself ended (`outcome` set), gives nothing back: only an objected, released or unfinished task is handed on.
