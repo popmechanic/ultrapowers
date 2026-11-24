@@ -187,7 +187,9 @@ async function syncFromDisk (agent) {
   const ignored = ignoredIn(dir, [...known[agent]])
   let drift = 0
   for (const p of known[agent]) {
-    const text = readOr(path.join(dir, p))
+    const abs = path.join(dir, p)
+    if (fs.existsSync(abs) && !isText(abs, p)) continue
+    const text = readOr(abs)
     const view = (await must({ op: 'view', agent, path: p })).text
     const hasWeave = view !== '' || BASE_PATHS.includes(p)
     if ((text === null || ignored.has(p)) && !hasWeave) continue
