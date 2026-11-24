@@ -301,6 +301,12 @@
 266 < 1   }
 267 < 1   return out
 268 < 1 }
+271 > 2 // Paths the copy's own ignore rules cover now; the copy's index is the run's base, so a path tracked there is never named.
+272 < 1 function ignoredIn (dir, paths) {
+273 < 1   if (!paths.length) return new Set()
+274 < 1   const r = spawnSync('git', ['-C', dir, 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+275 < 1   return new Set(r.status === 0 ? r.stdout.split('\0').filter(Boolean) : [])
+276 < 1 }
 270 > 1 const textSeen = new Map()
 271 < 1 const nonText = new Set()
 269 < 2 // The weave merges text, line by line; a file that is not UTF-8 (an image, a .gz) is never handed to
@@ -424,12 +430,14 @@
 385 < 1   const dir = agentDir(agent)
 386 < 1   const disk = walk(dir)
 387 < 1   for (const p of disk) known[agent].add(p)
+389 > 1   const ignored = ignoredIn(dir, [...known[agent]])
 388 < 1   let drift = 0
 389 < 1   for (const p of known[agent]) {
 390 < 1     const text = readOr(path.join(dir, p))
 391 < 1     const view = (await must({ op: 'view', agent, path: p })).text
 392 < 1     const hasWeave = view !== '' || BASE_PATHS.includes(p)
-393 < 1     if (text === null && !hasWeave) continue
+394 > 1     if ((text === null || ignored.has(p)) && !hasWeave) continue
+393 < 2     if (text === null && !hasWeave) continue
 394 < 1     if (text === view) continue
 395 < 1     const r = await must({ op: 'rewrite', agent, path: p, content: text, task: taskOf[agent]?.id })
 396 < 1     edited(agent, p)
@@ -1016,6 +1024,7 @@
 901 < 1         const fp = path.resolve(cwd, ti.file_path)
 902 < 1         const rel = fp.slice(cwd.length + 1)
 903 < 1         known[agent].add(rel)
+905 > 1         if (ignoredIn(cwd, [rel]).has(rel) && !BASE_PATHS.includes(rel) && (await must({ op: 'view', agent, path: rel })).text === '') return {}
 904 < 1         const before = pre.get(input.tool_use_id)
 905 < 1         let rec = { peer: 0, peers: [] }, how = 'edit-call'
 906 < 1         if (name === 'Write' || before === null || before === undefined) {
