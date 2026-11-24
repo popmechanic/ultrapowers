@@ -28,7 +28,7 @@ python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # t
 python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a plan's Run: probes on the working tree, one line each (never a hand loop)
 bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
 bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
-bun skills/ultrawrite/stories/product.ts check|render|record <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks
+bun skills/ultrawrite/stories/product.ts check|render|record|route <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks, and which route its next plan takes
 bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>…]   # Jev arranges the whole page from the cards (versions A–C into <bundle>/screens/screen.<V>.json), a pick to screens/screen.json, or a reshape from notes
 bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]   # the real screen for the Browser pane, redrawn as specs change; Comment mode notes go to .ultrapowers/feedback.jsonl
 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
@@ -131,6 +131,12 @@ the engine's exit code is the merge decision.
   whole product's map and the build order, into `product.json`, before any story.
   superpowers is never called for it. The operator is asked only what the app does,
   who uses it and how it looks.
+- **A new app's first build is one author (2026-11-24, #1606).** `product.ts route` sends a
+  product with nothing built to `skills/ultrawrite/references/first-build.md`: one claims-v1
+  task from the ask and the app's rules, an empty repository, no stories, parts kit or
+  arranger. An `experiment` (n=1 run per arm, popmechanic-potluck-3 run-1 and run-2: the
+  operator judged the one-author app entirely superior, blind); its rollback is the
+  `first_build.route` cell of `skills/ultrawrite/stories/policy.json`.
 - **No local process writes run state** (`skills/ultrapowers/SKILL.md` §Client step 5, #660):
   the sandbox is the one writer of a run and the launcher reaps by hand after a sleep, so
   nothing on a timer here merges, reaps or edits. Reading is telemetry and is wanted: watch a

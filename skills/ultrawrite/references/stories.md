@@ -20,6 +20,11 @@ again at the PR smoke.
    product's map, the build order) into `<bundle>/product.json`. Draft no story
    until the operator has confirmed which plan comes first. A small, clear ask
    passes through quickly; it still gets the understanding and a one-line map.
+   Then ask which route the plan takes:
+   `bun <plugin-root>/skills/ultrawrite/stories/product.ts route <bundle>/product.json`.
+   `ROUTE fact: first build, one author` means this is a new app's first plan: stop here
+   and follow `skills/ultrawrite/references/first-build.md`; no bundle, story or screen is
+   drafted. Any other line continues below.
 4. **Draft the bundle for that plan**, starting from `skills/ultrawrite/catalog/<piece>/`
    wherever one fits:
    - `page.json`: its title, kind, three summary sentences, `subproject`, links as

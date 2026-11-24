@@ -94,7 +94,13 @@ operator picks one in the Browser pane and pins notes on it in Comment mode
 
 ## Then
 
-Draft the bundle for the `next` plan only (`references/stories.md`, steps 4–8):
+A new app's first build stops here: `product.ts route` on the record prints
+`ROUTE fact: first build, one author`, and the plan is written as
+`skills/ultrawrite/references/first-build.md` says, from the understanding and the rules
+alone. No cards, stories or screens follow, so `How it looks` is asked at the smoke, on
+the real app.
+
+Otherwise draft the bundle for the `next` plan only (`references/stories.md`, steps 4–8):
 cards carry `concept` (or `concepts`, one per map line a screen covers),
 `page.json` carries `subproject`, and the coverage rule decides which stories
 must exist. The operator sees the real screen before the
