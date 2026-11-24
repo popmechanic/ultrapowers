@@ -77,6 +77,8 @@ well as tickets, which is why scraping it was rejected.
 A TinyApp plan is compiled from a story bundle, not written. **Before any TinyApp plan,
 read `references/stories.md` in full and follow it step by step**, after the enrichment in
 `references/enrich.md`. Its commands use `<plugin-root>`, which is `${CLAUDE_PLUGIN_ROOT}`.
+A new app's first build is the exception: when `product.ts route` says so, it is one
+claims-v1 task for one author, written as `references/first-build.md` says.
 
 ## Task shape — pinned to what the parser actually reads
 

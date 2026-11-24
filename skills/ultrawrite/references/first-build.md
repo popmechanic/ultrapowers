@@ -1,0 +1,88 @@
+<!-- Commands here name the plugin directory as `<plugin-root>`; SKILL.md shows its real path. -->
+
+# A new app's first build — one author
+
+Follow this when `bun <plugin-root>/skills/ultrawrite/stories/product.ts route <bundle>/product.json`
+prints `ROUTE fact: first build, one author`. The first version of a new app is one
+claims-v1 task for one builder, written from the operator's ask and the app's rules. No
+stories, cards, parts kit, arranger or template take part; they are for later plans on an
+app that exists (`references/stories.md`).
+
+**Why (an `experiment`).** On 2026-11-24 one author and three builders in shared files each
+built Potluck from the same ask, empty repository and probes (popmechanic-potluck-3 run-1 and
+run-2, n=1 run per arm). In a blind smoke test the operator judged the one-author app entirely
+superior, and both better than the stories-pipeline Potluck of 2026-11-20. The rollback is the
+`first_build.route` cell of `skills/ultrawrite/stories/policy.json`: set it to `stories`.
+
+## The steps
+
+1. **Enrich the ask** as `references/enrich.md` says, through the understanding, the map and
+   the build order. Stop there: draft no cards and no stories.
+2. **Write the app's rules** off the understanding's product assumptions, one sentence each
+   ("only a guest who said yes can bring a dish"). These are what the probes prove.
+3. **Fix three names**, and only these, so probes can call the app without choosing its design:
+   - a rules module (`src/<app>.ts`) whose exported functions you spell out with their
+     arguments and results, including one `view(store)` that returns everything the page shows;
+   - `client/src/app.tsx` exporting `App`, a React component taking `{store}` and drawing the
+     whole page from it;
+   - a `dev` script in `package.json` that serves the page, and the sync it needs, on
+     `0.0.0.0` at the port in `PORT`.
+4. **Write the plan**, claims-v1, one task (the task shape is `SKILL.md`'s):
+   - **Claim:** the operator's do-and-see sentence, confirmed with the three-sentence summary
+     in one touch.
+   - **Files:** `package.json`, `tsconfig.json`, the rules module, `client/src/app.tsx`.
+   - **Context** carries, in this order: the ask's summary and the rules; the sentence
+     *A person who has never seen the page should be able to use it without instructions:
+     what is saved is always visible, and the next thing to do is obvious.*; the stack (Bun,
+     TypeScript, React, one TinyBase `MergeableStore` synced over a `WsSynchronizer` to a
+     Durable Object with a SQLite persister; `celld` is on the sandbox's PATH); that the
+     repository starts empty and its layout beyond the three names is the builder's; the
+     three names; and *You are the only author: how the page reads to a person, its order,
+     its words and what it shows, is yours to design.*
+   - **Global Constraints:** the check line below, the stack, and what the app must not do.
+5. **Write the proof** (next section), rehearse it, run the gate, and check the plan as for
+   any claims-v1 plan.
+6. **Launch held** (`--hold`) on an empty repository holding one README commit. The routing
+   rule reads a one-task plan as inline; a first build goes to the fleet anyway, for the
+   sandbox, the proof and the pull request.
+7. **Touch 2 is the real app.** Serve it from the run's sandbox (`bun run dev` as a user unit,
+   `ssh exe.dev share port <vm> <port>`) and give the operator the link. A draft whose only red
+   probe is the serve probe is still worth serving: read the red before judging the app.
+
+## The proof
+
+Every probe is one `Run:` line ending in its clause tag, and begins with `bun install`,
+because an empty base installs nothing before the builder opens (popmechanic-potluck-3,
+2026-11-24; runroom-ab run-3). For the same reason the plan's check is exactly:
+
+```
+- Check: bun install && bunx tsc --noEmit
+```
+
+Write no `bun test` into it: the builder writes no tests, and `bun test` with none exits 1.
+
+- **One probe per rule**, calling the rules module under `bun -e` and exiting non-zero when
+  the rule does not hold. Seed the store through the module's own functions, act, then read
+  `view(store)`. A rule about what must not happen asserts both the refusal and that nothing
+  changed.
+- **One page probe:** seed a store, render `App` to HTML with `renderToString`, and require
+  every seeded name and one computed total. Choose the seed so that total differs from every
+  other number in it, or a page that shows the wrong sum still passes.
+- **One serve probe**, verbatim apart from the clause tag:
+
+```
+- Run: test -f package.json && bun install >/dev/null 2>&1 && P=$(bun -e "const s=Bun.serve({port:0,fetch:()=>new Response('')});console.log(s.port);s.stop()") && ( (PORT=$P bun run dev >/dev/null 2>&1 & echo $! >/tmp/app-$P.pid) ) && ok=1 && for i in $(seq 25); do curl -sf http://127.0.0.1:$P/ | grep -qi '<html' && ok=0 && break; sleep 1; done; pid=$(cat /tmp/app-$P.pid 2>/dev/null); pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null; test "$ok" = 0 [M6]
+```
+
+**Rehearse before the gate.** Write a throwaway stub that satisfies the three names (a few
+lines each), run every probe and the check against it, and delete it. A probe that cannot pass
+on a stub cannot pass on the app.
+
+**What the proof does not cover.** It shows the rules hold, the page shows what is saved and
+the app starts. It does not show that two browsers sync or that the flow makes sense to a
+person. The operator's smoke does, and it is the verdict (#1609).
+
+## A worked plan
+
+`plan.md` at the evidence tag `popmechanic-potluck-3/run-1`: the Potluck first build, six
+probes, one task.

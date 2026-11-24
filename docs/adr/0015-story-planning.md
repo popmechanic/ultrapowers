@@ -6,6 +6,10 @@ Governs: `skills/ultrawrite/catalog/todo-tags/store.js`, `skills/ultrawrite/cata
 Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
 decision the code cannot show on its own. Symbols are named; line numbers are not.
 
+## First build route
+
+- **routeOf** — A new app's first plan goes to one author. `routeOf` in skills/ultrawrite/stories/product.ts reads a product record with no built plan as a first build and prints the route from the `first_build.route` cell of the policy.json beside it: `solo` sends the author to skills/ultrawrite/references/first-build.md (a one-task claims-v1 plan from the ask and the app's rules, with no stories, parts kit, arranger or template), `stories` to the stories pipeline; a record with a built plan is always stories. On 2026-11-24 the operator judged a one-author Potluck entirely superior to a three-builder one in a blind smoke test, and both better than the stories-pipeline Potluck of 2026-11-20 (n=1 run per arm, popmechanic-potluck-3 run-1 and run-2, #1606), so the cell is an experiment whose rollback is `stories`.
+
 ## Stories preview server
 
 - **skills/ultrawrite/stories/preview.ts** — skills/ultrawrite/stories/preview.ts serves a bundle's screen with the scaffolded TinyApp's own kit (no CDN), pushes changes under screens/ over a websocket, takes picks and notes as JSON lines on POST /feedback and runs story plays via /play and /played. Only its own page may talk to it (#1530): every request must name the server's own host, and data routes refuse cross-site browser requests and non-JSON POSTs.

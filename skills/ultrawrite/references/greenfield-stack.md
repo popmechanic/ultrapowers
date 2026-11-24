@@ -108,6 +108,13 @@ A **stories-v1** plan does not scaffold with the generator: its launch base is
 is still a TinyApp; builders write each piece's screen as a json-render spec and
 no page code, as `## Screens` says (operator, 2026-10-01).
 
+A new app's **first build** uses neither the generator nor the template: it starts from an
+empty repository and one author writes the page as ordinary React, as
+`first-build.md` says (operator, 2026-11-24, an `experiment`: n=1 run per arm,
+popmechanic-potluck-3 run-1 and run-2; rollback the `first_build.route` policy cell). Its
+check is `bun install && bunx tsc --noEmit`, since nothing is installed before the builder
+opens and no test is written.
+
 **Who is signed in** comes from Cloudflare Access, never from the app: the
 template's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
 for (null when Access did not run), the page keeps it as the hook's `who`, and

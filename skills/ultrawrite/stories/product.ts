@@ -149,6 +149,12 @@ export function checkProduct(p: unknown): string[] {
   return errs;
 }
 
+export function routeOf(p: Product): string {
+  if (p.subprojects.some((s) => s.status === 'built')) return 'ROUTE fact: later plan, stories';
+  const cell = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).first_build;
+  return cell?.route === 'stories' ? 'ROUTE fact: first build, stories' : 'ROUTE fact: first build, one author';
+}
+
 export function loadProduct(path: string): Product {
   return JSON.parse(readFileSync(path, 'utf8'));
 }
@@ -206,8 +212,8 @@ export function recordPicks(p: Product): number {
 
 function main(argv: string[]): number {
   const [cmd, file, ...rest] = argv;
-  if (!file || !['check', 'render', 'record'].includes(cmd)) {
-    console.error('usage: product.ts check <product.json> | render <product.json> [--bundle <dir>] --out <product.md> | record <product.json>');
+  if (!file || !['check', 'render', 'record', 'route'].includes(cmd)) {
+    console.error('usage: product.ts check <product.json> | render <product.json> [--bundle <dir>] --out <product.md> | record <product.json> | route <product.json>');
     return 2;
   }
   let p: Product;
@@ -225,6 +231,10 @@ function main(argv: string[]): number {
   }
   if (cmd === 'check') {
     console.log(`PRODUCT OK: ${p.concepts.length} concept(s), ${p.subprojects.length} plan(s)`);
+    return 0;
+  }
+  if (cmd === 'route') {
+    console.log(routeOf(p));
     return 0;
   }
   if (cmd === 'record') {
