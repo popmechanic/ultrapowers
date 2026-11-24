@@ -116,6 +116,14 @@ the engine's exit code is the merge decision.
   pick 2026-11-14; n=110 runs, it drafted 4 green runs and caught no lost line). A conflict is the
   resolver's measurement, not a reason to serialize. Contention, not allocated vCPU, bounds
   concurrent runs.
+- **Concurrent writing is for throughput, not coherence (2026-11-24, #1607).** The weave lets
+  many builders work on independent, checkable pieces of a large codebase without waiting on
+  each other; it shares text, not understanding. A builder stops when its own probes are
+  green, so a design that must read as one thing is one task, never a split
+  (`skills/ultrawrite/references/decomposition.md`). Read on the Potluck comparison
+  (n=1 run per arm, popmechanic-potluck-3 run-1 and run-2): three builders sharing every
+  file made the worse app, 2 of their 7 publishes were mid-task, and across potluck-2 runs
+  1–2 and ultrapowers runs 304–308 26 of 27 publishes came at done.
 - **One merge, many writers (#1292).** Every builder writes its own weave replica and merges its
   peers' in any order; no engine step is the sole merger. Manyana is the only merge in the system,
   so never patch `skills/ultrapowers/kernel/vendor/manyana.py` (sha-pinned). Same-file concurrent
