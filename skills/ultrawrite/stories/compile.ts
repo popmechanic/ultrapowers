@@ -217,6 +217,7 @@ async function main(): Promise<number> {
         s.plan = before.plan;
       }
       if (before?.history) s.history = before.history;
+      if (before?.by) s.by = before.by;
       if (s.id === b.page.subproject) {
         if (s.plan && s.plan !== planId) s.history = [...(s.history ?? []), s.plan];
         s.status = 'built';

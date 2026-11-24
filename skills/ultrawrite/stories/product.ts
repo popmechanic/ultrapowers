@@ -8,7 +8,7 @@ export type Assumption = {text: string; about: 'product' | 'technical'; state: '
 export type Concept = {id: string; purpose: string; part: string; status: 'keep' | 'defer' | 'cut'; relies_on: string[]};
 export type Subproject = {
   id: string; title: string; reason: string; concepts: string[]; depends_on: string[];
-  status: 'next' | 'planned' | 'built'; plan?: string; history?: string[];
+  status: 'next' | 'planned' | 'built'; plan?: string; history?: string[]; by?: 'solo' | 'stories';
 };
 export type Reading = {
   stage: string; question: string; subject: string; noul: number | null; flagged: boolean;
@@ -112,7 +112,7 @@ export function checkProduct(p: unknown): string[] {
   const home = new Map<string, string[]>();
   for (const s of subs) {
     const at = `plan ${s?.id ?? '?'}`;
-    for (const k of extra(s ?? {}, ['id', 'title', 'reason', 'concepts', 'depends_on', 'status', 'plan', 'history'])) errs.push(`${at}: unknown field ${k}`);
+    for (const k of extra(s ?? {}, ['id', 'title', 'reason', 'concepts', 'depends_on', 'status', 'plan', 'history', 'by'])) errs.push(`${at}: unknown field ${k}`);
     if (!isStr(s?.id)) errs.push('plan: every plan needs an id');
     else if (sids.has(s.id)) errs.push(`${at}: the id is used twice`);
     else sids.add(s.id);
@@ -123,6 +123,7 @@ export function checkProduct(p: unknown): string[] {
     if (!['next', 'planned', 'built'].includes(s?.status)) errs.push(`${at}: status must be next, planned or built`);
     if (s?.status === 'built' && !isStr(s?.plan)) errs.push(`${at}: a built plan names its plan id`);
     if (s?.history !== undefined && !strs(s.history)) errs.push(`${at}: history must be a list of plan ids`);
+    if (s?.by !== undefined && !['solo', 'stories'].includes(s.by)) errs.push(`${at}: by must be solo or stories`);
     for (const c of list(s?.concepts)) {
       if (!cids.has(c)) errs.push(`${at}: builds ${c}, which is no concept`);
       else if (byId.get(c).status !== 'keep') errs.push(`${at}: builds ${c}, which is not kept for the first version`);
@@ -150,9 +151,21 @@ export function checkProduct(p: unknown): string[] {
 }
 
 export function routeOf(p: Product): string {
-  if (p.subprojects.some((s) => s.status === 'built')) return 'ROUTE fact: later plan, stories';
+  const built = p.subprojects.filter((s) => s.status === 'built');
+  if (built.some((s) => s.by === 'solo')) return 'ROUTE fact: later plan, claims';
+  if (built.length) return 'ROUTE fact: later plan, stories';
   const cell = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).first_build;
   return cell?.route === 'stories' ? 'ROUTE fact: first build, stories' : 'ROUTE fact: first build, one author';
+}
+
+export function markBuilt(p: Product, plan: string): string | null {
+  const s = p.subprojects.find((x) => x.status === 'next');
+  if (!s) return 'no plan is next';
+  if (s.plan && s.plan !== plan) s.history = [...(s.history ?? []), s.plan];
+  s.status = 'built';
+  s.plan = plan;
+  s.by = 'solo';
+  return null;
 }
 
 export function loadProduct(path: string): Product {
@@ -212,8 +225,8 @@ export function recordPicks(p: Product): number {
 
 function main(argv: string[]): number {
   const [cmd, file, ...rest] = argv;
-  if (!file || !['check', 'render', 'record', 'route'].includes(cmd)) {
-    console.error('usage: product.ts check <product.json> | render <product.json> [--bundle <dir>] --out <product.md> | record <product.json> | route <product.json>');
+  if (!file || !['check', 'render', 'record', 'route', 'built'].includes(cmd)) {
+    console.error('usage: product.ts check <product.json> | render <product.json> [--bundle <dir>] --out <product.md> | record <product.json> | route <product.json> | built <product.json> --plan <id>');
     return 2;
   }
   let p: Product;
@@ -235,6 +248,17 @@ function main(argv: string[]): number {
   }
   if (cmd === 'route') {
     console.log(routeOf(p));
+    return 0;
+  }
+  if (cmd === 'built') {
+    const {values: b} = parseArgs({args: rest, options: {plan: {type: 'string'}}});
+    const why = b.plan ? markBuilt(p, b.plan) : 'usage: product.ts built <product.json> --plan <id>';
+    if (why) {
+      console.log(`product: ${why}`);
+      return 2;
+    }
+    saveProduct(file, p);
+    console.log(`BUILT ${b.plan}: one author`);
     return 0;
   }
   if (cmd === 'record') {

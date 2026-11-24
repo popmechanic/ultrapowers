@@ -18,7 +18,8 @@ with (Recommended) and *Please explain*, and opens by naming what it touches
 
 ## A later plan for the same product
 
-If the target app has `stories/product.json`, copy it into the bundle and start at
+If the target app has `stories/product.json`, copy it into the bundle (an app first built by
+one author carries it too, and `product.ts route` then answers `later plan, claims`) and start at
 stage 4: the map and the understanding are already signed. Add to the map only
 what the new ask brings (stage 3 for those concepts alone). Pass the new ask with
 `--ask-file` to the bundle stage; Jev reads its sentences because they are new.

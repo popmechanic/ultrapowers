@@ -42,13 +42,21 @@ superior, and both better than the stories-pipeline Potluck of 2026-11-20. The r
    - **Global Constraints:** the check line below, the stack, and what the app must not do.
 5. **Write the proof** (next section), rehearse it, run the gate, and check the plan as for
    any claims-v1 plan.
-6. **Launch held** (`--hold`) on an empty repository holding one README commit. The routing
+6. **Record the plan as built by one author** and put the record in the app:
+   `bun <plugin-root>/skills/ultrawrite/stories/product.ts built <bundle>/product.json --plan <plan id>`,
+   then copy it to `stories/product.json` in the target's first commit, beside the README. A
+   later plan finds it there (`enrich.md`, "A later plan for the same product") and
+   `product.ts route` then answers `later plan, claims`.
+7. **Launch held** (`--hold`) on that repository: one commit holding the README and
+   `stories/product.json`. Keep the plan itself in an untracked folder of the clone
+   (`plans/`, named in `.git/info/exclude`), since `plan_check.py` reads the plan from
+   inside the target's checkout. The routing
    rule reads a one-task plan as inline; a first build goes to the fleet anyway, for the
    sandbox, the proof and the pull request.
-7. **Touch 2 is the real app.** Serve it from the run's sandbox (`bun run dev` as a user unit,
+8. **Touch 2 is the real app.** Serve it from the run's sandbox (`bun run dev` as a user unit,
    `ssh exe.dev share port <vm> <port>`). A draft whose only red probe is the serve probe is
    still worth serving: read the red before judging the app.
-8. **Walk it before the operator does** (`## The walk`), then give them the link with the
+9. **Walk it before the operator does** (`## The walk`), then give them the link with the
    walk's answers in the message.
 
 ## The proof
@@ -62,6 +70,9 @@ because an empty base installs nothing before the builder opens (popmechanic-pot
 ```
 
 Write no `bun test` into it: the builder writes no tests, and `bun test` with none exits 1.
+A file the app's `.gitignore` covers never reaches the copy the probes and the check run on,
+so nothing they need may be an ignored file: a generated source is either tracked or built by
+the command that needs it.
 
 - **One probe per rule**, calling the rules module under `bun -e` and exiting non-zero when
   the rule does not hold. Seed the store through the module's own functions, act, then read
@@ -70,10 +81,13 @@ Write no `bun test` into it: the builder writes no tests, and `bun test` with no
 - **One page probe:** seed a store, render `App` to HTML with `renderToString`, and require
   every seeded name and one computed total. Choose the seed so that total differs from every
   other number in it, or a page that shows the wrong sum still passes.
-- **One serve probe**, verbatim apart from the clause tag:
+- **One serve probe**, verbatim apart from the clause tag. It starts the app as the leader of
+  its own process group and stops the whole group, because a `dev` script usually starts the
+  server one level down, and stopping only the script leaves that server running (reproduced
+  2026-11-24):
 
 ```
-- Run: test -f package.json && bun install >/dev/null 2>&1 && P=$(bun -e "const s=Bun.serve({port:0,fetch:()=>new Response('')});console.log(s.port);s.stop()") && ( (PORT=$P bun run dev >/dev/null 2>&1 & echo $! >/tmp/app-$P.pid) ) && ok=1 && for i in $(seq 25); do curl -sf http://127.0.0.1:$P/ | grep -qi '<html' && ok=0 && break; sleep 1; done; pid=$(cat /tmp/app-$P.pid 2>/dev/null); pkill -P "$pid" 2>/dev/null; kill "$pid" 2>/dev/null; test "$ok" = 0 [M6]
+- Run: test -f package.json && bun install >/dev/null 2>&1 && P=$(bun -e "const s=Bun.serve({port:0,fetch:()=>new Response('')});console.log(s.port);s.stop()") && ( (PORT=$P python3 -c "import os,sys; os.getpgrp()==os.getpid() or os.setsid(); os.execvp(sys.argv[1], sys.argv[1:])" bun run dev >/dev/null 2>&1 & echo $! >/tmp/app-$P.pid) ) && ok=1 && for i in $(seq 25); do curl -sf http://127.0.0.1:$P/ | grep -qi '<html' && ok=0 && break; sleep 1; done; kill -- -"$(cat /tmp/app-$P.pid 2>/dev/null)" 2>/dev/null; test "$ok" = 0 [M6]
 ```
 
 **Rehearse before the gate.** Write a throwaway stub that satisfies the three names (a few
@@ -106,6 +120,18 @@ An `experiment` (#1609): on 2026-11-24 the six questions separated the two Potlu
 hand (n=1 walk per app). The walk stays on the laptop until it and the operator have agreed
 on n=5 runs, counted by `walk.ts agreement docs/superpowers/plans`; its rollback is skipping
 this section.
+
+## A later plan
+
+When `product.ts route` prints `ROUTE fact: later plan, claims`, the app was first built by
+one author, so it has no stories, parts kit or screen file and the stories pipeline does not
+apply to it (operator, 2026-11-24). Plan the change as an ordinary claims-v1 plan on an
+existing codebase, as `SKILL.md` says: enrich from the app's `stories/product.json`, sign the
+Claim, write tasks with probes in the same three shapes (a rule through the rules module, the
+page rendered from a seeded store, the app served), run the gate and the walk. A change that
+redesigns how the page reads is one task (`decomposition.md`, "Split by default"). When the
+plan is written, mark its plan built with `product.ts built` and include the updated
+`stories/product.json` in the run's Files.
 
 ## A worked plan
 
