@@ -1,0 +1,48 @@
+0 < 2 """plan_check.py on a stories-v1 plan: the signed store and the listed tools."""
+1 < 1 import json
+2 < 1 import shutil
+3 < 1 import subprocess
+4 < 1 import sys
+5 < 1 from pathlib import Path
+6 < 1 
+7 < 1 ROOT = Path(__file__).resolve().parents[1]
+8 < 1 CHECK = ROOT / "skills/ultrapowers/scripts/plan_check.py"
+9 < 1 FIXTURE = ROOT / "evals/fixtures/stories/todo"
+10 < 1 
+11 < 1 
+12 < 1 def compiled(tmp_path):
+13 < 1     app = tmp_path / "app"
+14 < 1     shutil.copytree(FIXTURE, app)
+15 < 1     return app, app / ".ultrapowers/plan.md"
+16 < 1 
+17 < 1 
+18 < 1 def check(plan):
+19 < 1     return subprocess.run([sys.executable, str(CHECK), str(plan)], capture_output=True, text=True)
+20 < 1 
+21 < 1 
+22 < 1 def test_a_freshly_compiled_plan_is_ok(tmp_path):
+23 < 1     _, plan = compiled(tmp_path)
+24 < 1     res = check(plan)
+25 < 1     assert res.returncode == 0, res.stdout
+26 < 1     assert res.stdout.strip() == "PLAN OK"
+27 < 1 
+28 < 1 
+30 > 1 def test_the_store_edited_after_signing_is_refused(tmp_path):
+29 < 2 def test_the_store_edited_after_signing_is_refused(tmp_path):  # Review Focus 3
+30 < 1     app, plan = compiled(tmp_path)
+31 < 1     (app / "client/src/store.js").write_text("// edited\n", encoding="utf-8")
+32 < 1     res = check(plan)
+33 < 1     assert res.returncode == 2
+34 < 1     assert "stories: store module client/src/store.js changed since it was signed" in res.stdout
+35 < 1 
+36 < 1 
+37 < 1 
+38 < 1 
+39 < 1 def test_a_probe_naming_an_unlisted_tool_is_refused(tmp_path):
+40 < 1     _, plan = compiled(tmp_path)
+41 < 1     t = plan.read_text(encoding="utf-8").replace("- `addTodo` —", "- `createTodo` —")
+42 < 1     plan.write_text(t, encoding="utf-8")
+43 < 1     res = check(plan)
+44 < 1     assert res.returncode == 2
+45 < 1     assert "task 1 probe S2.2: names tool addTodo, which no task's Actions list" in res.stdout
+46 < 1 

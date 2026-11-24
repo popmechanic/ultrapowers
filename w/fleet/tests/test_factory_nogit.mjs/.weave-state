@@ -1,0 +1,64 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_factory_nogit.mjs — the exam for "models never run git"
+2 < 2  * (#1443, replacing `factory/gitblock.mjs`'s reading of the Bash line).
+3 < 2  *
+4 < 2  * A builder's session env puts `factory/flock/nogit` first on its PATH, so a
+5 < 2  * git reached from inside a script is refused as surely as one typed at the
+6 < 2  * prompt; the engine's `PreToolUse` hook denies what the PATH cannot see, a
+7 < 2  * git named by its absolute path.
+8 < 2  *
+9 < 2  *   (a) `git status` behind `&&` in `sh -c` exits 1 with the refusal on stderr;
+10 < 2  *   (b) git run by a python3 subprocess — invisible to any reading of the
+11 < 2  *       command line — is refused too;
+12 < 2  *   (c) the engine puts the shim first on the builder's PATH;
+13 < 2  *   (d) the engine's absolute-path check matches `/usr/bin/git` and not a
+14 < 2  *       `.git` path, a `git` directory or a bare `git` word.
+15 < 2  *
+16 < 2  * No network; every spawn runs under `simEnv`.
+17 < 2  */
+18 < 2 
+19 < 1 import assert from 'node:assert/strict'
+20 < 1 import { spawnSync } from 'node:child_process'
+21 < 1 import fs from 'node:fs'
+22 < 1 import path from 'node:path'
+23 < 1 import { fileURLToPath } from 'node:url'
+24 < 1 
+25 < 1 import { simEnv } from './_helpers.mjs'
+26 < 1 
+27 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+28 < 1 const FLOCK = path.join(HERE, '..', '..', 'factory', 'flock')
+29 < 1 const env = simEnv({ bin: path.join(FLOCK, 'nogit') })
+30 < 1 
+31 < 2 // ── a. a git behind && is refused ───────────────────────────────────────────
+32 < 1 {
+33 < 1   const r = spawnSync('sh', ['-c', 'true && git status'], { encoding: 'utf8', env })
+34 < 1   assert.equal(r.status, 1, '(a) git behind && exits 1')
+35 < 1   assert.match(r.stderr, /agents never run git/, '(a) the refusal is on stderr')
+36 < 1 }
+37 < 1 
+38 < 2 // ── b. a git inside a script is refused ─────────────────────────────────────
+39 < 1 {
+40 < 1   const r = spawnSync('python3', ['-c', 'import subprocess, sys; sys.exit(subprocess.run(["git", "status"]).returncode)'], { encoding: 'utf8', env })
+41 < 1   assert.equal(r.status, 1, '(b) git run by a python3 subprocess exits 1')
+42 < 1 }
+43 < 1 
+44 < 1 const engine = fs.readFileSync(path.join(FLOCK, 'engine.mjs'), 'utf8')
+45 < 1 
+46 < 2 // ── c. the engine puts the shim first on the builder's PATH ─────────────────
+47 < 1 assert.match(engine, /const NOGIT = path\.join\(HERE, 'nogit'\)/, '(c) NOGIT is the flock nogit directory')
+48 < 1 assert.match(engine, /env: \{ \.\.\.process\.env, PATH: NOGIT \+ path\.delimiter \+ process\.env\.PATH/, '(c) the builder PATH starts with NOGIT')
+49 < 1 
+50 < 2 // ── d. the absolute-path check ──────────────────────────────────────────────
+51 < 1 {
+52 < 1   const m = engine.match(/input\.tool_name === 'Bash' && \/(.+)\/\.test\(ti\.command/)
+53 < 1   assert.ok(m, '(d) the engine carries the absolute-path check')
+54 < 1   const abs = new RegExp(m[1])
+55 < 1   assert.ok(abs.test('/usr/bin/git status'), '(d) /usr/bin/git is caught')
+56 < 1   assert.ok(abs.test('cd x && /usr/local/bin/git diff'), '(d) an absolute git behind && is caught')
+57 < 1   assert.ok(!abs.test('cat /tmp/repo/.git/HEAD'), '(d) a .git path is not')
+58 < 1   assert.ok(!abs.test('ls /srv/docs/git/README'), '(d) a git directory is not')
+59 < 1   assert.ok(!abs.test('grep -rn git factory/'), '(d) a bare git word is left to the PATH shim')
+60 < 1 }
+61 < 1 
+62 < 1 console.log('ALL TESTS PASSED')
+63 < 1 

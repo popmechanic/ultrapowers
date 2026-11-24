@@ -1,25 +1,25 @@
 0 < 1 #!/usr/bin/env node
-2 > 1 // The Flock engine (map #1292), the one engine every launch boots. Grown from the laptop prototype
-3 < 1 // (flock-runroom's host.mjs).
+2 > 2 // The Flock engine (map #1292), the one engine every launch boots. Grown from the laptop prototype
+3 < 2 // (flock-runroom's host.mjs).
 1 < 2 // The Flock engine (map #1292: adopted as an experiment behind the boot's engine switch; the
 2 < 2 // round-3 arm is the measured shape). Grown from the laptop prototype (flock-runroom's host.mjs).
-3 < 1 //
-4 < 1 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
-6 > 1 //        [--builder sdk|scripted:<json>] [--clock 13800]
+3 < 2 //
+4 < 2 //   node factory/flock/engine.mjs --plan <plan.md> [--plan-json <parse>] --target <dir> --base <sha> --run-dir <dir>
+6 > 2 //        [--builder sdk|scripted:<json>] [--clock 13800]
 5 < 2 //        [--builder sdk|scripted:<json>] [--clock 13800] [--stall-minutes 20]
 6 < 2 //        [--kata-url <hub> --kata-json <record> [--kata-actor engine:<run>]]
 7 < 2 //   (with both --kata-url and --kata-json, and a record that reads, the board's
 8 < 2 //    claims, releases, reopens and closes are mirrored onto Kata as comments while the run is in
 9 < 2 //    flight; without them the board stays in memory and sends nothing.)
-10 < 1 //
-11 < 1 // With N builders working one plan together, each on its own copy, merging with each other
-12 < 1 // between tool batches, the swarm settles on green code; the engine then leaves the target one
-13 < 1 // commit ahead of --base and writes the rows the pull request card reads (events.jsonl).
-14 < 1 //
-15 < 1 // The engine is code, not a model: it seeds the board, runs each builder's session,
-16 < 1 // keeps every copy's weave (factory/flock/weave.py), merges peers after each tool
-17 < 1 // batch, and tests every published snapshot at the edge. Builders pull their own
-18 < 1 // work from the board and never run git.
+10 < 2 //
+11 < 2 // With N builders working one plan together, each on its own copy, merging with each other
+12 < 2 // between tool batches, the swarm settles on green code; the engine then leaves the target one
+13 < 2 // commit ahead of --base and writes the rows the pull request card reads (events.jsonl).
+14 < 2 //
+15 < 2 // The engine is code, not a model: it seeds the board, runs each builder's session,
+16 < 2 // keeps every copy's weave (factory/flock/weave.py), merges peers after each tool
+17 < 2 // batch, and tests every published snapshot at the edge. Builders pull their own
+18 < 2 // work from the board and never run git.
 19 < 1 import { spawnSync } from 'node:child_process'
 20 < 1 import crypto from 'node:crypto'
 21 < 1 import fs from 'node:fs'
@@ -61,40 +61,40 @@
 54 < 2 // hub (the record's project.id) as a keyed comment (factory/flock/kata_mirror.mjs), never awaited,
 55 < 2 // never failing the run; each attempt is a `kata:mirror` event row, `ok` only with the hub's
 56 < 2 // comment uid. Otherwise the board stays in memory.
-57 < 1 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
-58 < 1 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
+57 < 2 // `--builder sdk` (default): a model session per claim. `scripted:<json>`: no model; the JSON maps a
+58 < 2 // task id to {path: text}, which the session writes and then finishes as a `done` call would.
 59 < 1 const BUILDER = arg('builder', 'sdk')
 60 < 1 const SCRIPT = BUILDER.startsWith('scripted:') ? JSON.parse(fs.readFileSync(BUILDER.slice('scripted:'.length), 'utf8')) : null
 61 < 1 if (!SCRIPT && BUILDER !== 'sdk') { console.error('engine: --builder is sdk or scripted:<json>'); process.exit(2) }
-62 < 1 // the SDK and zod load only for model builders: a scripted run needs neither
+62 < 2 // the SDK and zod load only for model builders: a scripted run needs neither
 63 < 1 const { query, createSdkMcpServer, tool } = SCRIPT ? {} : await import('@anthropic-ai/claude-agent-sdk')
 64 < 1 const { z } = SCRIPT ? {} : await import('zod')
 65 < 1 const W = { name: path.basename(PLAN, '.md'), ...workloadFromPlan(PLAN, arg('plan-json')) }
 66 < 1 for (const t of W.tasks) t.id = String(t.id)
 67 < 1 for (const t of W.tasks) t.depends_on = t.depends_on.map(String)
-68 < 1 // The round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26) is the only behaviour (operator 2026-09-29,
-69 < 1 // the switches no launch set are gone): an elastic pool, a builder opening whenever a ready task has
-70 < 1 // no free builder to take it, up to CAP (an idle builder holds no session, so it costs no tokens); a
-71 < 1 // builder publishes when it calls publish (and the engine publishes at session end, released or
-72 < 1 // done); settling `tested`, as soon as the last tested hash is green with nothing published after it;
-73 < 1 // `done` publishes, marks the task done and ends the copy's changes (later edits refused); the
-74 < 1 // builder's own tools load up front (no ToolSearch step); the opening message carries a digest; every
-75 < 1 // Bash command runs with stdin closed, so a stdin read fails fast; an open conflict closes as a fact
-76 < 1 // the moment a publish shows its merged text is a builder's own writing over both sides (see
-77 < 1 // earlyClose); the board offers the ready set longest remaining chain first (flock_board.mjs).
+68 < 2 // The round-3 arm (n=3 runs, runroom-r3-1..3, 2026-09-26) is the only behaviour (operator 2026-09-29,
+69 < 2 // the switches no launch set are gone): an elastic pool, a builder opening whenever a ready task has
+70 < 2 // no free builder to take it, up to CAP (an idle builder holds no session, so it costs no tokens); a
+71 < 2 // builder publishes when it calls publish (and the engine publishes at session end, released or
+72 < 2 // done); settling `tested`, as soon as the last tested hash is green with nothing published after it;
+73 < 2 // `done` publishes, marks the task done and ends the copy's changes (later edits refused); the
+74 < 2 // builder's own tools load up front (no ToolSearch step); the opening message carries a digest; every
+75 < 2 // Bash command runs with stdin closed, so a stdin read fails fast; an open conflict closes as a fact
+76 < 2 // the moment a publish shows its merged text is a builder's own writing over both sides (see
+77 < 2 // earlyClose); the board offers the ready set longest remaining chain first (flock_board.mjs).
 78 < 1 const CAP = 16
 79 < 1 const MODEL = 'claude-opus-5-5'
-80 < 1 // under the boot's 14400 s unit limit
+80 < 2 // under the boot's 14400 s unit limit
 81 < 1 const CLOCK_MS = Number(arg('clock', 13800)) * 1000
-83 > 1 // The settled cells (operator 2026-11-14, n=110 Flock runs 2026-09-26..11-15; each mode no run
-84 < 1 // used was cut, and the way back is a checkout before the cut): a builder is told only of the peer
-85 < 1 // changes its work touches (pulls.mjs; 72 runs, 146 changes held quiet); a change outside every
-86 < 1 // task's Files that no builder wrote fails the edge (scope.mjs; 0 refusals); a builder's loose ends
-87 < 1 // become the task `L:loose` at the first green (7 runs, 5 settled green, 2 drafted for other
-88 < 1 // reasons); a builder may object to a plan it cannot satisfy (2 objections, both the wrong-plans
-89 < 1 // test); and the run follows main as a peer from main's stored memory (13 moves, no clash drafted).
-90 < 1 // a path main and a builder each created apart is a conflict a builder makes one file
-91 < 1 // how often the run looks at the default branch: `--main-poll <seconds>`, else the policy cell
+83 > 2 // The settled cells (operator 2026-11-14, n=110 Flock runs 2026-09-26..11-15; each mode no run
+84 < 2 // used was cut, and the way back is a checkout before the cut): a builder is told only of the peer
+85 < 2 // changes its work touches (pulls.mjs; 72 runs, 146 changes held quiet); a change outside every
+86 < 2 // task's Files that no builder wrote fails the edge (scope.mjs; 0 refusals); a builder's loose ends
+87 < 2 // become the task `L:loose` at the first green (7 runs, 5 settled green, 2 drafted for other
+88 < 2 // reasons); a builder may object to a plan it cannot satisfy (2 objections, both the wrong-plans
+89 < 2 // test); and the run follows main as a peer from main's stored memory (13 moves, no clash drafted).
+90 < 2 // a path main and a builder each created apart is a conflict a builder makes one file
+91 < 2 // how often the run looks at the default branch: `--main-poll <seconds>`, else the policy cell
 82 < 2 // A policy cell of flock: its value, else the default; a value outside `allowed` stops the engine.
 83 < 2 const mode = (cell, allowed, dflt) => {
 84 < 2   const v = cell.split('.').reduce((o, k) => o?.[k], POLICY_FLOCK) ?? dflt
@@ -140,23 +140,24 @@
 120 < 2 // a path main and a builder each created apart: `conflict` (a builder makes them one file) or `union`
 121 < 2 const MAIN_CREATED = mode('main.created', ['conflict', 'union'], 'union')
 122 < 2 // how often a `peer` run looks at the default branch: `--main-poll <seconds>`, else the policy cell
-123 < 1 // flock.main.poll_seconds, else 60
+123 < 2 // flock.main.poll_seconds, else 60
 124 < 1 const MAIN_POLL_MS = Number(arg('main-poll', POLICY_FLOCK?.main?.poll_seconds ?? 60)) * 1000
 125 < 1 if (!Number.isFinite(MAIN_POLL_MS) || MAIN_POLL_MS < 1000) { console.error('engine: --main-poll (or flock.main.poll_seconds) is a number of seconds, 1 or more'); process.exit(2) }
-126 < 1 // `run-312` -> 312: a stored line's author is `@r312:<task>`
+126 < 2 // `run-312` -> 312: a stored line's author is `@r312:<task>`
 127 < 1 const RUN_NO = (process.env.ULTRAPOWERS_FLEET_RUN || '').replace(/^run-/, '') || '?'
-128 < 1 const touched = {}   // per builder: the paths it has read or edited in its copy
+129 > 1 const touched = {}
+128 < 2 const touched = {}   // per builder: the paths it has read or edited in its copy
 129 < 1 const touch = (agent, rel) => (touched[agent] = touched[agent] || new Set()).add(rel)
 130 < 1 const MAX_REOPEN = 3
-131 < 1 // A task a builder gives back goes straight back on the ready list, and nothing capped that: on
-132 < 1 // ultrapowers run-252 (2026-09-27) a check task no builder could fix was claimed and given back
-133 < 1 // ~1,150 times over the whole 3.8 h clock, $80.57 of sessions. After MAX_RELEASE give-backs the
-134 < 1 // task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
+131 < 2 // A task a builder gives back goes straight back on the ready list, and nothing capped that: on
+132 < 2 // ultrapowers run-252 (2026-09-27) a check task no builder could fix was claimed and given back
+133 < 2 // ~1,150 times over the whole 3.8 h clock, $80.57 of sessions. After MAX_RELEASE give-backs the
+134 < 2 // task parks: it leaves the ready list, a stall is posted, and settling ends the run a draft.
 135 < 1 const MAX_RELEASE = 3
-136 < 1 // no progress (#1334): a run whose best-green count has not risen for this many minutes ends a
-138 > 1 // draft and interrupts every live session, instead of running to its clock. The policy cell
-139 < 1 // flock.stall.minutes, else 20. Readings: over 7 runs (247, 251-255, radio-station run-1) the longest
-140 < 1 // wait for a rise was 2.0 min; run-252 ran 229.7 min past its last; over 110 runs it never fired.
+136 < 2 // no progress (#1334): a run whose best-green count has not risen for this many minutes ends a
+138 > 2 // draft and interrupts every live session, instead of running to its clock. The policy cell
+139 < 2 // flock.stall.minutes, else 20. Readings: over 7 runs (247, 251-255, radio-station run-1) the longest
+140 < 2 // wait for a rise was 2.0 min; run-252 ran 229.7 min past its last; over 110 runs it never fired.
 141 < 1 const STALL_MIN = Number(POLICY_FLOCK?.stall?.minutes ?? 20)
 142 < 1 if (!Number.isFinite(STALL_MIN) || STALL_MIN <= 0) { console.error('engine: flock.stall.minutes is a number of minutes above 0'); process.exit(2) }
 137 < 2 // draft and interrupts every live session, instead of running to its clock. `--stall-minutes`, else
@@ -164,19 +165,19 @@
 139 < 2 // radio-station run-1) the longest wait for a rise was 2.0 min; run-252 ran 229.7 min past its last.
 140 < 2 const STALL_MIN = Number(arg('stall-minutes', POLICY_FLOCK?.stall?.minutes ?? 20))
 141 < 2 if (!Number.isFinite(STALL_MIN) || STALL_MIN < 0) { console.error('engine: --stall-minutes (or flock.stall.minutes) is a number of minutes, 0 or more'); process.exit(2) }
-143 > 1 // test seam: a scripted run's `@stall_ms` stands in for the policy's minutes, so a sim can read the stop
+143 > 2 // test seam: a scripted run's `@stall_ms` stands in for the policy's minutes, so a sim can read the stop
 144 < 1 const STALL_MS = (SCRIPT && Number(SCRIPT['@stall_ms'])) || STALL_MIN * 60000
 142 < 2 const STALL_MS = STALL_MIN * 60000
 143 < 1 const OUT = RUN_DIR
 144 < 1 const WORK = path.join(RUN_DIR, 'work')
 145 < 1 const T0 = Date.now()
 146 < 1 const now = () => Date.now() - T0
-147 < 1 // every fact, the check and setup see the base they are judged against
+147 < 2 // every fact, the check and setup see the base they are judged against
 148 < 1 const RUN_ENV = { ...process.env, PYTHONDONTWRITEBYTECODE: '1', ULTRA_BASE: BASE_SHA }
-149 < 1 // the commit the run's work sits on: --base, until a `peer` run's main moves (absorbMain)
+149 < 2 // the commit the run's work sits on: --base, until a `peer` run's main moves (absorbMain)
 150 < 1 let BASE_NOW = BASE_SHA
-151 < 1 // agents never run git (#1443): a builder's PATH starts with a git that refuses, so git is refused
-152 < 1 // however it is reached — a script, a test, a Makefile. Facts, the check and setup keep RUN_ENV's git.
+151 < 2 // agents never run git (#1443): a builder's PATH starts with a git that refuses, so git is refused
+152 < 2 // however it is reached — a script, a test, a Makefile. Facts, the check and setup keep RUN_ENV's git.
 153 < 1 const NOGIT = path.join(HERE, 'nogit')
 154 < 1 
 155 < 1 fs.mkdirSync(OUT, { recursive: true })
@@ -190,9 +191,10 @@
 163 < 1 const log = (...a) => console.log(util.format(`[${(now() / 1000).toFixed(1).padStart(6)}s]`, ...a))
 164 < 1 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 165 < 1 
-167 > 1 // #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), a fact
-168 < 1 // the record keeps. Jev's read of each, and the draft on a `loses` answer, were cut on 2026-11-14
-169 < 1 // (operator's pick: over 110 runs it drafted 4 green runs, two merged by hand, and caught no lost line)
+168 > 1 const taskOf = {}
+167 > 2 // #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), a fact
+168 < 2 // the record keeps. Jev's read of each, and the draft on a `loses` answer, were cut on 2026-11-14
+169 < 2 // (operator's pick: over 110 runs it drafted 4 green runs, two merged by hand, and caught no lost line)
 166 < 2 // record-only Jev reading of each story at its last step (state-probe runner spec §7, #1369),
 167 < 2 // once, at a ready settle: never blocks a PR, and a missing answer is recorded as `null`
 168 < 2 // (step_reading.mjs `readSteps`). No read at a builder's done: the edge's spawnSync blocked
@@ -219,9 +221,9 @@
 189 < 2 }
 190 < 2 // #1401: one `peer:rewrite` row per sub-edit over a peer's lines (the weave's peerRewrites), and
 191 < 2 // its Jev read; the reads are kept for the settle's check (peerRewriteDraft)
-192 < 1 const taskOf = {}   // agent -> the task its current session holds
-193 < 1 // the weave's authorship label (weave.py task_label): `A.2` is builder A on task 2, so a reused
-194 < 1 // builder's later task meets its earlier task's lines as a peer's; a label's task is after the dot
+192 < 2 const taskOf = {}   // agent -> the task its current session holds
+193 < 2 // the weave's authorship label (weave.py task_label): `A.2` is builder A on task 2, so a reused
+194 < 2 // builder's later task meets its earlier task's lines as a peer's; a label's task is after the dot
 195 < 1 const task_label = (agent, task) => task == null ? agent : agent + '.' + task
 196 < 2 const labelOf = (agent) => task_label(agent, taskOf[agent]?.id)
 197 < 2 const peerReads = []
@@ -263,12 +265,12 @@
 230 < 2   return readSteps({ ask: jev.ask, results, sentences: W.stories.sentences, question: STEP_QUESTION, emit: (row) => ev('jev:step', row), last: lastSteps(W.tasks.flatMap((t) => t.clauses || [])), all })
 231 < 1 }
 232 < 1 
-233 < 1 // ── the engine's own git, on the target ───────────────────────────────────────
-234 < 1 // A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
-235 < 1 // objects, so a plan's git-based line — `git diff --quiet $ULTRA_BASE -- <file>`, the shape the
-236 < 1 // authoring skill prescribes for "unchanged since base" — reads the base it names. Without it every
-237 < 1 // such check exited non-zero in a plain folder and the check task could never go green
-238 < 1 // (ultrapowers run-252, 2026-09-27). The weave never sees `.git` (SKIP).
+233 < 2 // ── the engine's own git, on the target ───────────────────────────────────────
+234 < 2 // A copy (each builder's, the edge's) is made a git repository at BASE that borrows the target's
+235 < 2 // objects, so a plan's git-based line — `git diff --quiet $ULTRA_BASE -- <file>`, the shape the
+236 < 2 // authoring skill prescribes for "unchanged since base" — reads the base it names. Without it every
+237 < 2 // such check exited non-zero in a plain folder and the check task could never go green
+238 < 2 // (ultrapowers run-252, 2026-09-27). The weave never sees `.git` (SKIP).
 239 < 1 let TARGET_OBJECTS = null
 240 < 1 function gitCopy (dir) {
 241 < 1   if (TARGET_OBJECTS === null) TARGET_OBJECTS = path.resolve(TARGET, git(['rev-parse', '--git-common-dir']).trim(), 'objects')
@@ -279,7 +281,7 @@
 246 < 1 }
 247 < 1 const git = (args, opts) => gitIn(TARGET, args, opts).stdout
 248 < 1 
-249 < 1 // ── the weave keeper ──────────────────────────────────────────────────────────
+249 < 2 // ── the weave keeper ──────────────────────────────────────────────────────────
 250 < 1 const keeper = startWeave()
 251 < 1 const OPS = fs.openSync(path.join(OUT, 'weave-ops.jsonl'), 'a')
 252 < 1 const weave = (o) => {
@@ -288,7 +290,7 @@
 255 < 1 }
 256 < 1 const must = async (o) => { const r = await weave(o); if (!r.ok) throw new Error('weave ' + o.op + ': ' + r.error); return r }
 257 < 1 
-258 < 1 // ── files ─────────────────────────────────────────────────────────────────────
+258 < 2 // ── files ─────────────────────────────────────────────────────────────────────
 259 < 1 const SKIP = /(^|\/)(__pycache__|\.pytest_cache|node_modules|\.git)(\/|$)|\.pyc$/
 260 < 1 function walk (dir, rel = '') {
 261 < 1   const out = []
@@ -299,12 +301,14 @@
 266 < 1   }
 267 < 1   return out
 268 < 1 }
-269 < 1 // The weave merges text, line by line; a file that is not UTF-8 (an image, a .gz) is never handed to
-270 < 1 // it. Every copy and the edge start from BASE_DIR, so such a file stays exactly as it is at base, and
-271 < 1 // a builder's change to one is recorded, never merged (ultrapowers run-246: `docs/assets/dag.gif`
-272 < 1 // stopped the weave's `base` op with a UnicodeDecodeError before any builder opened).
-273 < 1 const textSeen = new Map()   // absolute path -> { key: size:mtime, text: boolean }
-274 < 1 const nonText = new Set()    // relative paths set aside, recorded once each
+270 > 1 const textSeen = new Map()
+271 < 1 const nonText = new Set()
+269 < 2 // The weave merges text, line by line; a file that is not UTF-8 (an image, a .gz) is never handed to
+270 < 2 // it. Every copy and the edge start from BASE_DIR, so such a file stays exactly as it is at base, and
+271 < 2 // a builder's change to one is recorded, never merged (ultrapowers run-246: `docs/assets/dag.gif`
+272 < 2 // stopped the weave's `base` op with a UnicodeDecodeError before any builder opened).
+273 < 2 const textSeen = new Map()   // absolute path -> { key: size:mtime, text: boolean }
+274 < 2 const nonText = new Set()    // relative paths set aside, recorded once each
 275 < 1 function isText (abs, rel) {
 276 < 1   let st
 277 < 1   try { st = fs.statSync(abs) } catch { return false }
@@ -319,9 +323,9 @@
 286 < 1 }
 287 < 1 const readOr = (f) => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
 288 < 1 const BASE_DIR = path.join(WORK, 'base')
-289 < 1 // BASE is the target's tree at --base, checked out by the engine's own git into BASE_DIR through a
-290 < 1 // scratch index (the target's own index and working tree are untouched): one process, modes and
-291 < 1 // symlinks as the tree has them
+289 < 2 // BASE is the target's tree at --base, checked out by the engine's own git into BASE_DIR through a
+290 < 2 // scratch index (the target's own index and working tree are untouched): one process, modes and
+291 < 2 // symlinks as the tree has them
 292 < 1 function writeBase (dir, sha = BASE_NOW) {
 293 < 1   fs.mkdirSync(dir, { recursive: true })
 294 < 1   const index = path.join(WORK, 'base.index')
@@ -329,18 +333,18 @@
 296 < 1   fs.rmSync(index, { force: true })
 297 < 1 }
 298 < 1 writeBase(BASE_DIR)
-299 < 1 // the base's text paths and their text; both move with BASE_NOW. BASE_FILES_0 stays --base's, the
-300 < 1 // start of the compact record's patch chain.
+299 < 2 // the base's text paths and their text; both move with BASE_NOW. BASE_FILES_0 stays --base's, the
+300 < 2 // start of the compact record's patch chain.
 301 < 1 let BASE_PATHS = walk(BASE_DIR)
 302 < 1 let BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
 303 < 1 const BASE_FILES_0 = BASE_FILES
-304 < 1 // a workload with `setup` installs once into DEPS_DIR, and every copy the engine makes (each
-305 < 1 // builder's, the edge's) gets that install's node_modules dirs as symlinks, so the weave never sees
-306 < 1 // them (walk skips node_modules) and no copy pays a second install
+304 < 2 // a workload with `setup` installs once into DEPS_DIR, and every copy the engine makes (each
+305 < 2 // builder's, the edge's) gets that install's node_modules dirs as symlinks, so the weave never sees
+306 < 2 // them (walk skips node_modules) and no copy pays a second install
 307 < 1 const DEPS_DIR = path.join(WORK, 'deps')
 308 < 1 let DEP_DIRS = []
-309 < 1 // the plan's own setup wins; without one, the target's tracked lockfile decides (a bun lockfile ->
-310 < 1 // bun install, package-lock.json -> npm ci; runroom-ab run-3: no install, the check exited 127 on every edge)
+309 < 2 // the plan's own setup wins; without one, the target's tracked lockfile decides (a bun lockfile ->
+310 < 2 // bun install, package-lock.json -> npm ci; runroom-ab run-3: no install, the check exited 127 on every edge)
 311 < 1 const LOCK_CMD = BASE_PATHS.includes('bun.lock') || BASE_PATHS.includes('bun.lockb') ? 'bun install --frozen-lockfile'
 312 < 1   : BASE_PATHS.includes('package-lock.json') ? 'npm ci' : null
 313 < 1 const SETUP = W.setup || (LOCK_CMD && ['bash', '-lc', LOCK_CMD])
@@ -358,14 +362,15 @@
 325 < 1 }
 326 < 1 const linkDeps = (dir) => { for (const d of DEP_DIRS) { fs.rmSync(path.join(dir, d), { recursive: true, force: true }); fs.symlinkSync(path.join(DEPS_DIR, d), path.join(dir, d)) } }
 327 < 1 const agentDir = (a) => path.join(WORK, 'agents', a)
-328 < 1 // a copy of a snapshot ({files, exists}) at dir: base, the deps, the target's git at base, then the snapshot's files
+328 < 2 // a copy of a snapshot ({files, exists}) at dir: base, the deps, the target's git at base, then the snapshot's files
 329 < 1 function freshCopy (dir, s) {
 330 < 1   fs.rmSync(dir, { recursive: true, force: true }); fs.cpSync(BASE_DIR, dir, { recursive: true }); linkDeps(dir); gitCopy(dir)
 331 < 1   writeFiles(dir, snapshotEntries(s))
 332 < 1 }
-333 < 1 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
+334 > 1 const known = {}
+333 < 2 const known = {}   // per builder: the paths its copy holds (openBuilder seeds each)
 334 < 1 
-336 > 1 // ── the board: in memory; its moves are rows in events.jsonl. ──
+336 > 2 // ── the board: in memory; its moves are rows in events.jsonl. ──
 335 < 2 // ── the board: in memory; mirrored onto Kata when the boot passes a record. ──
 336 < 1 const board = new Board({ tasks: W.tasks, now })
 337 < 2 const KATA_URL = arg('kata-url'), KATA_JSON = arg('kata-json')
@@ -393,7 +398,7 @@
 359 < 2   mirrorBoard(board, { kata, projectId: kataRecord.project.id, tasks: kataRecord.tasks || {}, onPost: (rec) => ev('kata:mirror', rec), track, runUid: kataRecord.run.uid })
 360 < 2 }
 361 < 1 
-362 < 1 // ── facts ─────────────────────────────────────────────────────────────────────
+362 < 2 // ── facts ─────────────────────────────────────────────────────────────────────
 363 < 1 function runFacts (cwd, task) {
 364 < 1   return task.facts.map((cmd) => {
 365 < 1     const r = spawnSync(cmd[0], cmd.slice(1), { cwd, encoding: 'utf8', timeout: EXAM_MS.fact, env: RUN_ENV })
@@ -404,17 +409,17 @@
 370 < 1 const redText = (task, red) => red.map((r) =>
 371 < 1   `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i] ?? 'screens'})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
 372 < 1 
-373 < 1 // peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
-374 < 1 // the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by
-375 < 1 // two authors_keyed round trips per edit; over 1,040 edits (n=51 runs, 2026-09-26..30) the two
-376 < 1 // counts never differed.
+373 < 2 // peer lines an agent's change removed or replaced, as the weave answers them per edit or rewrite:
+374 < 2 // the count, and each peer label (a shared line's `a|b` counts both). #1446: this was read again by
+375 < 2 // two authors_keyed round trips per edit; over 1,040 edits (n=51 runs, 2026-09-26..30) the two
+376 < 2 // counts never differed.
 377 < 1 function peerOf (answers) {
 378 < 1   const peers = new Set()
 379 < 1   for (const r of answers) for (const o of r.peers || []) o.split('|').forEach((x) => peers.add(x))
 380 < 1   return { peer: answers.reduce((n, r) => n + (r.peer_lines_touched || 0), 0), peers: [...peers] }
 381 < 1 }
 382 < 1 
-383 < 1 // ── keeping a copy's weave in step with its files ─────────────────────────────
+383 < 2 // ── keeping a copy's weave in step with its files ─────────────────────────────
 384 < 1 async function syncFromDisk (agent) {
 385 < 1   const dir = agentDir(agent)
 386 < 1   const disk = walk(dir)
@@ -435,7 +440,7 @@
 401 < 1   return drift
 402 < 1 }
 403 < 1 
-404 < 1 // editSpans lives in edit_spans.mjs since the replace-all fix (pinned by readings/replace_all_check.mjs)
+404 < 2 // editSpans lives in edit_spans.mjs since the replace-all fix (pinned by readings/replace_all_check.mjs)
 405 < 1 async function recordEditCall (agent, rel, before, edits) {
 406 < 1   let text = before
 407 < 1   const answers = []
@@ -450,14 +455,15 @@
 416 < 1   return peerOf(answers)
 417 < 1 }
 418 < 1 
-419 < 1 // ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
-420 < 1 // host keeps them: a conflict opens when a merge flags it and closes only when an agent
-421 < 1 // says so (resolve_conflict), or at once when both sides only added lines (the union) ──
-422 < 1 // ticket 5: the ledger is keyed by path AND region, the hash of the marked hunks' two sides
-423 < 1 // (sorted, so a pull's merge and the edge's merge name the same region). Manyana re-flags a
-424 < 1 // region it has already flagged on every merge; a closed region stays closed, and only a
-425 < 1 // DIFFERENT region on the same path opens a new entry. Closing a path closes its regions.
-426 < 1 const ledger = new Map()   // `${path}\u0000${region}` -> entry
+420 > 1 const ledger = new Map()
+419 < 2 // ── the conflict ledger: Manyana recomputes conflicts per merge and stores none, so the
+420 < 2 // host keeps them: a conflict opens when a merge flags it and closes only when an agent
+421 < 2 // says so (resolve_conflict), or at once when both sides only added lines (the union) ──
+422 < 2 // ticket 5: the ledger is keyed by path AND region, the hash of the marked hunks' two sides
+423 < 2 // (sorted, so a pull's merge and the edge's merge name the same region). Manyana re-flags a
+424 < 2 // region it has already flagged on every merge; a closed region stays closed, and only a
+425 < 2 // DIFFERENT region on the same path opens a new entry. Closing a path closes its regions.
+426 < 2 const ledger = new Map()   // `${path}\u0000${region}` -> entry
 427 < 1 function region (annotated) {
 428 < 1   const hunks = []
 429 < 1   let side = null, cur = null
@@ -472,10 +478,11 @@
 438 < 1 async function openConflict (p, info) {
 439 < 1   const reg = region(info.annotated)
 440 < 1   const e = ledger.get(p + '\u0000' + reg)
-442 > 1   if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
+443 > 1   if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }
+442 > 2   if (e) { if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
 441 < 2   if (e) { e.seen += 1; if (!e.open) ev('conflict:reflag', { path: p, region: reg }); return }   // a stale re-flag never reopens
-442 < 1   // a file main and a builder each began apart is two whole files, and no probe of this run speaks
-444 > 1   // for main's: a builder makes them one (flock-baseline run-24, 2026-11-13: closed in 20 s, ready)
+442 < 2   // a file main and a builder each began apart is two whole files, and no probe of this run speaks
+444 > 2   // for main's: a builder makes them one (flock-baseline run-24, 2026-11-13: closed in 20 s, ready)
 445 < 1   const made = !!info.bothCreated
 443 < 2   // for main's: a builder makes them one (policy flock.main.created; `union` is the rollback)
 444 < 2   const made = !!info.bothCreated && MAIN_CREATED === 'conflict'
@@ -499,20 +506,24 @@
 460 < 1   lastChange = now()
 461 < 1 }
 462 < 1 
-463 < 1 // ── early close (the final atlas race). On atlas every resolve task changed
-464 < 1 // nothing (n=5 runs): the conflicts were already resolved by the agents, and ~25 s went to handing
-465 < 1 // them out once everyone was idle. The fact that closes one early, per open conflict on path p, at
-466 < 1 // every edge: some agent S published p, S's last edit to p came after the last time a peer's side
-467 < 1 // of p reached S's copy with conflict marks (S wrote with both sides in view), and S's published
-468 < 1 // text of p is byte for byte the merged text of p. The merged text is then S's own writing over
-469 < 1 // both sides. A conflict seen first in one copy's pull also waits for that copy's next publish,
-470 < 1 // since its side of the conflict may not be published yet. `unflagged` (Manyana no longer marks the
-471 < 1 // region) is recorded as evidence only: it stops marking a blind conflict once one side pulls and
-472 < 1 // republishes, with nobody having looked (the control in readings/early_close_replay.py).
-473 < 1 const lastEditT = {}        // agent -> path -> t
-474 < 1 const lastMarkedT = {}      // agent -> path -> t: a peer's side arrived with conflict marks
-475 < 1 const lastPubT = {}         // agent -> t
-476 < 1 const pubHeld = {}          // agent -> path -> { text, held, t } as of its last publish
+464 > 1 const lastEditT = {}
+465 < 1 const lastMarkedT = {}
+466 < 1 const lastPubT = {}
+467 < 1 const pubHeld = {}
+463 < 2 // ── early close (the final atlas race). On atlas every resolve task changed
+464 < 2 // nothing (n=5 runs): the conflicts were already resolved by the agents, and ~25 s went to handing
+465 < 2 // them out once everyone was idle. The fact that closes one early, per open conflict on path p, at
+466 < 2 // every edge: some agent S published p, S's last edit to p came after the last time a peer's side
+467 < 2 // of p reached S's copy with conflict marks (S wrote with both sides in view), and S's published
+468 < 2 // text of p is byte for byte the merged text of p. The merged text is then S's own writing over
+469 < 2 // both sides. A conflict seen first in one copy's pull also waits for that copy's next publish,
+470 < 2 // since its side of the conflict may not be published yet. `unflagged` (Manyana no longer marks the
+471 < 2 // region) is recorded as evidence only: it stops marking a blind conflict once one side pulls and
+472 < 2 // republishes, with nobody having looked (the control in readings/early_close_replay.py).
+473 < 2 const lastEditT = {}        // agent -> path -> t
+474 < 2 const lastMarkedT = {}      // agent -> path -> t: a peer's side arrived with conflict marks
+475 < 2 const lastPubT = {}         // agent -> t
+476 < 2 const pubHeld = {}          // agent -> path -> { text, held, t } as of its last publish
 477 < 1 function edited (agent, p) { (lastEditT[agent] = lastEditT[agent] || {})[p] = now() }
 478 < 1 async function publishCopy (agent) {
 479 < 1   await must({ op: 'publish', agent })
@@ -539,29 +550,37 @@
 499 < 1     lastChange = now()
 500 < 1   }
 501 < 1 }
-502 < 1 let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
-503 < 1 const live = new Set()      // agents with a session open right now
-504 < 1 const stops = new Map()     // agent -> interrupt() of its live session (the no-progress stop calls each)
-505 < 1 const stalls = []           // stall beliefs the host posted (attached to a draft PR)
+503 > 1 let lastChange = 0
+504 < 1 const live = new Set()
+505 < 1 const stops = new Map()
+506 < 1 const stalls = []
+502 < 2 let lastChange = 0          // the last time the merged code's hash, a session, or the ledger changed
+503 < 2 const live = new Set()      // agents with a session open right now
+504 < 2 const stops = new Map()     // agent -> interrupt() of its live session (the no-progress stop calls each)
+505 < 2 const stalls = []           // stall beliefs the host posted (attached to a draft PR)
 506 < 1 async function stall (kind, evidence) {
 507 < 1   const b = await board.post({ by: 'host', claim: `stall: ${kind} ${JSON.stringify(evidence).slice(0, 300)}` })
 508 < 1   stalls.push({ kind, evidence, t: now() }); ev('stall:' + kind, { evidence }); log('STALL', kind, JSON.stringify(evidence).slice(0, 200))
 509 < 1   return b
 510 < 1 }
 511 < 1 
-512 < 1 // ── the edge: every published snapshot is tested; main takes a green, settled one ──
+512 < 2 // ── the edge: every published snapshot is tested; main takes a green, settled one ──
 513 < 1 let edgeChain = Promise.resolve()
 514 < 1 let lastEdge = null
 515 < 1 const snapshots = []
-516 < 1 let bestGreen = -1, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
-517 < 1 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
-518 < 1 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
-520 > 1 const amendedSeen = new Set()  // paths already written as an `amendment` row this run
+517 > 1 let bestGreen = -1, lastRise = 0
+518 < 1 let lastSessionEnd = -1
+519 < 1 const edgeLatency = []
+520 < 1 const amendedSeen = new Set()
+516 < 2 let bestGreen = -1, lastRise = 0   // lastRise: when bestGreen last rose (the loops' start before any)
+517 < 2 let lastSessionEnd = -1   // when a builder session last ended: a stop needs one since the last rise, so one long session is never cut off
+518 < 2 const edgeLatency = []      // publish -> tested, ms (the propagation delay the debounce covers)
+520 > 2 const amendedSeen = new Set()  // paths already written as an `amendment` row this run
 519 < 2 const amendedSeen = new Set()  // paths already written as a `driver:amendment` row this run
-520 < 1 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
-521 < 1 // writes build output. Returns the paths outside every task's Files that no builder wrote.
+520 < 2 // The scope rule at the edge, read from the snapshot against BASE_DIR before any fact or check
+521 < 2 // writes build output. Returns the paths outside every task's Files that no builder wrote.
 522 < 1 function scopeAt (m, snap) {
-523 < 1   // the weave reads an empty file as absent, so an empty base file is compared as absent too
+523 < 2   // the weave reads an empty file as absent, so an empty base file is compared as absent too
 524 < 1   const text = (p) => p in m.files ? (m.exists[p] ? m.files[p] : '') : (BASE_FILES[p] ?? '')
 525 < 1   const changed = [...new Set([...Object.keys(m.files), ...BASE_PATHS])].filter((p) => text(p) !== (BASE_FILES[p] ?? ''))
 526 < 1   const files = [...board.tasks.values()].flatMap((t) => t.files || (String(t.id).startsWith('R:') ? [t.id.slice(2)] : []))
@@ -574,8 +593,8 @@
 530 < 2   if (outside.length) { ev('scope:outside', { snap, paths: outside }); log('scope', snap, 'outside', outside.join(','), SCOPE_MODE) }
 531 < 2   return SCOPE_MODE === 'enforce' ? outside : []
 532 < 1 }
-534 > 1 // a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there,
-535 < 1 // undefined when no file has that exact path at the base or in the snapshot (the path cannot be read)
+534 > 2 // a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there,
+535 < 2 // undefined when no file has that exact path at the base or in the snapshot (the path cannot be read)
 533 < 2 // a path's text at a tested snapshot (BASE text for a snapshot never tested), null when absent there
 534 < 1 function textAt (snap) {
 535 < 1   const s = snapshots.find((x) => x.snap === snap)
@@ -589,9 +608,9 @@
 542 < 1     const snap = crypto.createHash('sha1').update(JSON.stringify(m.files)).digest('hex').slice(0, 10)
 543 < 1     const outside = scopeAt(m, snap)
 544 < 1     if (lastEdge && lastEdge.snap === snap) {
-545 < 1       // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
-546 < 1       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
-547 < 1       // answer after 5 of 9 closes on the record, masked each time by a later content change.
+545 < 2       // ticket 5: the facts on a hash never change, but what blocks it does (a close with no
+546 < 2       // text change). Recompute the verdict from the ledger now: a cached `blocking` was the
+547 < 2       // answer after 5 of 9 closes on the record, masked each time by a later content change.
 548 < 1       for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
 549 < 1       earlyClose(m, snap)
 550 < 1       const blocking = openConflicts()
@@ -602,7 +621,8 @@
 555 < 1     lastChange = now()
 556 < 1     const dir = path.join(WORK, 'edge')
 557 < 1     freshCopy(dir, m)
-558 < 1     const perTask = {}, red = []   // red: the facts that did not exit 0, kept for red-checks.json
+559 > 1     const perTask = {}, red = []
+558 < 2     const perTask = {}, red = []   // red: the facts that did not exit 0, kept for red-checks.json
 559 < 1     for (const t of board.tasks.values()) {
 560 < 1       const res = runFacts(dir, t)
 561 < 1       perTask[t.id] = res.map((r) => r.exit)
@@ -610,20 +630,20 @@
 563 < 1     }
 564 < 1     const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: W.checkTimeoutMs ?? 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
 565 < 1     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
-566 < 1     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
-567 < 1     // let a NEW conflict on a once-closed path pass the edge unexamined.
+566 < 2     // ticket 5: every region the edge sees goes through the ledger. The old `!ledger.has(p)`
+567 < 2     // let a NEW conflict on a once-closed path pass the edge unexamined.
 568 < 1     for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
 569 < 1     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
 570 < 1     earlyClose(m, snap)
 571 < 1     const blocking = openConflicts()
 572 < 1     lastEdge = { snap, t: now(), reason, perTask, red, check: chk.status, checkTail: ((chk.stdout || '') + (chk.stderr || '')).slice(-600), conflicts: m.conflicts, blocking, outside, annotated: m.annotated, green: factsGreen && chk.status === 0 && !blocking.length && !outside.length }
-573 < 1     // survival: the lines a published copy's author wrote that this snapshot no longer shows, from
-574 < 1     // the same `merged` answer that named the snapshot (a later ask could describe a later join)
+573 < 2     // survival: the lines a published copy's author wrote that this snapshot no longer shows, from
+574 < 2     // the same `merged` answer that named the snapshot (a later ask could describe a later join)
 575 < 1     const lost = m.lost || []
 576 < 1     ev('survival', { snap, lost })
 577 < 1     snapshots.push({ snap, t: now(), files: m.files, exists: m.exists, lost })
 578 < 1     edgeLatency.push(now() - asked)
-579 < 1     // the best-green count (facts green, plus the check) the no-progress stop reads (#1334)
+579 < 2     // the best-green count (facts green, plus the check) the no-progress stop reads (#1334)
 580 < 1     const g = Object.values(perTask).reduce((a, xs) => a + xs.filter((x) => x === 0).length, 0) + (chk.status === 0 ? 1 : 0)
 581 < 1     if (g > bestGreen) { bestGreen = g; lastRise = now() }
 582 < 1     ev('edge', { ...lastEdge, checkTail: undefined, annotated: undefined, red: undefined })
@@ -633,7 +653,7 @@
 586 < 1   return edgeChain
 587 < 1 }
 588 < 1 
-589 < 1 // ── one agent session on one claimed task ─────────────────────────────────────
+589 < 2 // ── one agent session on one claimed task ─────────────────────────────────────
 590 < 1 const usage = []
 591 < 1 let lastPublish = 0
 592 < 1 let settled = null
@@ -655,19 +675,19 @@
 603 < 2 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 604 < 1 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
 605 < 1 
-606 < 1 // What a pull brought that its builder has not been told of yet: agent -> path -> the change.
+606 < 2 // What a pull brought that its builder has not been told of yet: agent -> path -> the change.
 607 < 1 const unsaid = {}
-608 < 1 // Every published change reaches the copy, whatever the builder's task: a copy is a whole, current
-609 < 1 // tree, since its facts run on all of it. On flock-baseline run-10 (2026-11-13, n=1 run) a narrow
-610 < 1 // pull left task 7's builder without `atlas/geo.py`, written by a task it depended on only through
-611 < 1 // another, and read by it with `cat`: the file never arrived, the task was given back three times
-612 < 1 // over 22 minutes and the run ended a draft. The scope (pulls.mjs) narrows only what a builder is
-613 < 1 // TOLD: a change outside it lands silently and is told, with its conflict mark, once the path comes
-614 < 1 // into scope. Answers the changes told now; `.all` counts every change that reached the copy.
+608 < 2 // Every published change reaches the copy, whatever the builder's task: a copy is a whole, current
+609 < 2 // tree, since its facts run on all of it. On flock-baseline run-10 (2026-11-13, n=1 run) a narrow
+610 < 2 // pull left task 7's builder without `atlas/geo.py`, written by a task it depended on only through
+611 < 2 // another, and read by it with `cat`: the file never arrived, the task was given back three times
+612 < 2 // over 22 minutes and the run ended a draft. The scope (pulls.mjs) narrows only what a builder is
+613 < 2 // TOLD: a change outside it lands silently and is told, with its conflict mark, once the path comes
+614 < 2 // into scope. Answers the changes told now; `.all` counts every change that reached the copy.
 615 < 1 async function pullInto (agent, task) {
-616 < 1   // a resolve task (R:<path>) scopes to its own path
+616 < 2   // a resolve task (R:<path>) scopes to its own path
 617 < 1   if (task && !task.files && String(task.id).startsWith('R:')) task = { ...task, files: [task.id.slice(2)] }
-618 < 1   // new files peers created cannot conflict with anything here, so they are always in scope (#1405)
+618 < 2   // new files peers created cannot conflict with anything here, so they are always in scope (#1405)
 619 < 1   const base = new Set(BASE_PATHS)
 620 < 1   const created = [...new Set(Object.entries(lastEditT).filter(([a]) => a !== agent).flatMap(([, ps]) => Object.keys(ps)))].filter((p) => !base.has(p))
 622 > 1   const scope = task ? pullScope({ task, tasks: W.tasks, touched: [...(touched[agent] || [])], created }) : null
@@ -681,7 +701,7 @@
 628 < 1   const mine = (unsaid[agent] = unsaid[agent] || new Map())
 629 < 1   for (const c of r.changed) {
 630 < 1     const was = mine.get(c.path)
-631 < 1     // an untold conflict mark is kept until the builder is told, whatever arrives after it
+631 < 2     // an untold conflict mark is kept until the builder is told, whatever arrives after it
 632 < 1     mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
 633 < 1   }
 634 < 1   const told = [...mine.values()].filter((c) => !quiet(c.path))
@@ -693,10 +713,10 @@
 640 < 1   return told
 641 < 1 }
 642 < 1 
-643 < 1 // ── ticket 2 fix (b): two agents inserting at one spot. The kernel orders such lines by their
-644 < 1 // text and an adds-only union hid it; the keeper now flags it (`siblings`, or `unified` when
-645 < 1 // one side's block starts with the other's line and the kernel flags nothing). Each distinct
-646 < 1 // spot becomes a fact on the board and a note to the agents whose copies carry it. ──
+643 < 2 // ── ticket 2 fix (b): two agents inserting at one spot. The kernel orders such lines by their
+644 < 2 // text and an adds-only union hid it; the keeper now flags it (`siblings`, or `unified` when
+645 < 2 // one side's block starts with the other's line and the kernel flags nothing). Each distinct
+646 < 2 // spot becomes a fact on the board and a note to the agents whose copies carry it. ──
 647 < 1 const spots = new Map()
 648 < 1 const spotNotes = {}
 649 < 1 async function sameSpot (p, flags, between, agent) {
@@ -711,7 +731,7 @@
 658 < 1   }
 659 < 1 }
 660 < 1 
-661 < 1 // the round-3 brief: what a builder would have fetched with board_read, cut to what concerns it
+661 < 2 // the round-3 brief: what a builder would have fetched with board_read, cut to what concerns it
 662 < 1 function brief (task) {
 663 < 1   const deps = task.depends_on.map((d) => `task ${d} ${board.tasks.get(d)?.state ?? '?'}`)
 664 < 1   const mine = new Set(task.files || [])
@@ -721,10 +741,10 @@
 668 < 1     ' board_read shows the whole board if you need it.' +
 669 < 1     (PAST ? `\nThe previous run on this repository, run-${PAST.run}, did not finish green. What it recorded:\n` + PAST.items.map((i) => i.text).join('\n') : '')
 670 < 1 }
-671 < 1 // `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
-672 < 1 // copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
-673 < 1 // A task the script does not name ends released.
-674 < 1 // Every give-back, scripted or model, goes through here, so MAX_RELEASE caps them all.
+671 < 2 // `--builder scripted:<json>`: no model. The session writes the task's scripted files into its
+672 < 2 // copy, then takes the path a `done` call takes (syncFromDisk -> publish -> board done) and ends.
+673 < 2 // A task the script does not name ends released.
+674 < 2 // Every give-back, scripted or model, goes through here, so MAX_RELEASE caps them all.
 675 < 1 async function giveBack (agent, task, why) {
 676 < 1   task.released = (task.released || 0) + 1
 677 < 1   if (task.released >= MAX_RELEASE) {
@@ -736,13 +756,14 @@
 683 < 1   await board.release(task, `${agent} released: ${why}`); log(agent, 'releases', task.id, '—', why)
 684 < 1 }
 685 < 1 
-687 > 1 // A builder's objection: its task's plan cannot be satisfied as written, by any code: two clauses
-688 < 1 // that cannot both hold, or a proof nothing can pass. The task parks at once and the run, when
-689 < 1 // nothing else is left to do, ends a draft that says so. A give-back hands the task to the next
-690 < 1 // builder, who meets the same wall: on flock-baseline run-32 (2026-11-13, n=1 run) the builder named
-691 < 1 // the contradiction in its first note, the task was given back three times over 24 s, and the run
-692 < 1 // ended `deadlock` without the reason.
-693 < 1 const objections = []   // { task, agent, reason }
+688 > 1 const objections = []
+687 > 2 // A builder's objection: its task's plan cannot be satisfied as written, by any code: two clauses
+688 < 2 // that cannot both hold, or a proof nothing can pass. The task parks at once and the run, when
+689 < 2 // nothing else is left to do, ends a draft that says so. A give-back hands the task to the next
+690 < 2 // builder, who meets the same wall: on flock-baseline run-32 (2026-11-13, n=1 run) the builder named
+691 < 2 // the contradiction in its first note, the task was given back three times over 24 s, and the run
+692 < 2 // ended `deadlock` without the reason.
+693 < 2 const objections = []   // { task, agent, reason }
 694 < 1 async function objectTo (agent, task, why) {
 695 < 1   const reason = String(why).replace(/\s+/g, ' ').trim().slice(0, 600)
 696 < 1   objections.push({ task: task.id, agent, reason })
@@ -752,10 +773,10 @@
 700 < 1   await stall('objection', { task: task.id }); log(agent, 'objects to', task.id, '—', reason)
 701 < 1 }
 702 < 1 
-686 < 1 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
-688 > 1 // it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
-689 < 1 // held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
-690 < 1 // answers the loose-end reading's "does the file still contain it".
+686 < 2 // A builder's belief: kept on the board and in events.jsonl as a `belief` row, `about` saying who
+688 > 2 // it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text,
+689 < 2 // held to its first 300 characters so the PR body can carry it (#1529); a start of the text still
+690 < 2 // answers the loose-end reading's "does the file still contain it".
 687 < 2 // it is for (task, app or engine); a loose end also names a `path` and, when known, its `stale` text.
 688 < 1 async function postBelief (agent, a) {
 690 > 1   const stale = typeof a.stale === 'string' ? a.stale.slice(0, 300) : a.stale
@@ -771,9 +792,10 @@
 697 < 1   ev('session:start', { agent, task: task.id, builder: 'scripted' })
 698 < 1   log(agent, 'claims task', task.id, '(scripted)')
 699 < 1   live.add(agent)
-700 < 1   // test seam (#1334): `@hold_ms` holds the session that long before it writes, standing in for a
-701 < 1   // builder that makes no progress; the no-progress stop cuts it short, and it ends writing nothing.
-702 < 1   const H = SCRIPT['@hold_ms'], hold = H && typeof H === 'object' ? H[task.id] : H   // a number holds every task; a map, the tasks it names
+701 > 1   const H = SCRIPT['@hold_ms'], hold = H && typeof H === 'object' ? H[task.id] : H
+700 < 2   // test seam (#1334): `@hold_ms` holds the session that long before it writes, standing in for a
+701 < 2   // builder that makes no progress; the no-progress stop cuts it short, and it ends writing nothing.
+702 < 2   const H = SCRIPT['@hold_ms'], hold = H && typeof H === 'object' ? H[task.id] : H   // a number holds every task; a map, the tasks it names
 703 < 1   if (hold) {
 704 < 1     let wake
 705 < 1     const held = new Promise((r) => { wake = r; setTimeout(r, hold) })
@@ -785,13 +807,13 @@
 711 < 1       ev('session:end', { agent, task: task.id, released: 'run ended', done: false })
 712 < 1       live.delete(agent); return
 713 < 1     }
-714 < 1     // a held session takes in what its peers published meanwhile, as a model builder's pull after
-715 < 1     // each tool batch would, so its write can land over a peer's lines (#1401)
+714 < 2     // a held session takes in what its peers published meanwhile, as a model builder's pull after
+715 < 2     // each tool batch would, so its write can land over a peer's lines (#1401)
 716 < 1     await pullInto(agent, task)
 717 < 1   }
-718 < 1   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
+718 < 2   // test seam: `@beliefs` lists beliefs; a session posts those whose `task` is its own before it writes
 719 < 1   for (const b of SCRIPT['@beliefs'] || []) if (String(b.task) === String(task.id)) await postBelief(agent, b)
-722 > 1   // test seam: `@object` maps a task to the objection its session files instead of writing
+722 > 2   // test seam: `@object` maps a task to the objection its session files instead of writing
 721 > 2   // test seam: `@object` maps a task to the objection its session files instead of writing; with
 722 < 2   // objections off it is a give-back, as the `object` tool's absence leaves a builder
 723 < 1   const objected = (SCRIPT['@object'] || {})[task.id]
@@ -805,7 +827,7 @@
 729 < 1     return
 730 < 1   }
 720 < 1   if (files) {
-721 < 1     // a path mapped to null is deleted, as a builder's delete_file would
+721 < 2     // a path mapped to null is deleted, as a builder's delete_file would
 722 < 1     writeFiles(cwd, Object.entries(files))
 723 < 1     const red = redOf(runFacts(cwd, task))
 724 < 1     if (red.length) {
@@ -817,8 +839,8 @@
 730 < 1       return
 731 < 1     }
 732 < 1     await syncFromDisk(agent)
-733 < 1     // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
-734 < 1     // call), standing in for a weave fault like run-247's. It passes no task: its lines stay unlabelled by task.
+733 < 2     // test seam (#1333): `@unwritten` puts text into the weave that no builder wrote (no edited()
+734 < 2     // call), standing in for a weave fault like run-247's. It passes no task: its lines stay unlabelled by task.
 735 < 1     for (const [p, text] of Object.entries(SCRIPT['@unwritten'] || {})) await must({ op: 'rewrite', agent, path: p, content: text })
 736 < 1     await publishCopy(agent); ev('publish', { agent, task: task.id, by: 'done' })
 737 < 1     await board.done(task); live.delete(agent); edge('done ' + agent); log(agent, 'done', task.id)
@@ -851,9 +873,9 @@
 764 < 1         ev('proof', { agent, task: t.id, exits: res.map((r) => r.exit), errs: red.map((r) => (r.tail.match(/^\w*(Error|Exception)\b.*$/gm) || ['']).pop().slice(0, 160)) })
 765 < 1         return say(res.map((r, i) => `fact ${i + 1}: exit ${r.exit}${r.exit ? '\n' + r.tail : ''}`).join('\n'))
 766 < 1       }),
-767 < 1     // ticket 4 follow-up: waiting for a peer. Peers' work reaches a copy only between tool calls,
-768 < 1     // so a shell `sleep` loop never sees it (a full 300 s in 4 of 10 ledger runs, n=5 per arm).
-769 < 1     // This tool keeps merging peers into the copy while it waits, and returns once the fact holds.
+767 < 2     // ticket 4 follow-up: waiting for a peer. Peers' work reaches a copy only between tool calls,
+768 < 2     // so a shell `sleep` loop never sees it (a full 300 s in 4 of 10 ledger runs, n=5 per arm).
+769 < 2     // This tool keeps merging peers into the copy while it waits, and returns once the fact holds.
 770 < 1     tool('wait_for', 'Wait until a fact holds, while the other agents\' published work keeps merging into your copy. Use this instead of any shell sleep or polling loop. A fact is one of: a task is done (kind "task_done", task); a text or regular expression appears in a file of your copy (kind "text", path, pattern); a task\'s facts pass on your copy (kind "proof", task). Returns as soon as it holds, or after timeout_s (default 120, at most 300) with what it last saw.',
 771 < 1       { kind: z.enum(['task_done', 'text', 'proof']), task: z.string().optional(), path: z.string().optional(), pattern: z.string().optional(), timeout_s: z.number().optional() },
 772 < 1       async (a) => {
@@ -889,7 +911,8 @@
 802 < 1           await sleep(1000)
 803 < 1           const changed = await pullInto(agent, task)
 804 < 1           for (const c of changed) merged.set(c.path, c)
-805 < 1           if (changed.all) proofChanged = true   // a change the builder was not told of still changes what its facts read
+806 > 1           if (changed.all) proofChanged = true
+805 < 2           if (changed.all) proofChanged = true   // a change the builder was not told of still changes what its facts read
 806 < 1           spotted.push(...(spotNotes[agent] || [])); delete spotNotes[agent]
 807 < 1           held = holds()
 808 < 1         }
@@ -900,16 +923,17 @@
 813 < 1           (merged.size ? `\nMerged into your copy while waiting: ${[...merged.values()].map((c) => `${c.path} (from ${c.from}${c.conflict ? ', with conflict marks' : ''})`).join('; ')}. Re-read before editing those files.` : '') +
 814 < 1           (spotted.length ? '\nSame-spot insertions in your copy: ' + spotted.join('; ') : ''))
 815 < 1       }),
-816 < 1     // run-262 (2026-09-29): a plan that deletes files parked because no builder tool removed one and
-817 < 1     // the shell hook refuses `rm`. The file leaves the copy on disk; syncFromDisk records the delete
-818 < 1     // in the weave (rewrite with content null) exactly as it records any other change.
+816 < 2     // run-262 (2026-09-29): a plan that deletes files parked because no builder tool removed one and
+817 < 2     // the shell hook refuses `rm`. The file leaves the copy on disk; syncFromDisk records the delete
+818 < 2     // in the weave (rewrite with content null) exactly as it records any other change.
 819 < 1     tool('delete_file', 'Delete an existing file in your copy (the shell may not delete one). Give its path relative to your copy.',
 820 < 1       { path: z.string() },
 821 < 1       async (a) => {
 822 < 1         const fp = path.resolve(cwd, a.path || '')
 823 < 1         if (!fp.startsWith(cwd + '/')) return say('refused: ' + JSON.stringify(a.path) + ' is outside your copy')
 824 < 1         let isFile = false
-825 < 1         try { isFile = fs.statSync(fp).isFile() } catch { /* absent */ }
+826 > 1         try { isFile = fs.statSync(fp).isFile() } catch {}
+825 < 2         try { isFile = fs.statSync(fp).isFile() } catch { /* absent */ }
 826 < 1         if (!isFile) return say('refused: ' + JSON.stringify(a.path) + ' is not an existing file in your copy')
 827 < 1         const rel = fp.slice(cwd.length + 1)
 828 < 1         touch(agent, rel); known[agent].add(rel)
@@ -960,7 +984,7 @@
 869 < 1       if (st.closed && ['Edit', 'MultiEdit', 'Write', 'Bash'].includes(input.tool_name)) {
 870 < 1         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'your task is done and your copy is closed; end your turn' } }
 871 < 1       }
-872 < 1       // the PATH shim cannot see a git named by its absolute path (`/usr/bin/git`)
+872 < 2       // the PATH shim cannot see a git named by its absolute path (`/usr/bin/git`)
 873 < 1       if (input.tool_name === 'Bash' && /(^|[^\w.-])\/[\w./-]*\/git(?![\w./-])/.test(ti.command || '')) {
 874 < 1         return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'agents never run git' } }
 875 < 1       }
@@ -1001,14 +1025,14 @@
 910 < 1           const view = (await must({ op: 'view', agent, path: rel })).text
 911 < 1           if (view !== readOr(fp)) { const r = await must({ op: 'rewrite', agent, path: rel, content: readOr(fp), task: task.id }); peerRewrites(agent, rel, r.peerRewrites); how = 'edit-call-mismatch' }
 912 < 1         }
-913 < 1         // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
+913 < 2         // gap 9 (open, but declared): an edit outside the editing task's own Files is an amendment
 914 < 1         const own = task.files || (String(task.id).startsWith('R:') ? [task.id.slice(2)] : null)
 915 < 1         const outside = own ? !own.includes(rel) : false
 916 < 1         edited(agent, rel)
 917 < 1         ev('edit', { agent, task: task.id, tool: name, path: rel, how, peer_lines: rec.peer, peers: rec.peers, outside })
 918 < 1         if (rec.peer) await board.post({ by: 'host', claim: `${agent} changed ${rec.peer} line(s) written by ${rec.peers.join(', ')} in ${rel}`, task: task.id })
 919 < 1       } else if (name === 'Read' && ti.file_path) {
-920 < 1         // warn first: before a builder edits a peer's lines, it is told whose they are
+920 < 2         // warn first: before a builder edits a peer's lines, it is told whose they are
 921 < 1         const fp = path.resolve(cwd, ti.file_path)
 922 < 1         if (!fp.startsWith(cwd + '/')) return {}
 923 < 1         const rel = fp.slice(cwd.length + 1)
@@ -1042,7 +1066,8 @@
 951 < 1   const prompt = `You are agent ${agent}. You claimed task ${task.id}: ${task.title}.\n\n${task.body}\n` +
 952 < 1     (task.notes.length ? `\nNotes on this task from earlier attempts:\n- ${task.notes.slice(-3).join('\n- ')}\n` : '') +
 953 < 1     brief(task)
-954 < 1   if (outcome) return   // the run ended while this builder was pulling: start no session
+955 > 1   if (outcome) return
+954 < 2   if (outcome) return   // the run ended while this builder was pulling: start no session
 955 < 1   ev('session:start', { agent, task: task.id })
 956 < 1   log(agent, 'claims task', task.id)
 957 < 1   const q = query({ prompt, options: {
@@ -1050,8 +1075,8 @@
 959 < 1     maxTurns: 80, systemPrompt: { type: 'preset', preset: 'claude_code', append: SYSTEM },
 960 < 1     mcpServers: { flock: createSdkMcpServer({ name: 'flock', tools }) },
 961 < 1     disallowedTools: ['WebFetch', 'WebSearch', 'Task', 'Agent', 'NotebookEdit'], hooks,
-962 < 1     // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
-963 < 1     // spelt in parts so no line names the retired switch's constant.
+962 < 2     // tool search off: the builder's own tools load up front (no ToolSearch step). The key is
+963 < 2     // spelt in parts so no line names the retired switch's constant.
 965 > 1     env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ENABLE_TOOL_SEARCH: 'false' },
 964 < 2     env: { ...process.env, PATH: NOGIT + path.delimiter + process.env.PATH, ['ENABLE_TOOL' + '_SEARCH']: 'false' },
 965 < 1   } })
@@ -1059,18 +1084,20 @@
 967 < 1   live.add(agent)
 968 < 1   const killer =setTimeout(() => { q.interrupt().catch(() => {}) }, Math.max(1000, CLOCK_MS - now()))
 969 < 1   stops.set(agent, () => q.interrupt().catch(() => {}))
-970 < 1   if (outcome) q.interrupt().catch(() => {})   // the stop landed between query() and stops.set
+971 > 1   if (outcome) q.interrupt().catch(() => {})
+970 < 2   if (outcome) q.interrupt().catch(() => {})   // the stop landed between query() and stops.set
 971 < 1   try { for await (const m of q) if (m.type === 'result') result = m } catch (e) { ev('session:error', { agent, error: String(e).slice(0, 300) }) }
 972 < 1   clearTimeout(killer); stops.delete(agent)
 973 < 1   if (!st.closed) { await syncFromDisk(agent); await publishCopy(agent); edge('session end ' + agent) }
 974 < 1   usage.push({ agent, task: task.id, turns: result?.num_turns, usage: result?.usage, subtype: result?.subtype, cost_usd: result?.total_cost_usd || 0 })
 976 > 1   ev('session:end', { agent, task: task.id, released: st.released, objected: st.objected, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
 975 < 2   ev('session:end', { agent, task: task.id, released: st.released, done: st.done, redRuns: st.redRuns, turns: result?.num_turns, usage: result?.usage })
-976 < 1   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
-977 < 1   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
+976 < 2   // ticket 5: a resolve task that ends done closes its path's regions even when the resolver
+977 < 2   // changed nothing ("the merged text already says what both meant": run n1, 2 of 2 attempts)
 978 < 1   if (String(task.id).startsWith('R:') && st.done) closeEntries(task.id.slice(2), agent, st.done, 'resolve task done')
 979 < 1   live.delete(agent); if (!st.closed) lastChange = now()
-981 > 1   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
+982 > 1   if (st.closed || outcome) {} else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
+981 > 2   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.objected) { await objectTo(agent, task, st.objected) } else if (st.released) { await giveBack(agent, task, st.released) } else {
 980 < 2   if (st.closed || outcome) { /* done at the done call, or the run has ended: nothing to give back */ } else if (st.released) { await giveBack(agent, task, st.released) } else {
 981 < 1     const red = redOf(runFacts(cwd, task))
 982 < 1     if (red.length) {
@@ -1090,19 +1117,21 @@
 996 < 1   }
 997 < 1 }
 998 < 1 
-999 < 1 // ── main is a peer (the main-is-a-peer design, stage 3) ───────────────────────
-1000 < 1 // A `peer` run follows the target's default branch: a look before its first builder opens, one
-1001 < 1 // every MAIN_POLL_MS, and one before a green settle. When it moves, the moved main's stored weaves
-1002 < 1 // are published into the run as the peer `main` (keeper op `main`), so every copy takes its text in
-1003 < 1 // through the pulls it already makes, a clash with a builder is an ordinary conflict with builders
-1004 < 1 // alive to resolve it, and the run's base moves to the new tip: the scope rule, every fact's
-1005 < 1 // ULTRA_BASE, each copy's git index and the landing commit all read it. What the weave does not
-1006 < 1 // carry (a file that is not text) is copied into each copy as it is on main. Nothing here fails a
-1007 < 1 // run: a move that cannot be taken in ends the following, with its reason on a `main:off` row, and
-1008 < 1 // the publish's catch-up meets the moved main as it did before.
-1009 < 1 let MAIN_BRANCH = null    // the default branch a `peer` run follows; null follows nothing
-1010 < 1 let mainOff = null        // why this run stopped following main
-1011 < 1 // a changed file that means the installed dependencies may be stale: the setup runs again
+1000 > 1 let MAIN_BRANCH = null
+1001 < 1 let mainOff = null
+999 < 2 // ── main is a peer (the main-is-a-peer design, stage 3) ───────────────────────
+1000 < 2 // A `peer` run follows the target's default branch: a look before its first builder opens, one
+1001 < 2 // every MAIN_POLL_MS, and one before a green settle. When it moves, the moved main's stored weaves
+1002 < 2 // are published into the run as the peer `main` (keeper op `main`), so every copy takes its text in
+1003 < 2 // through the pulls it already makes, a clash with a builder is an ordinary conflict with builders
+1004 < 2 // alive to resolve it, and the run's base moves to the new tip: the scope rule, every fact's
+1005 < 2 // ULTRA_BASE, each copy's git index and the landing commit all read it. What the weave does not
+1006 < 2 // carry (a file that is not text) is copied into each copy as it is on main. Nothing here fails a
+1007 < 2 // run: a move that cannot be taken in ends the following, with its reason on a `main:off` row, and
+1008 < 2 // the publish's catch-up meets the moved main as it did before.
+1009 < 2 let MAIN_BRANCH = null    // the default branch a `peer` run follows; null follows nothing
+1010 < 2 let mainOff = null        // why this run stopped following main
+1011 < 2 // a changed file that means the installed dependencies may be stale: the setup runs again
 1012 < 1 const MANIFEST = /(^|\/)(package\.json|bun\.lockb?|package-lock\.json|requirements[^/]*\.txt|pyproject\.toml|uv\.lock|poetry\.lock|Pipfile\.lock|Cargo\.(toml|lock)|go\.(mod|sum))$/
 1013 < 1 function followMain () {
 1015 > 1   if (!MEMORY) return
@@ -1117,13 +1146,13 @@
 1022 < 1   ev('main:off', { reason, ...more }); log('main: no longer followed —', reason)
 1023 < 1   return false
 1024 < 1 }
-1025 < 1 // the default branch's tip as the remote has it now, or null when it cannot be read
+1025 < 2 // the default branch's tip as the remote has it now, or null when it cannot be read
 1026 < 1 function mainTip () {
 1027 < 1   const r = spawnSync('git', ['-C', TARGET, 'fetch', '-q', 'origin', `refs/heads/${MAIN_BRANCH}`], { encoding: 'utf8', timeout: 60000 })
 1028 < 1   return r.status === 0 ? gitIn(TARGET, ['rev-parse', 'FETCH_HEAD']).stdout.trim() : null
 1029 < 1 }
-1030 < 1 // Looks at main once and takes a move in. True when the base moved (the caller then asks for an
-1031 < 1 // edge). It runs on the edge chain, so no edge is copying the base while it is replaced.
+1030 < 2 // Looks at main once and takes a move in. True when the base moved (the caller then asks for an
+1031 < 2 // edge). It runs on the edge chain, so no edge is copying the base while it is replaced.
 1032 < 1 function absorbMain (why) {
 1033 < 1   if (!MAIN_BRANCH || mainOff || outcome) return Promise.resolve(false)
 1034 < 1   const moved = edgeChain.then(() => absorb(why)).catch((e) => stopFollowing('the move could not be taken in: ' + String(e && e.message || e).slice(0, 300)))
@@ -1136,7 +1165,7 @@
 1041 < 1   if (!tip || tip === BASE_NOW) return false
 1042 < 1   if (gitIn(TARGET, ['merge-base', '--is-ancestor', BASE_NOW, tip], { ok: true }).status !== 0) return stopFollowing('main no longer holds the commit this run is based on', { tip })
 1043 < 1   const changed = git(['diff', '--name-only', '--no-renames', BASE_NOW, tip]).split('\n').filter(Boolean)
-1044 < 1   // the moved base is laid out beside the old one, and the keeper asked, before anything is replaced
+1044 < 2   // the moved base is laid out beside the old one, and the keeper asked, before anything is replaced
 1045 < 1   const next = BASE_DIR + '.next'
 1046 < 1   fs.rmSync(next, { recursive: true, force: true })
 1047 < 1   writeBase(next, tip)
@@ -1146,16 +1175,17 @@
 1051 < 1     fs.rmSync(next, { recursive: true, force: true })
 1052 < 1     return stopFollowing(r.ok ? r.reason : String(r.error).slice(0, 300), { tip, paths: r.paths })
 1053 < 1   }
-1054 < 1   // the keeper holds main's weaves now: the base moves
+1054 < 2   // the keeper holds main's weaves now: the base moves
 1055 < 1   const from = BASE_NOW
 1056 < 1   const wasText = new Set(BASE_PATHS), isTextNow = new Set(nextPaths)
 1057 < 1   fs.rmSync(BASE_DIR, { recursive: true, force: true }); fs.renameSync(next, BASE_DIR)
 1058 < 1   BASE_NOW = tip; RUN_ENV.ULTRA_BASE = tip
 1059 < 1   BASE_PATHS = nextPaths
 1060 < 1   BASE_FILES = Object.fromEntries(BASE_PATHS.map((p) => [p, readOr(path.join(BASE_DIR, p))]))
-1061 < 1   git(['checkout', '-q', '--detach', tip])   // the landing commit goes on the moved main
-1062 < 1   // the installed dependencies, again, when main changed what they are read from; the old ones
-1063 < 1   // stay in place when the setup fails on the moved main
+1062 > 1   git(['checkout', '-q', '--detach', tip])
+1061 < 2   git(['checkout', '-q', '--detach', tip])   // the landing commit goes on the moved main
+1062 < 2   // the installed dependencies, again, when main changed what they are read from; the old ones
+1063 < 2   // stay in place when the setup fails on the moved main
 1064 < 1   let setup = null
 1065 < 1   if (SETUP && changed.some((p) => MANIFEST.test(p))) {
 1066 < 1     const old = DEPS_DIR + '.old'
@@ -1169,7 +1199,7 @@
 1074 < 1     else { fs.rmSync(DEPS_DIR, { recursive: true, force: true }); fs.renameSync(old, DEPS_DIR) }
 1075 < 1     DEP_DIRS = depDirs()
 1076 < 1   }
-1077 < 1   // what the weave does not carry: a file that is text neither at the old base nor at the new
+1077 < 2   // what the weave does not carry: a file that is text neither at the old base nor at the new
 1078 < 1   const other = changed.filter((p) => !SKIP.test(p) && !wasText.has(p) && !isTextNow.has(p))
 1079 < 1   for (const a of pool) {
 1080 < 1     const dir = agentDir(a)
@@ -1181,7 +1211,8 @@
 1086 < 1     gitIn(dir, ['read-tree', tip]); gitIn(dir, ['update-index', '-q', '--refresh'], { ok: true })
 1087 < 1     if (setup) linkDeps(dir)
 1088 < 1   }
-1089 < 1   fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')   // the boot publishes against this base
+1090 > 1   fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')
+1089 < 2   fs.writeFileSync(path.join(OUT, 'base'), tip + '\n')   // the boot publishes against this base
 1090 < 1   ev('main:moved', { from, to: tip, why, changed: changed.length, woven: r.paths, other, via: r.via, setup })
 1091 < 1   log('main moved', from.slice(0, 12), '->', tip.slice(0, 12), `(${changed.length} file(s), ${r.paths.length} merged as a peer's)`)
 1092 < 1   await board.post({ by: 'host', claim: `main moved to ${tip.slice(0, 12)}: ${changed.length} file(s) changed there (${changed.slice(0, 8).join(', ')}${changed.length > 8 ? ', …' : ''}). They merge into every copy like a peer's work, from \`main\`` })
@@ -1190,27 +1221,30 @@
 1095 < 1 }
 1096 < 1 async function mainWatcher () {
 1097 < 1   while (MAIN_BRANCH && !mainOff && !settled && !outcome && now() < CLOCK_MS) {
-1098 < 1     // the next look is due by the clock, in short sleeps so a run that ends is not kept waiting.
-1099 < 1     // Counting the sleeps ran late: each one stretches while an edge's tests hold the loop
-1100 < 1     // (flock-baseline run-12, 2026-11-13: the 60 s look had not come by 72.6 s, and the look before
-1101 < 1     // settling took the move in).
+1098 < 2     // the next look is due by the clock, in short sleeps so a run that ends is not kept waiting.
+1099 < 2     // Counting the sleeps ran late: each one stretches while an edge's tests hold the loop
+1100 < 2     // (flock-baseline run-12, 2026-11-13: the 60 s look had not come by 72.6 s, and the look before
+1101 < 2     // settling took the move in).
 1102 < 1     const due = now() + MAIN_POLL_MS
 1103 < 1     while (now() < due && !settled && !outcome) await sleep(500)
 1104 < 1     if (await absorbMain('poll')) edge('main moved')
 1105 < 1   }
 1106 < 1 }
 1107 < 1 
-1108 < 1 // ── settling ──────────────────────────────────────────────────────────────────
-1109 < 1 let outcome = null   // ticket 5: { pr: 'ready' | 'draft', why, snap }
+1109 > 1 let outcome = null
+1108 < 2 // ── settling ──────────────────────────────────────────────────────────────────
+1109 < 2 let outcome = null   // ticket 5: { pr: 'ready' | 'draft', why, snap }
 1110 < 1 function debounceMs () {
 1111 < 1   const xs = [...edgeLatency].sort((a, b) => a - b)
 1112 < 1   const p90 = xs.length ? xs[Math.min(xs.length - 1, Math.floor(0.9 * xs.length))] : 500
 1113 < 1   return Math.max(1000, 2 * p90)
 1114 < 1 }
-1115 < 1 let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
-1116 < 1 let fellBack = false  // the run already ends on preLoose: a draft after that stands
+1116 > 1 let preLoose = null
+1117 < 1 let fellBack = false
+1115 < 2 let preLoose = null   // the green edge result the L:loose task was opened on (#1521)
+1116 < 2 let fellBack = false  // the run already ends on preLoose: a draft after that stands
 1117 < 1 function terminal (pr, why, r) {
-1118 < 1   // any draft after the loose-ends task was added lands the green snapshot from before it instead (#1521)
+1118 < 2   // any draft after the loose-ends task was added lands the green snapshot from before it instead (#1521)
 1119 < 1   if (pr === 'draft' && preLoose && !fellBack) {
 1120 < 1     fellBack = true
 1121 < 1     ev('loose:fallback', { snap: preLoose.snap, from: r && r.snap, why })
@@ -1227,34 +1261,34 @@
 1133 > 1     const stalled = () => now() - lastRise > STALL_MS && lastSessionEnd > lastRise
 1132 < 2     const stalled = () => STALL_MS > 0 && now() - lastRise > STALL_MS && lastSessionEnd > lastRise
 1133 < 1     if (stalled() && (await edgeChain, stalled())) {
-1134 < 1       // no progress (#1334): the best-green count has not risen within the limit, a builder session
-1135 < 1       // has ended since it last did, and no queued snapshot raised it (the edge chain is drained)
+1134 < 2       // no progress (#1334): the best-green count has not risen within the limit, a builder session
+1135 < 2       // has ended since it last did, and no queued snapshot raised it (the edge chain is drained)
 1136 < 1       await stall('no-progress', { since_rise_ms: now() - lastRise, limit_ms: STALL_MS, best: bestGreen, live: [...live] })
 1137 < 1       terminal('draft', `no progress: the green count has not risen for ${Math.round((now() - lastRise) / 1000)} s`, lastEdge)
 1138 < 1       for (const stop of stops.values()) stop()
 1139 < 1       break
 1140 < 1     }
 1141 < 1     const all = [...board.tasks.values()]
-1142 < 1     // rule S1: nothing can change the code any more.
-1143 < 1     // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
-1144 < 1     // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
+1142 < 2     // rule S1: nothing can change the code any more.
+1143 < 2     // a claimed task is work in progress even before its session goes live (atlas AE5: a resolve
+1144 < 2     // task claimed 0.5 s after it was added read as a deadlock, and the run ended a draft on green code)
 1145 < 1     const claimed = all.some((t) => t.state === 'claimed')
 1146 < 1     if (!live.size && !claimed && !board.allDone() && !board.readyNow().length && now() - lastChange > debounceMs()) {
-1148 > 1       // nothing left that anyone can do. An objection is why: the run says so in the builder's words.
+1148 > 2       // nothing left that anyone can do. An objection is why: the run says so in the builder's words.
 1149 < 1       if (objections.length) {
 1150 < 1         const o = objections[0], more = objections.length - 1
 1151 < 1         terminal('draft', `objection on task ${o.task}: ${o.reason}${more ? ` (and ${more} more)` : ''}`, lastEdge); break
 1152 < 1       }
-1147 < 1       // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
+1147 < 2       // deadlock: no agent working, nothing claimable, work left. Nobody will publish again.
 1148 < 1       await stall('deadlock', { left: all.filter((t) => t.state !== 'done').map((t) => ({ id: t.id, state: t.state, depends_on: t.depends_on })) })
 1149 < 1       terminal('draft', 'deadlock: work left and nothing claimable', lastEdge); break
 1150 < 1     }
-1151 < 1     // round 3, `tested`: once the last tested hash is green and nothing was published after it,
-1152 < 1     // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
+1151 < 2     // round 3, `tested`: once the last tested hash is green and nothing was published after it,
+1152 < 2     // nothing can change the code, so the debounce buys nothing; it still guards an untested publish
 1153 < 1     const tested = lastEdge && lastEdge.green && lastEdge.t >= lastPublish
 1154 < 1     if (live.size || !board.allDone() || (!tested && now() - lastChange < debounceMs())) continue
 1155 < 1     const r = await edge('settle check')
-1156 < 1     // one more look at main before a green run ends: a move is taken in and tested like any other
+1156 < 2     // one more look at main before a green run ends: a move is taken in and tested like any other
 1157 < 1     if (r.green && await absorbMain('settle')) { edge('main moved'); continue }
 1159 > 1     if (r.green && !board.tasks.has('L:loose')) {
 1158 < 2     if (r.green && LOOSE_MODE === 'work' && !board.tasks.has('L:loose')) {
@@ -1268,8 +1302,8 @@
 1166 < 1           `\n\nFix each that is still wrong. Change only what a loose end names: leave other builders' lines as they are, and post a belief if one of them needs changing. If you judge one should stay as it is, leave it and post a belief saying why. Run the run-wide check, publish, then call done.`
 1167 < 1         await board.addTask({ id: 'L:loose', title: LOOSE_TITLE, depends_on: [], state: 'ready', owner: null, notes: [], reopen: 0, facts: [], files: paths, body })
 1168 < 1         ev('loose-task', { snap: r.snap, paths, body }); log('loose-ends task for', paths.join(','))
-1170 > 1         // the cleanup adds no facts, so the green count cannot rise during it: it gets its own window
-1171 < 1         // from now, not the rest of the one that began at the first green (#1531)
+1170 > 2         // the cleanup adds no facts, so the green count cannot rise during it: it gets its own window
+1171 < 2         // from now, not the rest of the one that began at the first green (#1531)
 1172 < 1         lastRise = now()
 1169 < 1         continue
 1170 < 1       }
@@ -1282,9 +1316,9 @@
 1177 < 1       if (t.reopen >= MAX_REOPEN) continue
 1178 < 1       acted = true
 1179 < 1       t.reopen += 1
-1180 < 1       // the merge orders two insertions at one spot by their text, which no builder chose: a task
-1181 < 1       // reopened red is told of each such spot in its files (flock-baseline run-10: tasks 12 and 13
-1182 < 1       // each added one rule to one list, the merge put them in alphabetical order, both went red)
+1180 < 2       // the merge orders two insertions at one spot by their text, which no builder chose: a task
+1181 < 2       // reopened red is told of each such spot in its files (flock-baseline run-10: tasks 12 and 13
+1182 < 2       // each added one rule to one list, the merge put them in alphabetical order, both went red)
 1183 < 1       const here = [...spots.values()].filter((x) => (t.files || []).includes(x.p)).map((x) => x.text)
 1184 < 1       await board.reopen(t, `edge snapshot ${r.snap} is red on this task's facts ${JSON.stringify(r.perTask[t.id])}; check exit ${r.check}` +
 1185 < 1         (here.length ? `. Look here first: ${here.join('; ')}` : ''))
@@ -1304,8 +1338,8 @@
 1199 < 1       ev('resolve-task', { path: p, snap: r.snap }); log('resolve task for', p)
 1200 < 1     }
 1201 < 1     if (W.check && r.check !== 0 && all.every((t) => (r.perTask[t.id] || []).every((x) => x === 0))) {
-1202 < 1       // ticket 5: the check is red with every fact green. The old loop restarted the quiet
-1203 < 1       // window and told nobody, so the run waited for its clock. Now the check owns a task.
+1202 < 2       // ticket 5: the check is red with every fact green. The old loop restarted the quiet
+1203 < 2       // window and told nobody, so the run waited for its clock. Now the check owns a task.
 1204 < 1       ev('red-check-only', { snap: r.snap, tail: r.checkTail }); log('check red with every fact green')
 1205 < 1       const prev = board.tasks.get('C:check')
 1206 < 1       if (!prev || (prev.state === 'done' && prev.reopen < MAX_REOPEN)) {
@@ -1316,8 +1350,8 @@
 1211 < 1       }
 1212 < 1     }
 1213 < 1     if (!acted) {
-1214 < 1       // exhausted: red or blocked, and every lever (reopen, resolve task, check task) is spent.
-1215 < 1       // Waiting for the clock buys nothing: publish the draft now with the beliefs attached.
+1214 < 2       // exhausted: red or blocked, and every lever (reopen, resolve task, check task) is spent.
+1215 < 2       // Waiting for the clock buys nothing: publish the draft now with the beliefs attached.
 1216 < 1       await stall('exhausted', { snap: r.snap, perTask: r.perTask, check: r.check, blocking: r.blocking })
 1217 < 1       terminal('draft', 'exhausted: red or blocked with every retry spent', r); break
 1218 < 1     }
@@ -1325,10 +1359,10 @@
 1220 < 1   if (!outcome) terminal('draft', 'clock', lastEdge)
 1221 < 1 }
 1222 < 1 
-1223 < 1 // ── run ───────────────────────────────────────────────────────────────────────
+1223 < 2 // ── run ───────────────────────────────────────────────────────────────────────
 1224 < 1 await must({ op: 'base', root: BASE_DIR, paths: BASE_PATHS })
-1226 > 1 // the run's weaves begin from main's memory: a store that cannot be read leaves them begun from the
-1227 < 1 // base's text, with the reason on the row, and the run follows nothing (followMain)
+1226 > 2 // the run's weaves begin from main's memory: a store that cannot be read leaves them begun from the
+1227 < 2 // base's text, with the reason on the row, and the run follows nothing (followMain)
 1228 < 1 const memoryRead = await weave({ op: 'memory', repo: TARGET, commit: BASE_SHA, remote: 'origin' }).catch((e) => ({ ok: false, error: String(e) }))
 1229 < 1 const MEMORY = !!(memoryRead.ok && memoryRead.memory)
 1230 < 1 ev('weave:memory', memoryRead.ok ? { ...memoryRead, ok: undefined } : { memory: false, reason: String(memoryRead.error).slice(0, 300) })
@@ -1343,11 +1377,11 @@
 1231 < 2 }
 1232 < 2 ev('start', { workload: W.name, cap: CAP, model: MODEL, clock_ms: CLOCK_MS, pulls: PULLS, chain: Object.fromEntries(board.cp) })
 1233 < 1 log(`workload ${W.name}, elastic builders (cap ${CAP}), ${MODEL}, out ${OUT}`)
-1234 < 1 // the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
-1235 < 1 // (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
-1236 < 1 // --past-dir <dir> (basename = the run number); read what it recorded (status, events, red
-1237 < 1 // checks) and brief every builder with it. No --past-dir reads nothing. Any failure (a missing
-1238 < 1 // directory or file) is logged once and leaves the brief as it was.
+1234 < 2 // the previous run (#1335, #1395): when this run follows one on the same repository, the sandbox
+1235 < 2 // (factory/boot.sh) extracts that run's evidence folder to a directory and names it with
+1236 < 2 // --past-dir <dir> (basename = the run number); read what it recorded (status, events, red
+1237 < 2 // checks) and brief every builder with it. No --past-dir reads nothing. Any failure (a missing
+1238 < 2 // directory or file) is logged once and leaves the brief as it was.
 1239 < 1 let PAST = null
 1240 < 1 {
 1241 < 1   const dir = arg('past-dir')
@@ -1358,10 +1392,11 @@
 1246 < 1       const text = (f) => fs.readFileSync(path.join(dir, f), 'utf8')
 1247 < 1       const status = JSON.parse(text('status.json'))
 1248 < 1       const events = readEventRows(path.join(dir, 'events.jsonl'))
-1250 > 1       // optional: runs before #1352 have no red-checks.json; pastItems reads null as none
+1250 > 2       // optional: runs before #1352 have no red-checks.json; pastItems reads null as none
 1249 < 2       // optional: runs before #1352, and factory runs, have no red-checks.json; pastItems reads null as none
 1250 < 1       let redChecks = null
-1251 < 1       try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
+1252 > 1       try { redChecks = JSON.parse(text('red-checks.json')) } catch {}
+1251 < 2       try { redChecks = JSON.parse(text('red-checks.json')) } catch { /* no red checks recorded */ }
 1252 < 1       const items = pastItems({ status, events, redChecks })
 1253 < 1       ev('past', { run: m, items: items ? items.length : 0 })
 1254 < 1       if (items) {
@@ -1372,10 +1407,10 @@
 1259 < 1     } catch (e) { log('past: nothing read —', String(e.message || e).split('\n')[0]) }
 1260 < 1   }
 1261 < 1 }
-1262 < 1 // a stories-v1 run proves the checker can run here before any builder spends anything:
-1263 < 1 // exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
-1264 < 1 // missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
-1265 < 1 // not the app, and stops the run before it starts.
+1262 < 2 // a stories-v1 run proves the checker can run here before any builder spends anything:
+1263 < 2 // exit 0 or 1 on the starting app is expected (a green or red finding); anything else — a
+1264 < 2 // missing bun/checker (spawn ENOENT reads as 124/127), a crash, a timeout — is the sandbox,
+1265 < 2 // not the app, and stops the run before it starts.
 1266 < 1 if (W.stories) {
 1267 < 1   const first = W.tasks.find((t) => t.facts.length)
 1268 < 1   const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
@@ -1387,15 +1422,17 @@
 1274 < 1 }
 1275 < 1 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 1276 < 1 const pool = []
-1277 < 1 lastRise = now()   // setup and the checker preflight do not count against the first window
+1278 > 1 lastRise = now()
+1277 < 2 lastRise = now()   // setup and the checker preflight do not count against the first window
 1278 < 1 const loops = []
 1279 < 1 let buildersMax = pool.length
-1280 < 1 // a builder is busy while it has a session open or a task claimed in its name
+1280 < 2 // a builder is busy while it has a session open or a task claimed in its name
 1281 < 1 const busy = (a) => live.has(a) || [...board.tasks.values()].some((t) => t.state === 'claimed' && t.owner === a)
 1282 < 1 function openBuilder () {
 1283 < 1   const a = pool.length < 26 ? LETTERS[pool.length] : LETTERS[pool.length % 26] + Math.floor(pool.length / 26)
 1284 < 1   fs.cpSync(BASE_DIR, agentDir(a), { recursive: true }); linkDeps(agentDir(a)); gitCopy(agentDir(a))
-1285 < 1   known[a] = new Set(BASE_PATHS)   // its first session pulls every published change (session -> pullInto)
+1286 > 1   known[a] = new Set(BASE_PATHS)
+1285 < 2   known[a] = new Set(BASE_PATHS)   // its first session pulls every published change (session -> pullInto)
 1286 < 1   pool.push(a); buildersMax = Math.max(buildersMax, pool.length)
 1287 < 1   ev('builder:open', { agent: a, pool: pool.length, ready: board.readyNow().length, busy: pool.filter(busy).length })
 1288 < 1   log('opens builder', a, '(pool ' + pool.length + ')')
@@ -1409,34 +1446,34 @@
 1296 < 1   }
 1297 < 1 }
 1298 < 1 followMain()
-1299 < 1 // a run launched behind main takes the move in before its first builder opens, so every copy starts
-1300 < 1 // from the main that is there now (run-12 started one commit behind and met it only at the end)
+1299 < 2 // a run launched behind main takes the move in before its first builder opens, so every copy starts
+1300 < 2 // from the main that is there now (run-12 started one commit behind and met it only at the end)
 1301 < 1 await absorbMain('start')
 1302 < 1 await Promise.all([spawner(), settle(), mainWatcher()])
 1303 < 1 await Promise.all(loops)
 1304 < 1 await edgeChain
-1305 < 1 // every step's receipt, green or red: what its latest checker result says it changed
+1305 < 2 // every step's receipt, green or red: what its latest checker result says it changed
 1306 < 1 for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
-1307 < 1 // checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
+1307 < 2 // checks-digest.json (#1491, check_digest.mjs): one row per checks/ file, so a missing receipt can be read
 1308 < 1 try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
 1309 < 2 if (trialsPending.size) await Promise.race([Promise.all([...trialsPending]), new Promise((r) => setTimeout(r, JEV_TIMEOUT_MS).unref())])
 1310 < 2 await peerRewriteDraft()
-1311 < 1 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
+1311 < 2 // the run's loose ends, read against the last edge's snapshot (BASE text when there is none)
 1312 < 1 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 1313 < 1 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 1314 < 1 ev('loose-ends', { snap: looseSnap, items: looseItems })
-1316 > 1 // the screen parts builders added (#1491), read on the same snapshot: the PR lists them for the operator
+1316 > 2 // the screen parts builders added (#1491), read on the same snapshot: the PR lists them for the operator
 1317 < 1 const addedParts = newParts(BASE_FILES[DRAWS] ?? null, textAt(looseSnap)(DRAWS))
 1318 < 1 if (addedParts.length) ev('parts:new', { snap: looseSnap, parts: addedParts })
 1315 < 1 const summary = {
 1316 < 1   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
-1317 < 1   // the commit the work sits on: --base, or the main a `peer` run moved to
+1317 < 2   // the commit the work sits on: --base, or the main a `peer` run moved to
 1318 < 1   base: BASE_NOW,
 1319 < 1   final: lastEdge && { snap: lastEdge.snap, green: lastEdge.green, perTask: lastEdge.perTask, check: lastEdge.check, conflicts: lastEdge.conflicts },
 1320 < 1   snapshots: snapshots.length, beliefs: board.beliefs.length,
 1321 < 1   loose_ends: { reported: looseItems.length, resolved: looseItems.filter((x) => x.state === 'resolved').length },
-1322 < 1   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
-1323 < 1   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
+1322 < 2   // ticket 5: the terminal outcome. `ready` only from a settled green hash; anything else is a
+1323 < 2   // draft with what the swarm believed attached, so the operator reads beliefs, not a transcript.
 1324 < 1   outcome, debounce_ms: debounceMs(),
 1325 < 1   attached: outcome && outcome.pr === 'draft' ? { stalls, open_conflicts: [...ledger.values()].filter((e) => e.open).map((e) => ({ path: e.path, region: e.region, between: e.between })), last_edge: lastEdge && { snap: lastEdge.snap, perTask: lastEdge.perTask, check: lastEdge.check } } : undefined,
 1326 < 1   tokens: usage.reduce((a, u) => ({ input: a.input + (u.usage?.input_tokens || 0), output: a.output + (u.usage?.output_tokens || 0), cache_read: a.cache_read + (u.usage?.cache_read_input_tokens || 0), cache_write: a.cache_write + (u.usage?.cache_creation_input_tokens || 0) }), { input: 0, output: 0, cache_read: 0, cache_write: 0 }),
@@ -1448,7 +1485,7 @@
 1332 < 1 writeCompactRecord()
 1333 < 1 writeFailureRecord()
 1334 < 1 log('summary', JSON.stringify(summary))
-1335 < 1 // the join's blame and text, asked before the weave closes, for provenance.json at landing
+1335 < 2 // the join's blame and text, asked before the weave closes, for provenance.json at landing
 1336 < 1 const JOIN = { blame: (await weave({ op: 'blame' })).blame || {}, files: (await weave({ op: 'merged' })).files || {} }
 1337 < 1 const landed = await land()
 1338 < 1 keeper.end()
@@ -1512,8 +1549,8 @@
 1396 < 2   if (outcome.pr === 'ready') await peerRewriteDraft()   // the fallback snapshot is read too; once more at most (#1521)
 1397 < 2 }
 1398 < 1 
-1399 < 1 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's
-1400 < 1 // ops with file texts as fingerprints (compact_record.mjs) ──
+1399 < 2 // ── the compact record: each tested snapshot's patch against the previous one, and the weave's
+1400 < 2 // ops with file texts as fingerprints (compact_record.mjs) ──
 1401 < 1 function writeCompactRecord () {
 1402 < 1   const lines = fs.readFileSync(path.join(OUT, 'weave-ops.jsonl'), 'utf8').split('\n')
 1403 < 1   const rec = compactRecord(snapshots, BASE_FILES_0, lines)
@@ -1521,10 +1558,10 @@
 1405 < 1   fs.writeFileSync(path.join(OUT, 'weave-ops.digest.jsonl'), rec.digest)
 1406 < 1 }
 1407 < 1 
-1408 < 1 // ── the ending: one commit on the target, and the rows the pull request card reads ──
-1409 < 1 // Writes a snapshot's files into the target's working tree (the ones that exist; deletes the
-1410 < 1 // ones that don't) and commits once with the engine's own git. Answers the commit's sha, or
-1411 < 1 // null when the snapshot leaves the tree as it is at base.
+1408 < 2 // ── the ending: one commit on the target, and the rows the pull request card reads ──
+1409 < 2 // Writes a snapshot's files into the target's working tree (the ones that exist; deletes the
+1410 < 2 // ones that don't) and commits once with the engine's own git. Answers the commit's sha, or
+1411 < 2 // null when the snapshot leaves the tree as it is at base.
 1412 < 1 function commitSnapshot (snap, message) {
 1413 < 1   const s = snapshots.find((x) => x.snap === snap)
 1414 < 1   if (!s) return null
@@ -1534,9 +1571,9 @@
 1418 < 1   git(['commit', '-qm', message], { identity: true })
 1419 < 1   return git(['rev-parse', 'HEAD']).trim()
 1420 < 1 }
-1421 < 1 // The landed commit's entry in main's memory: the join's weaves, authored by this run's tasks. The
-1422 < 1 // boot's publish pushes it before the merge request. A join that is not the landed text (a draft
-1423 < 1 // that fell back to an earlier snapshot) stores nothing; the next reader replays the commit instead.
+1421 < 2 // The landed commit's entry in main's memory: the join's weaves, authored by this run's tasks. The
+1422 < 2 // boot's publish pushes it before the merge request. A join that is not the landed text (a draft
+1423 < 2 // that fell back to an earlier snapshot) stores nothing; the next reader replays the commit instead.
 1424 < 1 async function storeEntry (sha) {
 1425 < 1   if (!MEMORY) return
 1426 < 1   const r = await weave({ op: 'store', repo: TARGET, commit: sha, run: RUN_NO }).catch((e) => ({ ok: false, error: String(e) }))
@@ -1546,20 +1583,20 @@
 1430 < 1 async function land () {
 1431 < 1   if (outcome && outcome.pr === 'ready' && outcome.snap) {
 1432 < 1     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
-1433 < 1     // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
-1434 < 1     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
-1435 < 1     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
+1433 < 2     // (stories-v1 only; a claims-v1 run exits 1 below) settled green and identical to the base: every proof already held there, so there is nothing
+1434 < 2     // to land and the run is done (shopping-list run-1, 2026-10-01: the approved screen and the
+1435 < 2     // bundle's store already made the app); the boot reads HEAD = BASE with exit 0 as that
 1436 < 2     // it still offers every checked step to the Jev step reading, as a landed run does (#1509)
 1437 < 1     if (!sha) {
 1438 < 1       ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
-1439 < 1       // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
+1439 < 2       // a claims-v1 probe green at the base is vacuous (#1522): only a stories-v1 run is done here
 1441 > 1       return W.grammar === 'stories-v1' ? 0 : 1
 1440 < 2       if (W.grammar !== 'stories-v1') return 1
 1442 > 2       await Promise.race([readAndRecord().catch(() => {}), sleep(20000)])
 1441 < 2       await Promise.race([readAndRecord(null).catch(() => {}), sleep(20000)])
 1442 < 2       return 0
 1443 < 1     }
-1444 < 1     // one `landing` row per task: the settled commit it landed in
+1444 < 2     // one `landing` row per task: the settled commit it landed in
 1445 < 1     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
 1446 < 1     await storeEntry(sha)
 1447 < 1     writeProvenance(outcome.snap)
@@ -1580,8 +1617,8 @@
 1461 < 1   return 1
 1462 < 1 }
 1463 < 1 
-1464 < 1 // provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task and the surprises.
-1465 < 1 // The join's blame is kept only for paths whose text is the landed text.
+1464 < 2 // provenance.json (#1404, provenance.mjs): the landed snapshot's hunks by task and the surprises.
+1465 < 2 // The join's blame is kept only for paths whose text is the landed text.
 1466 < 1 function writeProvenance (snap) {
 1467 < 1   try {
 1468 < 1     const s = snapshots.find((x) => x.snap === snap)
@@ -1596,10 +1633,10 @@
 1477 < 1   }
 1478 < 1 }
 1479 < 1 
-1480 < 1 // ── what went wrong: red-checks.json on every run ──────
-1481 < 1 // red-checks.json holds the last tested snapshot's red facts and the run-wide check when it was
-1482 < 1 // red, each with the checker's own result JSON when it wrote one (at most 8 KiB); entries are
-1483 < 1 // added in order while the whole stays within 64 KiB, and one that would pass it is left out.
+1480 < 2 // ── what went wrong: red-checks.json on every run ──────
+1481 < 2 // red-checks.json holds the last tested snapshot's red facts and the run-wide check when it was
+1482 < 2 // red, each with the checker's own result JSON when it wrote one (at most 8 KiB); entries are
+1483 < 2 // added in order while the whole stays within 64 KiB, and one that would pass it is left out.
 1484 < 1 function writeFailureRecord () {
 1485 < 1   const LIMIT = 65536
 1486 < 1   const rec = { snap: lastEdge ? lastEdge.snap : null, limit_bytes: LIMIT, truncated: false, red: [] }
@@ -1610,7 +1647,8 @@
 1491 < 1     const e = { ...c }
 1492 < 1     if (c.clause) {
 1493 < 1       const f = path.join(CHECK_OUT, `${String(c.clause).replaceAll('/', '_')}@edge.json`)
-1494 < 1       try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* no checker result */ }
+1495 > 1       try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
+1494 < 2       try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch { /* no checker result */ }
 1495 < 1     }
 1496 < 1     const n = Buffer.byteLength(JSON.stringify(e)) + 1
 1497 < 1     if (size + n > LIMIT) { rec.truncated = true; continue }

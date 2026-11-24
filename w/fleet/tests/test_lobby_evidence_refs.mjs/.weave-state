@@ -1,0 +1,98 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_lobby_evidence_refs.mjs — the exam for "The evidence setting
+2 < 2  * and ref names, in one place" (#1395).
+3 < 2  *
+4 < 2  * Legs, each naming the Machine clause it comes from:
+5 < 2  *
+6 < 2  *   (d) [M4] `highestRunInEvidence` over a real local bare evidence repository
+7 < 2  *       holding `refs/tags/o-r/run-4`, `refs/heads/live/o-r/run-6` and
+8 < 2  *       `refs/tags/o-x/run-9` answers 6 for `o/r`; over one holding no `o-r`
+9 < 2  *       ref it answers 0; a non-zero `ls-remote` throws a `Refusal` naming
+10 < 2  *       the command.
+11 < 2  *   (e) [M5] `readEvidenceSetting({ path })` answers `ops/evidence` for a file
+12 < 2  *       carrying the key, and null for an absent file and a file without it.
+13 < 2  *
+14 < 2  * The seam rewrites the `https://github.com/…` URL to the local bare path, so
+15 < 2  * the listing is real git and no socket is opened.
+16 < 2  */
+17 < 2 
+18 < 1 import assert from 'node:assert/strict'
+19 < 1 import fs from 'node:fs'
+20 < 1 import path from 'node:path'
+21 < 1 import { spawnSync } from 'node:child_process'
+22 < 1 
+23 < 1 import { Refusal, highestRunInEvidence, readEvidenceSetting } from '../lobby.mjs'
+24 < 1 import { cleanup, gitEnv, makeExec, tempDir } from './_lobby_helpers.mjs'
+25 < 1 
+26 < 1 const root = tempDir('fleet-evidence-refs-')
+27 < 1 
+28 < 1 const gitIn = (cwd, argv) => {
+29 < 1   const res = spawnSync('git', argv, { cwd, encoding: 'utf8', env: gitEnv() })
+30 < 1   if (res.status !== 0) throw new Error(`git ${argv.join(' ')}: ${res.stdout}${res.stderr}`)
+31 < 1   return res.stdout.trim()
+32 < 1 }
+33 < 1 
+34 < 2 /** A bare evidence repository holding one commit under each of `refs`. */
+35 < 1 function evidenceRepo (name, refs) {
+36 < 1   const bare = path.join(root, `${name}.git`)
+37 < 1   gitIn(root, ['init', '--bare', '--initial-branch=main', bare])
+38 < 1   const work = path.join(root, name)
+39 < 1   gitIn(root, ['init', '--initial-branch=main', work])
+40 < 1   gitIn(work, ['config', 'user.email', 'fleet@example.invalid'])
+41 < 1   gitIn(work, ['config', 'user.name', 'fleet tests'])
+42 < 1   fs.writeFileSync(path.join(work, 'README.md'), '# evidence\n')
+43 < 1   gitIn(work, ['add', '-A'])
+44 < 1   gitIn(work, ['commit', '-m', 'seed'])
+45 < 1   gitIn(work, ['push', bare, 'HEAD:refs/heads/main', ...refs.map((ref) => `HEAD:${ref}`)])
+46 < 1   return bare
+47 < 1 }
+48 < 1 
+49 < 2 /** The seam: every `https://github.com/ops/evidence.git` becomes `bare`. */
+50 < 1 const localExec = (bare) => makeExec({
+51 < 1   rules: [{
+52 < 1     when: (cmd) => cmd === 'git',
+53 < 1     answer: (cmd, argv) => {
+54 < 1       const res = spawnSync('git', argv.map((a) => (a === 'https://github.com/ops/evidence.git' ? bare : a)), {
+55 < 1         encoding: 'utf8', env: gitEnv()
+56 < 1       })
+57 < 1       return { code: res.status ?? 1, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
+58 < 1     }
+59 < 1   }],
+60 < 1   passthrough: []
+61 < 1 })
+62 < 1 
+63 < 1 try {
+64 < 2   // (d) [M4]
+65 < 1   const full = evidenceRepo('full', ['refs/tags/o-r/run-4', 'refs/heads/live/o-r/run-6', 'refs/tags/o-x/run-9'])
+66 < 1   const fullExec = localExec(full)
+67 < 1   assert.equal(await highestRunInEvidence(fullExec, root, 'ops/evidence', 'o/r'), 6, '(d) [M4] highest o/r run is 6')
+68 < 1   assert.ok(fullExec.calls.some((c) => c.argv.includes('ls-remote') && c.argv.includes('https://github.com/ops/evidence.git')),
+69 < 1     '(d) [M4] one ls-remote against the evidence URL')
+70 < 1 
+71 < 1   const empty = evidenceRepo('empty', ['refs/tags/o-x/run-9'])
+72 < 1   assert.equal(await highestRunInEvidence(localExec(empty), root, 'ops/evidence', 'o/r'), 0, '(d) [M4] no o-r ref answers 0')
+73 < 1 
+74 < 1   const failing = makeExec({ rules: [{ when: () => true, answer: { code: 128, stdout: '', stderr: 'fatal: no\n' } }], passthrough: [] })
+75 < 1   let error = null
+76 < 1   try {
+77 < 1     await highestRunInEvidence(failing, root, 'ops/evidence', 'o/r')
+78 < 1   } catch (e) {
+79 < 1     error = e
+80 < 1   }
+81 < 1   assert.ok(error instanceof Refusal, '(d) [M4] a failed listing is a Refusal')
+82 < 1   assert.match(error.message, /git ls-remote https:\/\/github\.com\/ops\/evidence\.git/, '(d) [M4] the refusal names the command')
+83 < 1 
+84 < 2   // (e) [M5]
+85 < 1   const withKey = path.join(root, 'with.json')
+86 < 1   fs.writeFileSync(withKey, JSON.stringify({ evidence: 'ops/evidence' }))
+87 < 1   const withoutKey = path.join(root, 'without.json')
+88 < 1   fs.writeFileSync(withoutKey, JSON.stringify({ cpu: '8' }))
+89 < 1   assert.equal(await readEvidenceSetting({ path: withKey }), 'ops/evidence', '(e) [M5] the key is read')
+90 < 1   assert.equal(await readEvidenceSetting({ path: path.join(root, 'absent.json') }), null, '(e) [M5] no file is null')
+91 < 1   assert.equal(await readEvidenceSetting({ path: withoutKey }), null, '(e) [M5] no key is null')
+92 < 1 } finally {
+93 < 1   cleanup(root)
+94 < 1 }
+95 < 1 
+96 < 1 console.log('ALL TESTS PASSED')
+97 < 1 

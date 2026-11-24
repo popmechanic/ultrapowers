@@ -1,5 +1,5 @@
-0 < 1 """Which piece a linked story's check goes to (skills/ultrawrite/stories/compile.ts, #1525).
-1 < 1 Drives bun on the tracked todo-tags bundle with a fake store module."""
+0 < 2 """Which piece a linked story's check goes to (skills/ultrawrite/stories/compile.ts, #1525).
+1 < 2 Drives bun on the tracked todo-tags bundle with a fake store module."""
 2 < 1 import json
 3 < 1 import os
 4 < 1 import shutil
@@ -54,7 +54,8 @@
 51 < 1     assert pieces("card('tag').depends_on = ['todo']")["S4.3"] == "tag"
 52 < 1 
 53 < 1 
-54 < 1 def test_a_link_goes_to_the_piece_that_depends_on_both_others():  # potluck's shape
+55 > 1 def test_a_link_goes_to_the_piece_that_depends_on_both_others():
+54 < 2 def test_a_link_goes_to_the_piece_that_depends_on_both_others():  # potluck's shape
 55 < 1     assert pieces("b.cards.push({piece: 'board', depends_on: ['todo', 'tag'], actions: []}); "
 56 < 1                   "b.page.links[0].pieces = ['todo', 'tag', 'board']")["S4.3"] == "board"
 57 < 1 
@@ -70,7 +71,7 @@
 67 < 1 
 68 < 1 
 69 < 1 def test_a_link_naming_no_piece_is_refused():
-70 < 1     # the two kept stories leave other pieces unproven, so look only at the link's refusals
+70 < 2     # the two kept stories leave other pieces unproven, so look only at the link's refusals
 71 < 1     found = [r for r in checks("b.page.links[0].pieces = ['todo', 'tags']") if r.startswith("link ")]
 72 < 1     assert found == ["link L1: names piece tags, which is no piece"]
 73 < 1 
@@ -92,8 +93,8 @@
 89 < 1     assert found == ['piece todo: concepts must be a list of concept ids, not "todo"']
 90 < 1 
 91 < 1 
-92 < 1 # What the screen parts draw (#1491): a story expecting a role no part draws is a fact for the
-93 < 1 # author, and the compiled task that needs it is told to add the part and may touch the parts files.
+92 < 2 # What the screen parts draw (#1491): a story expecting a role no part draws is a fact for the
+93 < 2 # author, and the compiled task that needs it is told to add the part and may touch the parts files.
 94 < 1 DRAWS = """
 95 < 1 import {readDraws, TEMPLATE_DRAWS} from './skills/ultrawrite/stories/parts';
 96 < 1 import {compilePlan} from './skills/ultrawrite/stories/compile';
@@ -121,7 +122,7 @@
 118 < 1         assert "When a story needs something no part draws, add a part" in t
 120 > 1 
 121 < 1 
-122 < 1 # The one page (client/src/screen.json): every piece's task modifies it, and none names a piece's own screen.
+122 < 2 # The one page (client/src/screen.json): every piece's task modifies it, and none names a piece's own screen.
 123 < 1 def test_with_one_page_every_task_modifies_it():
 124 < 1     got = _bun(DRAWS, "const t = compilePlan(b, 'p1', probesOf(b, mod), [], true, null, true);"
 125 < 1                       "console.log(JSON.stringify(t.split('\\n### Task ').slice(1)))")

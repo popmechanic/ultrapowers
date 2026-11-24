@@ -1,34 +1,34 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 /**
-2 < 1  * fleet/target.mjs — the one integration object a target repository needs.
-3 < 1  *
-4 < 1  *   node fleet/target.mjs <owner>/<repo>
-5 < 1  *   node fleet/target.mjs list
-6 < 1  *   node fleet/target.mjs gc
-7 < 1  *
-8 < 1  * Per target, exactly ONE object, created once, attached to `tag:fleet`:
-9 < 1  *
-10 < 1  *   gh-<owner>-<repo>   --act-as-user   --attach tag:fleet
-11 < 1  *
-12 < 1  * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
-13 < 1  * and the launcher's `--tag fleet` is the grant (the policy model exe.dev tried
-14 < 1  * on 2026-09-11 was rolled back; `integrations` has no `policy` verb, #1434).
-15 < 1  * The sandbox clones, pushes and opens the PR through it; the human gate is the
-16 < 1  * PR itself. There is no read-only twin and no write grant, because of two facts
-17 < 1  * measured 2026-09-03: exe.dev's GitHub edge routes each request by repo path
-18 < 1  * and serves a cached installation token for 30–60 s after an integration is
-19 < 1  * edited (a `gh pr create` twenty seconds after a swap produced a bot-authored
-20 < 1  * PR), and two integrations naming one repo on one VM have no documented
-21 < 1  * tie-break. One object per repo makes both faults inexpressible — two targets'
-22 < 1  * objects on one VM name two repos, which the edge routes apart by path.
-23 < 1  *
-24 < 1  * Creating is idempotent: an object that exists is left exactly as it is and
-25 < 1  * reported as `skipped`, and attached to `tag:fleet` when the listing shows it
-26 < 1  * is not. `gc` reports and never deletes — it names integration
-27 < 1  * objects whose repository `gh repo view` can no longer see, and leaves the
-28 < 1  * decision to the operator, because a repo that is merely private to another
-29 < 1  * account looks identical to one that is gone.
-30 < 1  */
+1 < 2 /**
+2 < 2  * fleet/target.mjs — the one integration object a target repository needs.
+3 < 2  *
+4 < 2  *   node fleet/target.mjs <owner>/<repo>
+5 < 2  *   node fleet/target.mjs list
+6 < 2  *   node fleet/target.mjs gc
+7 < 2  *
+8 < 2  * Per target, exactly ONE object, created once, attached to `tag:fleet`:
+9 < 2  *
+10 < 2  *   gh-<owner>-<repo>   --act-as-user   --attach tag:fleet
+11 < 2  *
+12 < 2  * A credential reaches a fleet VM by its integration's attachment `tag:fleet`,
+13 < 2  * and the launcher's `--tag fleet` is the grant (the policy model exe.dev tried
+14 < 2  * on 2026-09-11 was rolled back; `integrations` has no `policy` verb, #1434).
+15 < 2  * The sandbox clones, pushes and opens the PR through it; the human gate is the
+16 < 2  * PR itself. There is no read-only twin and no write grant, because of two facts
+17 < 2  * measured 2026-09-03: exe.dev's GitHub edge routes each request by repo path
+18 < 2  * and serves a cached installation token for 30–60 s after an integration is
+19 < 2  * edited (a `gh pr create` twenty seconds after a swap produced a bot-authored
+20 < 2  * PR), and two integrations naming one repo on one VM have no documented
+21 < 2  * tie-break. One object per repo makes both faults inexpressible — two targets'
+22 < 2  * objects on one VM name two repos, which the edge routes apart by path.
+23 < 2  *
+24 < 2  * Creating is idempotent: an object that exists is left exactly as it is and
+25 < 2  * reported as `skipped`, and attached to `tag:fleet` when the listing shows it
+26 < 2  * is not. `gc` reports and never deletes — it names integration
+27 < 2  * objects whose repository `gh repo view` can no longer see, and leaves the
+28 < 2  * decision to the operator, because a repo that is merely private to another
+29 < 2  * account looks identical to one that is gone.
+30 < 2  */
 31 < 1 
 32 < 1 import path from 'node:path'
 33 < 1 import { fileURLToPath } from 'node:url'
@@ -52,17 +52,17 @@
 51 < 1 
 52 < 1 export const usage = () => USAGE
 53 < 1 
-54 < 1 /** The one `integrations add` line, verbatim, for a target: attached at creation,
-55 < 1  *  so a fresh object never needs a second write. No `--readonly`. */
+54 < 2 /** The one `integrations add` line, verbatim, for a target: attached at creation,
+55 < 2  *  so a fresh object never needs a second write. No `--readonly`. */
 56 < 1 const addCommand = (target) =>
 57 < 1   `integrations add github --name ${githubIntegrationFor(target)} --repository ${target} --act-as-user --attach ${FLEET_POLICY}`
 58 < 1 const attachCommand = (name) => `integrations attach ${name} ${FLEET_POLICY}`
 59 < 1 
-60 < 1 /** Is this one of the per-target objects? `gh-<slug>`. */
+60 < 2 /** Is this one of the per-target objects? `gh-<slug>`. */
 61 < 1 const isTargetIntegration = (name) => /^gh-.+/.test(name)
 62 < 1 
-63 < 1 /** Attach the object to `tag:fleet` unless the listing already shows it there.
-64 < 1  *  Answers `kept` or `set`. */
+63 < 2 /** Attach the object to `tag:fleet` unless the listing already shows it there.
+64 < 2  *  Answers `kept` or `set`. */
 65 < 1 async function ensureAttached ({ exec, name, rows = null }) {
 66 < 1   const listed = rows ?? await listIntegrations(exec)
 67 < 1   const row = listed.find((r) => r.name === name)
@@ -94,11 +94,11 @@
 93 < 1   return { verb: 'list', results: rows }
 94 < 1 }
 95 < 1 
-96 < 1 /**
-97 < 1  * Report objects whose repository is gone. The repository comes from the
-98 < 1  * listing's own `repository` field: `gh-<owner>-<repo>` cannot be reversed,
-99 < 1  * because the slash became a hyphen and hyphens are legal in both halves.
-100 < 1  */
+96 < 2 /**
+97 < 2  * Report objects whose repository is gone. The repository comes from the
+98 < 2  * listing's own `repository` field: `gh-<owner>-<repo>` cannot be reversed,
+99 < 2  * because the slash became a hyphen and hyphens are legal in both halves.
+100 < 2  */
 101 < 1 async function gc ({ exec }) {
 102 < 1   const rows = (await listIntegrations(exec)).filter((row) => isTargetIntegration(row.name))
 103 < 1   const seen = new Map()
@@ -127,7 +127,7 @@
 126 < 1   const json = opts.json === true
 127 < 1   if (verb === 'list') return { ...await list({ exec }), json }
 128 < 1   if (verb === 'gc') return { ...await gc({ exec }), json }
-129 < 1   // A target has a slash and a verb has none, so the bare form is unambiguous.
+129 < 2   // A target has a slash and a verb has none, so the bare form is unambiguous.
 130 < 1   if (isSafeTarget(verb)) return { ...await add({ exec, target: verb }), json }
 131 < 1   throw new Refusal(`target: expected <owner>/<repo>, list or gc, got ${JSON.stringify(verb ?? null)}\n${usage()}`)
 132 < 1 }

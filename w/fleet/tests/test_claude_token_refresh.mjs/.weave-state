@@ -1,0 +1,244 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_claude_token_refresh.mjs — the exam for "The credential tool
+2 < 2  * never rotates while a fleet VM is listed" (#1113).
+3 < 2  *
+4 < 2  * In-process only: `import { refresh, usage } from '../claude-token.mjs'`, and
+5 < 2  * every call is handed a fake `deps` — no child process is spawned, so there is
+6 < 2  * no `simEnv()` to route through (`fleet/claude-token.mjs`'s own `main()` is
+7 < 2  * guarded on `process.argv[1] === import.meta.url`, so importing the module
+8 < 2  * runs nothing by itself). `deps.lock` is omitted, matching `refresh`'s own
+9 < 2  * `deps.lock ? deps.lock() : () => {}` fallback.
+10 < 2  *
+11 < 2  * The Machine clauses under test, restated:
+12 < 2  *   M1 — a record with two hours left and one listed VM: no grant, no write,
+13 < 2  *        the cached token installed, the hold line logged, `refreshed: false`.
+14 < 2  *   M2 — the same, under `--force`, with six hours left: still held.
+15 < 2  *   M3 — a record with sixty minutes left and two listed VMs: refused, naming
+16 < 2  *        both VMs and the expiry, nothing spent or written or installed.
+17 < 2  *   M4 — an empty listing behaves exactly as base: one grant, one write, the
+18 < 2  *        new token installed, `refreshed: true`.
+19 < 2  *   M5 — the fleet listing is the first lobby verb issued on a call that would
+20 < 2  *        rotate; a non-zero-exit listing is an Error and spends no grant.
+21 < 2  *   M6 — `usage()` on an expired record with one listed VM answers an `unread`
+22 < 2  *        row carrying the refusal as `reason`, spending no grant.
+23 < 2  *
+24 < 2  * Legs, each naming the Machine clause it comes from:
+25 < 2  *   (a) [M1] the two-hour / one-VM call.
+26 < 2  *   (b) [M2] the six-hour / `force: true` call.
+27 < 2  *   (c) [M3] the sixty-minute / two-VM call.
+28 < 2  *   (d) [M4] the empty-listing call.
+29 < 2  *   (e) [M5] the first lobby verb of (a)'s call, and a non-zero-exit listing.
+30 < 2  *   (f) [M6] `usage()` over an expired record with one listed VM.
+31 < 2  *
+32 < 2  * What the exam assumes about the code under test: that `refresh` reads the
+33 < 2  * record and calls `deps.now()` itself (nothing here fakes `Date.now`
+34 < 2  * globally), that the fleet listing is read through `deps.lobby("ls 'fleet-r*'
+35 < 2  * --json")` with no stdin, and that `installBearer`'s own `integrations list
+36 < 2  * --json` probe is answered the same way on every call — none of that is
+37 < 2  * pinned as a clause here, only used as scaffolding to reach the clauses that
+38 < 2  * are.
+39 < 2  */
+40 < 2 
+41 < 1 import assert from 'node:assert/strict'
+42 < 1 
+43 < 1 import { refresh, usage } from '../claude-token.mjs'
+44 < 1 
+45 < 1 const NOW_ISO = '2026-09-21T12:00:00.000Z'
+46 < 1 const NOW_MS = Date.parse(NOW_ISO)
+47 < 1 const HOUR = 60 * 60 * 1000
+48 < 1 const MIN = 60 * 1000
+49 < 1 
+50 < 1 const INTEGRATIONS_LIST_OK = { code: 0, out: JSON.stringify([{ name: 'claude-max' }]) }
+51 < 1 
+52 < 2 /**
+53 < 2  * A fake `deps` over one account ('acct') whose keychain record is `record`
+54 < 2  * and whose fleet listing (`ls 'fleet-r*' --json`) answers `vmNames` (an
+55 < 2  * array of `vm_name` strings) — or, when `lsResult` is given, that raw
+56 < 2  * `{ code, out }` instead, for the leg that needs a failing listing.
+57 < 2  * Records every lobby verb, every fetch call and every keychain write, plus
+58 < 2  * the logged lines, so a leg can assert on all four.
+59 < 2  */
+60 < 1 function makeDeps ({ record, vmNames = [], lsResult = null }) {
+61 < 1   const lobbyCalls = []
+62 < 1   const fetchCalls = []
+63 < 1   const keychainWrites = []
+64 < 1   const logLines = []
+65 < 1 
+66 < 1   const lsAnswer = lsResult ?? { code: 0, out: JSON.stringify({ vms: vmNames.map((vm_name) => ({ vm_name, status: 'running' })) }) }
+67 < 1 
+68 < 1   const lobby = (verb, input) => {
+69 < 1     lobbyCalls.push({ verb, input })
+70 < 1     if (verb === "ls 'fleet-r*' --json") return lsAnswer
+71 < 1     if (verb === 'integrations list --json') return INTEGRATIONS_LIST_OK
+72 < 1     if (verb.startsWith('integrations edit') || verb.startsWith('integrations add')) return { code: 0, out: '' }
+73 < 1     throw new Error(`test_claude_token_refresh: unexpected lobby verb ${JSON.stringify(verb)}`)
+74 < 1   }
+75 < 1 
+76 < 1   const fetch = async (url, opts) => {
+77 < 1     fetchCalls.push({ url, opts })
+78 < 1     return { ok: true, json: async () => ({ access_token: 'a2', refresh_token: 'r2', expires_in: 28800 }) }
+79 < 1   }
+80 < 1 
+81 < 1   const deps = {
+82 < 1     now: () => NOW_MS,
+83 < 1     keychainRead: (name) => (name === 'acct' ? JSON.stringify(record) : null),
+84 < 1     keychainWrite: (name, value) => { keychainWrites.push({ name, value }); return true },
+85 < 1     keychainList: () => ['acct'],
+86 < 1     lobby,
+87 < 1     fetch,
+88 < 1     log: (line) => logLines.push(line)
+89 < 1   }
+90 < 1 
+91 < 1   return { deps, lobbyCalls, fetchCalls, keychainWrites, logLines }
+92 < 1 }
+93 < 1 
+94 < 1 const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('integrations edit') || c.verb.startsWith('integrations add'))
+95 < 1 
+96 < 2 // ══════════════════════════════════════════════════════════════════════════
+97 < 2 // (a) [M1] two hours left, one VM listed: held, cached token installed
+98 < 2 // ══════════════════════════════════════════════════════════════════════════
+99 < 1 let legA
+100 < 1 {
+101 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 2 * HOUR }
+102 < 1   const rig = makeDeps({ record, vmNames: ['fleet-r1-2609211200-ab12'] })
+103 < 1   const result = await refresh(rig.deps, { account: 'acct' })
+104 < 1   legA = rig
+105 < 1 
+106 < 1   assert.equal(rig.fetchCalls.length, 0,
+107 < 1     `(a) [M1] a held rotation makes zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
+108 < 1   assert.equal(rig.keychainWrites.length, 0,
+109 < 1     `(a) [M1] a held rotation makes zero keychain writes. Got ${rig.keychainWrites.length}`)
+110 < 1 
+111 < 1   const edit = editVerbs(rig.lobbyCalls)
+112 < 1   assert.equal(edit.length, 1,
+113 < 1     `(a) [M1] exactly one integrations edit/add verb is issued. Got: ${JSON.stringify(rig.lobbyCalls.map((c) => c.verb))}`)
+114 < 1   assert.ok(edit[0].verb.startsWith('integrations edit claude-max --bearer -'),
+115 < 1     `(a) [M1] the verb begins \`integrations edit claude-max --bearer -\`. Got: ${JSON.stringify(edit[0].verb)}`)
+116 < 1   assert.equal(edit[0].input, 'a1',
+117 < 1     `(a) [M1] the verb's stdin is the cached access token \`a1\`. Got: ${JSON.stringify(edit[0].input)}`)
+118 < 1 
+119 < 1   assert.ok(rig.logLines.includes('token: fresh until 2026-09-21T14:00:00.000Z; 1 run(s) live — not rotated'),
+120 < 1     `(a) [M1] the hold line is logged exactly. Got lines: ${JSON.stringify(rig.logLines)}`)
+121 < 1 
+122 < 1   assert.equal(result.refreshed, false,
+123 < 1     `(a) [M1] the call resolves with refreshed strictly false. Got: ${JSON.stringify(result)}`)
+124 < 1 }
+125 < 1 
+126 < 2 // ══════════════════════════════════════════════════════════════════════════
+127 < 2 // (b) [M2] --force, six hours left, one VM listed: still held
+128 < 2 // ══════════════════════════════════════════════════════════════════════════
+129 < 1 {
+130 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 6 * HOUR }
+131 < 1   const rig = makeDeps({ record, vmNames: ['fleet-r1-2609211200-ab12'] })
+132 < 1   await refresh(rig.deps, { account: 'acct', force: true })
+133 < 1 
+134 < 1   assert.equal(rig.fetchCalls.length, 0,
+135 < 1     `(b) [M2] \`force: true\` under a listed VM still makes zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
+136 < 1   assert.ok(rig.logLines.includes('token: fresh until 2026-09-21T18:00:00.000Z; 1 run(s) live — not rotated'),
+137 < 1     `(b) [M2] the hold line reflects the six-hour expiry, logged exactly. Got lines: ${JSON.stringify(rig.logLines)}`)
+138 < 1 }
+139 < 1 
+140 < 2 // ══════════════════════════════════════════════════════════════════════════
+141 < 2 // (c) [M3] sixty minutes left, two VMs listed: refused
+142 < 2 // ══════════════════════════════════════════════════════════════════════════
+143 < 1 {
+144 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 60 * MIN }
+145 < 1   const vmNames = ['fleet-r7-2609211100-ab12', 'fleet-r8-2609211130-cd34']
+146 < 1   const rig = makeDeps({ record, vmNames })
+147 < 1 
+148 < 1   let error = null
+149 < 1   try {
+150 < 1     await refresh(rig.deps, { account: 'acct' })
+151 < 1   } catch (err) {
+152 < 1     error = err
+153 < 1   }
+154 < 1 
+155 < 1   const expectedMessage = 'token: expires 2026-09-21T13:00:00.000Z; 2 run(s) live ' +
+156 < 1     '(fleet-r7-2609211100-ab12, fleet-r8-2609211130-cd34) — not rotated; under 90 minutes ' +
+157 < 1     'is too short to launch on, so wait for the runs to end or remove their VMs'
+158 < 1 
+159 < 1   assert.ok(error, '(c) [M3] under 90 minutes with live VMs, refresh() rejects')
+160 < 1   assert.equal(error.message, expectedMessage,
+161 < 1     `(c) [M3] the refusal message is exactly the shared refusal line. Got: ${JSON.stringify(error?.message)}`)
+162 < 1   assert.equal(rig.fetchCalls.length, 0,
+163 < 1     `(c) [M3] the refusal makes zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
+164 < 1   assert.equal(rig.keychainWrites.length, 0,
+165 < 1     `(c) [M3] the refusal makes zero keychain writes. Got ${rig.keychainWrites.length}`)
+166 < 1   assert.equal(editVerbs(rig.lobbyCalls).length, 0,
+167 < 1     `(c) [M3] no \`integrations edit\` or \`integrations add\` verb is issued. Got: ${JSON.stringify(rig.lobbyCalls.map((c) => c.verb))}`)
+168 < 1 }
+169 < 1 
+170 < 2 // ══════════════════════════════════════════════════════════════════════════
+171 < 2 // (d) [M4] empty listing: behaves exactly as base — rotates
+172 < 2 // ══════════════════════════════════════════════════════════════════════════
+173 < 1 {
+174 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 2 * HOUR }
+175 < 1   const rig = makeDeps({ record, vmNames: [] })
+176 < 1   const result = await refresh(rig.deps, { account: 'acct' })
+177 < 1 
+178 < 1   assert.equal(rig.fetchCalls.length, 1,
+179 < 1     `(d) [M4] no VM listed spends exactly one token-endpoint request. Got ${rig.fetchCalls.length}`)
+180 < 1   assert.equal(rig.keychainWrites.length, 1,
+181 < 1     `(d) [M4] no VM listed writes the keychain exactly once. Got ${rig.keychainWrites.length}`)
+182 < 1   const written = JSON.parse(rig.keychainWrites[0].value)
+183 < 1   assert.equal(written.accessToken, 'a2',
+184 < 1     `(d) [M4] the written record carries the new access token \`a2\`. Got: ${JSON.stringify(written)}`)
+185 < 1   assert.equal(written.refreshToken, 'r2',
+186 < 1     `(d) [M4] the written record carries the new refresh token \`r2\`. Got: ${JSON.stringify(written)}`)
+187 < 1 
+188 < 1   const edit = editVerbs(rig.lobbyCalls)
+189 < 1   assert.equal(edit.length, 1,
+190 < 1     `(d) [M4] exactly one integrations edit/add verb is issued. Got: ${JSON.stringify(rig.lobbyCalls.map((c) => c.verb))}`)
+191 < 1   assert.ok(edit[0].verb.startsWith('integrations edit claude-max --bearer -'),
+192 < 1     `(d) [M4] the verb begins \`integrations edit claude-max --bearer -\`. Got: ${JSON.stringify(edit[0].verb)}`)
+193 < 1   assert.equal(edit[0].input, 'a2',
+194 < 1     `(d) [M4] the new access token is installed at the edge. Got: ${JSON.stringify(edit[0].input)}`)
+195 < 1 
+196 < 1   assert.equal(result.refreshed, true,
+197 < 1     `(d) [M4] the call resolves with refreshed strictly true. Got: ${JSON.stringify(result)}`)
+198 < 1 }
+199 < 1 
+200 < 2 // ══════════════════════════════════════════════════════════════════════════
+201 < 2 // (e) [M5] the fleet listing is issued first; a failing listing spends nothing
+202 < 2 // ══════════════════════════════════════════════════════════════════════════
+203 < 1 {
+204 < 1   assert.ok(legA.lobbyCalls.length > 0,
+205 < 1     "(e) [M5] leg (a)'s rotation-eligible call issued at least one lobby verb")
+206 < 1   assert.equal(legA.lobbyCalls[0].verb, "ls 'fleet-r*' --json",
+207 < 1     `(e) [M5] the first lobby verb of a call that would rotate is the fleet listing. Got: ${JSON.stringify(legA.lobbyCalls[0])}`)
+208 < 1 
+209 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS + 2 * HOUR }
+210 < 1   const rig = makeDeps({ record, lsResult: { code: 1, out: 'boom' } })
+211 < 1 
+212 < 1   let error = null
+213 < 1   try {
+214 < 1     await refresh(rig.deps, { account: 'acct' })
+215 < 1   } catch (err) {
+216 < 1     error = err
+217 < 1   }
+218 < 1 
+219 < 1   assert.ok(error, '(e) [M5] a listing that exits non-zero makes refresh() reject')
+220 < 1   assert.equal(rig.fetchCalls.length, 0,
+221 < 1     `(e) [M5] the rejected listing spends zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
+222 < 1 }
+223 < 1 
+224 < 2 // ══════════════════════════════════════════════════════════════════════════
+225 < 2 // (f) [M6] usage() over an expired record with one VM listed: unread, refused
+226 < 2 // ══════════════════════════════════════════════════════════════════════════
+227 < 1 {
+228 < 1   const record = { refreshToken: 'r1', accessToken: 'a1', expiresAt: NOW_MS - HOUR }
+229 < 1   const rig = makeDeps({ record, vmNames: ['fleet-r1-2609211200-ab12'] })
+230 < 1   const rows = await usage(rig.deps)
+231 < 1 
+232 < 1   assert.equal(rows.length, 1,
+233 < 1     `(f) [M6] usage() answers one row for the one account. Got ${rows.length}`)
+234 < 1   assert.equal(rows[0].unread, true,
+235 < 1     `(f) [M6] the row's unread is strictly true. Got: ${JSON.stringify(rows[0])}`)
+236 < 1   assert.ok(typeof rows[0].reason === 'string' && rows[0].reason.startsWith('token: expires'),
+237 < 1     `(f) [M6] the row's reason begins \`token: expires\`. Got: ${JSON.stringify(rows[0].reason)}`)
+238 < 1   assert.equal(rig.fetchCalls.length, 0,
+239 < 1     `(f) [M6] the read makes zero token-endpoint requests. Got ${rig.fetchCalls.length}`)
+240 < 1 }
+241 < 1 
+242 < 1 console.log('ALL TESTS PASSED')
+243 < 1 

@@ -1,35 +1,35 @@
 0 < 1 #!/usr/bin/env python3
-1 < 1 """Read a release's runs into one table: what authoring cost beside the run.
-2 < 1 
-3 < 1 Every run leaves a gate record, and since this plan that record carries an
-5 > 1 `authoring` object — the minutes, the routing branch the risk
+1 < 2 """Read a release's runs into one table: what authoring cost beside the run.
+2 < 2 
+3 < 2 Every run leaves a gate record, and since this plan that record carries an
+5 > 2 `authoring` object — the minutes, the routing branch the risk
 4 < 2 `authoring` object — the minutes, the probes, the routing branch the risk
-5 < 1 override chose, the lane, and the questions with their recommended and picked
-6 < 1 options and how many explain rounds each asked for. One run's record answers
-7 < 1 one run; a release is a handful of them, and
-8 < 1 the question an operator asks at a release ("what did authoring cost, how often
-9 < 1 did the override send a plan to the fleet, how often was Recommended picked")
-10 < 1 is a question about the pile. This census is that pile read into one table.
-11 < 1 
-12 < 1     authoring_census.py --from <dir>
-13 < 1     authoring_census.py --from <dir> --register
-14 < 1     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
-15 < 1         [--evidence-repo <owner>/<repo>] [--config <path>]
-16 < 1 
-17 < 1 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
-19 > 1 `run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
+5 < 2 override chose, the lane, and the questions with their recommended and picked
+6 < 2 options and how many explain rounds each asked for. One run's record answers
+7 < 2 one run; a release is a handful of them, and
+8 < 2 the question an operator asks at a release ("what did authoring cost, how often
+9 < 2 did the override send a plan to the fleet, how often was Recommended picked")
+10 < 2 is a question about the pile. This census is that pile read into one table.
+11 < 2 
+12 < 2     authoring_census.py --from <dir>
+13 < 2     authoring_census.py --from <dir> --register
+14 < 2     authoring_census.py --fetch <owner>/<repo> --runs <A>..<B> --into <dir>
+15 < 2         [--evidence-repo <owner>/<repo>] [--config <path>]
+16 < 2 
+17 < 2 `<dir>` holds `run-<N>/gate-verdicts.json` files, optionally with a
+19 > 2 `run-<N>/status.json` beside each; a `run-<N>` with no record is not a row.
 18 < 2 `run-<N>/status.json` and a `run-<N>/report.json` beside each; a `run-<N>`
 19 < 2 with no record is not a row.
-20 < 1 `--register` prints one line per option of every question instead of the table
-21 < 1 (#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
-22 < 1 `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
-23 < 1 `<owner>-<repo>/run-<N>`, and then prints the table over it. The evidence
-24 < 1 repository is `--evidence-repo`, else the `evidence` key of `--config`
-25 < 1 (default `~/.ultrapowers/fleet.json`); with neither the fetch exits 2 before
-26 < 1 any read (#1395). `--gh` swaps that binary — the test seam,
-27 < 1 and the hook for a caller with its own wrapper; nothing here reaches the
-28 < 1 network by any other route, and only under `--fetch`.
-29 < 1 """
+20 < 2 `--register` prints one line per option of every question instead of the table
+21 < 2 (#735). `--fetch` fills `<dir>` over `gh api` from each run's folder
+22 < 2 `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, at the tag
+23 < 2 `<owner>-<repo>/run-<N>`, and then prints the table over it. The evidence
+24 < 2 repository is `--evidence-repo`, else the `evidence` key of `--config`
+25 < 2 (default `~/.ultrapowers/fleet.json`); with neither the fetch exits 2 before
+26 < 2 any read (#1395). `--gh` swaps that binary — the test seam,
+27 < 2 and the hook for a caller with its own wrapper; nothing here reaches the
+28 < 2 network by any other route, and only under `--fetch`.
+29 < 2 """
 30 < 1 from __future__ import annotations
 31 < 1 
 32 < 1 import argparse
@@ -42,21 +42,21 @@
 39 < 1 from datetime import datetime
 40 < 1 from pathlib import Path
 41 < 1 
-42 < 1 # scripts -> ultrawrite -> skills: the question counts are `plan_check.py`'s,
-43 < 1 # so a run's census row and its `AUTHORING fact:` line cannot disagree.
+42 < 2 # scripts -> ultrawrite -> skills: the question counts are `plan_check.py`'s,
+43 < 2 # so a run's census row and its `AUTHORING fact:` line cannot disagree.
 44 < 1 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
 45 < 1 from plan_check import explain_rounds, picks, recommended_picked  # noqa: E402
 46 < 1 
-47 < 1 # The stem of a run directory: `run-131` is run 131. The census orders by that
-48 < 1 # number, not by the name — `run-9` sorts ahead of `run-131`.
+47 < 2 # The stem of a run directory: `run-131` is run 131. The census orders by that
+48 < 2 # number, not by the name — `run-9` sorts ahead of `run-131`.
 49 < 1 RUN_DIR_RE = re.compile(r"^run-(\d+)$")
 50 < 1 
 51 < 1 RECORD_NAME = "gate-verdicts.json"
 52 < 1 STATUS_NAME = "status.json"
 53 < 2 REPORT_NAME = "report.json"
 54 < 1 
-55 < 1 #: The table's columns, in order. The first line of `--from` output is exactly
-56 < 1 #: these names, tab-separated.
+55 < 2 #: The table's columns, in order. The first line of `--from` output is exactly
+56 < 2 #: these names, tab-separated.
 57 < 1 COLUMNS = (
 58 < 1     "run",
 59 < 1     "authoring_min",
@@ -72,16 +72,16 @@
 69 < 1     "explain_rounds",
 70 < 1 )
 71 < 1 
-72 < 1 #: What a column prints when the run's files do not carry it.
+72 < 2 #: What a column prints when the run's files do not carry it.
 73 < 1 MISSING = "-"
 74 < 1 
 75 < 1 
 76 < 1 def _load_json(path):
-77 < 1     """The JSON at `path`, or None when it is absent or unreadable.
-78 < 1 
-79 < 1     A malformed record is read as a record that is not there: the census is a
-80 < 1     reading tool over a release's leavings, and one run's bad file is not this
-81 < 1     script's to raise over."""
+77 < 2     """The JSON at `path`, or None when it is absent or unreadable.
+78 < 2 
+79 < 2     A malformed record is read as a record that is not there: the census is a
+80 < 2     reading tool over a release's leavings, and one run's bad file is not this
+81 < 2     script's to raise over."""
 82 < 1     try:
 83 < 1         text = path.read_text(encoding="utf-8")
 84 < 1     except OSError:
@@ -93,16 +93,16 @@
 90 < 1 
 91 < 1 
 92 < 1 def _obj(value):
-93 < 1     """`value` when it is a JSON object, else an empty one."""
+93 < 2     """`value` when it is a JSON object, else an empty one."""
 94 < 1     return value if isinstance(value, dict) else {}
 95 < 1 
 96 < 1 
 97 < 1 def _run_minutes(status):
-98 < 1     """Whole minutes, rounded down, from `startedAt` to `updatedAt`.
-99 < 1 
-100 < 1     The contract's shape (`fleet/CONTRACT.md`): both are ISO-8601 with a `Z`
-101 < 1     suffix, which `datetime.fromisoformat` reads once the `Z` is spelled
-102 < 1     `+00:00`. None when either stamp is absent or unparseable."""
+98 < 2     """Whole minutes, rounded down, from `startedAt` to `updatedAt`.
+99 < 2 
+100 < 2     The contract's shape (`fleet/CONTRACT.md`): both are ISO-8601 with a `Z`
+101 < 2     suffix, which `datetime.fromisoformat` reads once the `Z` is spelled
+102 < 2     `+00:00`. None when either stamp is absent or unparseable."""
 103 < 1     started, updated = status.get("startedAt"), status.get("updatedAt")
 104 < 1     if not isinstance(started, str) or not isinstance(updated, str):
 105 < 1         return None
@@ -132,7 +132,7 @@
 129 < 2 
 130 < 2 
 131 < 1 def _questions(authoring):
-132 < 1     """The record's questions as a list of objects."""
+132 < 2     """The record's questions as a list of objects."""
 133 < 1     questions = authoring.get("questions")
 134 < 1     if not isinstance(questions, list):
 135 < 1         return []
@@ -140,13 +140,13 @@
 137 < 1 
 138 < 1 
 139 < 1 def census_rows(root):
-140 < 1     """One row per `run-<N>` directory under `root` that holds a record.
-141 < 1 
-142 < 1     Each row carries the column values, with None where the run's files do not
-143 < 1     carry one, plus the raw question list the register prints from. A record
-144 < 1     older than this plan has no `authoring` key: its row is None in every
-145 < 1     authoring column, and only `dispatched`/`rejected` — which the tally has
-146 < 1     always carried — read."""
+140 < 2     """One row per `run-<N>` directory under `root` that holds a record.
+141 < 2 
+142 < 2     Each row carries the column values, with None where the run's files do not
+143 < 2     carry one, plus the raw question list the register prints from. A record
+144 < 2     older than this plan has no `authoring` key: its row is None in every
+145 < 2     authoring column, and only `dispatched`/`rejected` — which the tally has
+146 < 2     always carried — read."""
 147 < 1     root = Path(root)
 148 < 1     found = []
 149 < 1     try:
@@ -197,9 +197,9 @@
 194 < 1 
 195 < 1 
 196 < 1 def _cell(value):
-197 < 1     """A column's text: `-` for what the run's files do not carry.
-198 < 1 
-199 < 1     A tuple prints slash-separated — `<picked>/<offered>` for a ratio."""
+197 < 2     """A column's text: `-` for what the run's files do not carry.
+198 < 2 
+199 < 2     A tuple prints slash-separated — `<picked>/<offered>` for a ratio."""
 200 < 1     if value is None:
 201 < 1         return MISSING
 202 < 1     if isinstance(value, tuple):
@@ -208,27 +208,27 @@
 205 < 1 
 206 < 1 
 207 < 1 def _sum(rows, key):
-208 < 1     """The sum of `key` over the rows that carry it."""
+208 < 2     """The sum of `key` over the rows that carry it."""
 209 < 1     return sum(row[key] for row in rows
 210 < 1                if isinstance(row.get(key), int) and not isinstance(row[key], bool))
 211 < 1 
 212 < 1 
 213 < 1 def _window(rows):
-214 < 1     """The runs the census was read over: `<lowest>..<highest>`, `-` when no
-215 < 1     row was found. `census_rows` sorts by run number, so the ends are the
-216 < 1     first and last row."""
+214 < 2     """The runs the census was read over: `<lowest>..<highest>`, `-` when no
+215 < 2     row was found. `census_rows` sorts by run number, so the ends are the
+216 < 2     first and last row."""
 217 < 1     if not rows:
 218 < 1         return MISSING
 219 < 1     return "%d..%d" % (rows[0]["run"], rows[-1]["run"])
 220 < 1 
 221 < 1 
 222 < 1 def _totals_line(rows):
-223 < 1     """The table's last line: the release read as one number per question,
-224 < 1     over the window of runs it read (`runs=`, after `plans=`).
-225 < 1 
-226 < 1     `risk_override` is over the rows that carry a routing record at all — a
-227 < 1     pre-plan record has no branch and is no part of the denominator — and the
-229 > 1     two `recommended_picked` sums are over every row. `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
+223 < 2     """The table's last line: the release read as one number per question,
+224 < 2     over the window of runs it read (`runs=`, after `plans=`).
+225 < 2 
+226 < 2     `risk_override` is over the rows that carry a routing record at all — a
+227 < 2     pre-plan record has no branch and is no part of the denominator — and the
+229 > 2     two `recommended_picked` sums are over every row. `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
 228 < 2     two `recommended_picked` sums are over every row. `amendments` sums the
 229 < 2     rows that carry a count; a release where no run wrote one reads 0.
 230 < 2     `explain_rounds`, last, sums `census_rows`'s per-row sums (#526)."""
@@ -252,7 +252,7 @@
 247 < 1 
 248 < 1 
 249 < 1 def render_table(rows):
-250 < 1     """The census as tab-separated text: header, one line per run, totals."""
+250 < 2     """The census as tab-separated text: header, one line per run, totals."""
 251 < 1     lines = ["\t".join(COLUMNS)]
 252 < 1     for row in rows:
 253 < 1         lines.append("\t".join(_cell(row[name]) for name in COLUMNS))
@@ -261,13 +261,13 @@
 256 < 1 
 257 < 1 
 258 < 1 def render_register(rows):
-259 < 1     """One line per option of every question, in row then question then option
-260 < 1     order (#735): `run-<N>  q<i>  <question>  <option>  <rec|->  <picked|->`.
-261 < 1 
-262 < 1     The register is the fixed record of what was offered, not a summary of what
-263 < 1     was chosen — every option gets its line whether or not anyone looked at it,
-264 < 1     and a question with no recommended option prints `-` in that column on all
-265 < 1     of them."""
+259 < 2     """One line per option of every question, in row then question then option
+260 < 2     order (#735): `run-<N>  q<i>  <question>  <option>  <rec|->  <picked|->`.
+261 < 2 
+262 < 2     The register is the fixed record of what was offered, not a summary of what
+263 < 2     was chosen — every option gets its line whether or not anyone looked at it,
+264 < 2     and a question with no recommended option prints `-` in that column on all
+265 < 2     of them."""
 266 < 1     lines = []
 267 < 1     for row in rows:
 268 < 1         for index, question in enumerate(row["questions_detail"], start=1):
@@ -290,33 +290,33 @@
 285 < 1     return "\n".join(lines)
 286 < 1 
 287 < 1 
-288 < 1 # --- --fetch: the run folder in the evidence repository --------------------
-289 < 1 
+288 < 2 # --- --fetch: the run folder in the evidence repository --------------------
+289 < 2 
 290 < 1 def _slug(target):
-291 < 1     """`<owner>/<repo>` as the one path segment a run folder and tag use."""
+291 < 2     """`<owner>/<repo>` as the one path segment a run folder and tag use."""
 292 < 1     return target.replace("/", "-")
 293 < 1 
 294 < 1 
 295 < 1 def run_tag(target, number):
-296 < 1     """The tag a run's folder is read at: `<owner>-<repo>/run-<N>`."""
+296 < 2     """The tag a run's folder is read at: `<owner>-<repo>/run-<N>`."""
 297 < 1     return "%s/run-%d" % (_slug(target), int(number))
 298 < 1 
 299 < 1 
 300 < 1 def evidence_contents_path(evidence, target, number, name):
-301 < 1     """The `gh api` path for one file of run `number` of `target`: the file
-302 < 1     `runs/<owner>-<repo>/<N>/<name>` of the evidence repository, at the run's
-303 < 1     tag `<owner>-<repo>/run-<N>`."""
+301 < 2     """The `gh api` path for one file of run `number` of `target`: the file
+302 < 2     `runs/<owner>-<repo>/<N>/<name>` of the evidence repository, at the run's
+303 < 2     tag `<owner>-<repo>/run-<N>`."""
 304 < 1     return "repos/%s/contents/runs/%s/%d/%s?ref=%s" % (
 305 < 1         evidence, _slug(target), int(number), name, run_tag(target, number))
 306 < 1 
 307 < 1 
 308 < 1 def _fetch_file(gh, path):
-309 < 1     """The bytes of one contents path, or None when `gh` exits non-zero.
-310 < 1 
-311 < 1     `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
-312 < 1     newlines, so the decode is over the whole string. The call names exactly
-313 < 1     two arguments — `api` and the contents path — so a caller's wrapper sees
-314 < 1     the same shape the real binary does."""
+309 < 2     """The bytes of one contents path, or None when `gh` exits non-zero.
+310 < 2 
+311 < 2     `gh api …/contents/…` answers JSON whose `content` is base64 with embedded
+312 < 2     newlines, so the decode is over the whole string. The call names exactly
+313 < 2     two arguments — `api` and the contents path — so a caller's wrapper sees
+314 < 2     the same shape the real binary does."""
 315 < 1     proc = subprocess.run(
 316 < 1         gh + ["api", path],
 317 < 1         capture_output=True, text=True)
@@ -336,27 +336,27 @@
 331 < 1 
 332 < 1 
 333 < 1 def fetch_runs(target, first, last, into, gh="gh", *, evidence):
-335 > 1     """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
-336 < 1     for each N from `first` to `last` inclusive; return the runs written.
+335 > 2     """Fill `into` with `run-<N>/gate-verdicts.json` and `run-<N>/status.json`
+336 < 2     for each N from `first` to `last` inclusive; return the runs written.
 334 < 2     """Fill `into` with `run-<N>/gate-verdicts.json`, `run-<N>/status.json` and
 335 < 2     `run-<N>/report.json` for each N from `first` to `last` inclusive; return
 336 < 2     the runs written.
-337 < 1 
-339 > 1     Both live in the run's folder `runs/<owner>-<repo>/<N>/` of the
+337 < 2 
+339 > 2     Both live in the run's folder `runs/<owner>-<repo>/<N>/` of the
 338 < 2     All three live in the run's folder `runs/<owner>-<repo>/<N>/` of the
-339 < 1     operator's evidence repository `evidence`, at the tag
-340 < 1     `<owner>-<repo>/run-<N>`; the record is read first. A run
-341 < 1     whose tag has no record is skipped whole — one line on stderr, nothing
-342 < 1     written for it, no directory left behind — because a run with no record is
-343 < 1     no row. A status that does not answer leaves that file unwritten and the
-345 > 1     row's `run_min` a `-`: the authoring numbers are still worth reading
-346 < 1     without it."""
+339 < 2     operator's evidence repository `evidence`, at the tag
+340 < 2     `<owner>-<repo>/run-<N>`; the record is read first. A run
+341 < 2     whose tag has no record is skipped whole — one line on stderr, nothing
+342 < 2     written for it, no directory left behind — because a run with no record is
+343 < 2     no row. A status that does not answer leaves that file unwritten and the
+345 > 2     row's `run_min` a `-`: the authoring numbers are still worth reading
+346 < 2     without it."""
 344 < 2     row's `run_min` a `-`, and a report that does not answer leaves that file
 345 < 2     unwritten and the row's `amendments` a `-`: the authoring numbers are still
 346 < 2     worth reading without either."""
 347 < 1     into = Path(into)
-348 < 1     # The destination exists whether or not any run answers: a release where
-349 < 1     # every tag is missing is an empty census, not a usage error.
+348 < 2     # The destination exists whether or not any run answers: a release where
+349 < 2     # every tag is missing is an empty census, not a usage error.
 350 < 1     into.mkdir(parents=True, exist_ok=True)
 351 < 1     command = shlex.split(gh) if isinstance(gh, str) else list(gh)
 352 < 1     written = []
@@ -385,14 +385,14 @@
 375 < 1 
 376 < 1 RUNS_RE = re.compile(r"^(\d+)\.\.(\d+)$")
 377 < 1 
-378 < 1 # The operator's setting: its `evidence` key names the evidence repository.
+378 < 2 # The operator's setting: its `evidence` key names the evidence repository.
 379 < 1 DEFAULT_CONFIG = "~/.ultrapowers/fleet.json"
 380 < 1 
 381 < 1 
 382 < 1 def _configured_evidence(config):
-383 < 1     """The `evidence` value of the config at `config`, or None when the file
-384 < 1     is absent, unreadable, or lacks a non-empty string there. Nothing guesses
-385 < 1     a repository in its place."""
+383 < 2     """The `evidence` value of the config at `config`, or None when the file
+384 < 2     is absent, unreadable, or lacks a non-empty string there. Nothing guesses
+385 < 2     a repository in its place."""
 386 < 1     try:
 387 < 1         setting = json.loads(Path(config).expanduser().read_text())
 388 < 1     except (OSError, ValueError):

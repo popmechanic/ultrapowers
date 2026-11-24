@@ -1,0 +1,28 @@
+0 < 2 // Builds the page: client/index.html into <outdir>, with Tailwind compiling
+1 < 2 // 1st-Pouf's theme (the `bun build` command line loads no plugin, so it
+2 < 2 // would leave @theme and @utility as written). Run from anywhere.
+3 < 2 //
+4 < 2 //   bun scripts/build-client.ts <outdir> [--minify]
+5 < 1 import tailwind from 'bun-plugin-tailwind';
+6 < 1 import {join, resolve} from 'node:path';
+7 < 1 
+8 < 1 const ROOT = join(import.meta.dir, '..');
+9 < 1 const args = process.argv.slice(2);
+10 < 1 const outdir = args.find((a) => !a.startsWith('--'));
+11 < 1 if (!outdir) {
+12 < 1   console.error('usage: build-client.ts <outdir> [--minify]');
+13 < 1   process.exit(2);
+14 < 1 }
+15 < 1 
+16 < 1 process.chdir(ROOT);
+17 < 1 const result = await Bun.build({
+18 < 1   entrypoints: ['./client/index.html'],
+19 < 1   outdir: resolve(process.cwd(), outdir),
+20 < 1   plugins: [tailwind],
+21 < 1   minify: args.includes('--minify'),
+22 < 1 }).catch((e: unknown) => ({success: false, logs: [e]}));
+23 < 1 if (!result.success) {
+24 < 1   for (const log of result.logs) console.error(log);
+25 < 1   process.exit(1);
+26 < 1 }
+27 < 1 

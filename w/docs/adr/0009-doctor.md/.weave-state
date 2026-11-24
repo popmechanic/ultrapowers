@@ -1,0 +1,55 @@
+0 < 1 # 0009. The fleet doctor
+1 < 1 
+2 < 1 Status: accepted (2026-11-21)  
+3 < 1 Governs: `fleet/doctor.mjs`
+4 < 1 
+5 < 1 Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
+6 < 1 decision the code cannot show on its own. Symbols are named; line numbers are not.
+7 < 1 
+8 < 1 ## Fleet doctor
+9 < 1 
+10 < 1 - **fleet/doctor.mjs** — fleet/doctor.mjs runs straight from the installed plugin cache, where fleet/ has no node_modules, so it imports only node: built-ins and built-ins-only sibling modules such as fleet/lobby.mjs. It has no token rows because no token lives on the laptop disk: the Claude bearer is injected at exe.dev's edge through the claude-max http-proxy, and `integrations test claude-max` does not test http-proxies (measured 2026-09-04), so the bearer's presence in `integrations list --json` is the only edge-side fact the doctor reads. Every row is a read, so running the doctor twice equals running it once.
+11 < 1 - **ROW_IDS (fleet/doctor.mjs)** — Each doctor row id in ROW_IDS in fleet/doctor.mjs is also a `## ` heading in skills/ultrapowers/references/first-run.md, and a red row's fix points at that heading. Renaming a row means renaming the heading in first-run.md too.
+12 < 1 - **CLAUDE_TOKEN (fleet/doctor.mjs)** — fleet/doctor.mjs runs fleet/claude-token.mjs as a child process instead of importing it, so keychain access stays out of the doctor's own process, which must start when nothing else in the fleet works.
+13 < 1 - **tokenRead (fleet/doctor.mjs)** — fleet/claude-token.mjs writes its status line to stderr, so tokenRead in fleet/doctor.mjs concatenates stderr onto stdout before rows read the first line.
+14 < 1 - **claudeRow (fleet/doctor.mjs)** — The claude row in fleet/doctor.mjs is green whenever claude-max carries the Authorization bearer at exe.dev's edge, whether or not the laptop still holds a refresh token, because the edge injects the bearer either way. claude-token's status line and the usage reading only decorate the detail; attachment to tag:fleet is the integrations row's question.
+15 < 1 - **accountsRow (fleet/doctor.mjs)** — The accounts row in fleet/doctor.mjs does not go red for an expired keychain entry, because the launcher refreshes before every run and the bearer already lives at the edge. It goes red for an empty keychain, since nothing can be refreshed from it, and when ~/.ultrapowers/fleet.json names an account no keychain entry carries.
+16 < 1 - **VERB (fleet/doctor.mjs)** — The verb-drift row in fleet/doctor.mjs interpolates verb names from the verb record into an ssh command string, so a name must match /^[a-z][a-z0-9 -]*$/ first; any other key is reported unreadable and never run.
+17 < 1 - **integrationsRow (fleet/doctor.mjs)** — A credential reaches a fleet VM through its integration's attachment to tag:fleet, the tag `new --tag fleet` gives each VM. integrationsRow in fleet/doctor.mjs reports only the first unattached name, with its attach command, because several failures at once leave a newcomer unsure which to fix first; with --target, the target's gh-<owner>-<repo> object must exist and is checked first.
+18 < 1 - **integrationsRow (fleet/doctor.mjs)** — integrationsRow in fleet/doctor.mjs skips names absent from the listing because the claude row already reports a missing claude-max object; each fault is named by exactly one row.
+19 < 1 - **cloudflareRow (fleet/doctor.mjs)** — Only a plan with a **Publish:** line needs the cloudflare http-proxy integration, so cloudflareRow in fleet/doctor.mjs treats an absent integration as ok, unlike every other row; a present one is judged by its tag:fleet attachment.
+20 < 1 - **doctor (fleet/doctor.mjs)** — doctor() in fleet/doctor.mjs runs each lobby read itself and hands the result to fleet/lobby.mjs's readers as an already-resolved exec, so a non-zero exit becomes the code a row reports instead of a thrown error.
+21 < 1 
+22 < 1 ## Exe dev verb drift
+23 < 1 
+24 < 1 - **FLAG_LINE (fleet/doctor.mjs)** — exe.dev's `help <verb>` and `<verb> --help` print the same Options block (measured 2026-09-05), and `help ...` cannot mutate anything, so fleet/doctor.mjs asks `help <verb>` and parses flags as lines of whitespace followed by `--flag`.
+25 < 1 - **verbDrift (fleet/doctor.mjs)** — exe.dev's help output is text, not JSON, so verbDrift in fleet/doctor.mjs diffs flag-name sets against the recorded verb record rather than prose. An unknown verb answers 'No help available for unrecognized command:' with exit 0, so a help stdout with no flags is unreadable whatever its exit code. Drift is a finding for the caller to weigh, never a refusal; only an unreadable record answers readable:false.
+26 < 1 - **verbDriftRow (fleet/doctor.mjs)** — The verb-drift row in fleet/doctor.mjs is green whenever the verb record is readable, even with drift findings in its detail; it is red only when the record cannot be read, because then there is nothing to compare the lobby against.
+27 < 1 - **githubAccounts (fleet/doctor.mjs)** — exe.dev's `integrations setup github --list` has no --json flag (passing it is a parse error), so githubAccounts in fleet/doctor.mjs parses its text form: a 'GitHub accounts:' header followed by one indented account per line. No account means the browser setup step was never walked.
+28 < 1 
+29 < 1 ## Claude max account comment
+30 < 1 
+31 < 1 - **ACCOUNT_TOKEN (fleet/doctor.mjs)** — On every install the credential tool (fleet/claude-token.mjs) writes an `account=<name>` token into the claude-max integration's comment, so the edge records which account its bearer came from. fleet/doctor.mjs edgeAccount reads the first whitespace-separated token starting `account=`; a comment without one is an install from before the tool wrote it and reads as unrecorded until the next refresh.
+32 < 1 - **edgeAccount (fleet/doctor.mjs)** — edgeAccount in fleet/doctor.mjs returns null when claude-max's comment has no `account=` token, which happens for installs made before fleet/claude-token.mjs wrote one; the next token refresh records it, so the doctor reports 'edge account unrecorded' rather than red.
+33 < 1 
+34 < 1 ## Fleet config keys
+35 < 1 
+36 < 1 - **fleetConfigAccount (fleet/doctor.mjs)** — The doctor's result.config holds exactly the two keys the doctor reads (cpu and memory, FLEET_DEFAULTS). The `account` key of ~/.ultrapowers/fleet.json, which the launcher uses to pick the keychain entry, reaches doctor() as its own option via fleetConfigAccount in fleet/doctor.mjs, and the doctor only asks whether the keychain holds that name.
+37 < 1 - **capacityRow (fleet/doctor.mjs)** — A top-level key in ~/.ultrapowers/fleet.json outside CONFIG_KEYS (cpu, memory, account, evidence) is a setting nothing reads, left by an older fleet, so capacityRow in fleet/doctor.mjs turns the capacity row red until the file is rewritten and echoes the stray keys. A file that omits cpu or memory is not wrong: the row stays green and names the default it fell back to.
+38 < 1 
+39 < 1 ## Claude token accounts
+40 < 1 
+41 < 1 - **doctor (fleet/doctor.mjs)** — Keychain entries are named by account email (since 2026-09-11), so fleet/doctor.mjs passes `--account` from the `account` key of ~/.ultrapowers/fleet.json to claude-token's status and usage reads rather than relying on the code's default account name.
+42 < 1 
+43 < 1 ## Evidence repository
+44 < 1 
+45 < 1 - **evidenceRow (fleet/doctor.mjs)** — evidenceRow in fleet/doctor.mjs walks the one-time evidence-repository setup in the order an operator performs it (the `evidence` key in ~/.ultrapowers/fleet.json, the repository via `gh api repos/<owner>/<repo>`, its gh-<owner>-<repo> integration, then its tag:fleet attachment) and stops at the first miss, naming that step's fix.
+46 < 1 
+47 < 1 ## Exe dev capacity
+48 < 1 
+49 < 1 - **poolRow (fleet/doctor.mjs)** — exe.dev allocation is over-committable: 56 vCPU stood allocated against a 16-vCPU plan with no run refused (measured 2026-09-05). The doctor's capacity row in fleet/doctor.mjs therefore reports the plan pool and the per-run ask side by side and stays green when the pool is smaller; it turns red only when `billing plan --json` or the cpu/memory settings in ~/.ultrapowers/fleet.json cannot be read.
+50 < 1 
+51 < 1 ## Exe dev integrations
+52 < 1 
+53 < 1 - **readIntegrations (fleet/doctor.mjs)** — fleet/doctor.mjs reads `integrations list --json` through fleet/lobby.mjs's listIntegrations, which reads the bearer and tags defensively so a field rename on exe.dev's side does not turn a healthy fleet red for the wrong reason. Each entry keeps its comment because the credential tool writes `account=<name>` into claude-max's comment on every install, and the accounts row reads the edge's account from it.
+54 < 1 

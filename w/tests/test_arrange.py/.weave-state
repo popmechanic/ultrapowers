@@ -1,11 +1,11 @@
-1 > 1 """Jev's page arranger (skills/ultrawrite/stories/arrange.ts): the whole page from the cards
-2 < 1 and the store alone, never a story's `ui` or `see`. Row controls carry their typed args and sit
-3 < 1 in the one list of their table, whichever piece owns them; their words come from the card's
-4 < 1 `label` and `x-label`, row cells templated in (#1524). A fake evaluator stands in for Jev, so no
+1 > 2 """Jev's page arranger (skills/ultrawrite/stories/arrange.ts): the whole page from the cards
+2 < 2 and the store alone, never a story's `ui` or `see`. Row controls carry their typed args and sit
+3 < 2 in the one list of their table, whichever piece owns them; their words come from the card's
+4 < 2 `label` and `x-label`, row cells templated in (#1524). A fake evaluator stands in for Jev, so no
 0 < 2 """Jev's screen arranger (skills/ultrawrite/stories/arrange.ts) on a bundle beyond the todo
 1 < 2 example (#1524): row controls carry their typed args, row text is templated from the row,
 2 < 2 and every card action and seen control gets one. A fake evaluator stands in for Jev, so no
-3 < 1 test reaches the network. Needs bun and an offline-installable app."""
+3 < 2 test reaches the network. Needs bun and an offline-installable app."""
 4 < 1 import hashlib
 5 < 1 import json
 6 < 1 import os
@@ -43,7 +43,7 @@
 38 > 1 
 39 < 1 
 40 < 1 def _copy(app, tmp_path):
-41 < 1     """A copy of the app of its own, its node_modules a link to the shared one."""
+41 < 2     """A copy of the app of its own, its node_modules a link to the shared one."""
 42 < 1     dst = str(tmp_path / "app")
 43 < 1     shutil.copytree(app, dst, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
 44 < 1     os.symlink(os.path.join(app, "node_modules"), os.path.join(dst, "node_modules"))
@@ -51,7 +51,7 @@
 46 < 1 
 47 < 1 
 49 > 1 def _bundle(tmp_path, edit, name="page.json", src=TAGS):
-50 < 1     """A copy of a bundle (todo-tags by default), its page.json (or another file) passed through edit."""
+50 < 2     """A copy of a bundle (todo-tags by default), its page.json (or another file) passed through edit."""
 48 < 2 def _bundle(tmp_path, edit):
 49 < 2     """A copy of the todo-tags bundle, its page.json passed through edit(page)."""
 50 < 1     b = str(tmp_path / "b")
@@ -82,7 +82,7 @@
 48 < 1 
 49 < 1 
 50 < 1 def run_js(body, **values):
-51 < 1     """Run PRELUDE + body under bun, with each value bound as a const; parse the JSON it prints."""
+51 < 2     """Run PRELUDE + body under bun, with each value bound as a const; parse the JSON it prints."""
 52 < 1     consts = "".join("const %s = %s;\n" % (k, json.dumps(v)) for k, v in values.items())
 53 < 1     r = subprocess.run(["bun", "-e", PRELUDE + consts + body], cwd=ROOT, capture_output=True, text=True, timeout=300)
 54 < 1     assert r.returncode == 0, r.stderr[-2000:]
@@ -91,14 +91,14 @@
 57 < 1 
 58 < 1 @pytest.fixture(scope="module")
 59 < 1 def tagged(app):
-61 > 1     """Every version of the todo-tags page, arranged by the fake evaluator."""
+61 > 2     """Every version of the todo-tags page, arranged by the fake evaluator."""
 60 < 2     """Every version of each todo-tags piece, arranged by the fake evaluator."""
 61 < 1     return run_js("const r = await arrange({bundle, app, evaluate: fake}); console.log(JSON.stringify(r));",
 62 < 1                   bundle=TAGS, app=app)
 63 < 1 
 64 < 1 
 66 > 1 def check_versions(app, pred, bundle=TAGS):
-67 < 1     """[version, does the predicate hold] for each version of the page."""
+67 < 2     """[version, does the predicate hold] for each version of the page."""
 65 < 2 def check_versions(app, piece, pred):
 66 < 2     """[version, does the predicate hold] for each version of a piece."""
 67 < 1     return run_js(
@@ -277,8 +277,8 @@
 177 < 1 
 178 < 1 
 179 < 1 def test_remove_tag_names_its_own_todo(app, tagged):
-180 < 1     """The Remove button reads the tag's todo through lookup, and on two todos each tag's
-181 < 1     label names its own todo, resolved by json-render with the template's functions (#1524)."""
+180 < 2     """The Remove button reads the tag's todo through lookup, and on two todos each tag's
+181 < 2     label names its own todo, resolved by json-render with the template's functions (#1524)."""
 183 > 1     labels = [e["props"]["label"] for s in tagged["versions"].values()
 182 < 2     labels = [e["props"]["label"] for versions in tagged["versions"].values() for s in versions.values()
 183 < 1               for e in s["elements"].values() if e["props"].get("action") == "removeTag"]
@@ -359,6 +359,27 @@
 240 < 2     assert got == ["Take this tag off its todo."], got
 241 < 1 
 242 < 1 
+244 > 1 
+245 < 1 def test_reshape_names_a_container_by_what_it_holds(app):
+246 < 2     """A move note names a group by its content ("the form"); a bare "A row" gave Jev nothing
+247 < 2     to move, and the Potluck reshape finished without an edit."""
+248 < 1     got = run_js(
+249 < 1         "const r = await arrange({bundle, app, evaluate: fake});\n"
+250 < 1         "const spec = structuredClone(r.versions.A); const root = spec.elements[spec.root];\n"
+251 < 1         "const kids = root.children.filter((c) => ['DraftInput', 'ActionButton'].includes(spec.elements[c].type));\n"
+252 < 1         "spec.elements.form = {type: 'Row', props: {gap: 2, align: 'center'}, children: kids};\n"
+253 < 1         "root.children = [...root.children.filter((c) => !kids.includes(c)), 'form'];\n"
+254 < 1         "let step = 0; let named = '';\n"
+255 < 1         "const move = async ({questions}) => { const crit = questions.next.criteria; const keys = Object.keys(crit);\n"
+256 < 1         "  const box = keys.find((k) => k.startsWith('move:') && crit[k].includes('holding The text box'));\n"
+257 < 1         "  if (step === 0) named = box ? crit[box] : '';\n"
+258 < 1         "  const c = step === 0 && box ? box : step === 1 ? keys.find((k) => k.startsWith('position:')) : 'finish'; step++;\n"
+259 < 1         "  return {answers: {next: {choice: c, confidence: 0.9}, ...(questions.parent ? {parent: {choice: Object.keys(questions.parent.criteria)[0]}} : {})}}; };\n"
+260 < 1         "const out = await reshape({bundle, app, spec, notes: ['move the form'], evaluate: move});\n"
+261 < 1         "console.log(JSON.stringify([named.includes(', holding The text box'), out.steps.length, out.steps[1].startsWith('Move form (A row')]));",
+262 < 1         bundle=TAGS, app=app)
+263 < 1     assert got == [True, 3, True], got
+264 < 1 
 243 < 1 TAG_ALL = """  },
 244 < 1   {
 245 < 1     name: 'tagAll', piece: 'tag', description: 'Tag every todo with a word.',
@@ -379,8 +400,8 @@
 260 < 1 
 261 < 1 @pytest.fixture(scope="module")
 262 < 1 def tag_all(app, tmp_path_factory):
-264 > 1     """The todo-tags page with two more tag actions, on its card alone: tagAll types a name,
-265 < 1     as addTag does, and clearTags (no args) empties the tags, the second of the page's two lists."""
+264 > 2     """The todo-tags page with two more tag actions, on its card alone: tagAll types a name,
+265 < 2     as addTag does, and clearTags (no args) empties the tags, the second of the page's two lists."""
 263 < 2     """The tag piece with two more actions: tagAll types a name, as addTag does, and
 264 < 2     clearTags (no args) empties the tags, the second of the piece's two lists."""
 265 < 1     tmp = tmp_path_factory.mktemp("tagall")

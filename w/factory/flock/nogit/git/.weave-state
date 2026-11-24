@@ -1,0 +1,5 @@
+0 < 1 #!/bin/sh
+1 < 2 # factory/flock/nogit/git — first on every builder's PATH (engine.mjs): agents never run git.
+2 < 1 echo 'git: agents never run git' >&2
+3 < 1 exit 1
+4 < 1 

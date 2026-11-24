@@ -1,5 +1,5 @@
-0 < 1 // A bundle: page.json (with each story's steps), cards.json and store.js in
-1 < 1 // one directory. The store's fingerprint is taken here.
+0 < 2 // A bundle: page.json (with each story's steps), cards.json and store.js in
+1 < 2 // one directory. The store's fingerprint is taken here.
 2 < 1 import {createHash} from 'node:crypto';
 4 > 1 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 5 < 1 import {dirname, join, resolve} from 'node:path';
@@ -8,7 +8,7 @@
 5 < 1 import type {See, UiStep} from '../../../factory/stack/tinyapp/probe';
 6 < 1 import type {Product} from './product';
 7 < 1 
-8 < 1 // preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
+8 < 2 // preserve is the declared shape for the Numbers checker still owed; nothing reads it yet.
 9 < 1 export const KINDS = ['behaviour', 'preserve'];
 10 < 1 export type Step = {
 11 < 1   tool: string;
@@ -18,7 +18,7 @@
 15 < 1   see?: See[];
 16 < 1   refused?: boolean | string;
 17 < 1   link?: string;
-18 < 1   // Who is signed in from this step on: an email, or null for nobody.
+18 < 2   // Who is signed in from this step on: an email, or null for nobody.
 19 < 1   as?: string | null;
 20 < 1 };
 21 < 1 export type Story = {id: string; sentence: string; steps: Step[]};
@@ -29,23 +29,23 @@
 26 < 1   store: string;
 27 < 1   stories: Story[];
 28 < 1   links?: {id: string; sentence: string; pieces?: string[]}[];
-29 < 1   // numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
+29 < 2   // numbers is the declared shape for the Numbers checker still owed; nothing reads it yet.
 30 < 1   numbers?: {id: string; sentence: string; measure: string; target: string}[];
-31 < 1   // A plan that deploys: the boot runs `deploy` after the self-merge, then `verify` with
-32 < 1   // ULTRA_PUBLISH_URL set, and `rollback` when verify fails.
+31 < 2   // A plan that deploys: the boot runs `deploy` after the self-merge, then `verify` with
+32 < 2   // ULTRA_PUBLISH_URL set, and `rollback` when verify fails.
 33 < 1   publish?: {deploy: string; verify: string; rollback?: string};
 34 < 1   subproject?: string;
 35 < 1   waivers?: {piece: string; action: string; refuses: string; arg: string; reason: string}[];
 36 < 1 };
-38 > 1 // An action's words on the page: `label` its control's (in a row, `${cell}` names a cell of
-39 < 1 // that row and `${col.cell}` a cell of the row column `col` names), an input property's
-40 < 1 // `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
-41 < 1 // table's boolean column.
-43 > 1 // A card's `shows` are the lines its piece draws: `{text, in}` a line on each row of table `in`
-44 < 1 // (`${cell}`, `${col.cell}` as in a label), `{text}` a line on the page whose slots are values
-45 < 1 // in `state.values` or totals (`${sum t.c}`, `${count t}`, `${count t c=v}`), `{heading}` the
-46 < 1 // page heading (one card's at most). Its `words` give the reader's words for a stored value:
-47 < 1 // slot to stored value to shown words, e.g. `{"answer": {"yes": "coming"}}`.
+38 > 2 // An action's words on the page: `label` its control's (in a row, `${cell}` names a cell of
+39 < 2 // that row and `${col.cell}` a cell of the row column `col` names), an input property's
+40 < 2 // `x-label` its text box's; `control: "checkbox"` draws it as a checkbox ticked by the
+41 < 2 // table's boolean column.
+43 > 2 // A card's `shows` are the lines its piece draws: `{text, in}` a line on each row of table `in`
+44 < 2 // (`${cell}`, `${col.cell}` as in a label), `{text}` a line on the page whose slots are values
+45 < 2 // in `state.values` or totals (`${sum t.c}`, `${count t}`, `${count t c=v}`), `{heading}` the
+46 < 2 // page heading (one card's at most). Its `words` give the reader's words for a stored value:
+47 < 2 // slot to stored value to shown words, e.g. `{"answer": {"yes": "coming"}}`.
 42 < 1 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]; label?: string; control?: 'checkbox'};
 37 < 2 export type Action = {name: string; description: string; inputSchema?: unknown; refuses?: string[]};
 38 < 1 export type Card = {
@@ -60,11 +60,11 @@
 44 < 1   main_story?: string;
 45 < 1   near_miss?: string;
 46 < 1   concept?: string;
-47 < 1   // One screen can cover several map lines (#1508): its `concepts`, beside or instead of `concept`.
+47 < 2   // One screen can cover several map lines (#1508): its `concepts`, beside or instead of `concept`.
 48 < 1   concepts?: string[];
 49 < 1 };
-50 < 1 // Every concept a card names: its `concepts` and its `concept`, without duplicates.
-52 > 1 // A `concepts` that is not a list (checks.ts refuses it) adds nothing, never its letters.
+50 < 2 // Every concept a card names: its `concepts` and its `concept`, without duplicates.
+52 > 2 // A `concepts` that is not a list (checks.ts refuses it) adds nothing, never its letters.
 53 < 1 export const conceptsOf = (c: Card): string[] =>
 54 < 1   [...new Set([...(Array.isArray(c.concepts) ? c.concepts.filter((x) => typeof x === 'string') : []), ...(c.concept ? [c.concept] : [])])];
 51 < 2 export const conceptsOf = (c: Card): string[] => [...new Set([...(c.concepts ?? []), ...(c.concept ? [c.concept] : [])])];
@@ -87,7 +87,7 @@
 68 < 1   };
 69 < 1 }
 70 < 1 
-71 < 1 /** The pieces in build order: each after every piece it depends on, ties in card order. */
+71 < 2 /** The pieces in build order: each after every piece it depends on, ties in card order. */
 72 < 1 export function pieceOrder(cards: Card[]): Card[] {
 73 < 1   const done = new Set<string>();
 74 < 1   const order: Card[] = [];
@@ -104,8 +104,8 @@
 85 < 1   return order;
 86 < 1 }
 87 < 1 
-88 < 1 /** client/src/screens/order.json: the order the page draws its pieces in, the build order, so a
-89 < 1  *  page reads party before guests before dishes rather than by file name (#1491). */
+88 < 2 /** client/src/screens/order.json: the order the page draws its pieces in, the build order, so a
+89 < 2  *  page reads party before guests before dishes rather than by file name (#1491). */
 90 < 1 export function writePageOrder(b: Bundle, app: string) {
 91 < 1   const file = join(app, 'client', 'src', 'screens', 'order.json');
 92 < 1   mkdirSync(dirname(file), {recursive: true});

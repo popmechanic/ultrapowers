@@ -1,27 +1,27 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 /**
-2 < 1  * fleet/run-read.mjs — a run, read from the evidence record.
-3 < 1  *
-4 < 1  *   node fleet/run-read.mjs --run <N>[,<M>…] --target <owner>/<repo> [--evidence-repo <owner>/<repo>]
-6 > 1  *                           [--since <n>] [--json] [--follow [--quiet <minutes>]]
+1 < 2 /**
+2 < 2  * fleet/run-read.mjs — a run, read from the evidence record.
+3 < 2  *
+4 < 2  *   node fleet/run-read.mjs --run <N>[,<M>…] --target <owner>/<repo> [--evidence-repo <owner>/<repo>]
+6 > 2  *                           [--since <n>] [--json] [--follow [--quiet <minutes>]]
 5 < 2  *                           [--since <n>] [--json]
-6 < 1  *   node fleet/run-read.mjs --live [--target <owner>/<repo>] [--evidence-repo <owner>/<repo>] [--json]
-7 < 1  *
-8 < 1  * The sandbox is the one writer of a run, and its record is git: `status.json` and `events.jsonl`
-9 < 1  * under `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, on the run's live branch
-10 < 1  * while it works and on its tag once it has ended. This reads that record and nothing else: no
-11 < 1  * hub, no VM. `projectRun` is pure and answers plain data (the run's state, each task's state and
-12 < 1  * a timeline of every row worth a line), so a page in a browser can use it as it stands; the CLI
-14 > 1  * prints it one line per row.
+6 < 2  *   node fleet/run-read.mjs --live [--target <owner>/<repo>] [--evidence-repo <owner>/<repo>] [--json]
+7 < 2  *
+8 < 2  * The sandbox is the one writer of a run, and its record is git: `status.json` and `events.jsonl`
+9 < 2  * under `runs/<owner>-<repo>/<N>/` in the operator's evidence repository, on the run's live branch
+10 < 2  * while it works and on its tag once it has ended. This reads that record and nothing else: no
+11 < 2  * hub, no VM. `projectRun` is pure and answers plain data (the run's state, each task's state and
+12 < 2  * a timeline of every row worth a line), so a page in a browser can use it as it stands; the CLI
+14 > 2  * prints it one line per row.
 13 < 2  * prints it the way `board-read.mjs` prints the hub's copy, which holds claims and closes only.
-14 < 1  *
-15 < 1  * `--since <n>` prints only timeline rows after the first `n` (the last line of every print is
-17 > 1  * `cursor <rows read>`). `--follow` keeps reading every 10 s, prints each new line once, flags a
-18 < 1  * claim or a run gone quiet with `!`, and ends when every asked run's status says it ended; the
-19 < 1  * record is committed every 10 s, so a line is up to about 20 s behind the sandbox. `--live` lists the runs that have a live branch. The evidence repository
+14 < 2  *
+15 < 2  * `--since <n>` prints only timeline rows after the first `n` (the last line of every print is
+17 > 2  * `cursor <rows read>`). `--follow` keeps reading every 10 s, prints each new line once, flags a
+18 < 2  * claim or a run gone quiet with `!`, and ends when every asked run's status says it ended; the
+19 < 2  * record is committed every 10 s, so a line is up to about 20 s behind the sandbox. `--live` lists the runs that have a live branch. The evidence repository
 16 < 2  * `cursor <rows read>`). `--live` lists the runs that have a live branch. The evidence repository
-17 < 1  * is `--evidence-repo`, else `"evidence"` in `~/.ultrapowers/fleet.json`. Reads go through `gh api`.
-18 < 1  */
+17 < 2  * is `--evidence-repo`, else `"evidence"` in `~/.ultrapowers/fleet.json`. Reads go through `gh api`.
+18 < 2  */
 19 < 1 import { fileURLToPath } from 'node:url'
 20 < 1 
 22 > 1 import { projectRun } from '../factory/view.mjs'
@@ -33,9 +33,9 @@
 26 < 2 const short = (text, n) => { const s = String(text ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
 27 < 1 const timeOf = (iso) => (typeof iso === 'string' && iso.length >= 19 ? iso.slice(11, 19) + 'Z' : '-')
 28 < 1 
-30 > 1 // ── The projection (pure; `factory/view.mjs` holds it, since the engine renders the run's view) ──
+30 > 2 // ── The projection (pure; `factory/view.mjs` holds it, since the engine renders the run's view) ──
 29 < 2 // ── The projection (pure) ────────────────────────────────────────────────
-30 < 1 
+30 < 2 
 32 > 1 export { projectRun }
 31 < 2 /** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
 32 < 2  *  task the line belongs to, null for a line about the whole run. */
@@ -114,7 +114,7 @@
 105 < 2   }
 106 < 2 }
 107 < 1 
-108 < 1 /** The projection as the operator reads it; `since` drops timeline lines at or before that row. */
+108 < 2 /** The projection as the operator reads it; `since` drops timeline lines at or before that row. */
 109 < 1 export function renderRun (p, { since = 0 } = {}) {
 110 < 1   const lines = [`== run-${p.run} ${p.state ?? 'unknown'}${p.phase ? `: ${p.phase}` : ''}${p.pr ? `  ${p.pr}` : ''}`]
 111 < 1   for (const t of p.tasks) {
@@ -129,9 +129,9 @@
 120 < 1   return lines.join('\n')
 121 < 1 }
 122 < 1 
-123 < 1 // ── Reading the record ───────────────────────────────────────────────────
-124 < 1 
-125 < 1 /** One file of the evidence repository at a ref, as text, or null when it is not there. */
+123 < 2 // ── Reading the record ───────────────────────────────────────────────────
+124 < 2 
+125 < 2 /** One file of the evidence repository at a ref, as text, or null when it is not there. */
 126 < 1 async function fileAt (exec, evidence, filePath, ref) {
 127 < 1   const res = await exec('gh', ['api', '-H', 'Accept: application/vnd.github.raw',
 128 < 1     `repos/${evidence}/contents/${filePath}?ref=${encodeURIComponent(ref)}`])
@@ -141,17 +141,17 @@
 132 < 1 const jsonOf = (text) => { try { return JSON.parse(text) } catch { return null } }
 133 < 1 const rowsOf = (text) => String(text ?? '').split('\n').filter((l) => l.trim() !== '').map(jsonOf).filter((e) => e !== null)
 134 < 1 
-135 < 1 /**
-136 < 1  * A run's record: `{ ref, live, rows, status, plan }`, or null when the evidence repository holds
-137 < 1  * neither a tag nor a live branch for it. The tag is tried first: a run that has ended is read
-138 < 1  * where it will stay, and a run still at work has only its live branch.
-139 < 1  */
+135 < 2 /**
+136 < 2  * A run's record: `{ ref, live, rows, status, plan }`, or null when the evidence repository holds
+137 < 2  * neither a tag nor a live branch for it. The tag is tried first: a run that has ended is read
+138 < 2  * where it will stay, and a run still at work has only its live branch.
+139 < 2  */
 141 > 1 export async function readRunRecord ({ exec = defaultExec, evidence, target, run, liveFirst = false, plan: wantPlan = true }) {
 140 < 2 export async function readRunRecord ({ exec = defaultExec, evidence, target, run }) {
 141 < 1   const folder = runFolderFor(target, run)
 143 > 1   const refs = [[runTagFor(target, run), false], [liveBranchFor(target, run), true]]
-144 < 1   // `liveFirst` is the follower's order: a run at work is on its live branch, so the tag is asked
-145 < 1   // only once that branch is gone. `plan: false` skips the plan's parse, which never changes.
+144 < 2   // `liveFirst` is the follower's order: a run at work is on its live branch, so the tag is asked
+145 < 2   // only once that branch is gone. `plan: false` skips the plan's parse, which never changes.
 146 < 1   for (const [ref, live] of liveFirst ? refs.reverse() : refs) {
 142 < 2   for (const [ref, live] of [[runTagFor(target, run), false], [liveBranchFor(target, run), true]]) {
 143 < 1     const events = await fileAt(exec, evidence, `${folder}/events.jsonl`, ref)
@@ -164,16 +164,16 @@
 149 < 1   return null
 151 > 1 }
 152 < 1 
-153 < 1 // ── Following a run ──────────────────────────────────────────────────────
-154 < 1 
-155 < 1 /** The states a run's status page ends on (`fleet/janitor.mjs`'s `REAPABLE_STATES`). */
+153 < 2 // ── Following a run ──────────────────────────────────────────────────────
+154 < 2 
+155 < 2 /** The states a run's status page ends on (`fleet/janitor.mjs`'s `REAPABLE_STATES`). */
 156 < 1 const ENDED = ['done', 'parked', 'failed']
 157 < 1 
-158 < 1 /**
-159 < 1  * `--follow`'s reader: each call answers one projection per asked run, in order, or null for a
-160 < 1  * run whose record holds nothing yet. A run is read live branch first (two requests a look while
-161 < 1  * it works) and its plan once, since the parse the engine read does not change.
-162 < 1  */
+158 < 2 /**
+159 < 2  * `--follow`'s reader: each call answers one projection per asked run, in order, or null for a
+160 < 2  * run whose record holds nothing yet. A run is read live branch first (two requests a look while
+161 < 2  * it works) and its plan once, since the parse the engine read does not change.
+162 < 2  */
 163 < 1 export function followReader ({ exec = defaultExec, evidence, target, runs }) {
 164 < 1   const plans = new Map()
 165 < 1   return async () => {
@@ -188,17 +188,18 @@
 174 < 1   }
 175 < 1 }
 176 < 1 
-177 < 1 /**
-178 < 1  * `--follow`: look every `everyMs`, print each timeline line not yet printed, and print one `!`
-179 < 1  * line when something looks wrong: a task claimed `quietMs` ago with nothing since, or no new line
-180 < 1  * from any asked run for `quietMs`. Each warning prints once until the thing it names changes.
-181 < 1  * Ends when every asked run's status page says it ended (one `== run-<N> <state>` line each, and
-182 < 1  * 0) or at `maxMs` (`== gave up` and 3).
-183 < 1  * `read` is `followReader`'s; `now`, `sleep` and `write` are the test's seams.
-184 < 1  */
+177 < 2 /**
+178 < 2  * `--follow`: look every `everyMs`, print each timeline line not yet printed, and print one `!`
+179 < 2  * line when something looks wrong: a task claimed `quietMs` ago with nothing since, or no new line
+180 < 2  * from any asked run for `quietMs`. Each warning prints once until the thing it names changes.
+181 < 2  * Ends when every asked run's status page says it ended (one `== run-<N> <state>` line each, and
+182 < 2  * 0) or at `maxMs` (`== gave up` and 3).
+183 < 2  * `read` is `followReader`'s; `now`, `sleep` and `write` are the test's seams.
+184 < 2  */
 185 < 1 export async function follow ({ read, write, runs, everyMs = 10000, quietMs = 10 * 60000, maxMs = 240 * 60000, now = Date.now, sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
 186 < 1   const start = now()
-187 < 1   const printed = new Map(runs.map((run) => [run, 0]))   // run -> the last log row printed
+188 > 1   const printed = new Map(runs.map((run) => [run, 0]))
+187 < 2   const printed = new Map(runs.map((run) => [run, 0]))   // run -> the last log row printed
 188 < 1   const warned = new Set()
 189 < 1   let lastNewAt = start
 190 < 1   for (;;) {
@@ -238,8 +239,8 @@
 224 < 1   }
 150 < 1 }
 151 < 1 
-152 < 1 /** Every run with a live branch: `[{ target, run, branch }]`, `target` as `<owner>-<repo>`;
-153 < 1  *  with `target` given, only that target's. */
+152 < 2 /** Every run with a live branch: `[{ target, run, branch }]`, `target` as `<owner>-<repo>`;
+153 < 2  *  with `target` given, only that target's. */
 154 < 1 export async function listLive ({ exec = defaultExec, evidence, target = null }) {
 155 < 1   const prefix = target === null ? 'live/' : `live/${targetSlug(target)}/`
 156 < 1   const res = await exec('gh', ['api', '--paginate', '--slurp', `repos/${evidence}/git/matching-refs/heads/${prefix}`])
@@ -252,8 +253,8 @@
 163 < 1   }
 164 < 1   return out.sort((a, b) => a.target.localeCompare(b.target) || a.run - b.run)
 165 < 1 }
-166 < 1 
-167 < 1 // ── The CLI ──────────────────────────────────────────────────────────────
+166 < 2 
+167 < 2 // ── The CLI ──────────────────────────────────────────────────────────────
 168 < 1 
 169 < 1 export function parseArgs (argv) {
 171 > 1   const a = { runs: [], target: null, evidence: null, since: 0, json: false, live: false, follow: false, quietMinutes: 10 }

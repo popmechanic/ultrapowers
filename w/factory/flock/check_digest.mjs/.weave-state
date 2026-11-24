@@ -1,7 +1,7 @@
-0 < 1 // The run's checks/ folder as one small row per result file (#1491), so a step whose receipt or Jev
-1 < 1 // reading is missing can be read off the record instead of guessed at. Pure but for reading `dir`:
-3 > 1 // file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`,
-4 < 1 // null for a name with no `@`) and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
+0 < 2 // The run's checks/ folder as one small row per result file (#1491), so a step whose receipt or Jev
+1 < 2 // reading is missing can be read off the record instead of guessed at. Pure but for reading `dir`:
+3 > 2 // file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`,
+4 < 2 // null for a name with no `@`) and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
 2 < 2 // file-name order; a row names the file, the copy that wrote it (the name's text after its last `@`)
 3 < 2 // and when, and never carries the result's diff or stores. A file that is not JSON is `unreadable`.
 4 < 1 import fs from 'node:fs'

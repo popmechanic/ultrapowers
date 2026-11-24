@@ -1,25 +1,25 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 /**
-2 < 1  * fleet/tests/test_janitor_evidence.mjs — the janitor reads a run's record,
-3 < 1  * and writes its end (the death and the close-out), in the operator's evidence
-4 < 1  * repository (#1395), never the target's; and it deletes a target's
-5 < 1  * integration branch whose pull request closed unmerged, and nothing else there.
-7 > 1  *
-9 > 1  * The evidence record is the one source: a done and a parked run are reaped, a
-10 < 1  * running one left, an unread one never touched (E1–E3); a run that ended with
-11 < 1  * its live branch left and no tag is sealed (S1–S4).
+1 < 2 /**
+2 < 2  * fleet/tests/test_janitor_evidence.mjs — the janitor reads a run's record,
+3 < 2  * and writes its end (the death and the close-out), in the operator's evidence
+4 < 2  * repository (#1395), never the target's; and it deletes a target's
+5 < 2  * integration branch whose pull request closed unmerged, and nothing else there.
+7 > 2  *
+9 > 2  * The evidence record is the one source: a done and a parked run are reaped, a
+10 < 2  * running one left, an unread one never touched (E1–E3); a run that ended with
+11 < 2  * its live branch left and no tag is sealed (S1–S4).
 8 < 2  * The evidence record is the default source and the hub is not asked (E1–E3);
 9 < 2  * `record: 'kata'` is the rollback, the hub first and the evidence repository
 10 < 2  * behind it (K1–K2); a run that ended with its live branch left and no tag is
 11 < 2  * sealed (S1–S4).
-6 < 1  *
-7 < 1  * Every call goes through a recording exec stub: the lobby's `ls`, the unit
-9 > 1  * reads over ssh, and `gh api` answered by path. No socket is opened; the
-10 < 1  * config files live in a temp dir.
+6 < 2  *
+7 < 2  * Every call goes through a recording exec stub: the lobby's `ls`, the unit
+9 > 2  * reads over ssh, and `gh api` answered by path. No socket is opened; the
+10 < 2  * config files live in a temp dir.
 8 < 2  * reads over ssh, and `gh api` answered by path. The hub, where a leg needs
 9 < 2  * one, is the real kata client over a recording transport. No socket is
 10 < 2  * opened; the config files live in a temp dir.
-11 < 1  */
+11 < 2  */
 12 < 1 import assert from 'node:assert/strict'
 13 < 1 import fs from 'node:fs'
 14 < 1 import os from 'node:os'
@@ -55,11 +55,11 @@
 42 < 1 const ok = (stdout = '') => ({ code: 0, stdout, stderr: '' })
 43 < 1 const notFound = () => ({ code: 1, stdout: '', stderr: 'gh: Not Found (HTTP 404)' })
 44 < 1 
-45 < 1 /**
-46 < 1  * A recording exec. `gh` answers are keyed `<METHOD> <path>` (GET for a plain
-47 < 1  * `gh api <path>`); anything unkeyed is a 404. `vms` is the lobby listing,
-48 < 1  * `unit` the ActiveState the VM reports for the run's unit.
-49 < 1  */
+45 < 2 /**
+46 < 2  * A recording exec. `gh` answers are keyed `<METHOD> <path>` (GET for a plain
+47 < 2  * `gh api <path>`); anything unkeyed is a 404. `vms` is the lobby listing,
+48 < 2  * `unit` the ActiveState the VM reports for the run's unit.
+49 < 2  */
 50 < 1 function stub ({ vms = [], unit = 'active', gh = {} } = {}) {
 51 < 1   const calls = []
 52 < 1   const exec = async (cmd, args = []) => {
@@ -101,7 +101,7 @@
 88 < 1 const STATUS = (repo) => `repos/${repo}/contents/runs/o-r/5/status.json`
 89 < 1 const JOURNAL = (repo) => `repos/${repo}/contents/runs/o-r/5/janitor-journal.txt`
 90 < 1 
-91 < 1 /** The seal's refs-API answers in `repo`, the tag verified at HEAD_SHA. */
+91 < 2 /** The seal's refs-API answers in `repo`, the tag verified at HEAD_SHA. */
 92 < 1 const sealAnswers = (repo) => ({
 93 < 1   [`GET repos/${repo}/git/ref/heads/live/o-r/run-5`]: ok(JSON.stringify({ object: { sha: HEAD_SHA } })),
 94 < 1   [`POST repos/${repo}/git/refs`]: ok(JSON.stringify({ ref: 'refs/tags/o-r/run-5' })),
@@ -116,7 +116,7 @@
 103 < 1   process.stdout.write(`ok - ${name}\n`)
 104 < 1 }
 105 < 1 
-106 < 1 // M1 — the tag read, then the live-branch read, both in the evidence repo.
+106 < 2 // M1 — the tag read, then the live-branch read, both in the evidence repo.
 107 < 1 await test('M1: the status reads go to the evidence repository, tag then live branch', async () => {
 108 < 1   const { exec, calls } = stub({
 109 < 1     vms: [ROW],
@@ -135,7 +135,7 @@
 121 < 1   assert.equal(result.deaths.length, 0)
 122 < 1 })
 123 < 1 
-124 < 1 // M2 — the death: both PUTs on the live branch, then the tag, then the delete.
+124 < 2 // M2 — the death: both PUTs on the live branch, then the tag, then the delete.
 125 < 1 await test('M2: a dead unit under a running page writes the death and seals the run', async () => {
 126 < 1   const { exec, calls } = stub({
 127 < 1     vms: [ROW],
@@ -169,7 +169,7 @@
 154 < 1   assert.deepEqual(ghPaths(calls).filter((p) => p.startsWith('repos/o/r/contents/')), [])
 155 < 1 })
 156 < 1 
-157 < 1 // M3 — the orphan listing names the evidence repository's live prefix.
+157 < 2 // M3 — the orphan listing names the evidence repository's live prefix.
 158 < 1 await test('M3: the orphan close-out lists the evidence repository\'s live branches', async () => {
 159 < 1   const { exec, calls } = stub({ vms: [ROW], unit: 'active' })
 161 > 1   await janitor({ argv: ['--json'], exec, now, evidence: 'ops/evidence', configPath: NO_CONFIG })
@@ -178,7 +178,7 @@
 162 < 1   assert.ok(!ghPaths(calls).some((p) => p.startsWith('repos/o/r/git/matching-refs/heads/ultra/evidence')))
 163 < 1 })
 164 < 1 
-165 < 1 // M3, driven: an orphan found there is closed out in the evidence repository.
+165 < 2 // M3, driven: an orphan found there is closed out in the evidence repository.
 166 < 1 await test('M3: an orphan found on the live prefix is closed out there', async () => {
 167 < 1   const other = { vm_name: 'fleet-r9-1234567890-abcd', ssh_dest: 'x', comment: `run=9 target=${TARGET}` }
 168 < 1   const { exec, calls } = stub({
@@ -199,8 +199,8 @@
 182 < 1   assert.ok(ghCalls(calls).some((c) => methodOf(c) === 'DELETE' && c.args.includes('repos/ops/evidence/git/refs/heads/live/o-r/run-5')))
 183 < 1 })
 184 < 1 
-185 < 1 // M4 — the orphan's end: failed written to the live branch, tag cut, branch
-186 < 1 // deleted, and no git at all (folded from close-out.mjs's own leg).
+185 < 2 // M4 — the orphan's end: failed written to the live branch, tag cut, branch
+186 < 2 // deleted, and no git at all (folded from close-out.mjs's own leg).
 187 < 1 await test('M4: an orphan is written failed, tagged, its live branch deleted, with no git', async () => {
 188 < 1   const { exec, calls } = stub({
 189 < 1     vms: [{ vm_name: 'fleet-r9-1234567890-abcd', ssh_dest: 'x', comment: `run=9 target=${TARGET}` }],
@@ -230,8 +230,8 @@
 212 < 1   assert.ok(!calls.some((c) => c.cmd === 'git'), 'no git at all')
 213 < 1 })
 214 < 1 
-215 < 1 // M4, raced: a VM that came up for the orphan since the pass listed the fleet
-216 < 1 // is not an orphan — nothing is written.
+215 < 2 // M4, raced: a VM that came up for the orphan since the pass listed the fleet
+216 < 2 // is not an orphan — nothing is written.
 217 < 1 await test('M4: an orphan the fleet carries when listed again is left alone', async () => {
 218 < 1   let listings = 0
 219 < 1   const late = { vm_name: 'fleet-r5-1234567891-abcd', ssh_dest: DEST, comment: `run=${RUN} target=${TARGET}` }
@@ -258,7 +258,7 @@
 239 < 1   assert.ok(!ghCalls(base.calls).some((c) => methodOf(c) === 'PUT'), 'no PUT')
 240 < 1 })
 241 < 1 
-242 < 1 // The seal keeps the branch when the tag cannot be verified.
+242 < 2 // The seal keeps the branch when the tag cannot be verified.
 243 < 1 await test('sealRun: a tag that does not name the head keeps the live branch', async () => {
 244 < 1   const answers = sealAnswers('ops/evidence')
 245 < 1   answers['POST repos/ops/evidence/git/refs'] = { code: 1, stdout: '', stderr: 'gh: Reference already exists (HTTP 422)' }
@@ -310,9 +310,9 @@
 288 < 2   assert.equal(patches[0].body.patch['work.state'], 'failed')
 289 < 1 })
 290 < 1 
-291 < 1 // R1 — the integration-branch sweep (folded from test_retire_integration_only):
-292 < 1 // a closed, unmerged pull request's branch is the ONE thing deleted on the
-293 < 1 // target; no tag, no PATCH, nothing naming a plan or evidence branch.
+291 < 2 // R1 — the integration-branch sweep (folded from test_retire_integration_only):
+292 < 2 // a closed, unmerged pull request's branch is the ONE thing deleted on the
+293 < 2 // target; no tag, no PATCH, nothing naming a plan or evidence branch.
 294 < 1 const PULLS = 'GET repos/o/r/pulls?state=all&per_page=100&head=o:ultra/integration-run-3'
 295 < 1 const sweepAnswers = (pulls) => ({
 296 < 1   'GET repos/o/r/git/matching-refs/heads/ultra/integration-run-': ok(JSON.stringify([
@@ -365,7 +365,7 @@
 338 < 2   await assert.rejects(janitor({ argv: ['--target', 'not a repo'], exec, kata: null, now, configPath: NO_CONFIG }), /--target must be/)
 339 < 1 })
 340 < 1 
-341 < 1 // M5 — handed no evidence, the janitor reads the setting from its config file.
+341 < 2 // M5 — handed no evidence, the janitor reads the setting from its config file.
 342 < 1 await test('M5: the config file\'s evidence setting steers the status reads', async () => {
 343 < 1   const configPath = configAt('other.json', { evidence: 'ops/other' })
 344 < 1   const { exec, calls } = stub({ vms: [ROW], unit: 'active' })
@@ -376,7 +376,7 @@
 348 < 1   assert.equal(result.evidence, 'ops/other')
 349 < 1 })
 350 < 1 
-351 < 1 // M6 — no setting at all: no evidence read, and `evidence` null on the result.
+351 < 2 // M6 — no setting at all: no evidence read, and `evidence` null on the result.
 352 < 1 await test('M6: no setting reads nothing from any evidence repository', async () => {
 353 < 1   for (const configPath of [NO_CONFIG, configAt('empty.json', { cpu: '8' })]) {
 354 < 1     const { exec, calls } = stub({ vms: [ROW], unit: 'failed' })
@@ -388,8 +388,8 @@
 359 < 1     assert.equal(result.runs.length, 1)
 360 < 1   }
 361 < 1 })
-362 < 1 
-365 > 1 // ── The evidence record decides ────────────────────────────────────────────
+362 < 2 
+365 > 2 // ── The evidence record decides ────────────────────────────────────────────
 364 > 2 // ── The evidence record decides, and the hub is not asked ──────────────────
 365 < 1 
 366 < 1 const EV = 'ops/evidence'
@@ -403,8 +403,8 @@
 374 < 1   .filter((c) => c.cmd === 'ssh' && c.args[0] === 'exe.dev' && /^rm /.test(c.args[1]))
 375 < 1   .map((c) => c.args[1])
 376 < 1 
-378 > 1 // E1 — one pass over a done, a parked, a running and an unreadable run. Only
-379 < 1 // `gh` and the lobby are asked: no other command leaves the laptop.
+378 > 2 // E1 — one pass over a done, a parked, a running and an unreadable run. Only
+379 < 2 // `gh` and the lobby are asked: no other command leaves the laptop.
 380 < 1 await test('E1: a done and a parked run are reaped, a running one left, an unread one never touched', async () => {
 377 < 2 /** A hub that cannot be reached: every request throws, and every one is counted. */
 378 < 2 const darkHub = () => {
@@ -424,7 +424,7 @@
 392 < 1       ...atTag(1, { state: 'done', updatedAt: OLD }),
 393 < 1       ...atTag(2, { state: 'parked', updatedAt: OLD }),
 394 < 1       ...atLive(3, { state: 'running', updatedAt: '2026-09-30T11:59:00Z' })
-395 < 1       // run 4: no page at its tag or its live branch.
+395 < 2       // run 4: no page at its tag or its live branch.
 396 < 1     }
 397 < 1   })
 399 > 1   const result = await janitor({ argv: ['--json'], exec, now, evidence: EV, configPath: NO_CONFIG })
@@ -442,8 +442,8 @@
 405 < 1   assert.deepEqual(result.runs.map((r) => [r.run, r.live, r.state]), [[1, false, 'done'], [2, false, 'parked'], [3, true, 'running'], [4, null, null]])
 406 < 1 })
 407 < 1 
-408 < 1 // E2 — a read that fails is not a finished run: gh answering an error for
-409 < 1 // every status read removes nothing.
+408 < 2 // E2 — a read that fails is not a finished run: gh answering an error for
+409 < 2 // every status read removes nothing.
 410 < 1 await test('E2: a status read that fails removes nothing', async () => {
 411 < 1   const failed = { code: 1, stdout: '', stderr: 'gh: Server Error (HTTP 502)' }
 412 < 1   const { exec, calls } = stub({
@@ -460,7 +460,7 @@
 422 < 1   assert.deepEqual(result.unread, [{ vm: vmOf(1), run: 1, target: TARGET }])
 423 < 1 })
 424 < 1 
-426 > 1 // E3 — a finished run inside its hour is pending, not removed.
+426 > 2 // E3 — a finished run inside its hour is pending, not removed.
 427 < 1 await test('E3: a done run inside --age is pending', async () => {
 425 < 2 // E3 — a finished run inside its hour is pending, not removed; the switch's
 426 < 2 // default is the policy file's own cell.
@@ -510,8 +510,8 @@
 469 < 2   assert.match(result.hub.dark, /Connection refused/)
 470 < 2   assert.deepEqual(rmCommands(calls), [`rm ${vmOf(1)} --json`, `rm ${vmOf(2)} --json`])
 471 < 1 })
-472 < 1 
-473 < 1 // ── A run that ended with its live branch left and no tag is sealed ────────
+472 < 2 
+473 < 2 // ── A run that ended with its live branch left and no tag is sealed ────────
 474 < 1 
 475 < 1 const liveRefs = (...runs) => ({
 476 < 1   [`GET repos/${EV}/git/matching-refs/heads/live/o-r/run-`]: ok(JSON.stringify(
@@ -526,9 +526,9 @@
 485 < 1 })
 486 < 1 const writes = (calls) => ghCalls(calls).filter((c) => methodOf(c) !== 'GET').map((c) => `${methodOf(c)} ${c.args.find((a) => a.startsWith('repos/'))}`)
 487 < 1 
-488 < 1 // S1 — no VM carries run 7, its page says done and is over an hour old: the
-489 < 1 // tag is cut at the branch's head, verified, the branch deleted; the page is
-490 < 1 // not rewritten.
+488 < 2 // S1 — no VM carries run 7, its page says done and is over an hour old: the
+489 < 2 // tag is cut at the branch's head, verified, the branch deleted; the page is
+490 < 2 // not rewritten.
 491 < 1 await test('S1: an ended run no VM carries, its live branch left, is sealed and its page not rewritten', async () => {
 492 < 1   const { exec, calls } = stub({
 493 < 1     vms: [rowOf(9)],
@@ -544,8 +544,8 @@
 502 < 1   assert.equal(field(post, 'sha'), HEAD_SHA)
 503 < 1 })
 504 < 1 
-505 < 1 // S2 — `--dry-run` names it and writes nothing; a page inside `--age` is the
-506 < 1 // sandbox still sealing, and is not named at all.
+505 < 2 // S2 — `--dry-run` names it and writes nothing; a page inside `--age` is the
+506 < 2 // sandbox still sealing, and is not named at all.
 507 < 1 await test('S2: --dry-run names the seal and writes nothing; a page inside --age is left to its sandbox', async () => {
 508 < 1   const dry = stub({ vms: [rowOf(9)], gh: { ...liveRefs(7), ...atLive(7, { state: 'parked', updatedAt: OLD }), ...sealOf(7) } })
 510 > 1   const named = await janitor({ argv: ['--json', '--dry-run'], exec: dry.exec, now, evidence: EV, configPath: NO_CONFIG })
@@ -559,7 +559,7 @@
 515 < 1   assert.deepEqual(writes(young.calls), [])
 516 < 1 })
 517 < 1 
-518 < 1 // S3 — a seal the evidence repository refuses keeps the branch and says why.
+518 < 2 // S3 — a seal the evidence repository refuses keeps the branch and says why.
 519 < 1 await test('S3: a refused seal keeps the live branch and reports the reason', async () => {
 520 < 1   const { exec, calls } = stub({
 521 < 1     vms: [rowOf(9)],
@@ -578,8 +578,8 @@
 533 < 1   assert.ok(!writes(calls).some((w) => w.startsWith('DELETE')))
 534 < 1 })
 535 < 1 
-536 < 1 // S4 — `--target` reaches a target no VM names: its ended run is sealed too,
-537 < 1 // and a VM that still carries a run keeps that run's branch.
+536 < 2 // S4 — `--target` reaches a target no VM names: its ended run is sealed too,
+537 < 2 // and a VM that still carries a run keeps that run's branch.
 538 < 1 await test('S4: --target seals on a target no VM names; a carried run is never sealed', async () => {
 539 < 1   const bare = stub({ vms: [], gh: { ...liveRefs(7), ...atLive(7, { state: 'done', updatedAt: OLD }), ...sealOf(7) } })
 541 > 1   const result = await janitor({ argv: ['--json', '--target', TARGET], exec: bare.exec, now, evidence: EV, configPath: NO_CONFIG })

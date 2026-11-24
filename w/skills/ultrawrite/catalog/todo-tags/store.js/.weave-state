@@ -1,0 +1,68 @@
+0 < 1 import { createStore } from 'tinybase'
+1 < 1 
+2 < 2 // The todo-plus-tags store module. The link "deleting a todo clears its tags"
+3 < 2 // is part of deleteTodo, in one transaction, so compile.ts derives it.
+4 < 1 const rowOf = (table) => ({ type: 'string', 'x-row-of': table })
+5 < 1 const tagsOf = (store, todoId) => store.getRowIds('tags').filter((t) => store.getCell('tags', t, 'todoId') === todoId)
+6 < 1 
+7 < 1 export const TOOLS = [
+8 < 1   {
+9 < 1     name: 'addTodo', piece: 'todo', description: 'Add a todo with this text; it starts not done.',
+10 < 1     inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+11 < 1     run: (store, { text }) => {
+12 < 1       const clean = String(text ?? '').trim()
+13 < 1       if (clean === '') return false
+14 < 1       store.addRow('todos', { text: clean })
+15 < 1       return true
+16 < 1     }
+17 < 1   },
+18 < 1   {
+19 < 1     name: 'completeTodo', piece: 'todo', description: 'Mark this todo as done.',
+20 < 1     inputSchema: { type: 'object', properties: { id: rowOf('todos') }, required: ['id'] },
+21 < 1     run: (store, { id }) => {
+22 < 1       if (!store.hasRow('todos', id)) return false
+23 < 1       store.setCell('todos', id, 'completed', true)
+24 < 1       return true
+25 < 1     }
+26 < 1   },
+27 < 1   {
+28 < 1     name: 'deleteTodo', piece: 'todo', description: 'Remove this todo from the list, and its tags with it.',
+29 < 1     inputSchema: { type: 'object', properties: { id: rowOf('todos') }, required: ['id'] },
+30 < 1     run: (store, { id }) => {
+31 < 1       if (!store.hasRow('todos', id)) return false
+32 < 1       store.transaction(() => {
+33 < 1         for (const t of tagsOf(store, id)) store.delRow('tags', t)
+34 < 1         store.delRow('todos', id)
+35 < 1       })
+36 < 1       return true
+37 < 1     }
+38 < 1   },
+39 < 1   {
+40 < 1     name: 'addTag', piece: 'tag', description: 'Tag this todo with a word.',
+41 < 1     inputSchema: { type: 'object', properties: { todoId: rowOf('todos'), name: { type: 'string' } }, required: ['todoId', 'name'] },
+42 < 1     run: (store, { todoId, name }) => {
+43 < 1       const clean = String(name ?? '').trim()
+44 < 1       if (clean === '' || !store.hasRow('todos', todoId)) return false
+45 < 1       if (tagsOf(store, todoId).some((t) => store.getCell('tags', t, 'name') === clean)) return false
+46 < 1       store.addRow('tags', { todoId, name: clean })
+47 < 1       return true
+48 < 1     }
+49 < 1   },
+50 < 1   {
+51 < 1     name: 'removeTag', piece: 'tag', description: 'Take this tag off its todo.',
+52 < 1     inputSchema: { type: 'object', properties: { id: rowOf('tags') }, required: ['id'] },
+53 < 1     run: (store, { id }) => {
+54 < 1       if (!store.hasRow('tags', id)) return false
+55 < 1       store.delRow('tags', id)
+56 < 1       return true
+57 < 1     }
+58 < 1   }
+59 < 1 ]
+60 < 1 
+61 < 1 export function makeStore () {
+62 < 1   return createStore().setTablesSchema({
+63 < 1     todos: { text: { type: 'string' }, completed: { type: 'boolean' } },
+64 < 1     tags: { todoId: { type: 'string' }, name: { type: 'string' } }
+65 < 1   })
+66 < 1 }
+67 < 1 

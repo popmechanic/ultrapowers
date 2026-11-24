@@ -1,58 +1,58 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_jev_client.mjs — the exam for Task 1: *the Jev client* —
-2 < 1  * one POST at the edge hostname, `null` on any failure.
-3 < 1  *
+0 < 2 /**
+1 < 2  * fleet/tests/test_jev_client.mjs — the exam for Task 1: *the Jev client* —
+2 < 2  * one POST at the edge hostname, `null` on any failure.
+3 < 2  *
 4 < 2  * This file is the Proof's `Test:`, written whole at the path the Proof names.
-5 < 1  * Every relative import is written for THIS directory: `../` is the
-6 < 1  * repository's `fleet/`, `./` is `fleet/tests/`.
-7 < 1  *
-8 < 1  * Legs (c) through (g) and this header's M3 through M7 paragraphs examined
-9 < 1  * the old engine's `jev:` seam (`runEngine`, `runMain`, the rig, the old
-10 < 1  * boot's env lines, `fleet/CONTRACT.md`) — every one of them needed the old
-11 < 1  * rig, the old engine, `run-main` or `sandbox-boot.sh`, all of which left the
-12 < 1  * tree with the old engine (*the old engine leaves the tree, and the factory
-13 < 1  * clones at base with its own code*). What is left is what examines
-14 < 1  * `factory/jev-client.mjs` alone: its exports, its constants, its one call, and
-15 < 1  * that every failure is `null` and one log line.
-16 < 1  *
-17 < 1  * The Machine clauses under test, restated so a reader can map every assertion
-18 < 1  * back to the contract:
-19 < 1  *
-20 < 1  *   M1 — `factory/jev-client.mjs` exports `JEV_PATH` = `/v1/systemone`,
-21 < 1  *        `JEV_MODEL` = `jev-latest`, `JEV_TIMEOUT_MS` = `10000`,
-22 < 1  *        `JEV_STATE_MAX_BYTES` = `120000`, and `makeJevClient({ baseUrl,
-23 < 1  *        fetchImpl = globalThis.fetch, timeoutMs = JEV_TIMEOUT_MS, log = () =>
-24 < 1  *        {} })` returning `{ ask }`. `ask({ state, questions })` calls
-25 < 1  *        `fetchImpl` EXACTLY ONCE, first argument the `baseUrl` stripped of
-26 < 1  *        trailing slashes plus `/v1/systemone`, second argument an init whose
-27 < 1  *        `method` is `POST`, whose `headers` carry a key lowercasing to
-28 < 1  *        `content-type` with value `application/json` and NO key lowercasing
-29 < 1  *        to `authorization`, whose `body` parses to an object with exactly the
-30 < 1  *        keys `state`, `model`, `questions` and `model` `jev-latest`, and
-31 < 1  *        whose `signal` is an `AbortSignal`; and it resolves to the reply's
-32 < 1  *        `answers` object when the status is 200–299 and the body parses as
-33 < 1  *        JSON carrying an `answers` object.
-34 < 1  *   M2 — `ask` resolves `null`, NEVER rejects, and calls `log` exactly once
-35 < 1  *        with a string beginning `jev:` for each of: a status outside 200–299;
-36 < 1  *        a `fetchImpl` that rejects (an `AbortError` included); a body that is
-37 < 1  *        not JSON or carries no `answers` object; and a `state` whose
-38 < 1  *        `JSON.stringify` length exceeds `JEV_STATE_MAX_BYTES`, for which
-39 < 1  *        `fetchImpl` is not called at all.
-40 < 1  *
-41 < 1  * The legs, in the order they run here:
-42 < 1  *
-43 < 1  *   (a) [M1] the four constants and the one green call.
-44 < 1  *   (b) [M2] the five failures, plus a `fetchImpl` that throws synchronously.
-45 < 1  *
-46 < 1  * Nothing here opens a socket. The client is reached only through an injected
-47 < 1  * `fetchImpl` whose reply carries the two members `httpTransport` reads —
-48 < 1  * `status` and `text()`.
-49 < 1  */
+5 < 2  * Every relative import is written for THIS directory: `../` is the
+6 < 2  * repository's `fleet/`, `./` is `fleet/tests/`.
+7 < 2  *
+8 < 2  * Legs (c) through (g) and this header's M3 through M7 paragraphs examined
+9 < 2  * the old engine's `jev:` seam (`runEngine`, `runMain`, the rig, the old
+10 < 2  * boot's env lines, `fleet/CONTRACT.md`) — every one of them needed the old
+11 < 2  * rig, the old engine, `run-main` or `sandbox-boot.sh`, all of which left the
+12 < 2  * tree with the old engine (*the old engine leaves the tree, and the factory
+13 < 2  * clones at base with its own code*). What is left is what examines
+14 < 2  * `factory/jev-client.mjs` alone: its exports, its constants, its one call, and
+15 < 2  * that every failure is `null` and one log line.
+16 < 2  *
+17 < 2  * The Machine clauses under test, restated so a reader can map every assertion
+18 < 2  * back to the contract:
+19 < 2  *
+20 < 2  *   M1 — `factory/jev-client.mjs` exports `JEV_PATH` = `/v1/systemone`,
+21 < 2  *        `JEV_MODEL` = `jev-latest`, `JEV_TIMEOUT_MS` = `10000`,
+22 < 2  *        `JEV_STATE_MAX_BYTES` = `120000`, and `makeJevClient({ baseUrl,
+23 < 2  *        fetchImpl = globalThis.fetch, timeoutMs = JEV_TIMEOUT_MS, log = () =>
+24 < 2  *        {} })` returning `{ ask }`. `ask({ state, questions })` calls
+25 < 2  *        `fetchImpl` EXACTLY ONCE, first argument the `baseUrl` stripped of
+26 < 2  *        trailing slashes plus `/v1/systemone`, second argument an init whose
+27 < 2  *        `method` is `POST`, whose `headers` carry a key lowercasing to
+28 < 2  *        `content-type` with value `application/json` and NO key lowercasing
+29 < 2  *        to `authorization`, whose `body` parses to an object with exactly the
+30 < 2  *        keys `state`, `model`, `questions` and `model` `jev-latest`, and
+31 < 2  *        whose `signal` is an `AbortSignal`; and it resolves to the reply's
+32 < 2  *        `answers` object when the status is 200–299 and the body parses as
+33 < 2  *        JSON carrying an `answers` object.
+34 < 2  *   M2 — `ask` resolves `null`, NEVER rejects, and calls `log` exactly once
+35 < 2  *        with a string beginning `jev:` for each of: a status outside 200–299;
+36 < 2  *        a `fetchImpl` that rejects (an `AbortError` included); a body that is
+37 < 2  *        not JSON or carries no `answers` object; and a `state` whose
+38 < 2  *        `JSON.stringify` length exceeds `JEV_STATE_MAX_BYTES`, for which
+39 < 2  *        `fetchImpl` is not called at all.
+40 < 2  *
+41 < 2  * The legs, in the order they run here:
+42 < 2  *
+43 < 2  *   (a) [M1] the four constants and the one green call.
+44 < 2  *   (b) [M2] the five failures, plus a `fetchImpl` that throws synchronously.
+45 < 2  *
+46 < 2  * Nothing here opens a socket. The client is reached only through an injected
+47 < 2  * `fetchImpl` whose reply carries the two members `httpTransport` reads —
+48 < 2  * `status` and `text()`.
+49 < 2  */
 50 < 1 import assert from 'node:assert/strict'
 51 < 1 
-52 < 1 /** The deliverable, imported dynamically: a tree without it reports the ABSENT
-53 < 1  *  MODULE as an assertion of leg (a) rather than dying at load with no leg
-54 < 1  *  named at all. */
+52 < 2 /** The deliverable, imported dynamically: a tree without it reports the ABSENT
+53 < 2  *  MODULE as an assertion of leg (a) rather than dying at load with no leg
+54 < 2  *  named at all. */
 55 < 1 let jev = null
 56 < 1 let jevImportError = null
 57 < 1 try {
@@ -67,10 +67,10 @@
 66 < 1   '(a) [M1] it exports `makeJevClient({ baseUrl, fetchImpl, timeoutMs, log })`; got ' +
 67 < 1   JSON.stringify(typeof jev.makeJevClient))
 68 < 1 
-69 < 1 // ══════════════════════════════════════════════════════════════════════════
-70 < 1 // (a) [M1] the four constants, and the one call a green answer makes
-71 < 1 // ══════════════════════════════════════════════════════════════════════════
-72 < 1 
+69 < 2 // ══════════════════════════════════════════════════════════════════════════
+70 < 2 // (a) [M1] the four constants, and the one call a green answer makes
+71 < 2 // ══════════════════════════════════════════════════════════════════════════
+72 < 2 
 73 < 1 assert.equal(jev.JEV_PATH, '/v1/systemone',
 74 < 1   '(a) [M1] `JEV_PATH` is `/v1/systemone` — the edge\'s one endpoint; got ' +
 75 < 1   JSON.stringify(jev.JEV_PATH))
@@ -82,21 +82,21 @@
 81 < 1   '(a) [M1] `JEV_STATE_MAX_BYTES` is 120000 — the state budget, on the state\'s own ' +
 82 < 1   'JSON; got ' + JSON.stringify(jev.JEV_STATE_MAX_BYTES))
 83 < 1 
-84 < 1 /** The reply shape a sim hands back: what `httpTransport` reads of a response,
-85 < 1  *  and nothing else — `status` and `text()`. */
+84 < 2 /** The reply shape a sim hands back: what `httpTransport` reads of a response,
+85 < 2  *  and nothing else — `status` and `text()`. */
 86 < 1 const reply = (status, body) => ({ status, text: async () => String(body) })
 87 < 1 
-88 < 1 /** A `fetchImpl` that records every call's two arguments and answers with
-89 < 1  *  `answer(argv)` — which may return a promise, reject, or throw outright. */
+88 < 2 /** A `fetchImpl` that records every call's two arguments and answers with
+89 < 2  *  `answer(argv)` — which may return a promise, reject, or throw outright. */
 90 < 1 const recordingFetch = (answer) => {
 91 < 1   const calls = []
 92 < 1   return { calls, fetchImpl: (...argv) => { calls.push(argv); return answer(argv) } }
 93 < 1 }
 94 < 1 
-95 < 1 /** `[name, value]` pairs of a headers container, whatever the shape: M1 says
-96 < 1  *  "a key that lowercases to `content-type`", so the exam reads a plain
-97 < 1  *  object, a `Map`, a pair array and a `Headers` alike rather than pinning
-98 < 1  *  one of them. */
+95 < 2 /** `[name, value]` pairs of a headers container, whatever the shape: M1 says
+96 < 2  *  "a key that lowercases to `content-type`", so the exam reads a plain
+97 < 2  *  object, a `Map`, a pair array and a `Headers` alike rather than pinning
+98 < 2  *  one of them. */
 99 < 1 const headerEntries = (headers) => {
 100 < 1   if (!headers) return []
 101 < 1   if (typeof headers.entries === 'function') return [...headers.entries()]
@@ -166,8 +166,8 @@
 165 < 1 }
 166 < 1 
 167 < 1 {
-168 < 1   // The same URL from a baseUrl with no trailing slash: "stripped of trailing
-169 < 1   // slashes" is the rule, not "one slash removed".
+168 < 2   // The same URL from a baseUrl with no trailing slash: "stripped of trailing
+169 < 2   // slashes" is the rule, not "one slash removed".
 170 < 1   const { calls, fetchImpl } = recordingFetch(async () => reply(200, GREEN_BODY))
 171 < 1   await jev.makeJevClient({ baseUrl: 'https://jev.invalid', fetchImpl })
 172 < 1     .ask({ state: STATE, questions: QUESTIONS })
@@ -176,12 +176,12 @@
 175 < 1     '`; got ' + JSON.stringify(calls.map((c) => c[0])))
 176 < 1 }
 177 < 1 
-178 < 1 // ══════════════════════════════════════════════════════════════════════════
-179 < 1 // (b) [M2] every failure is `null` and ONE log line — and never a rejection
-180 < 1 // ══════════════════════════════════════════════════════════════════════════
-181 < 1 
-182 < 1 /** One `ask` against one canned answer, with its own log sink. Never rethrows:
-183 < 1  *  whether `ask` rejected is itself an assertion below. */
+178 < 2 // ══════════════════════════════════════════════════════════════════════════
+179 < 2 // (b) [M2] every failure is `null` and ONE log line — and never a rejection
+180 < 2 // ══════════════════════════════════════════════════════════════════════════
+181 < 2 
+182 < 2 /** One `ask` against one canned answer, with its own log sink. Never rethrows:
+183 < 2  *  whether `ask` rejected is itself an assertion below. */
 184 < 1 const askWith = async ({ answer, state = STATE }) => {
 185 < 1   const logs = []
 186 < 1   const { calls, fetchImpl } = recordingFetch(answer)
@@ -228,7 +228,7 @@
 227 < 1 }
 228 < 1 
 229 < 1 {
-230 < 1   // The budget, checked on the state's own JSON BEFORE any call.
+230 < 2   // The budget, checked on the state's own JSON BEFORE any call.
 231 < 1   const overBudget = 'x'.repeat(120001)
 232 < 1   const { value, threw, logs, calls } = await askWith({
 233 < 1     answer: async () => reply(200, GREEN_BODY), state: overBudget,
@@ -249,7 +249,7 @@
 248 < 1 }
 249 < 1 
 250 < 1 {
-251 < 1   // A seam that throws synchronously is the same lane: `ask` resolves `null`.
+251 < 2   // A seam that throws synchronously is the same lane: `ask` resolves `null`.
 252 < 1   const { value, threw } = await askWith({ answer: () => { throw new Error('sync boom') } })
 253 < 1   assert.equal(threw, null,
 254 < 1     '(b) [M2] a `fetchImpl` that throws SYNCHRONOUSLY: `ask` still never rejects. It threw: ' +

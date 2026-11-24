@@ -1,13 +1,13 @@
-0 < 1 /** Draws each catalog entry with the 1st-Pouf component it is named for.
-1 < 1  *
-3 > 1  * ActionButton, ActionCheckbox and ActionSelect run their card action through the page's
+0 < 2 /** Draws each catalog entry with the 1st-Pouf component it is named for.
+1 < 2  *
+3 > 2  * ActionButton, ActionCheckbox and ActionSelect run their card action through the page's
 2 < 2  * ActionButton and ActionCheckbox run their card action through the page's
-3 < 1  * handler (`useActions().handlers[action]`, which answers true or false) and
-4 < 1  * emit only on true, so a spec's `on` draft writes run after the action
-5 < 1  * succeeded. Actions take `args` rather than an `on` binding because inside
-6 < 1  * action params json-render 0.21.0 resolves `$item` to a state path, while
-7 < 1  * inside props it resolves to the item's value.
-8 < 1  */
+3 < 2  * handler (`useActions().handlers[action]`, which answers true or false) and
+4 < 2  * emit only on true, so a spec's `on` draft writes run after the action
+5 < 2  * succeeded. Actions take `args` rather than an `on` binding because inside
+6 < 2  * action params json-render 0.21.0 resolves `$item` to a state path, while
+7 < 2  * inside props it resolves to the item's value.
+8 < 2  */
 9 < 1 import { defineRegistry, useActions, useBoundProp } from '@json-render/react'
 10 < 1 import { useState } from 'react'
 11 < 1 import {
@@ -69,19 +69,45 @@
 64 < 1       </Card>
 65 < 1     ),
 66 < 1     Heading: ({ props }) => <Heading level={u(props.level)}>{props.text}</Heading>,
-67 < 1     Eyebrow: ({ props }) => <Eyebrow>{props.text}</Eyebrow>,
+68 > 1     Eyebrow: ({ props }) => (
+69 < 1       <span data-part="text">
+70 < 1         <Eyebrow>{props.text}</Eyebrow>
+71 < 1       </span>
+72 < 1     ),
+73 < 2     // A line of text is a line of its own wherever it sits: 1st-Pouf's Text is a
+74 < 2     // span, so two of them placed straight in a Card would run together. The
+75 < 2     // reading parts carry data-part="text": the checker and the preview count a
+76 < 2     // story's text lines among them only, as storyui names them from draws.json,
+77 < 2     // so a picker's face that happens to read "Ann" is not a line.
+67 < 2     Eyebrow: ({ props }) => <Eyebrow>{props.text}</Eyebrow>,
 68 < 1     Text: ({ props }) => (
-69 < 1       <Text
-70 < 1         size={u(props.size)}
-71 < 1         muted={u(props.muted)}
-72 < 1         num={u(props.num)}
-73 < 1         mono={u(props.mono)}
-74 < 1         truncate={u(props.truncate)}
-75 < 1       >
-76 < 1         {props.text}
-77 < 1       </Text>
+70 > 1       <div className="min-w-0" data-part="text">
+71 < 1         <Text
+72 < 1           size={u(props.size)}
+73 < 1           muted={u(props.muted)}
+74 < 1           num={u(props.num)}
+75 < 1           mono={u(props.mono)}
+76 < 1           truncate={u(props.truncate)}
+77 < 1         >
+78 < 1           {props.text}
+79 < 1         </Text>
+80 < 1       </div>
+69 < 2       <Text
+70 < 2         size={u(props.size)}
+71 < 2         muted={u(props.muted)}
+72 < 2         num={u(props.num)}
+73 < 2         mono={u(props.mono)}
+74 < 2         truncate={u(props.truncate)}
+75 < 2       >
+76 < 2         {props.text}
+77 < 2       </Text>
 78 < 1     ),
-79 < 1     Badge: ({ props }) => <Badge tone={u(props.tone)}>{props.text}</Badge>,
+80 > 1     Badge: ({ props }) => (
+81 < 1       <span data-part="text">
+82 < 1         <Badge tone={u(props.tone)}>{props.text}</Badge>
+83 < 1       </span>
+84 < 1     ),
+79 < 2     Badge: ({ props }) => <Badge tone={u(props.tone)}>{props.text}</Badge>,
 80 < 1     Empty: ({ props }) => <Empty title={props.title}>{u(props.text)}</Empty>,
 81 < 1     Separator: () => <Separator />,
 82 < 1     ActionButton: ({ props, emit }) => {
@@ -117,7 +143,7 @@
 113 > 1     ActionSelect: ({ props, emit }) => {
 114 < 1       const { run, busy } = useRun(props.action, props.args)
 115 < 1       const options = props.options.map((row) => ({ value: String(row.id ?? ''), label: String(row[props.optionLabel] ?? '') }))
-117 > 1       // Its words show above it, as a text box's do; they are also its accessible name.
+117 > 2       // Its words show above it, as a text box's do; they are also its accessible name.
 116 < 1       return (
 118 > 1         <Field label={props.label}>
 119 < 1           {(id, describedBy) => (

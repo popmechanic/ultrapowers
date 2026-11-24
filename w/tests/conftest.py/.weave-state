@@ -1,0 +1,31 @@
+0 < 2 """Suite-wide collection order.
+1 < 2 
+2 < 2 One thing lives here because it belongs to no single test file:
+3 < 2 `pytest_collection_modifyitems` — the fleet bridge goes to the FRONT.
+4 < 2 `--dist load` hands items to workers in collection order, so the file
+5 < 2 carrying the slowest items must start at t=0 or it becomes the straggler
+6 < 2 every other worker waits on.
+7 < 2 
+8 < 2 And one environment setting: `ULTRAPOWERS_HOME` points at a fresh empty
+9 < 2 directory at import, so no exam that reaches Jev (`check_provenance.py`,
+10 < 2 `routing.py`) finds a real key — every reading is a quick null.
+11 < 2 """
+12 < 1 import os
+13 < 1 import tempfile
+14 < 1 
+15 < 1 os.environ["ULTRAPOWERS_HOME"] = tempfile.mkdtemp(prefix="ultrapowers-home-")
+16 < 1 
+17 < 1 BRIDGE = "test_fleet_suite.py"
+18 < 1 
+19 < 1 
+20 < 1 def pytest_collection_modifyitems(session, config, items):
+21 < 2     """Collect the fleet .mjs bridge first, everything else in its own order.
+22 < 2 
+23 < 2     A stable partition: the bridge's items keep their (slowest-first) order and
+24 < 2     so does the tail, so this only decides who starts at t=0.
+25 < 2     """
+26 < 1     bridge = [item for item in items if item.fspath.basename == BRIDGE]
+27 < 1     if bridge:
+28 < 1         items[:] = bridge + [item for item in items
+29 < 1                              if item.fspath.basename != BRIDGE]
+30 < 1 

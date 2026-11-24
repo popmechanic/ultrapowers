@@ -1,23 +1,24 @@
-0 < 1 /**
-1 < 1  * factory/view.mjs — the run's finished picture (pure).
-2 < 1  *
-3 < 1  * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
-4 < 1  * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
-6 > 1  * re-exports it. `renderView` is the run's view, which the boot writes through `record.mjs view`: that projection plus
+0 < 2 /**
+1 < 2  * factory/view.mjs — the run's finished picture (pure).
+2 < 2  *
+3 < 2  * `projectRun` reads a run's `events.jsonl` rows, its `status.json` and the plan's parse into the
+4 < 2  * run's state, each task's state and a timeline of every row worth a line; `fleet/run-read.mjs`
+6 > 2  * re-exports it. `renderView` is the run's view, which the boot writes through `record.mjs view`: that projection plus
 5 < 2  * re-exports it. `renderView` is what the engine writes as the run's view: that projection plus
-6 < 1  * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
-7 < 1  * here reads a file; the engine may not import `fleet/`, so nothing here does either.
-8 < 1  */
-9 < 1 
+6 < 2  * each task's wave, deps, last claiming agent and proof, and the status page's cells. Nothing
+7 < 2  * here reads a file; the engine may not import `fleet/`, so nothing here does either.
+8 < 2  */
+9 < 2 
 10 < 1 const short = (text, n) => { const s = String(text ?? '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1) + '…' : s }
 11 < 1 
-12 < 1 /** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
-13 < 1  *  task the line belongs to, null for a line about the whole run. */
+12 < 2 /** One timeline line for an engine row, or null for a row that is not worth one. `task` is the
+13 < 2  *  task the line belongs to, null for a line about the whole run. */
 14 < 1 function lineOf (e) {
 15 < 1   const k = e.kind
 16 < 1   if (k === 'session:start') return { task: e.task, what: `claimed by ${e.agent}` }
 17 < 1   if (k === 'session:end') {
-18 < 1     if (e.objected) return null   // the `objection` row says it
+19 > 1     if (e.objected) return null
+18 < 2     if (e.objected) return null   // the `objection` row says it
 19 < 1     if (e.released) return { task: e.task, what: `${e.agent} gave it back: ${short(e.released, 140)}` }
 20 < 1     if (e.done) return { task: e.task, what: `done by ${e.agent}` }
 21 < 1     return null
@@ -34,7 +35,7 @@
 32 < 1   if (k === 'loose-task') return { task: 'L:loose', what: `added by the engine: clean up ${(e.paths || []).join(', ')}` }
 33 < 1   if (k === 'settled') return { task: null, what: `settled green at ${e.snap}` }
 34 < 1   if (k === 'terminal') return { task: null, what: `ended ${e.pr}: ${short(e.why, 200)}` }
-36 > 1   // `refold` is a past run's name for the catch-up row (before 2026-11-15)
+36 > 2   // `refold` is a past run's name for the catch-up row (before 2026-11-15)
 37 < 1   if (k === 'catchup' || k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
 35 < 2   if (k === 'refold') return { task: null, what: e.ok ? 'caught up to a moved main' : `could not catch up to main: ${short(e.reason, 120)}` }
 36 < 1   if (k === 'publish:pr') return { task: null, what: `pull request ${e.draft ? 'opened as a draft' : 'opened'}: ${e.url}` }
@@ -42,7 +43,7 @@
 38 < 1   return null
 39 < 1 }
 40 < 1 
-41 < 1 /** A task's state after a line: what the line says happened to it. */
+41 < 2 /** A task's state after a line: what the line says happened to it. */
 42 < 1 function stateAfter (what, was) {
 43 < 1   if (what.startsWith('claimed by ')) return 'claimed'
 44 < 1   if (what.startsWith('done by ')) return 'done'
@@ -52,13 +53,13 @@
 48 < 1   return was
 49 < 1 }
 50 < 1 
-51 < 1 /**
-52 < 1  * `{ run, target, state, phase, pr, merged, tasks, timeline, cursor }` for one run, from its
-53 < 1  * `events.jsonl` rows, its `status.json` and, when given, the plan's parse (for task titles).
-54 < 1  * `tasks` is every task the plan names and every one the engine added, each `{ id, title, state,
-55 < 1  * last, lastAt }`; `timeline` is one `{ n, at, task, what }` per line, `n` the row's 1-based
-56 < 1  * place in the log; `cursor` is how many rows were read.
-57 < 1  */
+51 < 2 /**
+52 < 2  * `{ run, target, state, phase, pr, merged, tasks, timeline, cursor }` for one run, from its
+53 < 2  * `events.jsonl` rows, its `status.json` and, when given, the plan's parse (for task titles).
+54 < 2  * `tasks` is every task the plan names and every one the engine added, each `{ id, title, state,
+55 < 2  * last, lastAt }`; `timeline` is one `{ n, at, task, what }` per line, `n` the row's 1-based
+56 < 2  * place in the log; `cursor` is how many rows were read.
+57 < 2  */
 58 < 1 export function projectRun ({ run, target, rows, status = null, plan = null }) {
 59 < 1   const tasks = new Map()
 60 < 1   const titled = new Map((plan && Array.isArray(plan.tasks) ? plan.tasks : []).map((t) => [String(t.id), t.title]))
@@ -97,8 +98,8 @@
 93 < 1   return Date.parse(b) > Date.parse(a) ? b : a
 94 < 1 }
 95 < 1 
-96 < 1 /** A `proof` row's reading: 0 when every exit is 0 and no error was caught, else the first
-97 < 1  *  non-zero exit, else 1. */
+96 < 2 /** A `proof` row's reading: 0 when every exit is 0 and no error was caught, else the first
+97 < 2  *  non-zero exit, else 1. */
 98 < 1 function proofOf (e) {
 99 < 1   const exits = Array.isArray(e.exits) ? e.exits : []
 100 < 1   const errs = Array.isArray(e.errs) ? e.errs : []
@@ -107,15 +108,15 @@
 103 < 1   return errs.length ? 1 : 0
 104 < 1 }
 105 < 1 
-106 < 1 /**
-107 < 1  * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
-108 < 1  * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
-110 > 1  * last, lastAt }` plus `wave` (its 1-based layer in the plan's dependency order, the parse's own
-111 < 1  * `wave`; one past the last for a task the plan does not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
+106 < 2 /**
+107 < 2  * The run's view: `{ view: 1, run, target, state, phase, pr, merged, error, startedAt, updatedAt,
+108 < 2  * heardAt, costUsd, tasks, timeline, cursor }`. Each task is `projectRun`'s `{ id, title, state,
+110 > 2  * last, lastAt }` plus `wave` (its 1-based layer in the plan's dependency order, the parse's own
+111 < 2  * `wave`; one past the last for a task the plan does not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
 109 < 2  * last, lastAt }` plus `wave` (its 1-based launch wave, one past the last for a task the plan does
 110 < 2  * not name), `deps` (the sorted ids it waits on), `agent` (its last claimer) and `proof` (its last
-111 < 1  * `proof` row's reading, null without one).
-112 < 1  */
+111 < 2  * `proof` row's reading, null without one).
+112 < 2  */
 113 < 1 export function renderView ({ run, target, rows, status = null, plan = null, summary = null }) {
 114 < 1   const p = projectRun({ run, target, rows, status, plan })
 115 < 1   const list = Array.isArray(rows) ? rows : []

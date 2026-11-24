@@ -1,0 +1,144 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """The boot clock (fast-boot spec §1): per run, the seconds from launch to its first builder's
+2 < 2 claim. Not a test: nothing runs it automatically; run it to re-read the answer over newer runs.
+3 < 2 
+4 < 2     python3 evals/readings/boot_clock.py --remote <evidence repository URL> --slug <owner-repo> <run>...
+5 < 2 
+6 < 2 Launch is the committer time of the run's parentless plan commit (the launcher pushes it one
+7 < 2 second before its lobby `new`); the first claim is the `ts` of the first `session:start` row of
+8 < 2 `runs/<slug>/<N>/events.jsonl` at the tag `<slug>/run-<N>`. Per run it prints
+9 < 2 `run-<N> launch_to_first_claim_s=<s>`, then, when the run's folder carries `fleet-setup.log` or
+10 < 2 `fleet-boot.log`, one line per stamped log line: its step and its seconds since the plan commit.
+11 < 2 A run it cannot read (no tag, no `events.jsonl`, no `session:start` row, or one whose `ts` is
+12 < 2 missing or does not parse) prints one `run-<N> skipped: <reason>` line and the reading goes on.
+13 < 2 The last line is
+14 < 2 `n=<runs read> of=<runs asked> window=run-<first read>..run-<last read> median_s=<s>`, so a gap
+15 < 2 shows. The remote is reached once before any run; when it cannot be, the tool prints one line
+16 < 2 naming it and exits non-zero, rather than skipping every run. The tags are fetched blobless into
+17 < 2 a temporary repository of the tool's own, deleted after.
+18 < 2 
+19 < 2 Two clocks: launch is the laptop's commit clock, the claim and the log stamps are the VM's clock,
+20 < 2 so every seconds figure carries whatever skew lies between the two."""
+21 < 1 import argparse, datetime, json, os, re, shutil, statistics, subprocess, sys, tempfile
+22 < 1 
+24 > 1 DESCRIPTION = ("The boot clock: per run, the seconds from launch to its first builder's claim, "
+25 < 1                "read from the evidence repository.")
+23 < 1 LOGS = ("fleet-setup.log", "fleet-boot.log")
+24 < 2 # Never wait on a person: no credential prompt, no ssh host-key question, and a bound on every call.
+25 < 1 GIT_ENV = {**os.environ, "GIT_TERMINAL_PROMPT": "0",
+26 < 1            "GIT_SSH_COMMAND": "ssh -o BatchMode=yes -o ConnectTimeout=15"}
+28 > 1 REACH_S = 30
+29 < 1 GIT_S = 120
+27 < 2 REACH_S = 30     # the one remote check
+28 < 2 GIT_S = 120      # any other git call, a blob fetch included
+29 < 1 STAMP = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:?\d\d)?)\s+(.*)$")
+30 < 1 
+31 < 1 
+32 < 1 class Unreadable(Exception):
+34 > 1     pass
+33 < 2     """A run the tool cannot read; the reading skips it and says why."""
+34 < 1 
+35 < 1 
+36 < 1 def git(repo, *a, check=True):
+37 < 1     try:
+38 < 1         r = subprocess.run(["git", "-C", repo, *a], capture_output=True, env=GIT_ENV, timeout=GIT_S)
+39 < 1     except subprocess.TimeoutExpired:
+40 < 1         raise Unreadable(f"git {' '.join(a)}: no answer within {GIT_S} s")
+41 < 1     if check and r.returncode:
+42 < 1         raise Unreadable(f"git {' '.join(a)}: {r.stderr.decode('utf-8', 'replace').strip()}")
+43 < 1     return r.stdout.decode("utf-8", "replace") if not r.returncode else None
+44 < 1 
+45 < 1 
+46 < 1 def when(s):
+47 < 2     """An ISO time, second- or sub-second-resolution, `Z` or offset (naive reads as UTC)."""
+48 < 1     s = s.strip().replace("Z", "+00:00")
+49 < 1     m = re.match(r"^(.*T\d\d:\d\d:\d\d)(\.\d+)?(.*)$", s)
+51 > 1     if m and m.group(2):
+50 < 2     if m and m.group(2):                  # fromisoformat before 3.11 takes 3 or 6 digits only
+51 < 1         s = m.group(1) + (m.group(2) + "000000")[:7] + m.group(3)
+52 < 1     t = datetime.datetime.fromisoformat(s)
+53 < 1     return t if t.tzinfo else t.replace(tzinfo=datetime.timezone.utc)
+54 < 1 
+55 < 1 
+56 < 1 def read_run(repo, remote, slug, n):
+57 < 1     tag = f"{slug}/run-{n}"
+58 < 1     git(repo, "fetch", "-q", "--filter=blob:none", remote, f"refs/tags/{tag}:refs/tags/{tag}")
+59 < 1     root = git(repo, "rev-list", "--max-parents=0", tag).split()
+60 < 1     plans = [c for c in root if git(repo, "log", "-1", "--format=%s", c).startswith("ultrapowers plan")]
+61 < 1     plan = (plans or root)[0]
+62 < 1     launch = datetime.datetime.fromtimestamp(int(git(repo, "log", "-1", "--format=%ct", plan)),
+63 < 1                                              datetime.timezone.utc)
+64 < 1     folder = f"runs/{slug}/{n}"
+65 < 1     claim = None
+66 < 1     for line in git(repo, "show", f"{tag}:{folder}/events.jsonl").splitlines():
+67 < 1         if line.strip().startswith("{"):
+68 < 1             try:
+69 < 1                 e = json.loads(line)
+70 < 1             except ValueError:
+71 < 1                 continue
+72 < 1             if e.get("kind") == "session:start":
+73 < 1                 try:
+74 < 1                     claim = when(e["ts"])
+75 < 1                 except (KeyError, TypeError, AttributeError, ValueError):
+76 < 1                     raise Unreadable(f"first session:start row in {folder}/events.jsonl has no readable ts: "
+77 < 1                                      f"{e.get('ts')!r}")
+78 < 1                 break
+79 < 1     if claim is None:
+80 < 1         raise Unreadable(f"no session:start row in {folder}/events.jsonl")
+81 < 1     out = [f"run-{n} launch_to_first_claim_s={(claim - launch).total_seconds():.1f}"]
+82 < 1     for log in LOGS:
+83 < 1         text = git(repo, "show", f"{tag}:{folder}/{log}", check=False)
+84 < 1         for line in (text or "").splitlines():
+85 < 1             m = STAMP.match(line)
+86 < 1             if m:
+87 < 1                 out.append(f"  {log} {m.group(2).strip()} s={(when(m.group(1)) - launch).total_seconds():.1f}")
+88 < 1     return (claim - launch).total_seconds(), out
+89 < 1 
+90 < 1 
+91 < 1 def main():
+93 > 1     ap = argparse.ArgumentParser(description=DESCRIPTION)
+92 < 2     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+93 < 1     ap.add_argument("--remote", required=True, help="evidence repository: any git URL or path")
+94 < 1     ap.add_argument("--slug", required=True, help="the run's <owner-repo>")
+95 < 1     ap.add_argument("runs", nargs="+", type=int)
+96 < 1     a = ap.parse_args()
+97 < 1     runs = sorted(set(a.runs))
+98 < 1     repo = tempfile.mkdtemp(prefix="boot_clock-")
+99 < 1     try:
+100 < 1         try:
+101 < 1             git(repo, "init", "-q")
+102 < 2             # The fetch URL as a promisor remote, so blobs the blobless fetch skipped load on demand.
+103 < 1             git(repo, "remote", "add", "origin", a.remote)
+104 < 1             git(repo, "config", "remote.origin.promisor", "true")
+105 < 1             git(repo, "config", "remote.origin.partialclonefilter", "blob:none")
+106 < 1         except Unreadable as e:
+107 < 1             sys.exit(str(e))
+108 < 2         # Reach the remote once, before any run: an unreachable remote is not n=0.
+109 < 1         try:
+110 < 1             r = subprocess.run(["git", "-C", repo, "ls-remote", "-q", "--exit-code", "origin", "HEAD"],
+111 < 1                                capture_output=True, env=GIT_ENV, timeout=REACH_S)
+112 < 1         except subprocess.TimeoutExpired:
+113 < 1             sys.exit(f"cannot reach the record at {a.remote}: no answer within {REACH_S} s")
+115 > 1         if r.returncode not in (0, 2):
+114 < 2         if r.returncode not in (0, 2):    # 2: reached, but no HEAD ref
+115 < 1             err = " ".join(r.stderr.decode("utf-8", "replace").split())
+116 < 1             sys.exit(f"cannot reach the record at {a.remote}: {err}")
+117 < 1         read = []
+118 < 1         for n in runs:
+119 < 1             try:
+120 < 1                 s, lines = read_run(repo, "origin", a.slug, n)
+121 < 1             except Unreadable as e:
+122 < 1                 print(f"run-{n} skipped: {' '.join(str(e).split())}", flush=True)
+123 < 1                 continue
+124 < 1             read.append((n, s))
+125 < 1             print("\n".join(lines), flush=True)
+126 < 1     finally:
+127 < 1         shutil.rmtree(repo, ignore_errors=True)
+128 < 1     window = f"run-{read[0][0]}..run-{read[-1][0]}" if read else "none"
+129 < 1     median = f"{statistics.median(s for _, s in read):.1f}" if read else "none"
+130 < 1     print(f"n={len(read)} of={len(runs)} window={window} median_s={median}")
+131 < 1 
+132 < 1 
+133 < 1 if __name__ == "__main__":
+134 < 1     main()
+135 < 1 

@@ -1,0 +1,102 @@
+0 < 2 // fleet/tests/gate_jev_replay_probe.mjs — a live probe, run by hand on the laptop (see PROBES.md): every
+1 < 2 // labelled gate disagreement in the operator's untracked plans, re-read through the live Jev with the
+2 < 2 // gate as it stands now, beside two known-bad controls that must still read `fail`.
+3 < 2 //
+4 < 2 //   node fleet/tests/gate_jev_replay_probe.mjs [dir] [reps]   (dir: <repo>/docs/superpowers/plans; reps: 1;
+5 < 2 //                                                              key in $ULTRAPOWERS_HOME/typesafe.env)
+6 < 2 //
+7 < 2 // For each `<stem>.gate-verdicts.json` with its `<stem>.md` beside it, each round where agent and jev
+8 < 2 // both read and either differ with `right` set (jev failed it) or both read `fail` (an agreed fail, #1528):
+9 < 2 // the diet is rebuilt by extract_gate_input.py (with the tally's base when the round was asked `pinned`)
+10 < 2 // and skipped when its hash moved; gate_jev.ts reads it `reps` times, never `--record`. Spends
+11 < 2 // reps × (rounds + 2) calls. Exit 0 when both controls read `fail` in a majority, no agreed fail now
+12 < 2 // passes and at least two thirds of the wrong fails now pass; 2 no key, or no wrong or agreed fail
+13 < 2 // replayable; 1 otherwise. The scoring is _gate_replay_helpers.mjs.
+14 < 1 import { spawnSync } from 'node:child_process'
+15 < 1 import fs from 'node:fs'
+16 < 1 import os from 'node:os'
+17 < 1 import path from 'node:path'
+18 < 1 import { fileURLToPath } from 'node:url'
+19 < 1 import { exitCode, majority, replayRounds, score, summary } from './_gate_replay_helpers.mjs'
+20 < 1 
+21 < 1 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+22 < 1 const home = process.env.ULTRAPOWERS_HOME || path.join(os.homedir(), '.ultrapowers')
+23 < 1 const envFile = path.join(home, 'typesafe.env')
+24 < 1 const keyLine = fs.existsSync(envFile) && fs.readFileSync(envFile, 'utf8').split('\n').find((l) => l.startsWith('TYPESAFE_API_KEY='))
+25 < 1 if (!keyLine) { console.log(`gate_jev_replay_probe: no TYPESAFE_API_KEY in ${envFile}`); process.exit(2) }
+26 < 1 
+27 < 1 const dir = path.resolve(process.argv[2] || path.join(REPO, 'docs', 'superpowers', 'plans'))
+28 < 1 const reps = Number(process.argv[3] || 1)
+29 < 1 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-replay-'))
+30 < 1 
+31 < 2 // gate_jev.ts on one diet, `reps` times: the verdict off each run's last stdout line.
+32 < 1 let n = 0
+33 < 1 function readings(diet) {
+34 < 1   const file = path.join(tmp, `diet-${n++}.json`)
+35 < 1   fs.writeFileSync(file, JSON.stringify(diet))
+36 < 1   const out = []
+37 < 1   for (let i = 0; i < reps; i++) {
+38 < 1     const r = spawnSync('bun', ['skills/ultrawrite/stories/gate_jev.ts', file], { cwd: REPO, env: process.env, encoding: 'utf8' })
+39 < 1     const last = (r.stdout || '').trim().split('\n').pop()
+40 < 1     let v = null
+41 < 1     try { v = JSON.parse(last).verdict } catch {}
+42 < 1     out.push(v ?? 'none')
+43 < 1   }
+44 < 1   return out
+45 < 1 }
+46 < 1 
+47 < 1 const stems = []
+48 < 1 const total = { wrong: 0, wrongPass: 0, right: 0, rightFail: 0, agreed: 0, agreedPass: 0 }
+49 < 1 for (const f of (fs.existsSync(dir) ? fs.readdirSync(dir) : []).filter((x) => x.endsWith('.gate-verdicts.json')).sort()) {
+50 < 1   const stem = f.slice(0, -'.gate-verdicts.json'.length)
+51 < 1   const plan = path.join(dir, `${stem}.md`)
+52 < 1   if (!fs.existsSync(plan)) continue
+53 < 1   let rec
+54 < 1   try { rec = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) } catch { continue }
+55 < 1   const base = rec?.tally?.base
+56 < 1   const items = replayRounds(rec).filter((item) => {
+57 < 1     const args = ['skills/ultrawrite/scripts/extract_gate_input.py', plan, '--task', item.task]
+58 < 1     if (typeof item.r.pinned === 'number' && base) args.push('--base', String(base))
+59 < 1     const x = spawnSync('python3', args, { cwd: REPO, encoding: 'utf8' })
+60 < 1     if (x.status !== 0) return false
+61 < 1     try { item.diet = JSON.parse(x.stdout) } catch { return false }
+62 < 1     return item.diet.hash === item.r.hash
+63 < 1   })
+64 < 1   if (items.length) stems.push(stem)
+65 < 1   const s = score(items, (item) => {
+66 < 1     const now = readings(item.diet)
+67 < 1     console.log(`${stem} task ${item.task} round ${item.round} ${item.side} was=${item.r.jev} now=${now.join(',')}`)
+68 < 1     return now
+69 < 1   })
+70 < 1   for (const k of Object.keys(total)) total[k] += s[k]
+71 < 1 }
+72 < 1 
+73 < 1 const CONTROLS = {
+74 < 1   'uncaught-output': {
+75 < 1     task: 'uncaught-output', hash: 'control',
+76 < 1     claim: 'The report prints its total. (derived)\nMachine: M1. `node report.mjs` exits 0. M2. `node report.mjs` prints exactly `total 3`.',
+77 < 1     proof: '- Run: node report.mjs [M1]\n- Legs: (a) the report exits 0 [M1]; (b) it prints the total [M2].',
+78 < 1   },
+79 < 1   'pinned-by-sibling': {
+80 < 1     task: 'pinned-by-sibling', hash: 'control',
+81 < 1     claim: 'The census moves to the new paths. (derived)\nMachine: M1. `census` prints `skills/new/a.md` and never `skills/old/a.md`. M2. `node fleet/tests/census.test.mjs` exits 0.',
+82 < 1     proof: '- Run: node skills/census.mjs | grep -qx skills/new/a.md [M1]\n- Run: node fleet/tests/census.test.mjs [M2]\n- Legs: (a) it prints the new path [M1]; (b) the census test still passes [M2].',
+83 < 1     base: { rev: 'x', files: [
+84 < 1       { path: 'skills/census.mjs', status: 'present', lines: 30, headings: [], excerpt: "12: const ROOT = 'skills/old'", truncated: false, own: 'modify' },
+85 < 1       { path: 'fleet/tests/census.test.mjs', status: 'present', lines: 42, headings: ["  test('census lists the old paths', () => {"],
+86 < 1         excerpt: "12:   assert.deepEqual(paths, ['skills/old/a.md', 'skills/old/b.md'])\n13:   assert.equal(code, 0)", truncated: false },
+87 < 1     ] },
+88 < 1   },
+89 < 1 }
+90 < 1 let controlsOk = true
+91 < 1 for (const [name, diet] of Object.entries(CONTROLS)) {
+92 < 1   const now = readings(diet)
+93 < 1   if (majority(now) !== 'fail') controlsOk = false
+94 < 1   console.log(`control ${name} now=${now.join(',')}`)
+95 < 1 }
+96 < 1 fs.rmSync(tmp, { recursive: true, force: true })
+97 < 1 
+98 < 1 const dates = stems.length ? `${stems[0].slice(0, 10)}..${stems[stems.length - 1].slice(0, 10)}` : '-'
+99 < 1 console.log(summary(total, dates, controlsOk))
+100 < 1 process.exit(exitCode(total, controlsOk))
+101 < 1 

@@ -1,9 +1,9 @@
-0 < 1 /**
-1 < 1  * A stories-v1 plan with a `## Numbers` section is refused at launch, before
-2 < 1  * the compiler runs: the fleet has no Numbers checker yet (story-planning,
-3 < 1  * after sub-project 2). A stories-v1 plan without one launches: its probes
-4 < 1  * are read by factory/stack/tinyapp/check.ts (2026-09-27).
-5 < 1  */
+0 < 2 /**
+1 < 2  * A stories-v1 plan with a `## Numbers` section is refused at launch, before
+2 < 2  * the compiler runs: the fleet has no Numbers checker yet (story-planning,
+3 < 2  * after sub-project 2). A stories-v1 plan without one launches: its probes
+4 < 2  * are read by factory/stack/tinyapp/check.ts (2026-09-27).
+5 < 2  */
 6 < 1 import assert from 'node:assert/strict'
 7 < 1 import fs from 'node:fs'
 8 < 1 import path from 'node:path'
@@ -14,8 +14,8 @@
 13 < 1   answer, cleanup, makeEvidenceRepo, makeExec, makeTargetRepo, sshRule, tempDir, thrown, vmsPayload
 14 < 1 } from './_lobby_helpers.mjs'
 15 < 1 
-16 < 1 // The operator's evidence repository: an owner unlike the target's, its URL
-17 < 1 // routed to a local bare of its own.
+16 < 2 // The operator's evidence repository: an owner unlike the target's, its URL
+17 < 2 // routed to a local bare of its own.
 18 < 1 const EVIDENCE = 'ops/evidence'
 19 < 1 const EVIDENCE_URL = `https://github.com/${EVIDENCE}.git`
 20 < 1 const INTEGRATIONS = answer([
@@ -56,9 +56,9 @@
 54 < 1 assert.match(String(err.message), /has a Numbers section; the fleet has no Numbers checker yet/)
 55 < 1 assert.ok(!exec.calls.some((c) => /python3/.test(c.line)), 'the plan is never compiled')
 56 < 1 
-57 < 1 // A claims-v1 plan that merely quotes `**Grammar:** stories-v1` inside a
-58 < 1 // fenced example is not refused with the stories message — the launcher
-59 < 1 // reads the plan header's own Grammar line, not any occurrence in the body.
+57 < 2 // A claims-v1 plan that merely quotes `**Grammar:** stories-v1` inside a
+58 < 2 // fenced example is not refused with the stories message — the launcher
+59 < 2 // reads the plan header's own Grammar line, not any occurrence in the body.
 60 < 1 const root2 = tempDir('stories-fenced-')
 61 < 1 const repo2 = makeTargetRepo({ root: root2, files: { 'README.md': 'x\n' } })
 62 < 1 repo2.git(['remote', 'set-url', 'origin', 'https://github.com/o/r.git'])

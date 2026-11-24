@@ -1,17 +1,17 @@
-0 < 1 """The claims-v1 parser: `skills/ultrapowers/scripts/plan_parse.py`.
-1 < 1 
-3 > 1 `plan_parse.py` reduces a claims-v1 plan to the fields the engine needs
-4 < 1 (`tasks`, `dag_edges`, `width`, ...) without ever touching the sibling
+0 < 2 """The claims-v1 parser: `skills/ultrapowers/scripts/plan_parse.py`.
+1 < 2 
+3 > 2 `plan_parse.py` reduces a claims-v1 plan to the fields the engine needs
+4 < 2 (`tasks`, `dag_edges`, `width`, ...) without ever touching the sibling
 2 < 2 `plan_parse.py` reduces a claims-v1 plan to the nine fields the engine needs
 3 < 2 (`tasks`, `dag_edges`, `launch_waves`) without ever touching the sibling
-4 < 1 `<stem>.gate-verdicts.json` `plan_check.py` reads (and the old compiler required).
-5 < 1 This exam never imports the module under test — it is a script invoked as
-6 < 1 `python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>` — so every
-7 < 1 assertion below runs it as a subprocess and reads stdout/stderr/the exit
-8 < 1 code, exactly as `factory/engine.mjs` would.
-9 < 1 
-10 < 1 Every assertion is tagged with the Machine clause (M1-M5) it proves.
-11 < 1 """
+4 < 2 `<stem>.gate-verdicts.json` `plan_check.py` reads (and the old compiler required).
+5 < 2 This exam never imports the module under test — it is a script invoked as
+6 < 2 `python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>` — so every
+7 < 2 assertion below runs it as a subprocess and reads stdout/stderr/the exit
+8 < 2 code, exactly as `factory/engine.mjs` would.
+9 < 2 
+10 < 2 Every assertion is tagged with the Machine clause (M1-M5) it proves.
+11 < 2 """
 12 < 1 import json
 13 < 1 import subprocess
 14 < 1 import sys
@@ -22,19 +22,19 @@
 19 < 1 ROOT = Path(__file__).resolve().parents[1]
 20 < 1 PARSER = ROOT / "skills/ultrapowers/scripts/plan_parse.py"
 21 < 1 
-22 < 1 # The three claims-v1 fixtures that carry a `.gate-verdicts.json` record
-23 < 1 # beside them — parsed with and without it by M1.
+22 < 2 # The three claims-v1 fixtures that carry a `.gate-verdicts.json` record
+23 < 2 # beside them — parsed with and without it by M1.
 24 < 1 RECORD_FIXTURES = [
 25 < 1     ROOT / "evals/fixtures/claims/plan.md",
 26 < 1     ROOT / "tests/fixtures/plans/2026-09-01-511-attempt-racing.md",
 27 < 1     ROOT / "tests/fixtures/plans/2026-09-02-papercut-drain-2.md",
 28 < 1 ]
 29 < 1 
-31 > 1 # Every field a task object prints (M1).
+31 > 2 # Every field a task object prints (M1).
 32 < 1 TASK_FIELDS = {"id", "title", "files", "wave", "proofRuns",
 33 < 1                "proofRunClauses", "body"}
 34 < 1 
-35 < 1 # The printed object's keys (M1).
+35 < 2 # The printed object's keys (M1).
 36 < 1 TOP_KEYS = {"tasks", "dag_edges", "width", "checks", "bootstrapCmd", "publish"}
 30 < 2 # Every field a task object prints (M1): a `- Test:`/`- Guard:` bullet or an
 31 < 2 # `**Exam command:**` header adds no field here -- cut three (2026-09-22)
@@ -43,10 +43,10 @@
 34 < 2 TASK_FIELDS = {"id", "title", "files", "depends_on", "proofRuns",
 35 < 2                "proofRunClauses", "interfaces", "body"}
 36 < 1 
-37 < 1 
-38 < 1 # --------------------------------------------------------------------------- #
-39 < 1 # Subprocess helpers.                                                         #
-40 < 1 # --------------------------------------------------------------------------- #
+37 < 2 
+38 < 2 # --------------------------------------------------------------------------- #
+39 < 2 # Subprocess helpers.                                                         #
+40 < 2 # --------------------------------------------------------------------------- #
 41 < 1 
 42 < 1 def run_parser(plan_path):
 43 < 1     return subprocess.run([sys.executable, str(PARSER), str(plan_path)],
@@ -54,8 +54,8 @@
 45 < 1 
 46 < 1 
 47 < 1 def parse_stdout_json(stdout):
-48 < 1     """The one JSON object `plan_parse.py` prints on stdout (M1): parsing
-49 < 1     fails loudly if stdout carries anything besides that one value."""
+48 < 2     """The one JSON object `plan_parse.py` prints on stdout (M1): parsing
+49 < 2     fails loudly if stdout carries anything besides that one value."""
 50 < 1     text = stdout.strip()
 51 < 1     obj, end = json.JSONDecoder().raw_decode(text)
 52 < 1     assert end == len(text), (
@@ -70,13 +70,13 @@
 61 < 1     assert proc.returncode == 0, proc.stdout + proc.stderr
 62 < 1     return parse_stdout_json(proc.stdout)
 63 < 1 
-64 < 1 
-65 < 1 # --------------------------------------------------------------------------- #
-66 < 1 # Minimal claims-v1 plan/task builders. Every task carries the full six-slot  #
-67 < 1 # body (Claim, Authorized-by, Interfaces, Context, Proof, Stale-if) so a      #
-68 < 1 # parser reading the grammar's whole shape never trips on an absent slot —   #
-69 < 1 # only the fields the Machine clauses examine are varied per test.           #
-70 < 1 # --------------------------------------------------------------------------- #
+64 < 2 
+65 < 2 # --------------------------------------------------------------------------- #
+66 < 2 # Minimal claims-v1 plan/task builders. Every task carries the full six-slot  #
+67 < 2 # body (Claim, Authorized-by, Interfaces, Context, Proof, Stale-if) so a      #
+68 < 2 # parser reading the grammar's whole shape never trips on an absent slot —   #
+69 < 2 # only the fields the Machine clauses examine are varied per test.           #
+70 < 2 # --------------------------------------------------------------------------- #
 71 < 1 
 73 > 1 def make_header(title="Exam fixture plan", bootstrap=None, checks=()):
 72 < 2 def make_header(title="Exam fixture plan", exam_command=None, bootstrap=None,
@@ -148,43 +148,47 @@
 131 < 1     return "\n".join(lines)
 132 < 1 
 133 < 1 
-134 < 1 # --------------------------------------------------------------------------- #
-135 < 1 # M1 — stdout shape, exit 0, indifferent to the sibling verdict record.       #
-136 < 1 # --------------------------------------------------------------------------- #
-137 < 1 
+134 < 2 # --------------------------------------------------------------------------- #
+135 < 2 # M1 — stdout shape, exit 0, indifferent to the sibling verdict record.       #
+136 < 2 # --------------------------------------------------------------------------- #
+137 < 2 
 138 < 1 @pytest.mark.parametrize("plan_path", RECORD_FIXTURES, ids=lambda p: p.stem)
 139 < 1 def test_m1_stdout_shape_with_and_without_verdict_record(plan_path, tmp_path):
 140 < 1     verdict_path = plan_path.with_name(plan_path.stem + ".gate-verdicts.json")
 141 < 1     assert verdict_path.exists(), "fixture setup: expected a sibling verdict record"
 142 < 1 
-143 < 1     # The record present, beside the fixture in its own directory.
+143 < 2     # The record present, beside the fixture in its own directory.
 144 < 1     proc_with = run_parser(plan_path)
-145 < 1     assert proc_with.returncode == 0, proc_with.stdout + proc_with.stderr  # [M1]
+146 > 1     assert proc_with.returncode == 0, proc_with.stdout + proc_with.stderr
+145 < 2     assert proc_with.returncode == 0, proc_with.stdout + proc_with.stderr  # [M1]
 146 < 1     obj_with = parse_stdout_json(proc_with.stdout)
-148 > 1     assert set(obj_with.keys()) == TOP_KEYS  # [M1]
+149 > 1     assert set(obj_with.keys()) == TOP_KEYS
+148 > 2     assert set(obj_with.keys()) == TOP_KEYS  # [M1]
 147 < 2     # Pin extended to `checks` and `bootstrapCmd` by this task. [M1] [cmds-M2]
 148 < 2     assert set(obj_with.keys()) == {"tasks", "dag_edges", "launch_waves",
 149 < 2                                     "checks", "bootstrapCmd", "publish"}
 150 < 1 
-151 < 1     # A copy of the fixture alone in tmp_path, with no sibling file at all.
+151 < 2     # A copy of the fixture alone in tmp_path, with no sibling file at all.
 152 < 1     tmp_plan = tmp_path / plan_path.name
 153 < 1     tmp_plan.write_text(plan_path.read_text())
 154 < 1     proc_without = run_parser(tmp_plan)
-155 < 1     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr  # [M1]
+156 > 1     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr
+155 < 2     assert proc_without.returncode == 0, proc_without.stdout + proc_without.stderr  # [M1]
 156 < 1     obj_without = parse_stdout_json(proc_without.stdout)
-158 > 1     assert set(obj_without.keys()) == TOP_KEYS  # [M1]
+159 > 1     assert set(obj_without.keys()) == TOP_KEYS
+158 > 2     assert set(obj_without.keys()) == TOP_KEYS  # [M1]
 157 < 2     assert set(obj_without.keys()) == {"tasks", "dag_edges", "launch_waves",
 158 < 2                                        "checks", "bootstrapCmd", "publish"}  # [M1] [cmds-M2]
 159 < 1 
-160 < 1     # Reading no file but the plan: the answer does not change when the
-161 < 1     # sibling verdict record vanishes. [M1]
+160 < 2     # Reading no file but the plan: the answer does not change when the
+161 < 2     # sibling verdict record vanishes. [M1]
 162 < 1     assert obj_with == obj_without
 163 < 1 
-164 < 1 
-165 < 1 # --------------------------------------------------------------------------- #
-167 > 1 # M2 — task entry shape and field derivation.                                 #
+164 < 2 
+165 < 2 # --------------------------------------------------------------------------- #
+167 > 2 # M2 — task entry shape and field derivation.                                 #
 166 < 2 # M2 — task/wave entry shape and field derivation.                            #
-167 < 1 # --------------------------------------------------------------------------- #
+167 < 2 # --------------------------------------------------------------------------- #
 168 < 1 
 169 < 1 def test_m2_task_and_wave_shape_on_widget_plan():
 170 < 1     plan_path = ROOT / "evals/fixtures/claims/plan.md"
@@ -213,20 +217,28 @@
 190 < 2                         "produces": ["`format_size(n: int) -> str`"]}),
 191 < 1     }
 192 < 1 
-193 < 1     assert [t["id"] for t in obj["tasks"]] == ["1", "2", "3"]  # [M2]
+194 > 1     assert [t["id"] for t in obj["tasks"]] == ["1", "2", "3"]
+193 < 2     assert [t["id"] for t in obj["tasks"]] == ["1", "2", "3"]  # [M2]
 194 < 1     for t in obj["tasks"]:
-195 < 1         assert set(t.keys()) == TASK_FIELDS  # [M2]
-196 < 1         assert isinstance(t["id"], str)  # [M2]
+196 > 1         assert set(t.keys()) == TASK_FIELDS
+197 < 1         assert isinstance(t["id"], str)
+195 < 2         assert set(t.keys()) == TASK_FIELDS  # [M2]
+196 < 2         assert isinstance(t["id"], str)  # [M2]
 197 < 2         assert t["depends_on"] == []  # [M2]
 198 < 1         exp = expected[t["id"]]
-199 < 1         assert t["title"] == exp["title"]  # [M2]
+200 > 1         assert t["title"] == exp["title"]
+201 < 1         assert t["files"] == exp["files"]
+202 < 1         assert t["files"] == sorted(t["files"])
+203 < 1         assert t["wave"] == exp["wave"]
+204 < 1     assert obj["width"] == 2
+199 < 2         assert t["title"] == exp["title"]  # [M2]
 200 < 2         # A task's `files` is `Create:` and `Modify:` paths only -- its own
 201 < 2         # `- Test:` bullet adds no path (cut three, 2026-09-22). [M2]
-202 < 1         assert t["files"] == exp["files"]  # [M2]
-203 < 1         assert t["files"] == sorted(t["files"])  # [M2]
-205 > 1         # Task 2 consumes what task 1 produces, so it sits one layer down. [M2]
-206 < 1         assert t["wave"] == exp["wave"]  # [M2]
-207 < 1     assert obj["width"] == 2  # [M2]
+202 < 2         assert t["files"] == exp["files"]  # [M2]
+203 < 2         assert t["files"] == sorted(t["files"])  # [M2]
+205 > 2         # Task 2 consumes what task 1 produces, so it sits one layer down. [M2]
+206 < 2         assert t["wave"] == exp["wave"]  # [M2]
+207 < 2     assert obj["width"] == 2  # [M2]
 204 < 2         assert t["interfaces"] == exp["interfaces"]  # [M2]
 205 < 2 
 206 < 2     for wave in obj["launch_waves"]:
@@ -274,10 +286,10 @@
 248 < 2     assert proc.returncode == 2, proc.stdout + proc.stderr
 249 < 2     assert "task 2: Type `%s` is never run" % ttype in proc.stderr, proc.stderr
 250 < 1 
-251 < 1 
-252 < 1 # --------------------------------------------------------------------------- #
-253 < 1 # M3 — the Interfaces-bullet token rule.                                      #
-254 < 1 # --------------------------------------------------------------------------- #
+251 < 2 
+252 < 2 # --------------------------------------------------------------------------- #
+253 < 2 # M3 — the Interfaces-bullet token rule.                                      #
+254 < 2 # --------------------------------------------------------------------------- #
 255 < 1 
 256 < 1 INTERFACE_TOKEN_CASES = [
 257 < 1     pytest.param("`catalog(sizes: list[int]) -> list[Widget]`", "catalog",
@@ -307,14 +319,16 @@
 281 < 1     obj = build_and_run(tmp_path, tasks)
 282 < 1     pairs = {(e["from"], e["to"]) for e in obj["dag_edges"]}
 283 < 1     if expect_edge:
-284 < 1         assert ("1", "2") in pairs  # [M3]
+285 > 1         assert ("1", "2") in pairs
+284 < 2         assert ("1", "2") in pairs  # [M3]
 285 < 1     else:
-286 < 1         assert pairs == set()  # [M3]
+287 > 1         assert pairs == set()
+286 < 2         assert pairs == set()  # [M3]
 287 < 1 
-288 < 1 
-289 < 1 # --------------------------------------------------------------------------- #
-290 < 1 # M4 — the edge rule and its precedence.                                      #
-291 < 1 # --------------------------------------------------------------------------- #
+288 < 2 
+289 < 2 # --------------------------------------------------------------------------- #
+290 < 2 # M4 — the edge rule and its precedence.                                      #
+291 < 2 # --------------------------------------------------------------------------- #
 292 < 1 
 293 < 1 def test_m4_write_after_create_edge(tmp_path):
 294 < 1     tasks = [
@@ -323,7 +337,8 @@
 297 < 1     ]
 298 < 1     obj = build_and_run(tmp_path, tasks)
 299 < 1     assert obj["dag_edges"] == [
-300 < 1         {"from": "1", "to": "2", "why": "write-after-create"}]  # [M4]
+301 > 1         {"from": "1", "to": "2", "why": "write-after-create"}]
+300 < 2         {"from": "1", "to": "2", "why": "write-after-create"}]  # [M4]
 301 < 1 
 302 < 1 
 303 < 1 def test_m4_interface_edge(tmp_path):
@@ -333,7 +348,8 @@
 307 < 1     ]
 308 < 1     obj = build_and_run(tmp_path, tasks)
 309 < 1     assert obj["dag_edges"] == [
-310 < 1         {"from": "1", "to": "2", "why": "interface"}]  # [M4]
+311 > 1         {"from": "1", "to": "2", "why": "interface"}]
+310 < 2         {"from": "1", "to": "2", "why": "interface"}]  # [M4]
 311 < 1 
 312 < 1 
 313 < 1 def test_m4_proof_run_edge(tmp_path):
@@ -344,7 +360,8 @@
 318 < 1     ]
 319 < 1     obj = build_and_run(tmp_path, tasks)
 320 < 1     assert obj["dag_edges"] == [
-321 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [M4]
+322 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+321 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [M4]
 322 < 1 
 323 < 1 
 324 < 1 def test_m4_write_after_create_wins_over_interface_for_the_pair(tmp_path):
@@ -353,8 +370,8 @@
 327 < 1         task_block("2", "B", modifies=["m4/p4.py"], consumes=["`g()`"]),
 328 < 1     ]
 329 < 1     obj = build_and_run(tmp_path, tasks)
-330 < 1     # Exactly one edge for the pair; the first-firing rule (write-after-
-331 < 1     # create) labels it, not the interface match that also holds. [M4]
+330 < 2     # Exactly one edge for the pair; the first-firing rule (write-after-
+331 < 2     # create) labels it, not the interface match that also holds. [M4]
 332 < 1     assert obj["dag_edges"] == [
 333 < 1         {"from": "1", "to": "2", "why": "write-after-create"}]
 334 < 1 
@@ -365,9 +382,9 @@
 339 < 1         task_block("2", "B", modifies=["m4/p5.py"], produces=["`h()`"]),
 340 < 1     ]
 341 < 1     obj = build_and_run(tmp_path, tasks)
-342 < 1     # A->B by write-after-create; B produces what A consumes would draw the
-343 < 1     # reverse B->A by interface, but A->B already reaches B, so the reverse
-344 < 1     # is not added. [M4]
+342 < 2     # A->B by write-after-create; B produces what A consumes would draw the
+343 < 2     # reverse B->A by interface, but A->B already reaches B, so the reverse
+344 < 2     # is not added. [M4]
 345 < 1     assert obj["dag_edges"] == [
 346 < 1         {"from": "1", "to": "2", "why": "write-after-create"}]
 347 < 1 
@@ -379,9 +396,9 @@
 353 < 1         task_block("2", "B", creates=["m4/b6.py"], consumes=["`k()`"]),
 354 < 1     ]
 355 < 1     obj = build_and_run(tmp_path, tasks)
-356 < 1     # A->B by interface (B consumes what A produces); A's Run: names B's own
-357 < 1     # file, which would draw the reverse B->A by proof-run, but A->B already
-358 < 1     # reaches B, so the reverse is not added. [M4]
+356 < 2     # A->B by interface (B consumes what A produces); A's Run: names B's own
+357 < 2     # file, which would draw the reverse B->A by proof-run, but A->B already
+358 < 2     # reaches B, so the reverse is not added. [M4]
 359 < 1     assert obj["dag_edges"] == [
 360 < 1         {"from": "1", "to": "2", "why": "interface"}]
 361 < 1 
@@ -392,13 +409,14 @@
 366 < 1         task_block("2", "B", modifies=["m4/shared.py"]),
 367 < 1     ]
 368 < 1     obj = build_and_run(tmp_path, tasks)
-369 < 1     assert obj["dag_edges"] == []  # [M4]
+370 > 1     assert obj["dag_edges"] == []
+369 < 2     assert obj["dag_edges"] == []  # [M4]
 370 < 1 
-371 < 1 
-372 < 1 # --------------------------------------------------------------------------- #
-373 < 1 # import-M1..M4 -- a probe's import draws the same proof-run edge a Run:     #
-374 < 1 # that names the sibling's file by path draws.                               #
-375 < 1 # --------------------------------------------------------------------------- #
+371 < 2 
+372 < 2 # --------------------------------------------------------------------------- #
+373 < 2 # import-M1..M4 -- a probe's import draws the same proof-run edge a Run:     #
+374 < 2 # that names the sibling's file by path draws.                               #
+375 < 2 # --------------------------------------------------------------------------- #
 376 < 1 
 377 < 1 def test_import_python_from_import_edge(tmp_path):
 378 < 1     tasks = [
@@ -409,7 +427,8 @@
 383 < 1     ]
 384 < 1     obj = build_and_run(tmp_path, tasks)
 385 < 1     assert obj["dag_edges"] == [
-386 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M1]
+387 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+386 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M1]
 387 < 1 
 388 < 1 
 389 < 1 def test_import_python_bare_import_dotted_module_edge(tmp_path):
@@ -420,7 +439,8 @@
 394 < 1     ]
 395 < 1     obj = build_and_run(tmp_path, tasks)
 396 < 1     assert obj["dag_edges"] == [
-397 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
+398 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+397 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
 398 < 1 
 399 < 1 
 400 < 1 def test_import_python_from_import_package_init_edge(tmp_path):
@@ -431,7 +451,8 @@
 405 < 1     ]
 406 < 1     obj = build_and_run(tmp_path, tasks)
 407 < 1     assert obj["dag_edges"] == [
-408 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
+409 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+408 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M2]
 409 < 1 
 410 < 1 
 411 < 1 def test_import_js_dynamic_import_edge(tmp_path):
@@ -443,7 +464,8 @@
 417 < 1     ]
 418 < 1     obj = build_and_run(tmp_path, tasks)
 419 < 1     assert obj["dag_edges"] == [
-420 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
+421 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+420 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
 421 < 1 
 422 < 1 
 423 < 1 def test_import_js_extensionless_specifier_edge(tmp_path):
@@ -454,7 +476,8 @@
 428 < 1     ]
 429 < 1     obj = build_and_run(tmp_path, tasks)
 430 < 1     assert obj["dag_edges"] == [
-431 < 1         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
+432 > 1         {"from": "1", "to": "2", "why": "proof-run"}]
+431 < 2         {"from": "1", "to": "2", "why": "proof-run"}]  # [import-M3]
 432 < 1 
 433 < 1 
 434 < 1 def test_import_of_module_no_sibling_creates_draws_no_edge(tmp_path):
@@ -465,12 +488,13 @@
 439 < 1                              'import make"']),
 440 < 1     ]
 441 < 1     obj = build_and_run(tmp_path, tasks)
-442 < 1     assert obj["dag_edges"] == []  # [import-M4]
+443 > 1     assert obj["dag_edges"] == []
+442 < 2     assert obj["dag_edges"] == []  # [import-M4]
 443 < 1 
-444 < 1 
-445 < 1 # --------------------------------------------------------------------------- #
-446 < 1 # M5 — Kahn layering, and the three loud refusals.                            #
-447 < 1 # --------------------------------------------------------------------------- #
+444 < 2 
+445 < 2 # --------------------------------------------------------------------------- #
+446 < 2 # M5 — Kahn layering, and the three loud refusals.                            #
+447 < 2 # --------------------------------------------------------------------------- #
 448 < 1 
 450 > 1 def test_m5_waves_are_kahn_layers_and_width_the_widest(tmp_path):
 449 < 2 def test_m5_launch_waves_kahn_layering_in_document_order(tmp_path):
@@ -480,17 +504,19 @@
 453 < 1         task_block("3", "C", creates=["m5/c.py"]),
 454 < 1     ]
 455 < 1     obj = build_and_run(tmp_path, tasks)
-457 > 1     assert {t["id"]: t["wave"] for t in obj["tasks"]} == {"1": 1, "2": 2, "3": 1}  # [M5]
-458 < 1     assert obj["width"] == 2  # [M5]
+458 > 1     assert {t["id"]: t["wave"] for t in obj["tasks"]} == {"1": 1, "2": 2, "3": 1}
+459 < 1     assert obj["width"] == 2
+457 > 2     assert {t["id"]: t["wave"] for t in obj["tasks"]} == {"1": 1, "2": 2, "3": 1}  # [M5]
+458 < 2     assert obj["width"] == 2  # [M5]
 456 < 2     wave_ids = [[t["id"] for t in wave] for wave in obj["launch_waves"]]
 457 < 2     assert wave_ids == [["1", "3"], ["2"]]  # [M5]
 458 < 1 
 459 < 1 
 460 < 1 def assert_is_the_scripts_own_refusal(proc):
-461 < 1     """A missing plan_parse.py also exits 2 with one stderr line naming the
-462 < 1     interpreter's own launch failure -- guard against mistaking that for a
-463 < 1     genuine M5 refusal, so an absent implementation reads as absent rather
-464 < 1     than as an accidental pass."""
+461 < 2     """A missing plan_parse.py also exits 2 with one stderr line naming the
+462 < 2     interpreter's own launch failure -- guard against mistaking that for a
+463 < 2     genuine M5 refusal, so an absent implementation reads as absent rather
+464 < 2     than as an accidental pass."""
 465 < 1     assert "No such file or directory" not in proc.stderr, (
 466 < 1         "stderr is the interpreter's launch failure, not the script's own "
 467 < 1         "refusal -- plan_parse.py is missing: " + proc.stderr)
@@ -501,9 +527,11 @@
 472 < 1     plan_path.write_text(make_header())
 473 < 1     proc = run_parser(plan_path)
 474 < 1     assert_is_the_scripts_own_refusal(proc)
-475 < 1     assert proc.returncode == 2  # [M5]
+476 > 1     assert proc.returncode == 2
+475 < 2     assert proc.returncode == 2  # [M5]
 476 < 1     lines = [l for l in proc.stderr.splitlines() if l.strip()]
-477 < 1     assert len(lines) == 1  # [M5]
+478 > 1     assert len(lines) == 1
+477 < 2     assert len(lines) == 1  # [M5]
 478 < 1 
 479 < 1 
 480 < 1 def test_m5_refusal_duplicate_task_id(tmp_path):
@@ -515,14 +543,16 @@
 486 < 1     plan_path.write_text(make_plan(tasks))
 487 < 1     proc = run_parser(plan_path)
 488 < 1     assert_is_the_scripts_own_refusal(proc)
-489 < 1     assert proc.returncode == 2  # [M5]
+490 > 1     assert proc.returncode == 2
+489 < 2     assert proc.returncode == 2  # [M5]
 490 < 1     lines = [l for l in proc.stderr.splitlines() if l.strip()]
-491 < 1     assert len(lines) == 1  # [M5]
+492 > 1     assert len(lines) == 1
+491 < 2     assert len(lines) == 1  # [M5]
 492 < 1 
 493 < 1 
 494 < 1 def test_m5_refusal_cycle_names_both_tasks(tmp_path):
-495 < 1     # Task ids chosen to be unlikely to appear by coincidence in an
-496 < 1     # unrelated error string (an interpreter launch failure, a file path).
+495 < 2     # Task ids chosen to be unlikely to appear by coincidence in an
+496 < 2     # unrelated error string (an interpreter launch failure, a file path).
 497 < 1     tasks = [
 498 < 1         task_block("701", "A", creates=["m5c/a.py"], modifies=["m5c/b.py"]),
 499 < 1         task_block("702", "B", creates=["m5c/b.py"], modifies=["m5c/a.py"]),
@@ -531,18 +561,21 @@
 502 < 1     plan_path.write_text(make_plan(tasks))
 503 < 1     proc = run_parser(plan_path)
 504 < 1     assert_is_the_scripts_own_refusal(proc)
-505 < 1     assert proc.returncode == 2  # [M5]
+506 > 1     assert proc.returncode == 2
+505 < 2     assert proc.returncode == 2  # [M5]
 506 < 1     lines = [l for l in proc.stderr.splitlines() if l.strip()]
-507 < 1     assert len(lines) == 1  # [M5]
-508 < 1     assert "701" in lines[0] and "702" in lines[0]  # [M5]
+508 > 1     assert len(lines) == 1
+509 < 1     assert "701" in lines[0] and "702" in lines[0]
+507 < 2     assert len(lines) == 1  # [M5]
+508 < 2     assert "701" in lines[0] and "702" in lines[0]  # [M5]
 509 < 1 
-510 < 1 
-511 < 1 # --------------------------------------------------------------------------- #
-512 < 1 # guard-M3 -- any argv that is not exactly one `<plan.md>` prints the usage   #
-513 < 1 #             line on stderr and exits 2 -- an unrecognized flag such as     #
-514 < 1 #             `--unguarded` included, since the parser reads none such any   #
-515 < 1 #             more (cut three, 2026-09-22).                                  #
-516 < 1 # --------------------------------------------------------------------------- #
+510 < 2 
+511 < 2 # --------------------------------------------------------------------------- #
+512 < 2 # guard-M3 -- any argv that is not exactly one `<plan.md>` prints the usage   #
+513 < 2 #             line on stderr and exits 2 -- an unrecognized flag such as     #
+514 < 2 #             `--unguarded` included, since the parser reads none such any   #
+515 < 2 #             more (cut three, 2026-09-22).                                  #
+516 < 2 # --------------------------------------------------------------------------- #
 517 < 1 
 518 < 1 def test_guard_m3_bad_argv_variants_exit_2_with_usage(tmp_path):
 519 < 1     plan_path = tmp_path / "plan.md"
@@ -554,13 +587,16 @@
 525 < 1         proc = subprocess.run([sys.executable, str(PARSER)] + argv_tail,
 526 < 1                               capture_output=True, text=True)
 527 < 1         assert_is_the_scripts_own_refusal(proc)
-528 < 1         assert proc.returncode == 2, argv_tail  # [guard-M3]
-529 < 1         assert proc.stdout == ""  # [guard-M3]
+529 > 1         assert proc.returncode == 2, argv_tail
+530 < 1         assert proc.stdout == ""
+528 < 2         assert proc.returncode == 2, argv_tail  # [guard-M3]
+529 < 2         assert proc.stdout == ""  # [guard-M3]
 530 < 1         lines = [l for l in proc.stderr.splitlines() if l.strip()]
-531 < 1         assert len(lines) == 1  # [guard-M3]
+532 > 1         assert len(lines) == 1
+531 < 2         assert len(lines) == 1  # [guard-M3]
 532 < 1         usage_lines.append(lines[0])
 533 < 1 
-534 < 1     # The same one usage line for every rejected shape. [guard-M3]
+534 < 2     # The same one usage line for every rejected shape. [guard-M3]
 535 < 1     assert len(set(usage_lines)) == 1
 536 < 1 
 537 < 1 
@@ -574,32 +610,32 @@
 544 < 1         task_block("3", "Other modifier", modifies=["b.py"]),
 545 < 1     ]
 546 < 1     obj = build_and_run(tmp_path, tasks)
-547 < 1     # The interface edge carries its "why".
+547 < 2     # The interface edge carries its "why".
 548 < 1     assert obj["dag_edges"] == [{"from": "1", "to": "2", "why": "interface"}]
 550 > 1     assert {t["id"]: t["wave"] for t in obj["tasks"]} == {"1": 1, "2": 2, "3": 1}
 549 < 2     wave_ids = [[t["id"] for t in wave] for wave in obj["launch_waves"]]
 550 < 2     assert wave_ids == [["1", "3"], ["2"]]
 551 < 1 
-552 < 1 
-553 < 1 # --------------------------------------------------------------------------- #
-554 < 1 # Task: "The parser says what a plan wants run -- its proof lines, its       #
-555 < 1 # checks, its bootstrap, and its test commands one by one".                  #
-556 < 1 #                                                                             #
-557 < 1 # This task's own Machine clauses are M1-M3, colliding by number with the    #
-558 < 1 # grammar-parser's M1-M5 tags used at the top of this file -- its legs are   #
-559 < 1 # tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
-560 < 1 # guard-M*.                                                      #
-561 < 1 #                                                                             #
-562 < 1 # cmds-M1 -- every task object gains `proofRuns` (the task's Proof           #
-563 < 1 #            `- Run:` commands in order, a whole-value backtick wrapper      #
-564 < 1 #            removed, `[]` when none).                                      #
-566 > 1 # cmds-M2 -- the printed object carries `checks` (one `{"cmd"}` per         #
-567 < 1 #            `- Check:` bullet of `## Global Constraints`, in order; a      #
-568 < 1 #            `(minor)` suffix is refused, since every Check runs) and       #
-569 < 1 #            `bootstrapCmd` (the text of a `**Bootstrap:**` header line     #
-570 < 1 #            above the first task, `null` when the plan has none).          #
-571 < 1 # cmds-M3 -- the task-object key set is TASK_FIELDS and the top-level key   #
-572 < 1 #            set TOP_KEYS, nothing else.                                    #
+552 < 2 
+553 < 2 # --------------------------------------------------------------------------- #
+554 < 2 # Task: "The parser says what a plan wants run -- its proof lines, its       #
+555 < 2 # checks, its bootstrap, and its test commands one by one".                  #
+556 < 2 #                                                                             #
+557 < 2 # This task's own Machine clauses are M1-M3, colliding by number with the    #
+558 < 2 # grammar-parser's M1-M5 tags used at the top of this file -- its legs are   #
+559 < 2 # tagged cmds-M1, cmds-M2, cmds-M3 to stay unambiguous, mirroring            #
+560 < 2 # guard-M*.                                                      #
+561 < 2 #                                                                             #
+562 < 2 # cmds-M1 -- every task object gains `proofRuns` (the task's Proof           #
+563 < 2 #            `- Run:` commands in order, a whole-value backtick wrapper      #
+564 < 2 #            removed, `[]` when none).                                      #
+566 > 2 # cmds-M2 -- the printed object carries `checks` (one `{"cmd"}` per         #
+567 < 2 #            `- Check:` bullet of `## Global Constraints`, in order; a      #
+568 < 2 #            `(minor)` suffix is refused, since every Check runs) and       #
+569 < 2 #            `bootstrapCmd` (the text of a `**Bootstrap:**` header line     #
+570 < 2 #            above the first task, `null` when the plan has none).          #
+571 < 2 # cmds-M3 -- the task-object key set is TASK_FIELDS and the top-level key   #
+572 < 2 #            set TOP_KEYS, nothing else.                                    #
 565 < 2 # cmds-M2 -- the printed object gains `checks` (one `{"cmd", "minor"}` per   #
 566 < 2 #            `- Check:` bullet of `## Global Constraints`, in order, with    #
 567 < 2 #            `minor` true exactly when the bullet ends with `(minor)`,       #
@@ -610,7 +646,7 @@
 572 < 2 #            are unchanged; the task-object key set is the earlier set plus #
 573 < 2 #            `proofRuns`, the top-level key set is the earlier set plus     #
 574 < 2 #            `checks`/`bootstrapCmd`, both and nothing else.                #
-575 < 1 # --------------------------------------------------------------------------- #
+575 < 2 # --------------------------------------------------------------------------- #
 576 < 1 
 577 < 1 def test_cmds_m1_proofruns_field(tmp_path):
 578 < 1     tasks = [
@@ -621,8 +657,8 @@
 583 < 1     ]
 584 < 1     obj = build_and_run(tmp_path, tasks)
 585 < 1     t = obj["tasks"][0]
-586 < 1     # proofRuns: the two `- Run:` commands in order, the second's whole-value
-587 < 1     # backtick wrapper removed (the first carried none to begin with). [cmds-M1]
+586 < 2     # proofRuns: the two `- Run:` commands in order, the second's whole-value
+587 < 2     # backtick wrapper removed (the first carried none to begin with). [cmds-M1]
 588 < 1     assert t["proofRuns"] == ["python3 checks/one.py",
 589 < 1                               "python3 checks/two.py"]
 590 < 1 
@@ -635,8 +671,8 @@
 596 < 2         checks=["git diff --quiet $ULTRA_BASE -- fleet/",
 597 < 2                 "wc -w docs/x.md (minor)"],
 598 < 1         bootstrap="bun install --frozen-lockfile")
-600 > 1     # checks: one {"cmd"} per `- Check:` bullet, in order, a whole-value
-601 < 1     # backtick wrapper removed. [cmds-M2]
+600 > 2     # checks: one {"cmd"} per `- Check:` bullet, in order, a whole-value
+601 < 2     # backtick wrapper removed. [cmds-M2]
 599 < 2     # checks: one {"cmd", "minor"} per `- Check:` bullet, in order; the
 600 < 2     # trailing "(minor)" marks the bullet as minor and is not part of "cmd". [cmds-M2]
 601 < 1     assert obj["checks"] == [
@@ -645,27 +681,28 @@
 602 < 2         {"cmd": "git diff --quiet $ULTRA_BASE -- fleet/", "minor": False},
 603 < 2         {"cmd": "wc -w docs/x.md", "minor": True},
 604 < 1     ]
-605 < 1     # bootstrapCmd: the text of the **Bootstrap:** header line. [cmds-M2]
+605 < 2     # bootstrapCmd: the text of the **Bootstrap:** header line. [cmds-M2]
 606 < 1     assert obj["bootstrapCmd"] == "bun install --frozen-lockfile"
 608 > 1 
 609 < 1 
 610 < 1 def test_cmds_m2_a_minor_check_is_refused(tmp_path):
-611 < 1     # A `(minor)` Check was once parsed and never run; every Check runs now,
-612 < 1     # so the suffix is the parser's refusal rather than part of the command.
+611 < 2     # A `(minor)` Check was once parsed and never run; every Check runs now,
+612 < 2     # so the suffix is the parser's refusal rather than part of the command.
 613 < 1     plan_path = tmp_path / "plan.md"
 614 < 1     plan_path.write_text(make_plan([task_block("1", "Solo", creates=["cm2m/a.py"])],
 615 < 1                                    checks=["wc -w docs/x.md (minor)"]))
 616 < 1     proc = run_parser(plan_path)
 617 < 1     assert_is_the_scripts_own_refusal(proc)
-618 < 1     assert proc.returncode == 2, proc.stdout + proc.stderr  # [cmds-M2]
+619 > 1     assert proc.returncode == 2, proc.stdout + proc.stderr
+618 < 2     assert proc.returncode == 2, proc.stdout + proc.stderr  # [cmds-M2]
 619 < 1     assert "ends `(minor)`, which is never run" in proc.stderr, proc.stderr
 607 < 1 
 608 < 1 
 609 < 1 def test_cmds_m2_checks_and_bootstrap_absent_by_default(tmp_path):
 610 < 1     tasks = [task_block("1", "Solo", creates=["cm2b/a.py"])]
 611 < 1     obj = build_and_run(tmp_path, tasks)
-612 < 1     # A plan with neither a `- Check:` bullet nor a **Bootstrap:** line
-613 < 1     # prints checks [] and bootstrapCmd null. [cmds-M2]
+612 < 2     # A plan with neither a `- Check:` bullet nor a **Bootstrap:** line
+613 < 2     # prints checks [] and bootstrapCmd null. [cmds-M2]
 614 < 1     assert obj["checks"] == []
 615 < 1     assert obj["bootstrapCmd"] is None
 616 < 1 
@@ -680,7 +717,7 @@
 624 < 1         tmp_path, tasks,
 625 < 1         checks=["echo check"], bootstrap="echo boot")
 626 < 1 
-628 > 1     # The task-object key set is exactly TASK_FIELDS. [cmds-M3]
+628 > 2     # The task-object key set is exactly TASK_FIELDS. [cmds-M3]
 627 < 2     # The task-object key set is exactly TASK_FIELDS, in both views. [cmds-M3]
 628 < 1     for t in obj["tasks"]:
 629 < 1         assert set(t.keys()) == TASK_FIELDS
@@ -688,45 +725,45 @@
 631 < 2         for t in wave:
 632 < 2             assert set(t.keys()) == TASK_FIELDS
 633 < 1 
-635 > 1     # The top-level key set is exactly TOP_KEYS. [cmds-M3]
+635 > 2     # The top-level key set is exactly TOP_KEYS. [cmds-M3]
 636 < 1     assert set(obj.keys()) == TOP_KEYS
 634 < 2     # The top-level key set is the earlier set plus `checks` and
 635 < 2     # `bootstrapCmd`, nothing else. [cmds-M3]
 636 < 2     assert set(obj.keys()) == {"tasks", "dag_edges", "launch_waves",
 637 < 2                                "checks", "bootstrapCmd", "publish"}
 638 < 1 
-639 < 1     # dag_edges are what they were: the write-after-create edge (task "1"
-640 < 1     # creates cm3/a.py, task "2" modifies it) still fires with its own
-641 < 1     # "why". [cmds-M3]
+639 < 2     # dag_edges are what they were: the write-after-create edge (task "1"
+640 < 2     # creates cm3/a.py, task "2" modifies it) still fires with its own
+641 < 2     # "why". [cmds-M3]
 642 < 1     assert obj["dag_edges"] == [
 643 < 1         {"from": "1", "to": "2", "why": "write-after-create"}]
 644 < 1 
 645 < 1 
-646 < 1 # --------------------------------------------------------------------------- #
-647 < 1 # runcite -- "The sandbox's parser strips a Run line's clause tag and prints #
-648 < 1 # the clauses beside the command": a Proof `Run:` bullet may close with a    #
-649 < 1 # `[M2]` / `[M1, M3]` citation tag, the same shape a Legs bullet's own       #
-650 < 1 # citation carries. The tag is cut from `proofRuns` (the command a shell     #
-651 < 1 # would actually run) and reappears, parallel to `proofRuns`, as the new     #
-652 < 1 # `proofRunClauses` field -- `[]` for a command that carried no tag.         #
-653 < 1 # runcite-M1 -- for a task whose Proof carries the three named `Run:`        #
-654 < 1 #               bullets, `proofRuns` is exactly the three commands with      #
-655 < 1 #               every tag stripped and `proofRunClauses` is exactly          #
-656 < 1 #               `[["M2"], [], ["M1", "M3"]]`.                                #
-657 < 1 # runcite-M2 -- a bracket that is not at the end of the command is part of   #
-658 < 1 #               the command: it survives in `proofRuns` unchanged and        #
-659 < 1 #               `proofRunClauses` is `[[]]`.                                 #
-660 < 1 # runcite-M3 -- on that same plan, the compiler's own (pure, per-task) parse #
-661 < 1 #               of `proof_runs` agrees with the parser's `proofRuns`,        #
-662 < 1 #               element for element.                                        #
-663 < 1 # runcite-M4 -- every task object gains exactly the one key                  #
-664 < 1 #               `proofRunClauses` (TASK_FIELDS, line 52, already has it      #
-665 < 1 #               folded in) and a task with no `Run:` bullet at all prints    #
-666 < 1 #               `proofRunClauses` exactly `[]`.                              #
-667 < 1 # --------------------------------------------------------------------------- #
-668 < 1 
-669 < 1 # The three `- Run:` bullets named by the task's own Machine restatement
-670 < 1 # (M1): one tagged [M2], one untagged, one tagged [M1, M3].
+646 < 2 # --------------------------------------------------------------------------- #
+647 < 2 # runcite -- "The sandbox's parser strips a Run line's clause tag and prints #
+648 < 2 # the clauses beside the command": a Proof `Run:` bullet may close with a    #
+649 < 2 # `[M2]` / `[M1, M3]` citation tag, the same shape a Legs bullet's own       #
+650 < 2 # citation carries. The tag is cut from `proofRuns` (the command a shell     #
+651 < 2 # would actually run) and reappears, parallel to `proofRuns`, as the new     #
+652 < 2 # `proofRunClauses` field -- `[]` for a command that carried no tag.         #
+653 < 2 # runcite-M1 -- for a task whose Proof carries the three named `Run:`        #
+654 < 2 #               bullets, `proofRuns` is exactly the three commands with      #
+655 < 2 #               every tag stripped and `proofRunClauses` is exactly          #
+656 < 2 #               `[["M2"], [], ["M1", "M3"]]`.                                #
+657 < 2 # runcite-M2 -- a bracket that is not at the end of the command is part of   #
+658 < 2 #               the command: it survives in `proofRuns` unchanged and        #
+659 < 2 #               `proofRunClauses` is `[[]]`.                                 #
+660 < 2 # runcite-M3 -- on that same plan, the compiler's own (pure, per-task) parse #
+661 < 2 #               of `proof_runs` agrees with the parser's `proofRuns`,        #
+662 < 2 #               element for element.                                        #
+663 < 2 # runcite-M4 -- every task object gains exactly the one key                  #
+664 < 2 #               `proofRunClauses` (TASK_FIELDS, line 52, already has it      #
+665 < 2 #               folded in) and a task with no `Run:` bullet at all prints    #
+666 < 2 #               `proofRunClauses` exactly `[]`.                              #
+667 < 2 # --------------------------------------------------------------------------- #
+668 < 2 
+669 < 2 # The three `- Run:` bullets named by the task's own Machine restatement
+670 < 2 # (M1): one tagged [M2], one untagged, one tagged [M1, M3].
 671 < 1 THREE_RUN_CMDS = [
 673 > 1     "grep -q 'evidence' fleet/CONTRACT.md [M2]",
 672 < 2     "grep -q 'kata 0.17.2' fleet/CONTRACT.md [M2]",
@@ -742,17 +779,17 @@
 682 < 1     ]
 683 < 1     obj = build_and_run(tmp_path, tasks)
 684 < 1     t = obj["tasks"][0]
-685 < 1     # proofRuns: the citation tag stripped off every command that carries
-686 < 1     # one, the untagged command riding back unchanged, all three in Proof
-687 < 1     # order. [runcite-M1]
+685 < 2     # proofRuns: the citation tag stripped off every command that carries
+686 < 2     # one, the untagged command riding back unchanged, all three in Proof
+687 < 2     # order. [runcite-M1]
 688 < 1     assert t["proofRuns"] == [
 690 > 1         "grep -q 'evidence' fleet/CONTRACT.md",
 689 < 2         "grep -q 'kata 0.17.2' fleet/CONTRACT.md",
 690 < 1         "bash -n x.sh",
 691 < 1         "true",
 692 < 1     ]
-693 < 1     # proofRunClauses: parallel to proofRuns, [] for the untagged command,
-694 < 1     # each tag's ids sorted numerically. [runcite-M1]
+693 < 2     # proofRunClauses: parallel to proofRuns, [] for the untagged command,
+694 < 2     # each tag's ids sorted numerically. [runcite-M1]
 695 < 1     assert t["proofRunClauses"] == [["M2"], [], ["M1", "M3"]]
 696 < 1 
 697 < 1 
@@ -763,11 +800,11 @@
 702 < 1     ]
 703 < 1     obj = build_and_run(tmp_path, tasks)
 704 < 1     t = obj["tasks"][0]
-705 < 1     # The bracket sits mid-command, not at the end of the value -- it is part
-706 < 1     # of the command and proofRuns prints the whole value unchanged.
-707 < 1     # [runcite-M2]
+705 < 2     # The bracket sits mid-command, not at the end of the value -- it is part
+706 < 2     # of the command and proofRuns prints the whole value unchanged.
+707 < 2     # [runcite-M2]
 708 < 1     assert t["proofRuns"] == ['test "$(echo [M1])" = x']
-709 < 1     # No tag was cut off it, so its clause list is empty. [runcite-M2]
+709 < 2     # No tag was cut off it, so its clause list is empty. [runcite-M2]
 710 < 1     assert t["proofRunClauses"] == [[]]
 711 < 1 
 712 < 1 
@@ -779,7 +816,7 @@
 718 < 1     ]
 719 < 1     obj = build_and_run(tmp_path, tasks)
 720 < 1 
-722 > 1     # Every task object's key set is exactly TASK_FIELDS. [runcite-M4]
+722 > 2     # Every task object's key set is exactly TASK_FIELDS. [runcite-M4]
 721 < 2     # Every task object's key set is exactly TASK_FIELDS, which now carries
 722 < 2     # proofRunClauses and nothing else new -- in both `tasks` and
 723 < 2     # `launch_waves`. [runcite-M4]
@@ -790,9 +827,10 @@
 728 < 2             assert set(t.keys()) == TASK_FIELDS
 729 < 1 
 730 < 1     by_id = {t["id"]: t for t in obj["tasks"]}
-731 < 1     assert by_id["4"]["proofRunClauses"] == [["M1"]]  # [runcite-M4]
-732 < 1     # A task with no Run: bullet at all prints proofRunClauses exactly [].
-733 < 1     # [runcite-M4]
+732 > 1     assert by_id["4"]["proofRunClauses"] == [["M1"]]
+731 < 2     assert by_id["4"]["proofRunClauses"] == [["M1"]]  # [runcite-M4]
+732 < 2     # A task with no Run: bullet at all prints proofRunClauses exactly [].
+733 < 2     # [runcite-M4]
 734 < 1     assert by_id["5"]["proofRuns"] == []
 735 < 1     assert by_id["5"]["proofRunClauses"] == []
 736 < 1 

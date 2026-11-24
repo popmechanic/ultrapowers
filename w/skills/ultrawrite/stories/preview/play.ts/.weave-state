@@ -1,12 +1,12 @@
-0 < 1 // Story play: before the sign question, each story plays out on the approved
-1 < 1 // screen where the operator can watch. Steps off the ui layer run their tool;
-2 < 1 // a ui step types and clicks through the elements its `ui` entries name, each
-4 > 1 // outlined while it acts, then counts every `see` entry by role and name. A
-5 < 1 // `select` entry opens its combobox and clicks the option in the listbox,
-6 < 1 // which renders in a portal outside #app. Store-step args name rows by alias,
-7 < 1 // as check.ts reads them, mapped to the store's own ids before each run.
+0 < 2 // Story play: before the sign question, each story plays out on the approved
+1 < 2 // screen where the operator can watch. Steps off the ui layer run their tool;
+2 < 2 // a ui step types and clicks through the elements its `ui` entries name, each
+4 > 2 // outlined while it acts, then counts every `see` entry by role and name. A
+5 < 2 // `select` entry opens its combobox and clicks the option in the listbox,
+6 < 2 // which renders in a portal outside #app. Store-step args name rows by alias,
+7 < 2 // as check.ts reads them, mapped to the store's own ids before each run.
 3 < 2 // outlined while it acts, then counts every `see` entry by role and name.
-5 > 1 import {find, nameOf, ownTextOf, roleOf, targetOf} from './names';
+5 > 1 import {find, nameOf, roleOf, targetOf, textLineOf} from './names';
 4 < 2 import {find, nameOf, roleOf, targetOf} from './names';
 7 > 1 import {Aliases, type Content} from './probe';
 6 > 2 import {Aliases, type Content} from '../../../../factory/stack/tinyapp/probe';
@@ -25,9 +25,9 @@
 16 < 1 
 17 < 1 function count(role: string, name: string): number {
 18 < 1   let n = 0;
-20 > 1   // A run of text has no role or name, so `text` counts elements by their own text.
+20 > 2   // A run of text has no role or name, so `text` counts the reading parts by their line.
 21 < 1   const hit = role === 'text'
-22 < 1     ? (el: Element) => ownTextOf(el) === name
+22 < 1     ? (el: Element) => textLineOf(el) === name
 23 < 1     : (el: Element) => roleOf(el) === role && nameOf(el) === name;
 24 < 1   for (const el of root().querySelectorAll('*')) if (hit(el)) n++;
 19 < 2   for (const el of root().querySelectorAll('*')) if (roleOf(el) === role && nameOf(el) === name) n++;
@@ -41,7 +41,7 @@
 27 < 1   el.dispatchEvent(new Event('input', {bubbles: true}));
 28 < 1 }
 29 < 1 
-31 > 1 /** Outline `el` while `job` runs on it. */
+31 > 2 /** Outline `el` while `job` runs on it. */
 32 < 1 async function outlined(el: Element, job: (html: HTMLElement) => void) {
 33 < 1   const html = el as HTMLElement;
 34 < 1   const before = html.style.outline;
@@ -55,7 +55,7 @@
 42 < 1   }
 43 < 1 }
 44 < 1 
-45 < 1 /** The element of `role` named `name` anywhere in the document, waited for up to `ms`. */
+45 < 2 /** The element of `role` named `name` anywhere in the document, waited for up to `ms`. */
 47 > 1 async function appearing(role: string, name: string, ms: number): Promise<Element | null> {
 46 < 2 async function await_(role: string, name: string, ms: number): Promise<Element | null> {
 47 < 1   const end = Date.now() + ms;
@@ -104,15 +104,15 @@
 50 < 1 
 52 > 1 let turn: Promise<unknown> = Promise.resolve();
 53 < 1 
-54 < 1 /** Run `job` once every job queued before it has ended, whatever their outcome:
-55 < 1  *  each play clears and refills the one shared store, so two never overlap. */
+54 < 2 /** Run `job` once every job queued before it has ended, whatever their outcome:
+55 < 2  *  each play clears and refills the one shared store, so two never overlap. */
 56 < 1 export function inTurn<T>(job: () => Promise<T>): Promise<T> {
 57 < 1   const mine = turn.then(job);
 58 < 1   turn = mine.catch(() => undefined);
 59 < 1   return mine;
 60 < 1 }
 61 < 1 
-51 < 1 /** Play one story on the screen as drawn; misses name what was not as the story says. */
+51 < 2 /** Play one story on the screen as drawn; misses name what was not as the story says. */
 53 > 1 export async function play(
 54 < 1   story: PlayStory,
 56 > 1   store: {delTables: () => unknown; delValues: () => unknown; getContent: () => Content},
@@ -125,7 +125,7 @@
 54 < 1   const preview = window.__PREVIEW__;
 55 < 1   if (preview) preview.playing = true;
 56 < 1   try {
-58 > 1     // The sample data saves values too (a party's title), so both are cleared.
+58 > 2     // The sample data saves values too (a party's title), so both are cleared.
 57 < 1     store.delTables();
 60 > 1     store.delValues();
 59 > 1     const aliases = new Aliases();
@@ -133,7 +133,8 @@
 58 < 1     await pause(GAP);
 59 < 1     for (const step of story.steps ?? []) {
 60 < 1       if (step.layer !== 'ui') {
-62 > 1         try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch { /* a refused step changes nothing */ }
+63 > 1         try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch {}
+62 > 2         try { tools[step.tool]?.(aliases.args(step.args ?? {}, schemas[step.tool])); } catch { /* a refused step changes nothing */ }
 63 < 1         aliases.learn(store.getContent());
 61 < 2         try { tools[step.tool]?.(step.args ?? {}); } catch { /* a refused step changes nothing */ }
 62 < 1         await pause(GAP);

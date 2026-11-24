@@ -1,17 +1,17 @@
-0 < 1 // Given code: builders never edit this file. It makes the one synced store
-1 < 1 // from the signed store module, draws every piece's screen (a json-render spec
-2 < 1 // from client/src/pieces/<piece>.json) in its section of the page,
-3 < 1 // exposes the page hook the checker drives (window.__TINYAPP__), and offers
-4 < 1 // the same tools to an agent over WebMCP when the browser has it. Who is
-5 < 1 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
-6 < 1 // reads Cloudflare Access; every action gets it as run's third argument.
-7 < 1 // The page is public and read-only unless it is /staff: there it draws only
-9 > 1 // the subtrees whose root element ids the screen lists in "public" (none when
-10 < 1 // absent) and reads the saved snapshot (/public.json) every 5 s;
-11 < 1 // at /staff it draws the whole screen, offers WebMCP tools and syncs.
-12 < 1 // An app built before the one screen (no screen.json, a client/src/pieces/
-13 < 1 // directory) still draws every piece in its own section, signed out only the
-14 < 1 // pieces whose spec says "public": true.
+0 < 2 // Given code: builders never edit this file. It makes the one synced store
+1 < 2 // from the signed store module, draws every piece's screen (a json-render spec
+2 < 2 // from client/src/pieces/<piece>.json) in its section of the page,
+3 < 2 // exposes the page hook the checker drives (window.__TINYAPP__), and offers
+4 < 2 // the same tools to an agent over WebMCP when the browser has it. Who is
+5 < 2 // signed in (hook.who: an email, or null) comes from the Worker's /me, which
+6 < 2 // reads Cloudflare Access; every action gets it as run's third argument.
+7 < 2 // The page is public and read-only unless it is /staff: there it draws only
+9 > 2 // the subtrees whose root element ids the screen lists in "public" (none when
+10 < 2 // absent) and reads the saved snapshot (/public.json) every 5 s;
+11 < 2 // at /staff it draws the whole screen, offers WebMCP tools and syncs.
+12 < 2 // An app built before the one screen (no screen.json, a client/src/pieces/
+13 < 2 // directory) still draws every piece in its own section, signed out only the
+14 < 2 // pieces whose spec says "public": true.
 8 < 2 // the pieces whose spec says "public": true and reads the saved snapshot (/public.json) every 5 s;
 9 < 2 // at /staff it draws every piece, offers WebMCP tools and syncs.
 10 < 1 import {createMergeableStore} from 'tinybase';
@@ -48,8 +48,8 @@
 39 < 1 
 41 > 1 const state = tinybaseState(store, () => ({staff, who: hook.who}));
 42 < 1 type Screen = Spec & {public?: string[]};
-43 < 1 // Signed out, the screen's root keeps its type and props but holds only the
-44 < 1 // public subtrees, so one Renderer still draws the page.
+43 < 2 // Signed out, the screen's root keeps its type and props but holds only the
+44 < 2 // public subtrees, so one Renderer still draws the page.
 45 < 1 function shown(screen: Screen): Spec {
 47 > 1   if (staff || screen.public?.includes(screen.root)) return screen;
 46 < 2   if (staff) return screen;
@@ -71,10 +71,10 @@
 47 < 1   </JSONUIProvider>,
 48 < 1 );
 49 < 1 
-50 < 1 // WebMCP: the same TOOLS, offered to an agent in the browser, plus one read
-51 < 1 // so it can find the row ids the tools take. The spec puts modelContext on
-52 < 1 // document; Chrome's early preview put it on navigator. Absent, nothing
-53 < 1 // registers and the page works as before.
+50 < 2 // WebMCP: the same TOOLS, offered to an agent in the browser, plus one read
+51 < 2 // so it can find the row ids the tools take. The spec puts modelContext on
+52 < 2 // document; Chrome's early preview put it on navigator. Absent, nothing
+53 < 2 // registers and the page works as before.
 54 < 1 type ModelContext = {registerTool: (tool: Record<string, unknown>) => Promise<unknown> | unknown};
 55 < 1 const modelContext = ((document as unknown as {modelContext?: ModelContext}).modelContext
 56 < 1   ?? (navigator as unknown as {modelContext?: ModelContext}).modelContext);

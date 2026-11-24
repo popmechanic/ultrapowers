@@ -1,32 +1,32 @@
-0 < 1 /** The `$computed` functions a screen may call, passed to every JSONUIProvider.
-1 < 1  *
-2 < 1  * A row shows only its own cells, so a row that names another table's row (a
-3 < 1  * tag naming its todo) reads that row's text through `lookup`, and `format`
-4 < 1  * puts the pieces of a label together (#1524):
-5 < 1  *
-6 < 1  *   {$computed: 'format', args: {template: 'Remove ${name} from ${todoId.text}',
-7 < 1  *     name: {$item: 'name'},
-8 < 1  *     'todoId.text': {$computed: 'lookup', args: {rows: {$state: '/tables/todos'}, id: {$item: 'todoId'}, column: 'text'}}}}
-10 > 1  *
-11 < 1  * A screen's lines say totals with `sum` and `count`, and a saved value in plain
-12 < 1  * words with `words` (an unanswered '' reads as `words['']`).
-9 < 1  */
+0 < 2 /** The `$computed` functions a screen may call, passed to every JSONUIProvider.
+1 < 2  *
+2 < 2  * A row shows only its own cells, so a row that names another table's row (a
+3 < 2  * tag naming its todo) reads that row's text through `lookup`, and `format`
+4 < 2  * puts the pieces of a label together (#1524):
+5 < 2  *
+6 < 2  *   {$computed: 'format', args: {template: 'Remove ${name} from ${todoId.text}',
+7 < 2  *     name: {$item: 'name'},
+8 < 2  *     'todoId.text': {$computed: 'lookup', args: {rows: {$state: '/tables/todos'}, id: {$item: 'todoId'}, column: 'text'}}}}
+10 > 2  *
+11 < 2  * A screen's lines say totals with `sum` and `count`, and a saved value in plain
+12 < 2  * words with `words` (an unanswered '' reads as `words['']`).
+9 < 2  */
 10 < 1 import type { ComputedFunction } from '@json-render/core'
 11 < 1 
 12 < 1 const text = (v: unknown) => (v === undefined || v === null ? '' : String(v))
 13 < 1 
-14 < 1 /** One cell of the row whose id is `id` in `rows` (a table as the screen state holds it), or ''. */
+14 < 2 /** One cell of the row whose id is `id` in `rows` (a table as the screen state holds it), or ''. */
 15 < 1 const lookup: ComputedFunction = ({ rows, id, column }) => {
 16 < 1   if (!Array.isArray(rows)) return ''
 17 < 1   const row = rows.find((r) => r && typeof r === 'object' && (r as Record<string, unknown>).id === id) as Record<string, unknown> | undefined
 18 < 1   return row ? text(row[String(column)]) : ''
 19 < 1 }
 20 < 1 
-21 < 1 /** `template` with each `${name}` replaced by the arg of that name. */
+21 < 2 /** `template` with each `${name}` replaced by the arg of that name. */
 22 < 1 const format: ComputedFunction = ({ template, ...args }) =>
 23 < 1   text(template).replace(/\$\{([^}]+)\}/g, (_m, name: string) => text(args[name]))
 24 < 1 
-26 > 1 /** The rows of `rows`, in order, whose every `where` cell equals theirs (a picker's options). */
+26 > 2 /** The rows of `rows`, in order, whose every `where` cell equals theirs (a picker's options). */
 27 < 1 const rowsWhere: ComputedFunction = ({ rows, where }) => {
 28 < 1   if (!Array.isArray(rows)) return []
 29 < 1   const want = where && typeof where === 'object' ? (where as Record<string, unknown>) : {}
@@ -39,27 +39,23 @@
 36 < 1 }
 25 < 2 export const functions: Record<string, ComputedFunction> = { lookup, format }
 26 < 1 
-28 > 1 /** The total of `column` over `rows`, a cell that is no number counting as nothing. */
+28 > 2 /** The total of `column` over `rows`, a cell that is no number counting as nothing. */
 29 < 1 const sum: ComputedFunction = ({ rows, column }) => {
 30 < 1   if (!Array.isArray(rows)) return 0
-32 > 1   let total = 0
-33 < 1   for (const r of rows) {
-34 < 1     const cell = r && typeof r === 'object' ? (r as Record<string, unknown>)[String(column)] : undefined
-35 < 1     const n = text(cell).trim() === '' ? NaN : Number(cell)
-36 < 1     if (Number.isFinite(n)) total += n
-37 < 1   }
-38 < 1   return total
-31 < 2   return rows.reduce((total: number, r) => {
-32 < 2     const n = r && typeof r === 'object' ? Number((r as Record<string, unknown>)[String(column)]) : NaN
-33 < 2     return text((r as Record<string, unknown> | null)?.[String(column)]).trim() !== '' && Number.isFinite(n) ? total + n : total
-34 < 2   }, 0)
-35 < 1 }
+31 < 1   let total = 0
+32 < 1   for (const r of rows) {
+33 < 1     const cell = r && typeof r === 'object' ? (r as Record<string, unknown>)[String(column)] : undefined
+34 < 1     const n = text(cell).trim() === '' ? NaN : Number(cell)
+35 < 1     if (Number.isFinite(n)) total += n
+36 < 1   }
+37 < 1   return total
+38 < 1 }
 27 < 2 export const functions: Record<string, ComputedFunction> = { lookup, format, rowsWhere }
 28 < 1 
-29 < 1 /** How many rows of `rows` match `where` (every row when there is no `where`). */
+29 < 2 /** How many rows of `rows` match `where` (every row when there is no `where`). */
 30 < 1 const count: ComputedFunction = (args) => (rowsWhere(args) as unknown[]).length
 31 < 1 
-32 < 1 /** The plain word `words` gives for `value` (a saved '' reads as `words['']`), or the value itself. */
+32 < 2 /** The plain word `words` gives for `value` (a saved '' reads as `words['']`), or the value itself. */
 33 < 1 const words: ComputedFunction = ({ value, words: said }) => {
 34 < 1   const key = text(value)
 35 < 1   const table = said && typeof said === 'object' ? (said as Record<string, unknown>) : {}

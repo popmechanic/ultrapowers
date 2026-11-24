@@ -1,0 +1,105 @@
+0 < 2 /**
+1 < 2  * factory/preflight.mjs — the boot's credential probe, on its own: it asks
+2 < 2  * `claude auth status` and, when that alone is not enough to know, one
+3 < 2  * `GET <proxy>/api/oauth/usage`, and prints exactly one classification line.
+4 < 2  * It decides nothing — `factory/boot.sh` reads the line back and is the one
+5 < 2  * that turns `api_key`/`no_oauth`/`bearer_dead …`/`edge_refused …` into a
+6 < 2  * refusal, and `alive`/`inconclusive` into "proceed".
+7 < 2  *
+8 < 2  * `classify({ authOutput, code, body })` is the pure decision, exported so
+9 < 2  * an exam can drive it directly; the CLI below is the one caller that also
+10 < 2  * does the I/O (`claude auth status`, then at most one network request).
+11 < 2  */
+12 < 2 
+13 < 1 import { spawnSync } from 'node:child_process'
+14 < 1 
+15 < 1 const USAGE_PATH = '/api/oauth/usage'
+16 < 1 const USAGE_TIMEOUT_MS = 20000
+17 < 1 
+18 < 2 /** The first `"message"` string value anywhere in `text`, or `''`. */
+19 < 1 function firstMessage (text) {
+20 < 1   const m = /"message"\s*:\s*"((?:\\.|[^"\\])*)"/.exec(text || '')
+21 < 1   if (!m) return ''
+22 < 1   try {
+23 < 1     return JSON.parse(`"${m[1]}"`)
+24 < 1   } catch {
+25 < 1     return m[1]
+26 < 1   }
+27 < 1 }
+28 < 1 
+29 < 2 /** The pure classification: `authOutput` is `claude auth status`'s joined
+30 < 2  *  stdout+stderr; `code`/`body` are the `/api/oauth/usage` GET's status and
+31 < 2  *  text body, read only when the auth text alone did not already decide.
+32 < 2  *  Never throws — any unexpected shape reads as `inconclusive`. */
+33 < 1 export function classify ({ authOutput, code, body } = {}) {
+34 < 1   try {
+35 < 1     const authText = authOutput || ''
+36 < 1     if (authText.includes('api_key')) return 'api_key'
+37 < 1     if (!authText.includes('oauth_token')) return 'no_oauth'
+38 < 1     if (code === 200) return 'alive'
+39 < 1     if (code !== 401 && code !== 403) return 'inconclusive'
+40 < 1     const bodyText = body || ''
+41 < 1     if (bodyText.includes('oauth_scope_insufficient')) return 'inconclusive'
+42 < 1     if (bodyText.replace(/[ \t\n]/g, '').includes('"type":"error"')) {
+43 < 1       return `bearer_dead ${code} ${firstMessage(bodyText)}`
+44 < 1     }
+45 < 1     if (bodyText.startsWith('integration not found')) {
+46 < 1       return `edge_refused ${code} ${bodyText.split('\n')[0].slice(0, 300)}`
+47 < 1     }
+48 < 1     return 'inconclusive'
+49 < 1   } catch {
+50 < 1     return 'inconclusive'
+51 < 1   }
+52 < 1 }
+53 < 1 
+54 < 2 /** `claude auth status`'s stdout+stderr, joined; a failed spawn reads as
+55 < 2  *  empty. `claude` is resolved on `PATH` and gets no credential in argv. */
+56 < 1 function authStatus (proxy) {
+57 < 1   const res = spawnSync('claude', ['auth', 'status'], {
+58 < 1     encoding: 'utf8',
+59 < 1     env: { ...process.env, ANTHROPIC_BASE_URL: proxy, CLAUDE_CODE_OAUTH_TOKEN: 'placeholder' }
+60 < 1   })
+61 < 1   if (!res) return ''
+62 < 1   return (res.stdout || '') + (res.stderr || '')
+63 < 1 }
+64 < 1 
+65 < 2 /** One `GET <proxy>/api/oauth/usage`, 20 s bounded, the literal token
+66 < 2  *  `placeholder` (the edge injects the real bearer). `{ code, body }` on any
+67 < 2  *  answer at all, `{}` on any failure — never throws. */
+68 < 1 async function usageProbe (proxy) {
+69 < 1   try {
+70 < 1     const res = await fetch(`${proxy}${USAGE_PATH}`, {
+71 < 1       headers: { authorization: 'Bearer placeholder' },
+72 < 1       signal: AbortSignal.timeout(USAGE_TIMEOUT_MS)
+73 < 1     })
+74 < 1     return { code: res.status, body: await res.text() }
+75 < 1   } catch {
+76 < 1     return {}
+77 < 1   }
+78 < 1 }
+79 < 1 
+80 < 1 function readProxyArg (argv) {
+81 < 1   const i = argv.indexOf('--proxy')
+82 < 1   return i >= 0 ? argv[i + 1] : undefined
+83 < 1 }
+84 < 1 
+85 < 1 async function main (argv) {
+86 < 1   let line = 'inconclusive'
+87 < 1   try {
+88 < 1     const proxy = readProxyArg(argv)
+89 < 1     const authOutput = authStatus(proxy)
+90 < 1     const authText = authOutput || ''
+91 < 1     const decided = authText.includes('api_key') || !authText.includes('oauth_token')
+92 < 1     const { code, body } = decided ? {} : await usageProbe(proxy)
+93 < 1     line = classify({ authOutput, code, body })
+94 < 1   } catch {
+95 < 1     line = 'inconclusive'
+96 < 1   }
+97 < 1   process.stdout.write(line + '\n')
+98 < 1   return 0
+99 < 1 }
+100 < 1 
+101 < 1 if (import.meta.main) { main(process.argv.slice(2)).then((code) => { process.exitCode = code }) }
+102 < 1 
+103 < 1 export default { classify, main }
+104 < 1 

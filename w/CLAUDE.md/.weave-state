@@ -36,6 +36,7 @@
 33 < 1 bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
 34 < 1 bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)
 35 < 1 python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
+37 > 1 python3 lint/comments.py [--list <file> | --update]                          # the comment ratchet: no file gains a comment line; --update locks a drop in
 36 < 1 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 37 < 1 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
 38 < 1 ```
@@ -86,6 +87,8 @@
 80 < 1   skill invokes; `evals/fixtures/claims/` is the parser's probe fixture;
 81 < 1   `evals/frontier/{corpus,results}/` are gitignored and live on the laptop.
 82 < 1 - `tests/` — pytest; `tests/test_fleet_suite.py` bridges every `fleet/tests/test_*.mjs`.
+84 > 1 - `lint/` — `comments.py` and `comments-baseline.json`, the comment ratchet `tests/test_comment_ratchet.py` runs.
+85 < 1 - `docs/adr/` — architecture decision records: the non-obvious decisions comments used to carry.
 83 < 1 
 84 < 1 ## Doctrine
 85 < 1 
@@ -209,6 +212,12 @@
 183 < 1 
 184 < 1 ## Conventions & gotchas
 185 < 1 
+187 > 1 - **No code comments (2026-11-21).** A decision the code cannot show goes in `docs/adr/`; a hack
+189 > 1   goes in an issue, never a comment that excuses it. `lint/comments-baseline.json` is empty, so
+190 < 1   `tests/test_comment_ratchet.py` fails on any comment line; `/delete-comment` sweeps any that land.
+188 < 2   goes in an issue, never a comment that excuses it. `lint/comments.py` holds every file at or
+189 < 2   below `lint/comments-baseline.json` and only ever lowers it; `/delete-comment` sweeps the rest.
+190 < 1 
 186 < 1 - **Releasing.** Only `plugin.json` carries the version (the marketplace entry has none,
 187 < 1   so they cannot drift). A release is one hand PR titled
 188 < 1   `chore: version 0.x.y — …` bumping `plugin.json`, squash-merged, then a bare

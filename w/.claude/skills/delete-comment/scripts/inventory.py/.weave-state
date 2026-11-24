@@ -1,0 +1,73 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 import json
+2 < 1 import subprocess
+3 < 1 import sys
+4 < 1 from pathlib import Path
+5 < 1 
+6 < 1 USAGE = """Usage: inventory.py <workdir> <shards> [path...]
+7 < 1 
+8 < 1 Writes <workdir>/blocks.json (every comment block, consecutive own-line comments joined,
+9 < 1 each with an id) and <workdir>/shards/shardNN.jsonl, whole files per shard, balanced."""
+10 < 1 
+11 < 1 ROOT = Path(__file__).resolve().parents[4]
+12 < 1 
+13 < 1 
+14 < 1 def own_line(lines, start, text):
+15 < 1     line = lines[start - 1]
+16 < 1     first = text.split("\n")[0]
+17 < 1     at = line.find(first)
+18 < 1     return at >= 0 and line[:at].strip() in ("", "{")
+19 < 1 
+20 < 1 
+21 < 1 def main(argv):
+22 < 1     if len(argv) < 2 or not argv[1].isdigit():
+23 < 1         print(USAGE)
+24 < 1         return 1
+25 < 1     work, shards = Path(argv[0]), int(argv[1])
+26 < 1     raw = subprocess.run([sys.executable, str(ROOT / "lint" / "comments.py"), "--json", *argv[2:]],
+27 < 1                          capture_output=True, text=True, check=True).stdout.splitlines()
+28 < 1     rows = [json.loads(r) for r in raw]
+29 < 1     files = {}
+30 < 1     blocks = []
+31 < 1     for r in rows:
+32 < 1         lines = files.setdefault(r["file"], (ROOT / r["file"]).read_text(encoding="utf-8").split("\n"))
+33 < 1         r["own"] = own_line(lines, r["start"], r["text"])
+34 < 1         r["kind"] = "docstring" if r["text"].lstrip("rbuRBU").startswith(('"""', "'''", '"', "'")) else "comment"
+35 < 1         prev = blocks[-1] if blocks else None
+36 < 1         line_comment = r["text"].startswith(("//", "#"))
+37 < 1         if (prev and prev["file"] == r["file"] and prev["own"] and r["own"] and line_comment
+38 < 1                 and prev["text"].startswith(("//", "#")) and r["start"] == prev["end"] + 1):
+39 < 1             prev["end"] = r["end"]
+40 < 1             prev["text"] += "\n" + r["text"]
+41 < 1             prev["parts"].append(dict(r))
+42 < 1         else:
+43 < 1             blocks.append({**r, "parts": [dict(r)]})
+44 < 1     for i, b in enumerate(blocks):
+45 < 1         b["id"] = f"C{i:04d}"
+46 < 1     work.mkdir(parents=True, exist_ok=True)
+47 < 1     (work / "blocks.json").write_text(json.dumps(blocks))
+48 < 1     by_file = {}
+49 < 1     for b in blocks:
+50 < 1         by_file.setdefault(b["file"], []).append(b)
+51 < 1     weight = lambda bs: len(bs) + sum(b["end"] - b["start"] + 1 for b in bs) / 4
+52 < 1     bins = [[] for _ in range(shards)]
+53 < 1     sizes = [0.0] * shards
+54 < 1     for f, bs in sorted(by_file.items(), key=lambda kv: -weight(kv[1])):
+55 < 1         k = sizes.index(min(sizes))
+56 < 1         bins[k].append(f)
+57 < 1         sizes[k] += weight(bs)
+58 < 1     (work / "shards").mkdir(exist_ok=True)
+59 < 1     (work / "out").mkdir(exist_ok=True)
+60 < 1     for k, fs in enumerate(bins):
+61 < 1         with open(work / "shards" / f"shard{k:02d}.jsonl", "w") as out:
+62 < 1             for f in sorted(fs):
+63 < 1                 for b in by_file[f]:
+64 < 1                     out.write(json.dumps({key: b[key] for key in
+65 < 1                                           ("id", "file", "start", "end", "own", "kind", "text")}) + "\n")
+66 < 1     print(f"{len(blocks)} blocks in {len(by_file)} files, {shards} shards in {work}")
+67 < 1     return 0
+68 < 1 
+69 < 1 
+70 < 1 if __name__ == "__main__":
+71 < 1     sys.exit(main(sys.argv[1:]))
+72 < 1 

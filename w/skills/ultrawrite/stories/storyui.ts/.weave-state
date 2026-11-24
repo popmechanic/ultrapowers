@@ -1,17 +1,18 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // Read each story's clicks and checks off the picked screen.
-2 < 1 //
-3 < 1 //   bun skills/ultrawrite/stories/storyui.ts <bundle> --app <dir>
-4 < 1 //
-5 < 1 // The stories keep their sentences, tools, args and layers; this writes the
-6 < 1 // on-screen half. Each story is replayed through the bundle's store module, and
-7 < 1 // each `ui`-layer step gets its gestures (`ui`: the draft boxes it types into,
-8 < 1 // then the control that runs its tool, in its row when it sits in a list) and
-9 < 1 // what is drawn after it (`see`: every named element with its count, and each
-10 < 1 // one that left with count 0). Names are read the way the browser and the checker
-11 < 1 // read them: the part's role and naming props from the app's draws.json, each
-12 < 1 // prop resolved by json-render against the state the page holds.
-13 < 1 import {copyFileSync, existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+1 < 2 // Read each story's clicks and checks off the picked screen.
+2 < 2 //
+3 < 2 //   bun skills/ultrawrite/stories/storyui.ts <bundle> --app <dir>
+4 < 2 //
+5 < 2 // The stories keep their sentences, tools, args and layers; this writes the
+6 < 2 // on-screen half. Each story is replayed through the bundle's store module, and
+7 < 2 // each `ui`-layer step gets its gestures (`ui`: the draft boxes it types into,
+8 < 2 // then the control that runs its tool, in its row when it sits in a list) and
+9 < 2 // what is drawn after it (`see`: every named element with its count, and each
+10 < 2 // one that left with count 0). Names are read the way the browser and the checker
+11 < 2 // read them: the part's role and naming props from the app's draws.json, each
+12 < 2 // prop resolved by json-render against the state the page holds.
+14 > 1 import {copyFileSync, existsSync, readFileSync, realpathSync, rmSync, writeFileSync} from 'node:fs';
+13 < 2 import {copyFileSync, existsSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 14 < 1 import {join, resolve} from 'node:path';
 15 < 1 import {parseArgs} from 'node:util';
 16 < 1 import {Aliases, type Content, type See, type UiStep} from '../../../factory/stack/tinyapp/probe';
@@ -28,11 +29,11 @@
 27 < 1   splitRepeatVisibility: (c: unknown) => {container: unknown; itemFilter: unknown};
 28 < 1 };
 29 < 1 type Ctx = {stateModel: Record<string, unknown>; repeatItem?: unknown; repeatIndex?: number; repeatBasePath?: string; functions?: Record<string, unknown>};
-30 < 1 // One element as drawn: its spec, the context it resolves in, its role and name (null when it names nothing).
+30 < 2 // One element as drawn: its spec, the context it resolves in, its role and name (null when it names nothing).
 31 < 1 type Drawn = {el: El; ctx: Ctx; role: string | null; name: string};
 32 < 1 
 33 < 1 class CannotRun extends Error {}
-35 > 1 // A story whose pick the page's picker does not offer: it cannot be played on the page.
+35 > 2 // A story whose pick the page's picker does not offer: it cannot be played on the page.
 36 < 1 class NotOffered extends Error {}
 34 < 1 
 35 < 1 const isObj = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -44,7 +45,7 @@
 41 < 1   return cur;
 42 < 1 }
 43 < 1 
-44 < 1 /** Every element the screen draws against `state`, in document order. */
+44 < 2 /** Every element the screen draws against `state`, in document order. */
 45 < 1 function drawAll(screen: Screen, draws: Draws, core: Core, functions: Record<string, unknown>, state: Record<string, unknown>): Drawn[] {
 46 < 1   const out: Drawn[] = [];
 47 < 1   const walk = (key: string, ctx: Ctx) => {
@@ -81,7 +82,7 @@
 78 < 1   return out;
 79 < 1 }
 80 < 1 
-81 < 1 /** The named elements drawn, with their counts, in first-drawn order. */
+81 < 2 /** The named elements drawn, with their counts, in first-drawn order. */
 82 < 1 function seen(drawn: Drawn[]): See[] {
 83 < 1   const out: See[] = [];
 84 < 1   for (const d of drawn) {
@@ -93,7 +94,7 @@
 90 < 1   return out;
 91 < 1 }
 92 < 1 
-93 < 1 // The draft input a `$bindState` value writes: `/draft/<input>` or `/draft/<tool>.<input>`.
+93 < 2 // The draft input a `$bindState` value writes: `/draft/<input>` or `/draft/<tool>.<input>`.
 94 < 1 function draftInput(v: unknown, tool: string): string | null {
 95 < 1   if (!isObj(v) || typeof v.$bindState !== 'string') return null;
 96 < 1   const m = /^\/draft\/(.+)$/.exec(v.$bindState);
@@ -111,10 +112,13 @@
 108 < 1   if (segs.length) cur[segs[segs.length - 1]] = value;
 109 < 1 }
 110 < 1 
-111 < 1 /** The number of `ui`-layer steps filled. */
+111 < 2 /** The number of `ui`-layer steps filled. */
 112 < 1 export async function storyUi(bundleDir: string, appDir: string): Promise<number> {
 113 < 1   const b = loadBundle(bundleDir);
-114 < 1   const app = resolve(appDir);
+115 > 2   // The real path: on macOS a temp dir is reached through the /var -> /private/var link, and the
+116 < 2   // store module copied in under the linked path will not import.
+117 < 1   const app = existsSync(appDir) ? realpathSync(resolve(appDir)) : resolve(appDir);
+114 < 2   const app = resolve(appDir);
 115 < 1   const screenFile = join(b.dir, 'screens', 'screen.json');
 116 < 1   if (!existsSync(screenFile)) throw new CannotRun(`${screenFile} does not exist; pick a screen first`);
 117 < 1   const screen = JSON.parse(readFileSync(screenFile, 'utf8')) as Screen;
@@ -131,7 +135,7 @@
 128 < 1   } catch (e) {
 129 < 1     throw new CannotRun(`the app's json-render or functions would not load: ${(e as Error).message}`);
 130 < 1   }
-131 < 1   // The bundle's store module, imported from inside the app so tinybase resolves.
+131 < 2   // The bundle's store module, imported from inside the app so tinybase resolves.
 132 < 1   const tmp = join(app, 'client', 'src', `.storyui-${process.pid}.js`);
 133 < 1   let mod: StoreModule;
 134 < 1   try {
@@ -181,12 +185,12 @@
 176 < 1         const typed = text(args[input]);
 177 < 1         if (typed === '') continue;
 178 < 1         ui.push({type: {role: d.role, name: d.name, text: typed}});
-181 > 1         // A number box's draft is the number itself; a text box's is its text.
+181 > 2         // A number box's draft is the number itself; a text box's is its text.
 182 < 1         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), isNumber ? args[input] : typed);
 180 > 2         setPath(draft, (d.el.props!.value as Record<string, string>).$bindState.slice('/draft'.length), typed);
 179 < 2         setPath(draft, ((d.el.props!.value as Record<string, string>).$bindState).slice('/draft/'.length).replace(/^/, '/'), typed);
 180 < 1       }
-182 > 1       // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
+182 > 2       // The control that runs the tool: in the row the step's row args name (other than a picker's pick), when it sits in a list.
 181 < 2       // The control that runs the tool: in the row the step's row arg names, when it sits in a list.
 182 < 1       const controls = before.filter((d) => d.el.props?.action === st.tool && d.role && d.name);
 184 > 1       const pickOf = (d: Drawn) => (d.el.type === 'ActionSelect' && typeof d.el.props?.pick === 'string' ? d.el.props.pick : null);
@@ -199,7 +203,7 @@
 185 < 1       const control = controls.find(inRow) ?? controls.find((d) => d.ctx.repeatBasePath === undefined) ?? controls[0];
 187 > 1       const pick = control ? pickOf(control) : null;
 188 < 1       if (control && pick !== null) {
-189 < 1         // A picker: choose the offered row whose id is the step's pick.
+189 < 2         // A picker: choose the offered row whose id is the step's pick.
 190 < 1         const p = control.el.props!;
 191 < 1         const label = typeof p.optionLabel === 'string' ? p.optionLabel : 'name';
 192 < 1         const options = core.resolvePropValue(p.options, control.ctx);
@@ -215,7 +219,7 @@
 202 < 1       } else if (control) {
 186 < 2       if (control) {
 187 < 1         ui.push({click: {role: control.role!, name: control.name}});
-188 < 1         // A press that clears its draft box clears it on the page too.
+188 < 2         // A press that clears its draft box clears it on the page too.
 189 < 1         const press = control.el.on?.press;
 190 < 1         for (const a of Array.isArray(press) ? press : press ? [press] : []) {
 191 < 1           if (isObj(a) && a.action === 'setState' && isObj(a.params) && typeof a.params.statePath === 'string' && a.params.statePath.startsWith('/draft/')) {

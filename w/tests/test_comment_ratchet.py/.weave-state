@@ -1,0 +1,23 @@
+0 < 1 import subprocess
+1 < 1 import sys
+2 < 1 from pathlib import Path
+3 < 1 
+4 < 1 REPO_ROOT = Path(__file__).resolve().parents[1]
+5 < 1 
+6 < 1 
+7 < 1 def test_no_file_gains_a_comment():
+8 < 1     run = subprocess.run([sys.executable, str(REPO_ROOT / "lint" / "comments.py")],
+9 < 1                          capture_output=True, text=True)
+10 < 1     assert run.returncode == 0, run.stdout + run.stderr
+11 < 1 
+12 < 1 
+13 < 1 def test_the_lexer_sees_comments_and_not_strings(tmp_path):
+14 < 1     sys.path.insert(0, str(REPO_ROOT / "lint"))
+15 < 1     import comments
+16 < 1     src = ("const a = '// no'; // yes\n"
+17 < 1            "const b = `x ${ {c: 1}.c } // no`;\n"
+18 < 1            "const r = /\\/\\/ no/g; /* yes\n yes */\n"
+19 < 1            "// @ts-ignore\n")
+20 < 1     assert [(s, e) for s, e, _ in comments.js_comments(src)
+21 < 1             if not comments.PRAGMA.match(_)] == [(1, 1), (3, 4)]
+22 < 1 

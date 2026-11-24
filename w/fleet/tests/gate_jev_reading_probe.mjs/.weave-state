@@ -1,0 +1,121 @@
+0 < 1 #!/usr/bin/env node
+1 < 2 // The gate Jev reading probe (#1497): which reading `skills/ultrawrite/stories/gate_jev.ts` asks,
+2 < 2 // per policy.json `gate_reading`. It runs the script with `--record` against a local stand-in Jev
+3 < 2 // (a node:http server on 127.0.0.1) answering every `fact:` and `caught:` question 0.9,
+4 < 2 // `contradiction` 0.1 and `pinned` 0.1. The diet's base holds OWN (the task's own file, marked
+5 < 2 // `"own": "modify"`) and SIB (a sibling test, unmarked). The case is argv[2]:
+6 < 2 //   own-files  base files [OWN, SIB], the repository's policy;
+7 < 2 //   own-only   base files [OWN], the repository's policy;
+8 < 2 //   rollback   base files [OWN, SIB], on a copy whose gate_reading is caught "caught", own_files "read";
+9 < 2 //   typo       base files [OWN, SIB], on a copy whose gate_reading caught is "caught_v9", a key no question has:
+10 < 2 //              the script falls back to `caught` and the round's reading says so.
+11 < 2 // Prints one JSON line {requests, asked, state_base, caught_M1, verdict, pinned, round} and exits 0;
+12 < 2 // exits 1 only when it could not run.
+13 < 1 import { spawn } from 'node:child_process'
+14 < 1 import fs from 'node:fs'
+15 < 1 import http from 'node:http'
+16 < 1 import os from 'node:os'
+17 < 1 import path from 'node:path'
+18 < 1 import { fileURLToPath } from 'node:url'
+19 < 1 
+20 < 1 const CASE = process.argv[2]
+21 < 1 const CASES = ['own-files', 'own-only', 'rollback', 'typo']
+22 < 1 if (!CASES.includes(CASE)) { console.log(`usage: gate_jev_reading_probe.mjs ${CASES.join('|')}`); process.exit(1) }
+23 < 1 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+24 < 1 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-reading-'))
+25 < 1 const HOME = path.join(tmp, 'home')
+26 < 1 fs.mkdirSync(HOME)
+27 < 1 fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
+28 < 1 
+29 < 1 let server
+30 < 1 const fail = (why) => { console.error(`GATE JEV READING ${CASE} COULD NOT RUN: ${why}`); server?.close(); process.exit(1) }
+31 < 1 
+32 < 2 // the root gate_jev.ts runs from: the repository, or a copy with the policy cells changed (rollback, typo)
+33 < 1 let root = REPO
+34 < 1 if (CASE === 'rollback' || CASE === 'typo') {
+35 < 1   root = path.join(tmp, 'repo')
+36 < 1   try {
+37 < 1     const stories = path.join(root, 'skills/ultrawrite/stories')
+38 < 1     fs.mkdirSync(stories, { recursive: true })
+39 < 1     fs.mkdirSync(path.join(root, 'factory'), { recursive: true })
+40 < 1     for (const f of ['gate_jev.ts', 'jev.ts', 'questions.json', 'policy.json']) {
+41 < 1       fs.copyFileSync(path.join(REPO, 'skills/ultrawrite/stories', f), path.join(stories, f))
+42 < 1     }
+43 < 1     fs.copyFileSync(path.join(REPO, 'factory/jev-client.mjs'), path.join(root, 'factory/jev-client.mjs'))
+44 < 1     const pf = path.join(stories, 'policy.json')
+45 < 1     const policy = JSON.parse(fs.readFileSync(pf, 'utf8'))
+46 < 1     policy.gate_reading = CASE === 'typo'
+47 < 1       ? { ...(policy.gate_reading ?? {}), caught: 'caught_v9' }
+48 < 1       : { ...(policy.gate_reading ?? {}), caught: 'caught', own_files: 'read' }
+49 < 1     fs.writeFileSync(pf, JSON.stringify(policy, null, 2) + '\n')
+50 < 1   } catch (e) { fail(`could not build the copy: ${e}`) }
+51 < 1 }
+52 < 1 
+53 < 2 // the stand-in Jev
+54 < 1 const requests = []
+55 < 1 const answer = (k) => (k.startsWith('fact:') || k.startsWith('caught:') ? 0.9 : k === 'contradiction' ? 0.1 : k === 'pinned' ? 0.1 : 0.5)
+56 < 1 server = http.createServer((req, res) => {
+57 < 1   let body = ''
+58 < 1   req.on('data', (c) => { body += c })
+59 < 1   req.on('end', () => {
+60 < 1     if (req.method !== 'POST' || req.url !== '/v1/systemone') { res.writeHead(404); res.end(); return }
+61 < 1     let json = {}
+62 < 1     try { json = JSON.parse(body) } catch {}
+63 < 1     requests.push(json)
+64 < 1     const answers = Object.fromEntries(Object.keys(json.questions || {}).map((k) => [k, { noul: answer(k) }]))
+65 < 1     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ answers }))
+66 < 1   })
+67 < 1 })
+68 < 1 await new Promise((r) => server.listen(0, '127.0.0.1', r))
+69 < 1 
+70 < 1 const OWN = {
+71 < 1   path: 'skills/census.mjs', status: 'present', lines: 30, headings: [],
+72 < 1   excerpt: "12: const ROOT = 'skills/old'", truncated: false, own: 'modify',
+73 < 1 }
+74 < 1 const SIB = {
+75 < 1   path: 'fleet/tests/census.test.mjs', status: 'present', lines: 42, headings: [],
+76 < 1   excerpt: "12: assert.deepEqual(paths, ['skills/old/a.md'])", truncated: false,
+77 < 1 }
+78 < 1 const diet = {
+79 < 1   task: '4', hash: 'h1',
+80 < 1   claim: 'The census moves to the new paths. Machine: M1. `census` prints `skills/new/a.md`. M2. `census` exits 0.',
+81 < 1   proof: '- Run: node census_probe.mjs text [M1]\n- Run: node census_probe.mjs exit [M2]\n- Legs: (a) it prints the new path [M1]; (b) it exits 0 [M2].',
+82 < 1   base: { rev: 'r0', files: CASE === 'own-only' ? [OWN] : [OWN, SIB] },
+83 < 1 }
+84 < 1 const dietFile = path.join(tmp, 'diet.json')
+85 < 1 fs.writeFileSync(dietFile, JSON.stringify(diet))
+86 < 1 const rec = path.join(tmp, 'plan.gate-verdicts.json')
+87 < 1 
+88 < 1 const run = await new Promise((resolve) => {
+89 < 1   const p = spawn('bun', [path.join(root, 'skills/ultrawrite/stories/gate_jev.ts'), dietFile,
+90 < 1     '--record', rec, '--agent', 'pass', '--reason', 'r'], {
+91 < 1     cwd: root,
+92 < 1     env: { ...process.env, TYPESAFE_BASE_URL: `http://127.0.0.1:${server.address().port}`, ULTRAPOWERS_HOME: HOME },
+93 < 1   })
+94 < 1   let stdout = ''
+95 < 1   let stderr = ''
+96 < 1   p.stdout.on('data', (c) => { stdout += c })
+97 < 1   p.stderr.on('data', (c) => { stderr += c })
+98 < 1   p.on('error', (e) => resolve({ code: -1, stdout, stderr: String(e) }))
+99 < 1   p.on('close', (code) => resolve({ code, stdout, stderr }))
+100 < 1 })
+101 < 1 if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
+102 < 1 if (!requests.length) fail('no request made')
+103 < 1 const lines = run.stdout.split('\n').filter(Boolean)
+104 < 1 let out
+105 < 1 try { out = JSON.parse(lines[lines.length - 1]) } catch { fail(`stdout is not JSON: ${run.stdout}`) }
+106 < 1 let rounds
+107 < 1 try { rounds = JSON.parse(fs.readFileSync(rec, 'utf8')).tasks?.['4']?.gate_rounds } catch (e) { fail(`no record: ${e}`) }
+108 < 1 server.close()
+109 < 1 const q = requests[0].questions || {}
+110 < 1 console.log(JSON.stringify({
+111 < 1   requests: requests.length,
+112 < 1   asked: Object.keys(q).sort(),
+113 < 1   state_base: requests[0].state?.base ?? null,
+114 < 1   caught_M1: q['caught:M1'] ?? null,
+115 < 1   verdict: out.verdict ?? null,
+116 < 1   pinned: out.pinned === undefined ? null : out.pinned,
+117 < 1   round: Array.isArray(rounds) && rounds.length ? rounds[rounds.length - 1] : null,
+118 < 1 }))
+119 < 1 process.exit(0)
+120 < 1 

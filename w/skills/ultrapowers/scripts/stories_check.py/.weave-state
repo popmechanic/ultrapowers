@@ -1,0 +1,37 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """The laptop's check of a stories-v1 plan: the signed store module is the one
+2 < 2 the plan names, and every probe calls only the tools its tasks list. The
+3 < 2 probes themselves were derived by compile.ts from that store; hollowness is
+4 < 2 refused there and measured again by the Flock's start-of-run check."""
+5 < 1 import hashlib
+6 < 1 import os
+7 < 1 
+8 < 1 import probe_block
+9 < 1 import stories_parse
+10 < 1 
+11 < 1 
+12 < 1 def violations(text, plan_path):
+13 < 1     try:
+14 < 1         parsed = stories_parse.parse_stories_text(text)
+15 < 1     except stories_parse.StoriesRefusal as exc:
+16 < 1         return [str(exc)]
+17 < 1     root = os.path.dirname(os.path.dirname(os.path.abspath(plan_path)))
+18 < 1     out = []
+19 < 1     store = parsed["store"]
+20 < 1     store_file = os.path.join(root, store["path"])
+21 < 1     if not os.path.isfile(store_file):
+22 < 1         out.append("stories: store module %s is missing" % store["path"])
+23 < 1     else:
+24 < 1         with open(store_file, "rb") as fh:
+25 < 1             got = hashlib.sha256(fh.read()).hexdigest()
+26 < 1         if got != store["sha256"]:
+27 < 1             out.append("stories: store module %s changed since it was signed (now sha256:%s, signed sha256:%s)"
+28 < 1                        % (store["path"], got, store["sha256"]))
+29 < 1     actions = {a for t in parsed["tasks"] for a in t["actions"]}
+30 < 1     for t in parsed["tasks"]:
+31 < 1         for p in t["probes"]:
+32 < 1             for name in sorted(probe_block.tools_of(p) - actions):
+33 < 1                 out.append("task %s probe %s: names tool %s, which no task's Actions list"
+34 < 1                            % (t["id"], p["clause"], name))
+35 < 1     return out
+36 < 1 

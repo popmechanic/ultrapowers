@@ -1,11 +1,11 @@
-0 < 1 /** The json-render StateStore over a TinyBase store.
-1 < 1  *
-2 < 1  * Snapshot: {tables: {<table>: [{id, ...cells}, ...]}, values, draft, session}.
-3 < 1  * Only `draft` is writable from a screen: setSnapshot keeps the new draft and
-4 < 1  * drops everything else, so saved data changes only through the app's actions.
-6 > 1  * The snapshot rebuilds on each store transaction; `refresh` rebuilds it when
-7 < 1  * something outside the store changes, such as the session's `who`.
-5 < 1  */
+0 < 2 /** The json-render StateStore over a TinyBase store.
+1 < 2  *
+2 < 2  * Snapshot: {tables: {<table>: [{id, ...cells}, ...]}, values, draft, session}.
+3 < 2  * Only `draft` is writable from a screen: setSnapshot keeps the new draft and
+4 < 2  * drops everything else, so saved data changes only through the app's actions.
+6 > 2  * The snapshot rebuilds on each store transaction; `refresh` rebuilds it when
+7 < 2  * something outside the store changes, such as the session's `who`.
+5 < 2  */
 6 < 1 import { createStoreAdapter } from '@json-render/core/store-utils'
 7 < 1 import type { StateStore } from '@json-render/core'
 8 < 1 import type { MergeableStore } from 'tinybase'

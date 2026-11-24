@@ -1,0 +1,69 @@
+0 < 1 #!/usr/bin/env node
+1 < 2 // The screens check is the last fact of a stories-v1 task and has no clause (#1523): when it is the
+2 < 2 // red fact, the parked reason names it `(screens)`, not `(undefined)`. `bun` is a fake on PATH that
+3 < 2 // passes every call but the screens check, which prints one finding and exits 1.
+4 < 2 // Prints `ALL TESTS PASSED` and exits 0, or `FAIL screens label: ...` and exits 1.
+5 < 1 import fs from 'node:fs'
+6 < 1 import path from 'node:path'
+7 < 1 import { simEnv } from './_helpers.mjs'
+8 < 1 import { flockTarget, flockRun } from './_flock_helpers.mjs'
+9 < 1 
+10 < 1 const F = '```'
+11 < 1 const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
+12 < 1 const PLAN = `# Sim plan
+13 < 1 
+14 < 1 **Grammar:** stories-v1
+15 < 1 **Stack:** tinyapp
+16 < 1 **Plan-id:** p1
+17 < 1 **Kind:** behaviour
+18 < 1 **Summary:** One. Two. Three.
+19 < 1 **Store:** \`store.js\` sha256:${'0'.repeat(64)}
+20 < 1 
+21 < 1 ## Stories
+22 < 1 
+23 < 1 - S1: You add a note; it shows.
+24 < 1 
+25 < 1 ### Task 1: The note piece
+26 < 1 
+27 < 1 **Piece:** note
+28 < 1 **Depends-on-pieces:** none
+29 < 1 
+30 < 1 **Files:**
+31 < 1 - Create: \`client/src/pieces/note.json\`
+32 < 1 
+33 < 1 **Purpose:** Keep notes.
+34 < 1 
+35 < 1 **Stories:**
+36 < 1 - S1: You add a note; it shows.
+37 < 1 
+38 < 1 **Proof:**
+39 < 1 ${F}probe
+40 < 1 ${PROBE}
+41 < 1 ${F}
+42 < 1 `
+43 < 1 const BUN = `#!/bin/sh
+44 < 1 case "$*" in *screens.ts*) echo 'SCREENS note: no element runs addNote'; exit 1;; esac
+45 < 1 exit 0
+46 < 1 `
+47 < 1 
+48 < 1 const t = flockTarget({ 'note.txt': 'base\n' })
+49 < 1 try {
+50 < 1   const bin = path.join(t.tmp, 'bin')
+51 < 1   fs.mkdirSync(bin)
+52 < 1   fs.writeFileSync(path.join(bin, 'bun'), BUN, { mode: 0o755 })
+53 < 1   t.over.PATH = simEnv({ bin, home: t.tmp }).PATH
+54 < 1   const plan = path.join(t.tmp, 'plan.md')
+55 < 1   fs.writeFileSync(plan, PLAN)
+56 < 1   const r = await flockRun(t, { plan, script: { 1: { 'client/src/pieces/note.json': '{"root":"note","elements":{}}\n' } } })
+57 < 1   const parked = r.of('task:parked')
+58 < 1   if (parked.length !== 1 || !String(parked[0].reason).startsWith('the scripted files leave red facts: fact 2 (screens) exit 1\n')) {
+59 < 1     throw new Error(`task:parked rows: ${JSON.stringify(parked)} (exit ${r.code}; ${r.out.slice(-600)})`)
+60 < 1   }
+61 < 1   console.log('ALL TESTS PASSED')
+62 < 1 } catch (e) {
+63 < 1   console.log(`FAIL screens label: ${e.message}`)
+64 < 1   process.exitCode = 1
+65 < 1 } finally {
+66 < 1   t.done()
+67 < 1 }
+68 < 1 

@@ -1,27 +1,27 @@
 0 < 1 #!/usr/bin/env python3
-1 < 1 """A state probe, as a stories-v1 plan carries it: one fenced ```probe block
-2 < 1 holding one JSON object. The grammar is closed, and code decides every check.
-3 < 1 
-4 < 1     {"clause": "S1.2", "layer": "store" | "ui" | "saved",
-5 < 1      "as"?: email | null,                               who is signed in for `do`
-6 < 1      "given": [{"tool": name, "args": {...}, "as"?: email | null}, ...],
-7 < 1      "do":    [{"tool": name, "args": {...}}]            (store, saved)
-8 < 1             | [{"click" | "type" | "key": {...}}, ...]   (ui),
-9 < 1      "expect": [check, ...],
-10 < 1      "see": [{"role": r, "name": n, "count"?: k}, ...],
-11 < 1      "judge": null | "a sentence Jev reads over the before/after state",
-12 < 1      "holds_before": bool}
-13 < 1 
-14 < 1 A check is exactly one of:
-15 < 1     {"table": t, "row": r, "cell": c, "eq": v}         the cell holds v
-16 < 1     {"table": t, "row": r, "cell": c, "absent": true}  the cell is not set
-17 < 1     {"table": t, "row": r, "absent": true}             the row is gone
-18 < 1     {"value": k, "eq": v} | {"value": k, "absent": true}
-19 < 1     {"unchanged": true}                                nothing changed
-20 < 1 `as` sets who is signed in on the page (the page hook's `who`) before that
-21 < 1 call, and it stays so until the next `as`; absent, the page's own sign-in
-22 < 1 stands (none, on the checker). Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
-23 < 1 (factory/stack/tinyapp/probe.ts); this module reads the shape only."""
+1 < 2 """A state probe, as a stories-v1 plan carries it: one fenced ```probe block
+2 < 2 holding one JSON object. The grammar is closed, and code decides every check.
+3 < 2 
+4 < 2     {"clause": "S1.2", "layer": "store" | "ui" | "saved",
+5 < 2      "as"?: email | null,                               who is signed in for `do`
+6 < 2      "given": [{"tool": name, "args": {...}, "as"?: email | null}, ...],
+7 < 2      "do":    [{"tool": name, "args": {...}}]            (store, saved)
+8 < 2             | [{"click" | "type" | "key": {...}}, ...]   (ui),
+9 < 2      "expect": [check, ...],
+10 < 2      "see": [{"role": r, "name": n, "count"?: k}, ...],
+11 < 2      "judge": null | "a sentence Jev reads over the before/after state",
+12 < 2      "holds_before": bool}
+13 < 2 
+14 < 2 A check is exactly one of:
+15 < 2     {"table": t, "row": r, "cell": c, "eq": v}         the cell holds v
+16 < 2     {"table": t, "row": r, "cell": c, "absent": true}  the cell is not set
+17 < 2     {"table": t, "row": r, "absent": true}             the row is gone
+18 < 2     {"value": k, "eq": v} | {"value": k, "absent": true}
+19 < 2     {"unchanged": true}                                nothing changed
+20 < 2 `as` sets who is signed in on the page (the page hook's `who`) before that
+21 < 2 call, and it stays so until the next `as`; absent, the page's own sign-in
+22 < 2 stands (none, on the checker). Deciding a check (holds, hollow, the diff a step made) is probe.ts's alone
+23 < 2 (factory/stack/tinyapp/probe.ts); this module reads the shape only."""
 24 < 1 import json
 25 < 1 
 26 < 1 LAYERS = ("store", "ui", "saved")
@@ -31,7 +31,7 @@
 29 < 1 
 30 < 1 
 31 < 1 def is_who(x):
-32 < 1     """A signed-in email, or None for nobody signed in."""
+32 < 2     """A signed-in email, or None for nobody signed in."""
 33 < 1     return x is None or (isinstance(x, str) and x != "")
 34 < 1 
 35 < 1 
@@ -71,7 +71,7 @@
 69 < 1 
 70 < 1 
 71 < 1 def validate_probe(p):
-72 < 1     """Every way `p` leaves the grammar, one plain sentence each; [] when valid."""
+72 < 2     """Every way `p` leaves the grammar, one plain sentence each; [] when valid."""
 73 < 1     if not isinstance(p, dict):
 74 < 1         return ["probe: must be a JSON object"]
 75 < 1     where = "probe %s" % p.get("clause", "?")
@@ -111,7 +111,7 @@
 108 < 1 
 109 < 1 
 110 < 1 def parse_probe_text(text):
-111 < 1     """`(probe, errors)` for one fence's body."""
+111 < 2     """`(probe, errors)` for one fence's body."""
 112 < 1     try:
 113 < 1         p = json.loads(text)
 114 < 1     except ValueError as exc:
@@ -120,7 +120,7 @@
 117 < 1 
 118 < 1 
 119 < 1 def tools_of(p):
-120 < 1     """Every tool name the probe calls, in `given` and in a tool-form `do`."""
+120 < 2     """Every tool name the probe calls, in `given` and in a tool-form `do`."""
 121 < 1     names = {g["tool"] for g in p.get("given", []) if is_tool_call(g)}
 122 < 1     names |= {d["tool"] for d in p.get("do", []) if is_tool_call(d)}
 123 < 1     return names

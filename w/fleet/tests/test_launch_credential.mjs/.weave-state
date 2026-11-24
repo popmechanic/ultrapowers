@@ -1,70 +1,70 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_launch_credential.mjs — the exam for "The launcher puts a
-2 < 1  * held sign-in on the launch line and turns a declined one into a one-line
-3 < 1  * refusal before anything is pushed" (#1113), plus "The launcher reads the
-4 < 1  * windows after the refresh, prints them, and refuses at the wall" (#1114).
-5 < 1  *
-6 < 1  * A sibling task changes `fleet/claude-token.mjs` so it stops rotating the
-7 < 1  * Claude credential while a `fleet-r*` VM is listed (a refresh grant would
-8 < 1  * revoke the access token every live run is using). It now exits 0 and prints
-9 < 1  * a hold line on stderr when it declines to rotate for that reason, and exits
-10 < 1  * 1 with a refusal line when the cached token is under ninety minutes from
-11 < 1  * expiring. This exam does not touch that file or spawn it — M1 and M2 drive
-12 < 1  * `defaultRefreshCredential` with a spy standing in for `spawnSync`, reading
-13 < 1  * the two lines back out of canned output exactly as that tool would print
-14 < 1  * them.
-15 < 1  *
-16 < 1  * Legs, each naming the Machine clause it comes from:
-17 < 1  *
-18 < 1  *   (a) [M1] a spy answering exit 0 with a hold line: `ok` true, `held`
-19 < 1  *       exactly the line (no newline), one spy call, argv's last three
-20 < 1  *       entries `refresh`, `--account`, `acct`.
-21 < 1  *   (b) [M2] a spy answering exit 1 with a refusal line: `ok` false, `refused`
-22 < 1  *       exactly the line; a spy answering exit 1 with unrelated stderr: `ok`
-23 < 1  *       false, `refused` undefined.
-24 < 1  *   (c) [M3] `launch` given a `refreshCredential` that answers `refused`
-25 < 1  *       rejects with a `Refusal` (exit 2) whose message carries the line and
-26 < 1  *       "nothing was pushed", with no push and no `new` verb issued.
-27 < 1  *   (d) [M4] `launch` given a `refreshCredential` that answers `held` resolves
-28 < 1  *       with `result.token` exactly the held line, carried by `renderLaunch`
-29 < 1  *       as its own whole line; `{ ok: true }` alone renders no `token:` line.
-30 < 1  *
-32 > 1  * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential })`
-33 < 1  * in-process over the launch sims' shared rig in
+0 < 2 /**
+1 < 2  * fleet/tests/test_launch_credential.mjs — the exam for "The launcher puts a
+2 < 2  * held sign-in on the launch line and turns a declined one into a one-line
+3 < 2  * refusal before anything is pushed" (#1113), plus "The launcher reads the
+4 < 2  * windows after the refresh, prints them, and refuses at the wall" (#1114).
+5 < 2  *
+6 < 2  * A sibling task changes `fleet/claude-token.mjs` so it stops rotating the
+7 < 2  * Claude credential while a `fleet-r*` VM is listed (a refresh grant would
+8 < 2  * revoke the access token every live run is using). It now exits 0 and prints
+9 < 2  * a hold line on stderr when it declines to rotate for that reason, and exits
+10 < 2  * 1 with a refusal line when the cached token is under ninety minutes from
+11 < 2  * expiring. This exam does not touch that file or spawn it — M1 and M2 drive
+12 < 2  * `defaultRefreshCredential` with a spy standing in for `spawnSync`, reading
+13 < 2  * the two lines back out of canned output exactly as that tool would print
+14 < 2  * them.
+15 < 2  *
+16 < 2  * Legs, each naming the Machine clause it comes from:
+17 < 2  *
+18 < 2  *   (a) [M1] a spy answering exit 0 with a hold line: `ok` true, `held`
+19 < 2  *       exactly the line (no newline), one spy call, argv's last three
+20 < 2  *       entries `refresh`, `--account`, `acct`.
+21 < 2  *   (b) [M2] a spy answering exit 1 with a refusal line: `ok` false, `refused`
+22 < 2  *       exactly the line; a spy answering exit 1 with unrelated stderr: `ok`
+23 < 2  *       false, `refused` undefined.
+24 < 2  *   (c) [M3] `launch` given a `refreshCredential` that answers `refused`
+25 < 2  *       rejects with a `Refusal` (exit 2) whose message carries the line and
+26 < 2  *       "nothing was pushed", with no push and no `new` verb issued.
+27 < 2  *   (d) [M4] `launch` given a `refreshCredential` that answers `held` resolves
+28 < 2  *       with `result.token` exactly the held line, carried by `renderLaunch`
+29 < 2  *       as its own whole line; `{ ok: true }` alone renders no `token:` line.
+30 < 2  *
+32 > 2  * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential })`
+33 < 2  * in-process over the launch sims' shared rig in
 31 < 2  * (c) and (d) drive `launch({ argv, exec, config, now, sleep, refreshCredential,
 32 < 2  * kata: null })` in-process over the launch sims' shared rig in
-33 < 1  * `_lobby_helpers.mjs` (`launchRules`, `launchWorkspace`): a local bare origin
-34 < 1  * stands in for GitHub, and every lobby verb, `gh api` and `python3` call is
-35 < 1  * answered by a rule.
-36 < 1  *
-37 < 1  * ── #1114 (this task) ───────────────────────────────────────────────────────
-38 < 1  *
-39 < 1  * Legs (e)-(i) sit under this comment, added for "The launcher reads the
-40 < 1  * windows after the refresh, prints them, and refuses at the wall":
-41 < 1  *
-42 < 1  *   (e) [M1] `defaultReadUsage(account, spawn)` over a spawn spy: exit 0 with
-43 < 1  *       a one-row JSON array answers that row, one spy call, `process.execPath`
-44 < 1  *       as the spawned command and argv's last five entries `usage`, `--json`,
-45 < 1  *       `--account`, `<account>`, `--no-rotate`; exit 1, an empty array and
-46 < 1  *       unparseable stdout each answer `{ unread: true, reason: <string> }`.
-47 < 1  *   (f) [M2] `launch` with `readUsage` answering `sevenDay.utilization: 96`
-48 < 1  *       rejects with a `Refusal` carrying the account, `seven-day`, `96`, the
-49 < 1  *       reset string and the ending sentence, with no push and no `new` verb
-50 < 1  *       issued; `fiveHour.utilization: 95` (the wall itself) carries
-51 < 1  *       `five-hour` the same way. `USAGE_REFUSE_PCT` is asserted to be 95.
-52 < 1  *   (g) [M3] `readUsage` answering a row under both thresholds resolves with
-53 < 1  *       `result.usage` byte-exact as the Machine spells it, and `renderLaunch`
-54 < 1  *       carries that line immediately after the `account=` line; an
-55 < 1  *       `{ unread: true, reason }` row resolves `usage: <account> unread —
-56 < 1  *       <reason>` in the same place.
-57 < 1  *   (h) [M4] a `refreshCredential` answering `refused` leaves a spy
-58 < 1  *       `readUsage` at zero calls; one answering `{ ok: true }` leaves it at
-59 < 1  *       one call, ordered before the rig's first `git push`.
-60 < 1  *   (i) [M5] `fleet/CONTRACT.md` names the `--no-rotate` usage read and the
-61 < 1  *       `usage: <account> 7d` launch line (the two `grep` legs of the Proof,
-62 < 1  *       run here as substring checks over the file the exam already reads).
-63 < 1  */
-64 < 1 
+33 < 2  * `_lobby_helpers.mjs` (`launchRules`, `launchWorkspace`): a local bare origin
+34 < 2  * stands in for GitHub, and every lobby verb, `gh api` and `python3` call is
+35 < 2  * answered by a rule.
+36 < 2  *
+37 < 2  * ── #1114 (this task) ───────────────────────────────────────────────────────
+38 < 2  *
+39 < 2  * Legs (e)-(i) sit under this comment, added for "The launcher reads the
+40 < 2  * windows after the refresh, prints them, and refuses at the wall":
+41 < 2  *
+42 < 2  *   (e) [M1] `defaultReadUsage(account, spawn)` over a spawn spy: exit 0 with
+43 < 2  *       a one-row JSON array answers that row, one spy call, `process.execPath`
+44 < 2  *       as the spawned command and argv's last five entries `usage`, `--json`,
+45 < 2  *       `--account`, `<account>`, `--no-rotate`; exit 1, an empty array and
+46 < 2  *       unparseable stdout each answer `{ unread: true, reason: <string> }`.
+47 < 2  *   (f) [M2] `launch` with `readUsage` answering `sevenDay.utilization: 96`
+48 < 2  *       rejects with a `Refusal` carrying the account, `seven-day`, `96`, the
+49 < 2  *       reset string and the ending sentence, with no push and no `new` verb
+50 < 2  *       issued; `fiveHour.utilization: 95` (the wall itself) carries
+51 < 2  *       `five-hour` the same way. `USAGE_REFUSE_PCT` is asserted to be 95.
+52 < 2  *   (g) [M3] `readUsage` answering a row under both thresholds resolves with
+53 < 2  *       `result.usage` byte-exact as the Machine spells it, and `renderLaunch`
+54 < 2  *       carries that line immediately after the `account=` line; an
+55 < 2  *       `{ unread: true, reason }` row resolves `usage: <account> unread —
+56 < 2  *       <reason>` in the same place.
+57 < 2  *   (h) [M4] a `refreshCredential` answering `refused` leaves a spy
+58 < 2  *       `readUsage` at zero calls; one answering `{ ok: true }` leaves it at
+59 < 2  *       one call, ordered before the rig's first `git push`.
+60 < 2  *   (i) [M5] `fleet/CONTRACT.md` names the `--no-rotate` usage read and the
+61 < 2  *       `usage: <account> 7d` launch line (the two `grep` legs of the Proof,
+62 < 2  *       run here as substring checks over the file the exam already reads).
+63 < 2  */
+64 < 2 
 65 < 1 import assert from 'node:assert/strict'
 66 < 1 import fs from 'node:fs'
 67 < 1 import path from 'node:path'
@@ -76,8 +76,8 @@
 74 > 1   launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 73 < 2   HELP_FROM_VERBS, launchRules, launchWorkspace, makeExec, pointAtOrigin, pushCalls, thrown
 74 < 1 } from './_lobby_helpers.mjs'
-75 < 1 
-76 < 1 // ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
+75 < 2 
+76 < 2 // ── a/b. [M1, M2] defaultRefreshCredential over a spawn spy ─────────────────
 77 < 1 
 78 < 1 const HELD_LINE = 'token: fresh until 2026-09-21T14:00:00.000Z; 1 run(s) live — not rotated'
 79 < 1 const REFUSED_LINE =
@@ -94,7 +94,7 @@
 90 < 1   return fn
 91 < 1 }
 92 < 1 
-93 < 1 // (a) [M1] the hold line, on exit 0
+93 < 2 // (a) [M1] the hold line, on exit 0
 94 < 1 {
 95 < 1   const sp = spy({ status: 0, stdout: '', stderr: `${HELD_LINE}\n` })
 96 < 1   const cred = defaultRefreshCredential('acct', sp)
@@ -108,7 +108,7 @@
 104 < 1   )
 105 < 1 }
 106 < 1 
-107 < 1 // (b) [M2] the refusal line, on exit 1 — and a plain failure carries none
+107 < 2 // (b) [M2] the refusal line, on exit 1 — and a plain failure carries none
 108 < 1 {
 109 < 1   const sp = spy({ status: 1, stdout: '', stderr: `${REFUSED_LINE}\n` })
 110 < 1   const cred = defaultRefreshCredential('acct', sp)
@@ -120,15 +120,15 @@
 116 < 1   assert.equal(credOther.ok, false, '(b) [M2] ok is false on an unrelated failure')
 117 < 1   assert.equal(credOther.refused, undefined, '(b) [M2] refused is undefined when no refusal line is present')
 119 > 1 
-120 < 1   // no keychain record for the account (a misnamed --account) refuses, naming it — never a skip
+120 < 2   // no keychain record for the account (a misnamed --account) refuses, naming it — never a skip
 121 < 1   const spNone = spy({ status: 1, stderr: 'no refresh token in the keychain — run `node fleet/claude-token.mjs login` first\n' })
 122 < 1   const credNone = defaultRefreshCredential('acct', spNone)
 123 < 1   assert.equal(credNone.ok, false, '(b) a missing keychain record is not ok')
 124 < 1   assert.ok(typeof credNone.refused === 'string' && credNone.refused.includes('account acct'),
 125 < 1     `(b) a missing keychain record refuses naming the account — got ${JSON.stringify(credNone.refused)}`)
 118 < 1 }
-119 < 1 
-120 < 1 // ── c/d. [M3, M4] launch() driven with a stand-in refreshCredential ─────────
+119 < 2 
+120 < 2 // ── c/d. [M3, M4] launch() driven with a stand-in refreshCredential ─────────
 121 < 1 
 122 < 1 const TARGET = 'popmechanic/smoke'
 123 < 1 const GH = 'gh-popmechanic-smoke'
@@ -139,7 +139,7 @@
 128 < 1 const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 129 < 1 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 130 < 1 
-131 < 1 // `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
+131 < 2 // `repo.evidence` is the workspace's evidence bare, which the evidence URL is routed to.
 132 < 1 const readRules = ({ repo }) =>
 134 > 1   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH })
 133 < 2   launchRules({ engine: ENGINE, repo, evidence: repo.evidence, gh: GH, help: HELP_FROM_VERBS })
@@ -165,7 +165,7 @@
 152 < 1 
 153 < 1 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
 154 < 1 
-155 < 1 // (c) [M3] a declined credential refuses in one line, before anything is pushed
+155 < 2 // (c) [M3] a declined credential refuses in one line, before anything is pushed
 156 < 1 {
 157 < 1   const ws = workspace()
 158 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -183,7 +183,7 @@
 170 < 1   ws.cleanup()
 171 < 1 }
 172 < 1 
-173 < 1 // (d) [M4] a held credential is carried on the result and the launch line
+173 < 2 // (d) [M4] a held credential is carried on the result and the launch line
 174 < 1 {
 175 < 1   const ws = workspace()
 176 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -210,10 +210,10 @@
 197 < 1   ws.cleanup()
 198 < 1 }
 199 < 1 
-200 < 1 // ── #1114 — the launcher reads the windows after the refresh, prints them, ─
-201 < 1 //            and refuses at the wall ───────────────────────────────────────
-202 < 1 
-203 < 1 // (e) [M1] defaultReadUsage(account, spawn) over a spawn spy
+200 < 2 // ── #1114 — the launcher reads the windows after the refresh, prints them, ─
+201 < 2 //            and refuses at the wall ───────────────────────────────────────
+202 < 2 
+203 < 2 // (e) [M1] defaultReadUsage(account, spawn) over a spawn spy
 204 < 1 {
 205 < 1   const ROW = {
 206 < 1     name: 'acct',
@@ -247,7 +247,7 @@
 234 < 1   assert.equal(typeof rowBad.reason, 'string', '(e) [M1] and a string reason')
 235 < 1 }
 236 < 1 
-237 < 1 // USAGE_REFUSE_PCT is exported and exactly 95, as M2 spells it
+237 < 2 // USAGE_REFUSE_PCT is exported and exactly 95, as M2 spells it
 238 < 1 assert.equal(USAGE_REFUSE_PCT, 95, '[M2] USAGE_REFUSE_PCT is exactly 95')
 239 < 1 
 240 < 1 const rowAt = (sevenPct, fivePct) => ({
@@ -255,7 +255,7 @@
 242 < 1   fiveHour: { utilization: fivePct, resetsAt: '2026-09-16T08:20:00.000Z' }
 243 < 1 })
 244 < 1 
-245 < 1 // (f) [M2] a wall reading refuses before anything is pushed
+245 < 2 // (f) [M2] a wall reading refuses before anything is pushed
 246 < 1 {
 247 < 1   const ws = workspace()
 248 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -303,7 +303,7 @@
 290 < 1   ws.cleanup()
 291 < 1 }
 292 < 1 
-293 < 1 // (g) [M3] a row under both thresholds carries usage on the result and the launch line
+293 < 2 // (g) [M3] a row under both thresholds carries usage on the result and the launch line
 294 < 1 {
 295 < 1   const ws = workspace()
 296 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo }) })
@@ -344,7 +344,7 @@
 331 < 1   ws.cleanup()
 332 < 1 }
 333 < 1 
-334 < 1 // (h) [M4] readUsage's call count is gated on refreshCredential, and ordered before push
+334 < 2 // (h) [M4] readUsage's call count is gated on refreshCredential, and ordered before push
 335 < 1 function orderedSpy (result, order, tag) {
 336 < 1   const calls = []
 337 < 1   const fn = (...args) => {
@@ -397,8 +397,8 @@
 384 < 1   ws.cleanup()
 385 < 1 }
 386 < 1 
-387 < 1 // (i) [M5] fleet/CONTRACT.md names the usage read and the launch line — the
-388 < 1 // two `grep` legs of the Proof, run here as substring checks over the file.
+387 < 2 // (i) [M5] fleet/CONTRACT.md names the usage read and the launch line — the
+388 < 2 // two `grep` legs of the Proof, run here as substring checks over the file.
 389 < 1 {
 390 < 1   const contract = fs.readFileSync(path.join(FLEET_DIR, 'CONTRACT.md'), 'utf8')
 391 < 1   assert.ok(

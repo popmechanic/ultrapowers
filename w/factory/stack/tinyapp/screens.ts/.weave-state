@@ -1,11 +1,11 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // The screens checker: does every screen of this copy read as a json-render
-2 < 1 // spec over its catalog, and does it run each of its piece's card actions?
-3 < 1 // Browser-free: it imports the copy's catalog and store modules in Bun and
-5 > 1 // reads client/src/screen.json, the one page every piece's actions live in, or
-6 < 1 // client/src/pieces/<piece>.json in an app built before it. Exit 0 pass, 1 findings about the app,
+1 < 2 // The screens checker: does every screen of this copy read as a json-render
+2 < 2 // spec over its catalog, and does it run each of its piece's card actions?
+3 < 2 // Browser-free: it imports the copy's catalog and store modules in Bun and
+5 > 2 // reads client/src/screen.json, the one page every piece's actions live in, or
+6 < 2 // client/src/pieces/<piece>.json in an app built before it. Exit 0 pass, 1 findings about the app,
 4 < 2 // reads client/src/pieces/<piece>.json. Exit 0 pass, 1 findings about the app,
-5 < 1 // 2 could not run. It writes nothing.
+5 < 2 // 2 could not run. It writes nothing.
 7 > 1 import {createHash} from 'node:crypto';
 8 < 1 import {existsSync, readFileSync, readdirSync} from 'node:fs';
 6 < 2 import {existsSync, readFileSync} from 'node:fs';
@@ -16,7 +16,7 @@
 11 > 1 const REPO = join(import.meta.dir, '..', '..', '..');
 10 < 2 const REPO = join(dirname(new URL(import.meta.url).pathname), '..', '..', '..');
 11 < 1 const PARSER = join(REPO, 'skills', 'ultrapowers', 'scripts', 'plan_parse.py');
-13 > 1 // The app's one page, when it has one: a json-render spec every piece's builder writes into.
+13 > 2 // The app's one page, when it has one: a json-render spec every piece's builder writes into.
 14 < 1 const SCREEN = join('client', 'src', 'screen.json');
 12 < 1 const EXPRESSIONS = ['$state', '$item', '$index', '$bindState', '$bindItem', '$template', '$cond', '$computed'];
 13 < 1 
@@ -30,10 +30,10 @@
 21 < 1 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 22 < 1 const isExpression = (v: unknown) => isObj(v) && EXPRESSIONS.some((k) => k in v);
 23 < 1 const underDraft = (p: unknown) => typeof p === 'string' && p.startsWith('/draft/');
-25 > 1 // Where a built-in action writes when it names no statePath (json-render's ActionProvider).
+25 > 2 // Where a built-in action writes when it names no statePath (json-render's ActionProvider).
 26 < 1 const DEFAULT_PATH: Record<string, string> = {validateForm: '/formValidation'};
 24 < 1 
-25 < 1 /** The card actions per piece, in plan or bundle order. */
+25 < 2 /** The card actions per piece, in plan or bundle order. */
 26 < 1 function piecesFrom(plan?: string, bundle?: string): Map<string, string[]> {
 27 < 1   const out = new Map<string, string[]>();
 28 < 1   const add = (piece: string, actions: string[]) => out.set(piece, [...(out.get(piece) ?? []), ...actions.filter((a) => !(out.get(piece) ?? []).includes(a))]);
@@ -71,8 +71,8 @@
 60 < 1   return {components: cat.components as Record<string, {props: any}>, builtIn: cat.BUILT_IN as string[], catalog: cat.catalogFor(tools), actionNames: tools.map((t: {name: string}) => t.name) as string[]};
 61 < 1 }
 62 < 1 
-64 > 1 /** Every two-way binding anywhere under v: a $bindState path, or a $bindItem field
-65 < 1  *  (which writes the repeated row itself, so never a draft). */
+64 > 2 /** Every two-way binding anywhere under v: a $bindState path, or a $bindItem field
+65 < 2  *  (which writes the repeated row itself, so never a draft). */
 66 < 1 function bindings(v: unknown, out: string[] = []): string[] {
 67 < 1   if (Array.isArray(v)) for (const x of v) bindings(x, out);
 63 < 2 /** Every $bindState path anywhere under v. */
@@ -90,7 +90,7 @@
 72 < 1 
 73 < 1 type Loaded = Awaited<ReturnType<typeof load>>;
 74 < 1 
-76 > 1 /** Read one spec file of the copy: the spec, or the finding that it cannot be read. */
+76 > 2 /** Read one spec file of the copy: the spec, or the finding that it cannot be read. */
 77 < 1 function readSpec(copy: string, rel: string): {spec?: unknown; found: string[]} {
 78 < 1   const file = join(copy, rel);
 79 < 1   if (!existsSync(file)) return {found: [`no screen at ${rel}`]};
@@ -105,8 +105,8 @@
 81 < 1   }
 83 > 1 }
 84 < 1 
-85 < 1 /** A spec's findings (root, children, props against the catalog, draft-only writes) and the
-86 < 1  *  card actions its reachable elements run. */
+85 < 2 /** A spec's findings (root, children, props against the catalog, draft-only writes) and the
+86 < 2  *  card actions its reachable elements run. */
 88 > 1 function checkSpec(spec: any, c: Loaded, screen = false): {found: string[]; run: Set<string>} {
 87 < 2 function checkSpec(spec: any, c: Loaded): {found: string[]; run: Set<string>} {
 82 < 1   const found: string[] = [];
@@ -114,7 +114,7 @@
 84 < 1   if (!v.success) {
 85 < 1     for (const i of v.error?.issues ?? []) found.push(`${(i.path ?? []).join('.') || '(spec)'}: ${i.message}`);
 86 < 1   }
-88 > 1   // screen.json lists the element ids anyone may see; a per-piece spec says true or false.
+88 > 2   // screen.json lists the element ids anyone may see; a per-piece spec says true or false.
 89 < 1   const publicOk = (p: unknown) => screen ? Array.isArray(p) && p.every((id) => typeof id === 'string') : typeof p === 'boolean';
 90 < 1   if (isObj(spec) && 'public' in spec && !publicOk(spec.public)) found.push(`public cannot be ${JSON.stringify(spec.public)}`);
 87 < 2   if (isObj(spec) && 'public' in spec && typeof spec.public !== 'boolean') found.push(`public cannot be ${JSON.stringify(spec.public)}`);
@@ -180,7 +180,7 @@
 138 > 1   return {found, run};
 139 < 1 }
 140 < 1 
-141 < 1 /** The per-piece flow: client/src/pieces/<piece>.json is that piece's own screen. */
+141 < 2 /** The per-piece flow: client/src/pieces/<piece>.json is that piece's own screen. */
 142 < 1 function checkPiece(copy: string, piece: string, actions: string[], c: Loaded): string[] {
 143 < 1   const r = readSpec(copy, join('client', 'src', 'pieces', `${piece}.json`));
 144 < 1   if (r.found.length) return r.found;
@@ -189,10 +189,10 @@
 138 < 1   return found;
 139 < 1 }
 140 < 1 
-142 > 1 /** The app's parts, not its screens (#1491): every catalog part has its line in draws.json (the
-143 < 1  *  role it draws and the props that name it) and every line a part, and 1st-Pouf under
-144 < 1  *  client/src/pouf/ is byte-for-byte its pin, so a part added during a run wraps it rather than
-145 < 1  *  patching it. An app with no draws.json (scaffolded before it) is checked for the pin only. */
+142 > 2 /** The app's parts, not its screens (#1491): every catalog part has its line in draws.json (the
+143 < 2  *  role it draws and the props that name it) and every line a part, and 1st-Pouf under
+144 < 2  *  client/src/pouf/ is byte-for-byte its pin, so a part added during a run wraps it rather than
+145 < 2  *  patching it. An app with no draws.json (scaffolded before it) is checked for the pin only. */
 146 < 1 export function checkParts(copy: string, components: Record<string, {props: any}>): string[] {
 147 < 1   const found: string[] = [];
 148 < 1   const drawsFile = join(copy, 'client', 'src', 'screens', 'draws.json');
@@ -240,7 +240,7 @@
 150 < 1   let n = 0;
 152 > 1   for (const f of checkParts(copy, c.components)) { console.log(`SCREENS parts: ${f}`); n++; }
 153 < 1   if (existsSync(join(copy, SCREEN))) {
-154 < 1     // The screen flow: one page holds every piece's actions, read once.
+154 < 2     // The screen flow: one page holds every piece's actions, read once.
 155 < 1     const r = readSpec(copy, SCREEN);
 157 > 1     const {found, run} = r.found.length ? {found: r.found, run: new Set<string>()} : checkSpec(r.spec, c, true);
 156 < 2     const {found, run} = r.found.length ? {found: r.found, run: new Set<string>()} : checkSpec(r.spec, c);

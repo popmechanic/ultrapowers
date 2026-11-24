@@ -1,5 +1,5 @@
-0 < 1 // The probe core the page plays with. In the repo this re-exports the one
-1 < 1 // definition; preview.ts copies that file over this one when it stages the page
-2 < 1 // inside the app, where the repo's path no longer reaches.
+0 < 2 // The probe core the page plays with. In the repo this re-exports the one
+1 < 2 // definition; preview.ts copies that file over this one when it stages the page
+2 < 2 // inside the app, where the repo's path no longer reaches.
 3 < 1 export * from '../../../../factory/stack/tinyapp/probe';
 4 < 1 

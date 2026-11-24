@@ -1,46 +1,46 @@
-0 < 1 /**
-1 < 1  * fleet/setup-script.mjs — the per-run first-boot setup script.
-2 < 1  *
-3 < 1  * exe.dev runs `--setup-script` exactly once, at first boot, as `exedev`, with
-4 < 1  * HOME/USER/PATH set and nothing else — no XDG_RUNTIME_DIR, passwordless
-5 < 1  * `sudo -n`, the file piped in as /dev/stdin and capped at 10 KiB. The image
-6 < 1  * already ships claude, gh, busybox, git, jq and python3; the delta this script
-8 > 1  * installs is exactly node, bun, celld and pytest. It also drops the two files a run
+0 < 2 /**
+1 < 2  * fleet/setup-script.mjs — the per-run first-boot setup script.
+2 < 2  *
+3 < 2  * exe.dev runs `--setup-script` exactly once, at first boot, as `exedev`, with
+4 < 2  * HOME/USER/PATH set and nothing else — no XDG_RUNTIME_DIR, passwordless
+5 < 2  * `sudo -n`, the file piped in as /dev/stdin and capped at 10 KiB. The image
+6 < 2  * already ships claude, gh, busybox, git, jq and python3; the delta this script
+8 > 2  * installs is exactly node, bun, celld and pytest. It also drops the two files a run
 7 < 2  * installs is exactly node, bun, celld and pytest — kata is the engine boot's to install, at the
 8 < 2  * version its own sha pins (#1190). It also drops the two files a run
-9 < 1  * needs — the bootstrap at /usr/local/lib/fleet/bootstrap.sh (root-owned, 0555)
-10 < 1  * and the unit template in the user's own systemd directory — waits for the
-11 < 1  * user bus, starts the run, and deletes itself.
-12 < 1  *
-13 < 1  * The run number is baked in as a literal: the script is generated per run and
-14 < 1  * reads no environment variable for it, so a box can never run someone else's
-15 < 1  * assignment because a unit file leaked an --env.
-16 < 1  */
-17 < 1 
+9 < 2  * needs — the bootstrap at /usr/local/lib/fleet/bootstrap.sh (root-owned, 0555)
+10 < 2  * and the unit template in the user's own systemd directory — waits for the
+11 < 2  * user bus, starts the run, and deletes itself.
+12 < 2  *
+13 < 2  * The run number is baked in as a literal: the script is generated per run and
+14 < 2  * reads no environment variable for it, so a box can never run someone else's
+15 < 2  * assignment because a unit file leaked an --env.
+16 < 2  */
+17 < 2 
 18 < 1 import fs from 'node:fs'
 19 < 1 import path from 'node:path'
 20 < 1 import { fileURLToPath } from 'node:url'
 21 < 1 
 22 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
 23 < 1 
-24 < 1 /** exe.dev's ceiling for a `--setup-script` payload. */
+24 < 2 /** exe.dev's ceiling for a `--setup-script` payload. */
 25 < 1 export const SETUP_SCRIPT_MAX_BYTES = 10240
-26 < 1 /** The fleet's own, tighter budget for the same payload: headroom under the
-27 < 1  *  platform's ceiling, so a growing bootstrap is noticed on the laptop before
-28 < 1  *  the lobby refuses it. */
+26 < 2 /** The fleet's own, tighter budget for the same payload: headroom under the
+27 < 2  *  platform's ceiling, so a growing bootstrap is noticed on the laptop before
+28 < 2  *  the lobby refuses it. */
 29 < 1 export const SETUP_SCRIPT_BUDGET_BYTES = 9216
 30 < 1 export const NODE_VERSION = '24.22.1'
 31 < 1 export const BUN_VERSION = '1.4.4'
 32 < 1 export const CELLD_VERSION = '0.6.1'
-33 < 1 /**
-34 < 1  * The digest of celld's one x86_64 Linux asset, read on the laptop at the bump
-35 < 1  * (`shasum -a 256`, 2026-10-01, equal to the digest the release page lists);
-36 < 1  * the VM's own `sha256sum -c` at first boot is what refuses a mismatch.
-37 < 1  * A literal and not a sums file because the release carries neither: it ships
-38 < 1  * the three `.gz` assets and nothing else, and the attestation check needs a
-39 < 1  * token this sandbox deliberately does not hold — so the record is here, beside
-40 < 1  * bun's version, and it moves only when a human bumps CELLD_VERSION.
-41 < 1  */
+33 < 2 /**
+34 < 2  * The digest of celld's one x86_64 Linux asset, read on the laptop at the bump
+35 < 2  * (`shasum -a 256`, 2026-10-01, equal to the digest the release page lists);
+36 < 2  * the VM's own `sha256sum -c` at first boot is what refuses a mismatch.
+37 < 2  * A literal and not a sums file because the release carries neither: it ships
+38 < 2  * the three `.gz` assets and nothing else, and the attestation check needs a
+39 < 2  * token this sandbox deliberately does not hold — so the record is here, beside
+40 < 2  * bun's version, and it moves only when a human bumps CELLD_VERSION.
+41 < 2  */
 42 < 1 export const CELLD_SHA256 = '79a8253cff5d4e8a4a9f7a2611e393390f7fe9025f00e88467875b007c44866b'
 43 < 1 
 44 < 1 const NODE_TARBALL = `node-v${NODE_VERSION}-linux-x64.tar.xz`
@@ -49,17 +49,17 @@
 47 < 1 const BUN_URL =
 48 < 1   `https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-linux-x64.zip`
 49 < 1 const CELLD_ASSET = 'celld-x86_64-unknown-linux-gnu.gz'
-50 < 1 // Straight to /usr/local/bin (root-owned 0755, on PATH for `/bin/sh -c` — the
-51 < 1 // bun lesson), never through the vendor's own installer script, whose rollback
-52 < 1 // symlinks are worthless on a VM that lives for one run, and never under
-53 < 1 // /usr/local/lib/fleet, which is the immutable bootstrap's path.
+50 < 2 // Straight to /usr/local/bin (root-owned 0755, on PATH for `/bin/sh -c` — the
+51 < 2 // bun lesson), never through the vendor's own installer script, whose rollback
+52 < 2 // symlinks are worthless on a VM that lives for one run, and never under
+53 < 2 // /usr/local/lib/fleet, which is the immutable bootstrap's path.
 54 < 1 const CELLD_URL =
 55 < 1   `https://github.com/denoland/celld/releases/download/v${CELLD_VERSION}/${CELLD_ASSET}`
 56 < 1 
 57 < 1 const BOOTSTRAP_TAG = 'FLEET_BOOTSTRAP_EOF'
 58 < 1 const UNIT_TAG = 'FLEET_UNIT_EOF'
 59 < 1 
-60 < 1 /** The two files the script carries, as they sit beside this module. */
+60 < 2 /** The two files the script carries, as they sit beside this module. */
 61 < 1 export function readFleetFiles() {
 62 < 1   return {
 63 < 1     bootstrap: fs.readFileSync(path.join(HERE, 'fleet-bootstrap.sh'), 'utf8'),
@@ -67,8 +67,8 @@
 65 < 1   }
 66 < 1 }
 67 < 1 
-68 < 1 // A quoted heredoc body: the bytes arrive unexpanded, so the only thing that can
-69 < 1 // go wrong is the delimiter appearing inside them. Say so rather than truncate.
+68 < 2 // A quoted heredoc body: the bytes arrive unexpanded, so the only thing that can
+69 < 2 // go wrong is the delimiter appearing inside them. Say so rather than truncate.
 70 < 1 function heredocBody(tag, text) {
 71 < 1   const body = text.endsWith('\n') || text === '' ? text : `${text}\n`
 72 < 1   if (body.split('\n').includes(tag)) {
@@ -77,15 +77,15 @@
 75 < 1   return body
 76 < 1 }
 77 < 1 
-78 < 1 /** `<owner>/<repo>` — the only shape `evidence` may take, since it lands inside
-79 < 1  *  a single-quoted shell literal. */
+78 < 2 /** `<owner>/<repo>` — the only shape `evidence` may take, since it lands inside
+79 < 2  *  a single-quoted shell literal. */
 80 < 1 const EVIDENCE_REPO = /^[A-Za-z0-9][A-Za-z0-9-]*\/[A-Za-z0-9._-]+$/
 81 < 1 
-82 < 1 /**
-83 < 1  * The setup script for one run. `bootstrap` and `unit` are carried verbatim;
-84 < 1  * `evidence` is the operator's evidence repository (#1395), written beside
-85 < 1  * them to `$HOME/fleet-evidence-repo`, where the boot reads it.
-86 < 1  */
+82 < 2 /**
+83 < 2  * The setup script for one run. `bootstrap` and `unit` are carried verbatim;
+84 < 2  * `evidence` is the operator's evidence repository (#1395), written beside
+85 < 2  * them to `$HOME/fleet-evidence-repo`, where the boot reads it.
+86 < 2  */
 87 < 1 export function renderSetupScript({ run, evidence, bootstrap, unit }) {
 88 < 1   if (!/^[0-9]+$/.test(String(run))) throw new Error(`run must be digits, got ${run}`)
 89 < 1   if (typeof evidence !== 'string' || !EVIDENCE_REPO.test(evidence) || /\/\.\.?$/.test(evidence)) {
@@ -182,10 +182,10 @@
 180 < 1 sudo -n rm -f -- "$0"
 181 < 1 `
 182 < 1 
-183 < 1   // The fleet's budget is the tighter of the two, so it is the one that fails
-184 < 1   // first and the one the message always names — a render over the platform's
-185 < 1   // ceiling is over the budget too, and a reader told only about 10240 would
-186 < 1   // think the payload had room it does not have.
+183 < 2   // The fleet's budget is the tighter of the two, so it is the one that fails
+184 < 2   // first and the one the message always names — a render over the platform's
+185 < 2   // ceiling is over the budget too, and a reader told only about 10240 would
+186 < 2   // think the payload had room it does not have.
 187 < 1   const bytes = Buffer.byteLength(script, 'utf8')
 188 < 1   if (bytes > SETUP_SCRIPT_BUDGET_BYTES) {
 189 < 1     const past = bytes > SETUP_SCRIPT_MAX_BYTES

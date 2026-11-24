@@ -1,0 +1,238 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 import ast
+2 < 1 import bisect
+3 < 1 import io
+4 < 1 import json
+5 < 1 import re
+6 < 1 import subprocess
+7 < 1 import sys
+8 < 1 import tokenize
+9 < 1 from pathlib import Path
+10 < 1 
+11 < 1 USAGE = """Usage: comments.py [--update | --list path... | --json [path...]]
+12 < 1 
+13 < 1 The comment ratchet. Counts comment lines per tracked source file (JS/TS, Python
+14 < 1 docstrings and comments, shell) and holds each file at or below its count in
+15 < 1 lint/comments-baseline.json. Decisions live in docs/adr/, not in comments.
+16 < 1 
+17 < 1   comments.py            check every tracked file against the baseline
+18 < 1   comments.py --update   rewrite the baseline to today's counts (only ever lower)
+19 < 1   comments.py --list F   print each comment in F with its line range
+20 < 1   comments.py --json     every comment, one JSON object per line (the /delete-comment inventory)
+21 < 1 """
+22 < 1 
+23 < 1 ROOT = Path(__file__).resolve().parents[1]
+24 < 1 BASELINE = ROOT / "lint" / "comments-baseline.json"
+25 < 1 SOURCE = re.compile(r"\.(mjs|cjs|js|jsx|ts|tsx|py|sh)$")
+26 < 1 EXCLUDED = re.compile(r"(^|/)(vendor|pouf)/|^evals/fixtures/|^tests/fixtures/")
+27 < 1 SHELL_NAMES = {"factory/flock/nogit/git"}
+28 < 1 PRAGMA = re.compile(
+29 < 1     r"^(#!|//\s*@ts-|/\*\s*eslint|//\s*eslint|#\s*noqa|#\s*type:\s*ignore|#\s*pragma|"
+30 < 1     r"///\s*<reference|#\s*-\*-|/\*\*?\s*@jsx|//\s*biome-ignore|//\s*prettier-ignore|"
+31 < 1     r"/\*\s*istanbul|#\s*shellcheck|#\s*fmt:|/\*\*\s*@type\s*\{[^}]*\}\s*\*/$)")
+32 < 1 
+33 < 1 REGEX_AFTER = set("(,=:[!&|?{};+-*%<>~^") | {""}
+34 < 1 REGEX_KEYWORDS = {"return", "typeof", "case", "do", "else", "in", "of", "new", "delete",
+35 < 1                   "void", "throw", "instanceof", "yield", "await"}
+36 < 1 
+37 < 1 
+38 < 1 def js_comments(src):
+39 < 1     out, i, n = [], 0, len(src)
+40 < 1     prev, stack = "", []
+41 < 1     if src.startswith("#!"):
+42 < 1         i = src.find("\n") if "\n" in src else n
+43 < 1 
+44 < 1     def skip_string(i, q):
+45 < 1         i += 1
+46 < 1         while i < n and src[i] != q:
+47 < 1             if src[i] == "\\":
+48 < 1                 i += 1
+49 < 1             elif src[i] == "\n":
+50 < 1                 return i + 1
+51 < 1             i += 1
+52 < 1         return i + 1
+53 < 1 
+54 < 1     def skip_template(i):
+55 < 1         while i < n:
+56 < 1             c = src[i]
+57 < 1             if c == "\\":
+58 < 1                 i += 2
+59 < 1                 continue
+60 < 1             if c == "`":
+61 < 1                 return i + 1, False
+62 < 1             if c == "$" and i + 1 < n and src[i + 1] == "{":
+63 < 1                 return i + 2, True
+64 < 1             i += 1
+65 < 1         return i, False
+66 < 1 
+67 < 1     while i < n:
+68 < 1         c = src[i]
+69 < 1         if c in " \t\r\n":
+70 < 1             i += 1
+71 < 1             continue
+72 < 1         two = src[i:i + 2]
+73 < 1         if two == "//":
+74 < 1             j = src.find("\n", i)
+75 < 1             j = n if j < 0 else j
+76 < 1             out.append((i, j))
+77 < 1             i = j
+78 < 1             continue
+79 < 1         if two == "/*":
+80 < 1             j = src.find("*/", i + 2)
+81 < 1             j = n if j < 0 else j + 2
+82 < 1             out.append((i, j))
+83 < 1             i = j
+84 < 1             continue
+85 < 1         if c in "'\"":
+86 < 1             i = skip_string(i, c)
+87 < 1             prev = "str"
+88 < 1             continue
+89 < 1         if c == "`":
+90 < 1             i, opened = skip_template(i + 1)
+91 < 1             if opened:
+92 < 1                 stack.append(1)
+93 < 1             prev = "str"
+94 < 1             continue
+95 < 1         if c == "/" and (prev in REGEX_AFTER or prev in REGEX_KEYWORDS):
+96 < 1             j, cls = i + 1, False
+97 < 1             while j < n and src[j] != "\n":
+98 < 1                 if src[j] == "\\":
+99 < 1                     j += 2
+100 < 1                     continue
+101 < 1                 if src[j] == "[":
+102 < 1                     cls = True
+103 < 1                 elif src[j] == "]":
+104 < 1                     cls = False
+105 < 1                 elif src[j] == "/" and not cls:
+106 < 1                     break
+107 < 1                 j += 1
+108 < 1             i = j + 1
+109 < 1             while i < n and (src[i].isalnum()):
+110 < 1                 i += 1
+111 < 1             prev = "re"
+112 < 1             continue
+113 < 1         if stack and c == "{":
+114 < 1             stack[-1] += 1
+115 < 1         elif stack and c == "}":
+116 < 1             stack[-1] -= 1
+117 < 1             if stack[-1] == 0:
+118 < 1                 stack.pop()
+119 < 1                 i, opened = skip_template(i + 1)
+120 < 1                 if opened:
+121 < 1                     stack.append(1)
+122 < 1                 prev = "str"
+123 < 1                 continue
+124 < 1         if c.isalnum() or c in "_$":
+125 < 1             j = i
+126 < 1             while j < n and (src[j].isalnum() or src[j] in "_$"):
+127 < 1                 j += 1
+128 < 1             prev = src[i:j]
+129 < 1             i = j
+130 < 1             continue
+131 < 1         prev = c
+132 < 1         i += 1
+133 < 1     starts = [0] + [m.end() for m in re.finditer("\n", src)]
+134 < 1     at = lambda pos: bisect.bisect_right(starts, pos)
+135 < 1     return [(at(a), at(b - 1), src[a:b]) for a, b in out]
+136 < 1 
+137 < 1 
+138 < 1 def py_comments(src):
+139 < 1     out = [(t.start[0], t.end[0], t.string)
+140 < 1            for t in tokenize.generate_tokens(io.StringIO(src).readline)
+141 < 1            if t.type == tokenize.COMMENT]
+142 < 1     for node in ast.walk(ast.parse(src)):
+143 < 1         if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+144 < 1             first = node.body[0] if node.body else None
+145 < 1             if (isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant)
+146 < 1                     and isinstance(first.value.value, str)):
+147 < 1                 out.append((first.lineno, first.end_lineno, ast.get_source_segment(src, first)))
+148 < 1     return out
+149 < 1 
+150 < 1 
+151 < 1 def sh_comments(src):
+152 < 1     out, heredoc = [], None
+153 < 1     for no, text in enumerate(src.split("\n"), 1):
+154 < 1         if heredoc:
+155 < 1             if text.strip() == heredoc:
+156 < 1                 heredoc = None
+157 < 1             continue
+158 < 1         stripped = text.strip()
+159 < 1         if stripped.startswith("#"):
+160 < 1             out.append((no, no, stripped))
+161 < 1             continue
+162 < 1         m = re.search(r"<<-?\s*['\"]?(\w+)['\"]?", text)
+163 < 1         if m:
+164 < 1             heredoc = m.group(1)
+165 < 1     return out
+166 < 1 
+167 < 1 
+168 < 1 def comments(rel):
+169 < 1     src = (ROOT / rel).read_text(encoding="utf-8")
+170 < 1     if rel.endswith(".py"):
+171 < 1         found = py_comments(src)
+172 < 1     elif rel.endswith(".sh") or rel in SHELL_NAMES:
+173 < 1         found = sh_comments(src)
+174 < 1     else:
+175 < 1         found = js_comments(src)
+176 < 1     return [c for c in found if not PRAGMA.match(c[2].strip())]
+177 < 1 
+178 < 1 
+179 < 1 def comment_lines(rel):
+180 < 1     return len({no for start, end, _ in comments(rel) for no in range(start, end + 1)})
+181 < 1 
+182 < 1 
+183 < 1 def tracked():
+184 < 1     names = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z"], capture_output=True,
+185 < 1                            text=True, check=True).stdout.split("\0")
+186 < 1     return sorted(p for p in names if p and (SOURCE.search(p) or p in SHELL_NAMES)
+187 < 1                   and not EXCLUDED.search(p) and (ROOT / p).is_file())
+188 < 1 
+189 < 1 
+190 < 1 def counts():
+191 < 1     return {p: c for p in tracked() if (c := comment_lines(p))}
+192 < 1 
+193 < 1 
+194 < 1 def check():
+195 < 1     baseline = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
+196 < 1     now = counts()
+197 < 1     over = [(p, c, baseline.get(p, 0)) for p, c in now.items() if c > baseline.get(p, 0)]
+198 < 1     under = [(p, now.get(p, 0), b) for p, b in baseline.items() if now.get(p, 0) < b]
+199 < 1     for p, c, b in over:
+200 < 1         print(f"{p}: {c} comment lines, allowed {b}. Delete the comment; a decision goes "
+201 < 1               f"in docs/adr/ (lint/comments.py --list {p})")
+202 < 1     for p, c, b in under:
+203 < 1         print(f"{p}: {c} comment lines, baseline {b}. Lock it in: python3 lint/comments.py --update")
+204 < 1     return 1 if over or under else 0
+205 < 1 
+206 < 1 
+207 < 1 def main(argv):
+208 < 1     if argv[:1] == ["--update"]:
+209 < 1         baseline = json.loads(BASELINE.read_text()) if BASELINE.exists() else {}
+210 < 1         now = counts()
+212 > 1         raised = [p for p, c in now.items() if BASELINE.exists() and c > baseline.get(p, 0)]
+211 < 2         raised = [p for p, c in now.items() if baseline and c > baseline.get(p, 0)]
+212 < 1         if raised and "--allow-raise" not in argv:
+213 < 1             print("refusing to raise the baseline for: " + ", ".join(raised))
+214 < 1             return 1
+215 < 1         BASELINE.write_text(json.dumps(now, indent=1, sort_keys=True) + "\n")
+216 < 1         print(f"{sum(now.values())} comment lines in {len(now)} files")
+217 < 1         return 0
+218 < 1     if argv[:1] == ["--json"]:
+219 < 1         for rel in argv[1:] or tracked():
+220 < 1             for start, end, text in comments(rel):
+221 < 1                 print(json.dumps({"file": rel, "start": start, "end": end, "text": text}))
+222 < 1         return 0
+223 < 1     if argv[:1] == ["--list"]:
+224 < 1         for rel in argv[1:]:
+225 < 1             for start, end, text in comments(rel):
+226 < 1                 print(f"{rel}:{start}-{end}: {text.splitlines()[0][:100]}")
+227 < 1         return 0
+228 < 1     if argv:
+229 < 1         print(USAGE)
+230 < 1         return 1
+231 < 1     return check()
+232 < 1 
+233 < 1 
+234 < 1 if __name__ == "__main__":
+235 < 1     sys.exit(main(sys.argv[1:]))
+236 < 1 

@@ -1,11 +1,11 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // Compile a bundle into a stories-v1 plan.
-2 < 1 //
-3 < 1 //   bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>
-4 < 1 //
-5 < 1 // Every probe is derived by replaying the real store module: `given` from the
-6 < 1 // story's earlier steps, `do` from the step, `expect` from the diff the step
-7 < 1 // made. The app's older probes (stories/probes.jsonl) become guards.
+1 < 2 // Compile a bundle into a stories-v1 plan.
+2 < 2 //
+3 < 2 //   bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>
+4 < 2 //
+5 < 2 // Every probe is derived by replaying the real store module: `given` from the
+6 < 2 // story's earlier steps, `do` from the step, `expect` from the diff the step
+7 < 2 // made. The app's older probes (stories/probes.jsonl) become guards.
 8 < 1 import {copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 9 < 1 import {dirname, join, resolve} from 'node:path';
 10 < 1 import {parseArgs} from 'node:util';
@@ -66,8 +66,8 @@
 62 < 1 export function probesOf(b: Bundle, mod: StoreModule): Derived[] {
 63 < 1   const tools = new Map(mod.TOOLS.map((t) => [t.name, t]));
 64 < 1   const owner = new Map(b.cards.flatMap((c) => c.actions.map((a) => [a.name, c.piece] as const)));
-65 < 1   // A linked step's check goes to the link piece, the tool's owner included, that depends on every other one,
-67 > 1   // so it is built after everything it reads (#1490, #1525); with none, the owner, which runChecks reports as a fact.
+65 < 2   // A linked step's check goes to the link piece, the tool's owner included, that depends on every other one,
+67 > 2   // so it is built after everything it reads (#1490, #1525); with none, the owner, which runChecks reports as a fact.
 66 < 2   // so it is built after everything it reads (#1490, #1525); with none, the owner.
 67 < 1   const links = new Map((b.page.links ?? []).map((l) => [l.id, l.pieces ?? []] as const));
 68 < 1   const carrier = (link: string | undefined, own: string): string => {
@@ -84,7 +84,7 @@
 79 < 1       return aliases.rename(c);
 80 < 1     };
 81 < 1     let before = read();
-82 < 1     // Who is signed in: set by a step's `as` and kept until the next one.
+82 < 2     // Who is signed in: set by a step's `as` and kept until the next one.
 83 < 1     let who: string | null | undefined;
 84 < 1     s.steps.forEach((st, i) => {
 85 < 1       if (st.as !== undefined) who = st.as;
@@ -121,7 +121,7 @@
 116 < 1   return out;
 117 < 1 }
 118 < 1 
-120 > 1 // Where a new screen part goes (#1491): never client/src/pouf/, which is vendored and never patched.
+120 > 2 // Where a new screen part goes (#1491): never client/src/pouf/, which is vendored and never patched.
 121 < 1 const PART_FILES = ['client/src/screens/catalog.ts', 'client/src/screens/registry.tsx', 'client/src/screens/draws.json'];
 122 < 1 const GROW = 'When a story needs something no part draws, add a part: its props in `client/src/screens/catalog.ts`,'
 123 < 1   + ' a wrapper over a 1st-Pouf component in `client/src/screens/registry.tsx` (never an edit under `client/src/pouf/`),'
@@ -129,18 +129,18 @@
 125 < 1   + ' a label made from the data, such as a count or a total, may call a function you add to `client/src/screens/functions.ts`.'
 126 < 1   + ' When a peer has already added the part, use theirs.';
 127 < 1 
-119 < 1 // The screen the operator approved for a piece while planning, committed with the bundle.
+119 < 2 // The screen the operator approved for a piece while planning, committed with the bundle.
 120 < 1 const approvedPath = (b: Bundle, piece: string) => join(b.dir, 'screens', `${piece}.json`);
 121 < 1 const approved = (b: Bundle, piece: string) => existsSync(approvedPath(b, piece));
-123 > 1 // The one page the operator approved, when the bundle has one: every piece's actions live in it.
+123 > 2 // The one page the operator approved, when the bundle has one: every piece's actions live in it.
 124 < 1 const approvedScreenPath = (b: Bundle) => join(b.dir, 'screens', 'screen.json');
 125 < 1 const SCREEN = 'client/src/screen.json';
 122 < 1 
-123 < 1 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
-124 < 1 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
-126 > 1 // draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
-127 < 1 // told to add a part, and every screen task may add one in the open.
-130 > 1 // onePage: the app draws one page, client/src/screen.json, that every piece's builder writes into.
+123 < 2 // screens: the app holds client/src/screens/catalog.ts, so each piece is a json-render
+124 < 2 // spec over that catalog; an app scaffolded before it keeps the plain-DOM .ts screen.
+126 > 2 // draws: what the app's screen parts draw (#1491); a task whose stories expect a role none draws is
+127 < 2 // told to add a part, and every screen task may add one in the open.
+130 > 2 // onePage: the app draws one page, client/src/screen.json, that every piece's builder writes into.
 131 < 1 export function compilePlan(b: Bundle, planId: string, mine: Derived[], guards: Line[], screens = true, draws: Draws | null = null, onePage = false): string {
 132 < 1   const one = screens && onePage;
 129 > 2 // page: the app draws one page, client/src/screen.json, that every piece's builder writes into.
@@ -220,7 +220,7 @@
 177 < 1   }
 178 < 1   const b = loadBundle(positionals[0]);
 180 > 1   const app = resolve(v.app);
-181 < 1   // The app's own parts list when it has one; an app scaffolded before it is checked against nothing.
+181 < 2   // The app's own parts list when it has one; an app scaffolded before it is checked against nothing.
 182 < 1   const draws = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')) ? readDraws(drawsPath(app)) : null;
 183 < 1   const {refusals, facts} = runChecks(b, draws);
 179 < 2   const {refusals, facts} = runChecks(b);
@@ -241,9 +241,9 @@
 194 < 1   copyFileSync(join(b.dir, 'store.js'), storeDst);
 195 < 1   let mine: Derived[];
 196 < 1   let text: string;
-198 > 1   // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
+198 > 2   // The app draws json-render screens (it holds the catalog), so an approved screen is its piece's spec.
 199 < 1   const screens = existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts'));
-200 < 1   // ...and one page every piece writes into when the app or the bundle has it; else a screen per piece.
+200 < 2   // ...and one page every piece writes into when the app or the bundle has it; else a screen per piece.
 202 > 1   const onePage = screens && (existsSync(join(app, SCREEN)) || existsSync(approvedScreenPath(b)));
 201 < 2   const page = screens && (existsSync(join(app, SCREEN)) || existsSync(approvedScreenPath(b)));
 197 < 1   const exportPath = join(app, 'stories', 'probes.jsonl');
@@ -259,7 +259,7 @@
 205 > 2     text = compilePlan(b, planId, mine, guards, screens);
 204 < 2     text = compilePlan(b, planId, mine, guards, existsSync(join(app, 'client', 'src', 'screens', 'catalog.ts')));
 205 < 1   } catch (e) {
-206 < 1     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
+206 < 2     // A failed compile leaves the app's store as it was, so its plan's sha still holds.
 207 < 1     if (kept) writeFileSync(storeDst, kept);
 208 < 1     else rmSync(storeDst, {force: true});
 209 < 1     console.log(`compile: ${(e as Error).message}`);
@@ -268,7 +268,7 @@
 212 < 1   mkdirSync(dirname(resolve(v.out)), {recursive: true});
 213 < 1   writeFileSync(v.out, text);
 215 > 1   if (screens) writePageOrder(b, app);
-216 < 1   // The approved page becomes the builders' starting spec; each approved piece screen, its piece's (the old flow).
+216 < 2   // The approved page becomes the builders' starting spec; each approved piece screen, its piece's (the old flow).
 218 > 1   if (onePage && existsSync(approvedScreenPath(b))) copyFileSync(approvedScreenPath(b), join(app, SCREEN));
 217 < 2   if (page && existsSync(approvedScreenPath(b))) copyFileSync(approvedScreenPath(b), join(app, SCREEN));
 214 < 2   // Each approved screen becomes the builder's starting spec for its piece.

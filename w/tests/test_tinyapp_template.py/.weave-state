@@ -1,10 +1,10 @@
-0 < 1 """The TinyApp template (skills/ultrawrite/stories/tinyapp-template/, #1532).
-1 < 1 
-2 < 1 Its dependencies are pinned: every version in package.json is exact, and the
-3 < 1 committed bun.lock (copied by scaffold.ts) lists the same specs and resolves
-4 < 1 each direct dependency to its pin, so a stale lockfile fails here, not in a
-5 < 1 scaffolded app. Its screen state rebuilds when the session's `who` arrives
-6 < 1 after the first snapshot, not only on the next store transaction."""
+0 < 2 """The TinyApp template (skills/ultrawrite/stories/tinyapp-template/, #1532).
+1 < 2 
+2 < 2 Its dependencies are pinned: every version in package.json is exact, and the
+3 < 2 committed bun.lock (copied by scaffold.ts) lists the same specs and resolves
+4 < 2 each direct dependency to its pin, so a stale lockfile fails here, not in a
+5 < 2 scaffolded app. Its screen state rebuilds when the session's `who` arrives
+6 < 2 after the first snapshot, not only on the next store transaction."""
 7 < 1 import json
 8 < 1 import os
 9 < 1 import re
@@ -72,7 +72,7 @@
 71 < 1 
 72 < 1 
 74 > 1 def test_scaffold_writes_one_empty_screen(tmp_path):
-75 < 1     """The page draws one screen file: scaffold writes an empty one and no per-piece specs."""
+75 < 2     """The page draws one screen file: scaffold writes an empty one and no per-piece specs."""
 76 < 1     if not shutil.which("bun"):
 77 < 1         pytest.skip("bun is not installed")
 78 < 1     app = str(tmp_path / "app")
@@ -83,8 +83,8 @@
 83 < 1 
 84 < 1 
 73 < 1 def test_the_page_draws_pieces_in_build_order(tmp_path):
-75 > 1     """An app built before the one screen: todo-tags' cards are todo then tag, so its
-76 < 1     hand-made piece specs are drawn so, not by file name (#1491)."""
+75 > 2     """An app built before the one screen: todo-tags' cards are todo then tag, so its
+76 < 2     hand-made piece specs are drawn so, not by file name (#1491)."""
 74 < 2     """todo-tags' cards are todo then tag: the page draws them so, not by file name (#1491)."""
 75 < 1     if not shutil.which("bun"):
 76 < 1         pytest.skip("bun is not installed")

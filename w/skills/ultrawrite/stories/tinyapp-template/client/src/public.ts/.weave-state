@@ -1,0 +1,25 @@
+0 < 2 // Given code: the two decisions the page makes before it mounts anything.
+1 < 2 // Anyone may open the public page and see what was saved; only /staff (or a
+2 < 2 // page the checker points at a sync server) connects to change it.
+3 < 2 
+4 < 1 export function isStaff (path: string, syncGlobal: unknown): boolean {
+5 < 1   return syncGlobal !== undefined || path === '/staff' || path.startsWith('/staff/');
+6 < 1 }
+7 < 1 
+8 < 2 // Reads the published snapshot into the store. Answers false, leaving the
+9 < 2 // store as it was, on a non-ok response or any error.
+10 < 1 export async function loadPublic (
+11 < 1   store: {setContent: (content: never) => unknown},
+12 < 1   fetchImpl: typeof fetch = fetch,
+13 < 1   url = '/public.json',
+14 < 1 ): Promise<boolean> {
+15 < 1   try {
+16 < 1     const r = await fetchImpl(url, {cache: 'no-store'});
+17 < 1     if (!r.ok) return false;
+18 < 1     store.setContent(await r.json() as never);
+19 < 1     return true;
+20 < 1   } catch {
+21 < 1     return false;
+22 < 1   }
+23 < 1 }
+24 < 1 

@@ -1,11 +1,11 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // The objection sim: a builder that finds its task cannot be done as the plan is written says so,
-2 < 1 // and the task waits for the operator where a give-back would hand it round (the wrong-plans
-4 > 1 // reading, flock-baseline run-32, 2026-11-13). One scripted Flock run on a throwaway target
-5 < 1 // (_flock_helpers.mjs): task 1 writes a.txt, and task 2's session files an objection. Task 2 is
-6 < 1 // claimed once and parks at once: one `objection` row, one `task:parked` row marked `objected` with
-7 < 1 // no give-backs, and the run ends a draft whose reason is the objection in the builder's words,
-8 < 1 // which the pull-request body carries.
+1 < 2 // The objection sim: a builder that finds its task cannot be done as the plan is written says so,
+2 < 2 // and the task waits for the operator where a give-back would hand it round (the wrong-plans
+4 > 2 // reading, flock-baseline run-32, 2026-11-13). One scripted Flock run on a throwaway target
+5 < 2 // (_flock_helpers.mjs): task 1 writes a.txt, and task 2's session files an objection. Task 2 is
+6 < 2 // claimed once and parks at once: one `objection` row, one `task:parked` row marked `objected` with
+7 < 2 // no give-backs, and the run ends a draft whose reason is the objection in the builder's words,
+8 < 2 // which the pull-request body carries.
 3 < 2 // reading, flock-baseline run-32, 2026-11-13). Two scripted Flock runs on a throwaway target
 4 < 2 // (_flock_helpers.mjs), one plan: task 1 writes a.txt, and task 2's session files an objection.
 5 < 2 //   on   (the repository's policy) task 2 is claimed once and parks at once: one `objection` row,
@@ -13,7 +13,7 @@
 7 < 2 //        reason is the objection in the builder's words, which the pull-request body carries.
 8 < 2 //   off  (`--objection off`, the rollback) the same script is a give-back: task 2 is handed out
 9 < 2 //        three times, parks on its third, and the run ends `deadlock` with no objection row.
-10 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+10 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 11 < 1 import { spawnSync } from 'node:child_process'
 12 < 1 import path from 'node:path'
 13 < 1 import { simEnv } from './_helpers.mjs'

@@ -1,0 +1,855 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_sims_are_hermetic.mjs — the probe.
+2 < 2  *
+3 < 2  * The engine's pre-flight is this directory: the sims the bridge runs before
+4 < 2  * any run flies. What a sim sees is what it was handed; nothing of the box it
+5 < 2  * happens to be running on reaches it. This file is the one place that fails
+6 < 2  * the moment any of that stops being true.
+7 < 2  *
+8 < 2  * The exam is written against the task's Machine clauses, leg by leg. Every
+9 < 2  * assertion names the leg it belongs to and the clause it comes from, so a
+10 < 2  * reader can map this file back to the contract:
+11 < 2  *
+12 < 2  *   M1  `fleet/tests/_helpers.mjs` exports `simEnv({ bin, home, env } = {})`.
+13 < 2  *       The object it returns carries no key of the parent's environment whose
+14 < 2  *       name begins `ULTRA_`, `TINYAPP_`, `FLEET_`, `ANTHROPIC_`, `CLAUDE_` or
+15 < 2  *       `GH_`; the keys it sets itself are `PATH`, `HOME`, `TMPDIR` and
+16 < 2  *       `FLEET_HOME`, the
+17 < 2  *       last three under `home`, which defaults to a fresh `mkdtemp` under
+18 < 2  *       `os.tmpdir()`; the caller's `env` entries are laid over all of that
+19 < 2  *       last, so a caller-supplied key of any name wins; and its `PATH` is
+20 < 2  *       `bin` (when given) followed by the directories that hold `node`,
+21 < 2  *       `python3`, `git`, `bash` and `sh` for the parent, and nothing else of
+22 < 2  *       the parent's `PATH`.
+23 < 2  *   M2  every process spawn in `fleet/tests/test_*.mjs` and
+24 < 2  *       `fleet/tests/_*.mjs` passes an `env` derived from `simEnv`, and the
+25 < 2  *       probe names every spawn that does not.
+26 < 2  *   M3  no such file reads, stats or sources a string-literal absolute path
+27 < 2  *       outside the checkout and `os.tmpdir()`, and the probe names every one.
+28 < 2  *   M4  no `test_*.mjs` spawns another `test_*.mjs` or `pytest`. A mutated
+29 < 2  *       copy of a sim's own text under the temp root is not a sibling run.
+30 < 2  *   M7  the probe, pointed at `fleet/tests/fixtures/hermetic/leaky_sim.mjs`,
+31 < 2  *       names its inheriting spawn, its `/etc/fleet/planted.env` read and its
+32 < 2  *       sibling-sim spawn.
+33 < 2  *
+34 < 2  * Legs: (a) M1, (b) M2, (c) M3, (d) M4, (g) M7.
+35 < 2  *
+36 < 2  * The sweep (legs b, c, d) is a static read of source, never an execution: it
+37 < 2  * reads every `fleet/tests/test_*.mjs` and `fleet/tests/_*.mjs` except this
+38 < 2  * file, and never `probe_*.mjs` (those are
+39 < 2  * live probes, `fleet/tests/PROBES.md`, outside every sweep here) and never
+40 < 2  * `fixtures/`. The bridge (`tests/test_fleet_suite.py`) guards itself by
+41 < 2  * construction: its `sim_env()` builds each sim's environment from nothing.
+42 < 2  *
+43 < 2  * The three rules, spelled once so an implementation can be read against them:
+44 < 2  *
+45 < 2  *   inherit  a call to one of `spawn`, `spawnSync`, `exec`, `execSync`,
+46 < 2  *            `execFile`, `execFileSync`. Its options object is the argument
+47 < 2  *            carrying `env:`; the accepted values are a literal `simEnv(`
+48 < 2  *            call, a spread `{ ...simEnv(`, or an identifier bound — in the
+49 < 2  *            same file, or in the sibling `_*.mjs` the file imports it from —
+50 < 2  *            by `const X =`/`let X =`/a function whose body returns one of
+51 < 2  *            those. A value mentioning `process.env` is refused outright.
+52 < 2  *            Anything else, including no `env:` at all, is an offender named
+53 < 2  *            by file and line. A helper is accepted by its body and not by its
+54 < 2  *            name: `bootEnv` passes because its body in
+55 < 2  *            `_sandbox_boot_helpers.mjs` spreads `simEnv(`.
+56 < 2  *   absolute a call to an fs read/stat/open name whose first argument is a
+57 < 2  *            string literal starting `/` and not under `os.tmpdir()`. Only
+58 < 2  *            reads: the absolute strings a sim asserts a script *emits* or a
+59 < 2  *            hook *denies* are fixtures, not paths it opens.
+60 < 2  *   sibling  a spawn whose call text, or the initializer of any identifier
+61 < 2  *            that call names (`const X =`, `for (const X of …)`, resolved one
+62 < 2  *            level in the same file), carries a string literal matching
+63 < 2  *            `test_[a-z0-9_]+\.mjs` or the word `pytest`. One level and no
+64 < 2  *            further is what keeps `test_run_engine_proof_runs.mjs`'s
+65 < 2  *            `spawnSync(process.execPath, [copy])` — where
+66 < 2  *            `const copy = copyWithProbe(simName, probe)` resolves to no
+67 < 2  *            literal — out of it: a mutated copy of a sim's own text under the
+68 < 2  *            temp root is a pin proven to be a pin, not a sibling run.
+69 < 2  *
+70 < 2  * Comments are blanked before any rule reads a file, so a spawn quoted in
+71 < 2  * prose is prose. String contents are blanked for the structural pass and kept
+72 < 2  * for the literal pass, so both questions are asked of the same offsets.
+73 < 2  */
+74 < 2 
+75 < 1 import assert from 'node:assert/strict'
+76 < 1 import fs from 'node:fs'
+77 < 1 import os from 'node:os'
+78 < 1 import path from 'node:path'
+79 < 1 import { fileURLToPath } from 'node:url'
+80 < 1 
+81 < 1 const HERE = path.dirname(fileURLToPath(import.meta.url))
+82 < 1 const TESTS_DIR = HERE
+83 < 2 /** This file, the one sim the sweep leaves out — it quotes offenders on purpose. */
+84 < 1 const SELF = 'test_sims_are_hermetic.mjs'
+85 < 2 /** The deliverable leg (a) exercises, at the path the Produces line names. */
+86 < 1 const HELPERS = path.join(TESTS_DIR, '_helpers.mjs')
+87 < 2 /** The fixture leg (g) sweeps, at the path the Files list names. */
+88 < 1 const FIXTURE = path.join(TESTS_DIR, 'fixtures', 'hermetic', 'leaky_sim.mjs')
+89 < 1 
+90 < 2 /** The deliverable, imported dynamically so a tree without it still reports
+91 < 2  *  every other leg rather than dying at load. */
+92 < 1 let helpers = null
+93 < 1 let helpersError = null
+94 < 1 try {
+95 < 1   helpers = await import('./_helpers.mjs')
+96 < 1 } catch (error) {
+97 < 1   helpersError = error
+98 < 1 }
+99 < 1 
+100 < 2 // ── the source scanner ───────────────────────────────────────────────────────
+101 < 2 
+102 < 1 const REGEX_KEYWORDS = new Set([
+103 < 1   'return', 'typeof', 'case', 'in', 'of', 'new', 'delete', 'void', 'instanceof',
+104 < 1   'do', 'else', 'yield', 'await',
+105 < 1 ])
+106 < 1 
+107 < 2 /**
+108 < 2  * One pass over a source text. Returns three views at identical offsets:
+109 < 2  *   code      the text with comments blanked (string literals intact)
+110 < 2  *   skeleton  the same, with string and template contents blanked too, so
+111 < 2  *             brackets, commas and identifiers can be counted without a
+112 < 2  *             quoted one being mistaken for structure
+113 < 2  *   strings   the span of every string and template literal
+114 < 2  * Blanking preserves length and newlines, so a line number taken from any
+115 < 2  * view is a line number in the file.
+116 < 2  */
+117 < 1 const scan = (text) => {
+118 < 1   const code = Array.from(text)
+119 < 1   const skel = Array.from(text)
+120 < 1   const strings = []
+121 < 1   const n = text.length
+122 < 1   const blank = (from, to, alsoCode) => {
+123 < 1     for (let k = Math.max(0, from); k < Math.min(to, n); k++) {
+124 < 1       if (text[k] === '\n') continue
+125 < 1       skel[k] = ' '
+126 < 1       if (alsoCode) code[k] = ' '
+127 < 1     }
+128 < 1   }
+129 < 1   const prevSig = (at) => {
+130 < 1     let j = at - 1
+131 < 1     while (j >= 0 && /\s/.test(text[j])) j--
+132 < 1     return j >= 0 ? text[j] : ''
+133 < 1   }
+134 < 1   const wordBefore = (at) => {
+135 < 1     let j = at - 1
+136 < 1     while (j >= 0 && /\s/.test(text[j])) j--
+137 < 1     const end = j + 1
+138 < 1     while (j >= 0 && /[\w$]/.test(text[j])) j--
+139 < 1     return text.slice(j + 1, end)
+140 < 1   }
+141 < 1 
+142 < 1   let i = 0
+143 < 1   while (i < n) {
+144 < 1     const c = text[i]
+145 < 1     const d = i + 1 < n ? text[i + 1] : ''
+146 < 1     if (c === '/' && d === '/') {
+147 < 1       let j = i
+148 < 1       while (j < n && text[j] !== '\n') j++
+149 < 1       blank(i, j, true)
+150 < 1       i = j
+151 < 1       continue
+152 < 1     }
+153 < 1     if (c === '/' && d === '*') {
+154 < 1       const close = text.indexOf('*/', i + 2)
+155 < 1       const j = close === -1 ? n : close + 2
+156 < 1       blank(i, j, true)
+157 < 1       i = j
+158 < 1       continue
+159 < 1     }
+160 < 1     if (c === "'" || c === '"') {
+161 < 1       let j = i + 1
+162 < 1       while (j < n) {
+163 < 1         if (text[j] === '\\') { j += 2; continue }
+164 < 1         if (text[j] === c) { j++; break }
+165 < 1         if (text[j] === '\n') break
+166 < 1         j++
+167 < 1       }
+168 < 1       const closed = j - 1 > i && text[j - 1] === c
+169 < 1       strings.push({ start: i, end: j })
+170 < 1       blank(i + 1, closed ? j - 1 : j, false)
+171 < 1       i = j
+172 < 1       continue
+173 < 1     }
+174 < 1     if (c === '`') {
+175 < 1       let j = i + 1
+176 < 1       let depth = 0
+177 < 1       while (j < n) {
+178 < 1         if (text[j] === '\\') { j += 2; continue }
+179 < 1         if (depth === 0 && text[j] === '`') { j++; break }
+180 < 1         if (depth === 0 && text[j] === '$' && text[j + 1] === '{') { depth = 1; j += 2; continue }
+181 < 1         if (depth > 0) {
+182 < 1           if (text[j] === '{') depth++
+183 < 1           else if (text[j] === '}') depth--
+184 < 1         }
+185 < 1         j++
+186 < 1       }
+187 < 1       strings.push({ start: i, end: j })
+188 < 1       blank(i + 1, Math.max(i + 1, j - 1), false)
+189 < 1       i = j
+190 < 1       continue
+191 < 1     }
+192 < 1     if (c === '/') {
+193 < 1       const p = prevSig(i)
+194 < 1       const startsValue = p === '' || '(,=:[!&|?{};+-*%^~<>'.includes(p) ||
+195 < 1         REGEX_KEYWORDS.has(wordBefore(i))
+196 < 1       if (startsValue) {
+197 < 1         let j = i + 1
+198 < 1         let klass = false
+199 < 1         while (j < n) {
+200 < 1           const e = text[j]
+201 < 1           if (e === '\\') { j += 2; continue }
+202 < 1           if (e === '\n') break
+203 < 1           if (klass) { if (e === ']') klass = false; j++; continue }
+204 < 1           if (e === '[') { klass = true; j++; continue }
+205 < 1           if (e === '/') { j++; break }
+206 < 1           j++
+207 < 1         }
+208 < 2         // The body is blanked in the skeleton only: a `//` inside a character
+209 < 2         // class is not a comment, and a quote inside one opens no string.
+210 < 1         blank(i + 1, Math.max(i + 1, j - 1), false)
+211 < 1         i = j
+212 < 1         continue
+213 < 1       }
+214 < 1     }
+215 < 1     i++
+216 < 1   }
+217 < 1   return { code: code.join(''), skeleton: skel.join(''), strings }
+218 < 1 }
+219 < 1 
+220 < 1 const lineOf = (text, index) => text.slice(0, index).split('\n').length
+221 < 1 
+222 < 1 const matchParen = (skeleton, open) => {
+223 < 1   let depth = 0
+224 < 1   for (let i = open; i < skeleton.length; i++) {
+225 < 1     const c = skeleton[i]
+226 < 1     if (c === '(') depth++
+227 < 1     else if (c === ')') { depth--; if (depth === 0) return i }
+228 < 1   }
+229 < 1   return -1
+230 < 1 }
+231 < 1 
+232 < 2 /** The top-level argument ranges between `open` and `close`. */
+233 < 1 const splitArgs = (skeleton, open, close) => {
+234 < 1   const args = []
+235 < 1   let depth = 0
+236 < 1   let start = open + 1
+237 < 1   for (let i = open + 1; i < close; i++) {
+238 < 1     const c = skeleton[i]
+239 < 1     if ('([{'.includes(c)) depth++
+240 < 1     else if (')]}'.includes(c)) depth--
+241 < 1     else if (c === ',' && depth === 0) { args.push({ start, end: i }); start = i + 1 }
+242 < 1   }
+243 < 1   if (close > start) args.push({ start, end: close })
+244 < 1   return args.filter((a) => skeleton.slice(a.start, a.end).trim() !== '')
+245 < 1 }
+246 < 1 
+247 < 1 const RESERVED = new Set([
+248 < 1   'const', 'let', 'var', 'function', 'return', 'of', 'in', 'new', 'await', 'async',
+249 < 1   'typeof', 'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'break', 'continue',
+250 < 1   'try', 'catch', 'finally', 'throw', 'class', 'yield', 'delete', 'void', 'instanceof',
+251 < 1   'import', 'export', 'default', 'from', 'this', 'true', 'false', 'null', 'undefined',
+252 < 1   'process', 'path', 'fs', 'os', 'JSON', 'Math', 'Object', 'Array', 'String', 'Number',
+253 < 1   'Boolean', 'Date', 'Buffer', 'URL', 'Promise', 'console', 'assert', 'require', 'Set',
+254 < 1   'Map', 'RegExp', 'Error', 'globalThis',
+255 < 1 ])
+256 < 1 
+257 < 2 /** Every identifier a skeleton slice names, skipping property names and the
+258 < 2  *  keys of an object literal. */
+259 < 1 const identsIn = (skeletonSlice) => {
+260 < 1   const out = []
+261 < 1   const re = /[A-Za-z_$][A-Za-z0-9_$]*/g
+262 < 1   let m
+263 < 1   while ((m = re.exec(skeletonSlice)) !== null) {
+264 < 1     const before = m.index > 0 ? skeletonSlice[m.index - 1] : ''
+265 < 1     if (before === '.') continue
+266 < 1     const rest = skeletonSlice.slice(m.index + m[0].length)
+267 < 1     const nextChar = (rest.match(/^\s*(\S?)/) || ['', ''])[1]
+268 < 1     if (nextChar === ':') continue
+269 < 1     if (RESERVED.has(m[0])) continue
+270 < 1     if (!out.includes(m[0])) out.push(m[0])
+271 < 1   }
+272 < 1   return out
+273 < 1 }
+274 < 1 
+275 < 1 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+276 < 1 
+277 < 2 /** Where an expression that starts at `from` ends: back at depth zero, at a
+278 < 2  *  `;` or the end of the line. */
+279 < 1 const endOfExpression = (skeleton, from) => {
+280 < 1   let i = from
+281 < 1   while (i < skeleton.length && /\s/.test(skeleton[i])) i++
+282 < 1   let depth = 0
+283 < 1   for (; i < skeleton.length; i++) {
+284 < 1     const c = skeleton[i]
+285 < 1     if ('([{'.includes(c)) depth++
+286 < 1     else if (')]}'.includes(c)) { if (depth === 0) return i; depth-- }
+287 < 1     else if (depth === 0 && (c === ';' || c === '\n')) return i
+288 < 1   }
+289 < 1   return skeleton.length
+290 < 1 }
+291 < 1 
+292 < 2 /**
+293 < 2  * The initializer bound to `ident` in `src`, as a span — `const X =`,
+294 < 2  * `let X =`, `var X =`, `for (const … X … of EXPR)`, or a function
+295 < 2  * declaration's body. The first binding found; no recursion of its own.
+296 < 2  */
+297 < 1 const bindingOf = (src, ident) => {
+298 < 1   const id = escapeRe(ident)
+299 < 1   const decl = new RegExp(`(^|[\\s;{(\\[,])(?:export\\s+)?(?:const|let|var)\\s+${id}\\s*=`)
+300 < 1   const m = decl.exec(src.skeleton)
+301 < 1   if (m) {
+302 < 1     const from = m.index + m[0].length
+303 < 1     return { start: from, end: endOfExpression(src.skeleton, from) }
+304 < 1   }
+305 < 1   const forRe = /for\s*\(\s*(?:const|let|var)\s+([^;()]*?)\s+of\s+/g
+306 < 1   let f
+307 < 1   while ((f = forRe.exec(src.skeleton)) !== null) {
+308 < 1     const bound = new RegExp(`(^|[^\\w$])${id}([^\\w$]|$)`)
+309 < 1     if (!bound.test(f[1])) continue
+310 < 1     const open = src.skeleton.indexOf('(', f.index)
+311 < 1     const close = matchParen(src.skeleton, open)
+312 < 1     if (close === -1) continue
+313 < 1     return { start: f.index + f[0].length, end: close }
+314 < 1   }
+315 < 1   const fn = new RegExp(`(^|[\\s;}])(?:export\\s+)?(?:async\\s+)?function\\s+${id}\\s*\\(`)
+316 < 1   const g = fn.exec(src.skeleton)
+317 < 1   if (g) {
+318 < 1     const open = src.skeleton.indexOf('(', g.index)
+319 < 1     const close = matchParen(src.skeleton, open)
+320 < 1     const brace = src.skeleton.indexOf('{', close)
+321 < 1     if (brace !== -1) {
+322 < 1       let depth = 0
+323 < 1       for (let i = brace; i < src.skeleton.length; i++) {
+324 < 1         if (src.skeleton[i] === '{') depth++
+325 < 1         else if (src.skeleton[i] === '}') { depth--; if (depth === 0) return { start: brace, end: i + 1 } }
+326 < 1       }
+327 < 1     }
+328 < 1   }
+329 < 1   return null
+330 < 1 }
+331 < 1 
+332 < 1 const sliceOf = (src, span) => ({
+333 < 1   code: src.code.slice(span.start, span.end),
+334 < 1   skeleton: src.skeleton.slice(span.start, span.end),
+335 < 1 })
+336 < 1 
+337 < 2 // ── the three rules ──────────────────────────────────────────────────────────
+338 < 2 
+339 < 1 const SPAWN_NAMES = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync']
+340 < 1 
+341 < 2 /** The fs names that read, stat, open or source a path. */
+342 < 1 const READ_NAMES = ['readFileSync', 'readFile', 'existsSync', 'statSync', 'lstatSync',
+343 < 1   'realpathSync', 'readdirSync', 'readdir', 'accessSync', 'access', 'openSync', 'open',
+344 < 1   'createReadStream', 'copyFileSync', 'stat']
+345 < 1 
+346 < 2 /**
+347 < 2  * Every call of one of `names` in a source. `dotted` says whether a name
+348 < 2  * reached through a member expression counts: an fs read is written
+349 < 2  * `fs.readFileSync(`, while a spawn is imported by name and a `.exec(` on some
+350 < 2  * other object is not a process.
+351 < 2  */
+352 < 1 const callSitesOf = (src, names, { dotted = false } = {}) => {
+353 < 1   const out = []
+354 < 1   const before = dotted ? '[^\\w$]' : '[^\\w$.]'
+355 < 1   const re = new RegExp(`(^|${before})(${names.map(escapeRe).join('|')})\\s*\\(`, 'g')
+356 < 1   let m
+357 < 1   while ((m = re.exec(src.skeleton)) !== null) {
+358 < 1     const nameAt = m.index + m[1].length
+359 < 1     const openParen = src.skeleton.indexOf('(', nameAt + m[2].length)
+360 < 1     const close = openParen === -1 ? -1 : matchParen(src.skeleton, openParen)
+361 < 1     re.lastIndex = nameAt + m[2].length
+362 < 1     if (close === -1) continue
+363 < 1     out.push({
+364 < 1       name: m[2],
+365 < 1       start: nameAt,
+366 < 1       open: openParen,
+367 < 1       end: close + 1,
+368 < 1       args: splitArgs(src.skeleton, openParen, close),
+369 < 1     })
+370 < 1   }
+371 < 1   return out
+372 < 1 }
+373 < 1 
+374 < 2 /** The `env:` value of a call's options object, as a span — or null when no
+375 < 2  *  argument carries one. A bare identifier argument is resolved one level so
+376 < 2  *  `spawnSync(cmd, argv, opts)` is read through `opts`. */
+377 < 1 const envValueOf = (src, call) => {
+378 < 1   const findIn = (span) => {
+379 < 1     const skel = src.skeleton.slice(span.start, span.end)
+380 < 1     const m = /(^|[{,]\s*)env\s*:/.exec(skel)
+381 < 1     if (m) {
+382 < 1       const from = span.start + m.index + m[0].length
+383 < 1       let depth = 0
+384 < 1       let i = from
+385 < 1       for (; i < span.end; i++) {
+386 < 1         const c = src.skeleton[i]
+387 < 1         if ('([{'.includes(c)) depth++
+388 < 1         else if (')]}'.includes(c)) { if (depth === 0) break; depth-- }
+389 < 1         else if (c === ',' && depth === 0) break
+390 < 1       }
+391 < 1       return { start: from, end: i }
+392 < 1     }
+393 < 1     const short = /(^|[{,]\s*)env\s*([,}]|$)/.exec(skel)
+394 < 1     if (short) {
+395 < 1       const b = bindingOf(src, 'env')
+396 < 1       return b || { start: span.start, end: span.end, unresolvedShorthand: true }
+397 < 1     }
+398 < 1     return null
+399 < 1   }
+400 < 1   for (const arg of call.args) {
+401 < 1     const direct = findIn(arg)
+402 < 1     if (direct) return direct
+403 < 1     const skel = src.skeleton.slice(arg.start, arg.end).trim()
+404 < 1     if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(skel) && !RESERVED.has(skel)) {
+405 < 1       const b = bindingOf(src, skel)
+406 < 1       if (b) {
+407 < 1         const through = findIn(b)
+408 < 1         if (through) return through
+409 < 1       }
+410 < 1     }
+411 < 1   }
+412 < 1   return null
+413 < 1 }
+414 < 1 
+415 < 2 // The `\.\.\.` alternative is the spread: `{ ...simEnv() }` and
+416 < 2 // `{ ...process.env }` both put a dot in front of the name that matters.
+417 < 1 const PROCESS_ENV_RE = /(?:^|\.\.\.|[^\w$.])process\s*\.\s*env\b/
+418 < 1 const SIM_ENV_RE = /(?:^|\.\.\.|[^\w$.])simEnv\s*\(/
+419 < 1 
+420 < 2 /** Is this `env:` value derived from `simEnv`? A value naming `process.env` is
+421 < 2  *  refused outright; otherwise a literal `simEnv(` call or a spread of one is
+422 < 2  *  accepted, and any other identifier is resolved by its body. */
+423 < 1 const envIsSimEnv = (view, src, resolveImport, depth = 0, seen = new Set()) => {
+424 < 1   if (PROCESS_ENV_RE.test(view.code)) return false
+425 < 1   if (SIM_ENV_RE.test(view.code)) return true
+426 < 1   if (depth >= 4) return false
+427 < 1   for (const id of identsIn(view.skeleton)) {
+428 < 1     if (seen.has(id)) continue
+429 < 1     seen.add(id)
+430 < 1     const local = bindingOf(src, id)
+431 < 1     if (local && envIsSimEnv(sliceOf(src, local), src, resolveImport, depth + 1, seen)) return true
+432 < 1     const imported = resolveImport ? resolveImport(id) : null
+433 < 1     if (imported) {
+434 < 1       const there = bindingOf(imported, id)
+435 < 1       if (there && envIsSimEnv(sliceOf(imported, there), imported, null, depth + 1, new Set())) return true
+436 < 1     }
+437 < 1   }
+438 < 1   return false
+439 < 1 }
+440 < 1 
+441 < 1 const literalsIn = (src, span) => src.strings
+442 < 1   .filter((s) => s.start >= span.start && s.end <= span.end)
+443 < 1   .map((s) => src.code.slice(s.start, s.end))
+444 < 1 
+445 < 1 const SIBLING_LITERAL_RE = /test_[a-z0-9_]+\.mjs|(^|[^\w])pytest([^\w]|$)/
+446 < 1 
+447 < 1 const TMP = os.tmpdir()
+448 < 1 
+449 < 2 /**
+450 < 2  * The three rules over one source text. `resolveImport(ident)` hands back the
+451 < 2  * scanned source of the sibling `_*.mjs` a name is imported from, or null.
+452 < 2  */
+453 < 1 const sweep = (text, { file = '<source>', resolveImport = null } = {}) => {
+454 < 1   const src = scan(text)
+455 < 1   const inherit = []
+456 < 1   const absolute = []
+457 < 1   const siblings = []
+458 < 1   const at = (index) => `${file}:${lineOf(src.code, index)}`
+459 < 1   const snippet = (span) => src.code.slice(span.start, span.end).replace(/\s+/g, ' ').slice(0, 140)
+460 < 1 
+461 < 1   for (const call of callSitesOf(src, SPAWN_NAMES)) {
+462 < 1     const span = { start: call.start, end: call.end }
+463 < 1     const env = envValueOf(src, call)
+464 < 1     if (!env) {
+465 < 1       inherit.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'no env:', text: snippet(span) })
+466 < 1     } else if (!envIsSimEnv(sliceOf(src, env), src, resolveImport)) {
+467 < 1       inherit.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'env not derived from simEnv', text: snippet(span) })
+468 < 1     }
+469 < 1 
+470 < 1     const quoted = literalsIn(src, span)
+471 < 1     for (const id of identsIn(src.skeleton.slice(call.open, call.end))) {
+472 < 1       const b = bindingOf(src, id)
+473 < 1       if (b) quoted.push(...literalsIn(src, b))
+474 < 1     }
+475 < 1     if (quoted.some((q) => SIBLING_LITERAL_RE.test(q))) {
+476 < 1       siblings.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: 'runs another sim', text: snippet(span) })
+477 < 1     }
+478 < 1   }
+479 < 1 
+480 < 1   for (const call of callSitesOf(src, READ_NAMES, { dotted: true })) {
+481 < 1     const first = call.args[0]
+482 < 1     if (!first) continue
+483 < 1     const quoted = literalsIn(src, first)
+484 < 1     if (!quoted.length) continue
+485 < 1     const value = quoted[0].slice(1, -1)
+486 < 1     if (!value.startsWith('/')) continue
+487 < 1     if (value === TMP || value.startsWith(`${TMP}/`)) continue
+488 < 1     absolute.push({ file, line: lineOf(src.code, call.start), where: at(call.start), why: `absolute path ${value}`, text: snippet({ start: call.start, end: call.end }) })
+489 < 1   }
+490 < 1 
+491 < 1   return { inherit, absolute, siblings, src }
+492 < 1 }
+493 < 1 
+494 < 1 const named = (offenders) => offenders.map((o) => `${o.where} (${o.why}) ${o.text}`)
+495 < 1 
+496 < 2 // ── the tree ─────────────────────────────────────────────────────────────────
+497 < 2 
+498 < 2 /** A sim or a helper by name: `test_*.mjs`, `_*.mjs`. */
+499 < 1 const isSwept = (n) => n.endsWith('.mjs') && (n.startsWith('test_') || n.startsWith('_'))
+500 < 1 
+501 < 2 /**
+502 < 2  * The names the sweep reads under `dir`: the flat `test_*.mjs` and `_*.mjs` —
+503 < 2  * the same glob the bridge collects (`tests/test_fleet_suite.py`'s
+504 < 2  * `collect_sims`), plus the helpers beside them.
+505 < 2  */
+506 < 1 const sweptNames = (dir, self = SELF) =>
+507 < 1   fs.readdirSync(dir).filter((n) => isSwept(n) && n !== self).sort()
+508 < 1 
+509 < 1 const SWEPT = sweptNames(TESTS_DIR)
+510 < 1 
+511 < 1 const cache = new Map()
+512 < 1 const sourceOf = (name) => {
+513 < 1   if (!cache.has(name)) {
+514 < 1     const full = path.join(TESTS_DIR, name)
+515 < 1     cache.set(name, fs.existsSync(full) ? scan(fs.readFileSync(full, 'utf8')) : null)
+516 < 1   }
+517 < 1   return cache.get(name)
+518 < 1 }
+519 < 1 
+520 < 2 /** ident -> the sibling `_*.mjs` source it is imported from, resolved against
+521 < 2  *  the importing file's own directory (`./_x.mjs` beside a flat sim). */
+522 < 1 const importerFor = (src, file = '') => {
+523 < 1   const map = new Map()
+524 < 1   const base = path.posix.dirname(file)
+525 < 1   const re = /import\s*\{([^}]*)\}\s*from\s*(['"])((?:\.\/|\.\.\/\.\.\/)_[A-Za-z0-9_]+\.mjs)\2/g
+526 < 1   let m
+527 < 1   while ((m = re.exec(src.code)) !== null) {
+528 < 1     const target = path.posix.normalize(path.posix.join(base, m[3]))
+529 < 1     for (const part of m[1].split(',')) {
+530 < 1       const name = part.trim().split(/\s+as\s+/).pop().trim()
+531 < 1       if (name) map.set(name, target)
+532 < 1     }
+533 < 1   }
+534 < 1   return (ident) => (map.has(ident) ? sourceOf(map.get(ident)) : null)
+535 < 1 }
+536 < 1 
+537 < 1 const TREE = SWEPT.map((name) => {
+538 < 1   const text = fs.readFileSync(path.join(TESTS_DIR, name), 'utf8')
+539 < 1   const src = scan(text)
+540 < 1   return sweep(text, { file: name, resolveImport: importerFor(src, name) })
+541 < 1 })
+542 < 1 const treeOffenders = (kind) => TREE.flatMap((r) => r[kind])
+543 < 1 
+544 < 2 // ── the harness ──────────────────────────────────────────────────────────────
+545 < 2 
+546 < 1 const tests = []
+547 < 1 const test = (name, fn) => { tests.push([name, fn]) }
+548 < 2 
+549 < 2 // ── (a) the rig itself  [M1] ─────────────────────────────────────────────────
+550 < 1 
+551 < 1 const PLANT = {
+552 < 1   ULTRA_PLANTED: '1',
+553 < 1   TINYAPP_BROWSER: '/planted/chrome',
+554 < 1   FLEET_PLANTED: '/planted/file',
+555 < 1   CLAUDE_CONFIG_DIR: 'planted-config',
+556 < 1   GH_TOKEN: 'planted',
+557 < 1   ANTHROPIC_API_KEY: 'planted',
+558 < 1 }
+559 < 1 const DROPPED = ['ULTRA_', 'TINYAPP_', 'FLEET_', 'ANTHROPIC_', 'CLAUDE_', 'GH_']
+560 < 1 const TOOLS = ['node', 'python3', 'git', 'bash', 'sh']
+561 < 1 
+562 < 2 /** Runs `fn` with the six planted keys (one per dropped prefix) on this
+563 < 2  *  process, and restores the parent's own values after. */
+564 < 1 const withPlant = (extra, fn) => {
+565 < 1   const before = new Map()
+566 < 1   const keys = { ...PLANT, ...extra }
+567 < 1   for (const [k, v] of Object.entries(keys)) {
+568 < 1     before.set(k, process.env[k])
+569 < 1     if (v === undefined) delete process.env[k]
+570 < 1     else process.env[k] = v
+571 < 1   }
+572 < 1   try {
+573 < 1     return fn()
+574 < 1   } finally {
+575 < 1     for (const [k, v] of before) {
+576 < 1       if (v === undefined) delete process.env[k]
+577 < 1       else process.env[k] = v
+578 < 1     }
+579 < 1   }
+580 < 1 }
+581 < 1 
+582 < 1 const simEnvOrThrow = () => {
+583 < 1   assert.ok(helpers, `(a) [M1] fleet/tests/_helpers.mjs is the rig this exam grades, and it does not load: ${helpersError && helpersError.message}`)
+584 < 1   assert.equal(typeof helpers.simEnv, 'function',
+585 < 1     '(a) [M1] fleet/tests/_helpers.mjs exports simEnv({ bin, home, env } = {})')
+586 < 1   return helpers.simEnv
+587 < 1 }
+588 < 1 
+589 < 1 test('simEnv() hands on no key of a planted parent  [M1 / leg (a)]', () => {
+590 < 1   const simEnv = simEnvOrThrow()
+591 < 1   withPlant({}, () => {
+592 < 1     const e = simEnv()
+593 < 1     for (const key of Object.keys(PLANT)) {
+594 < 1       assert.equal(key in e, false,
+595 < 1         `(a) [M1] ${key} is planted on the parent and must not be in what simEnv() hands a child — ` +
+596 < 1         `got ${JSON.stringify(e[key])}`)
+597 < 1     }
+598 < 2     // The clause is about keys OF THE PARENT: `FLEET_HOME` begins with a swept
+599 < 2     // prefix and is still the rig's own, minted under the case's own home.
+600 < 1     const own = new Set(['PATH', 'HOME', 'TMPDIR', 'FLEET_HOME'])
+601 < 1     const leaked = Object.keys(e).filter((k) => DROPPED.some((p) => k.startsWith(p)) && !own.has(k))
+602 < 1     assert.deepEqual(leaked, [],
+603 < 1       `(a) [M1] no key of the parent beginning ${DROPPED.join(', ')} survives: ${JSON.stringify(leaked)}`)
+604 < 1     assert.deepEqual(Object.keys(e).sort(), ['FLEET_HOME', 'HOME', 'PATH', 'TMPDIR'],
+605 < 1       `(a) [M1] the keys simEnv() sets itself are PATH, HOME, TMPDIR and FLEET_HOME — ` +
+606 < 1       `no key of the parent reaches a child: ${JSON.stringify(Object.keys(e).sort())}`)
+607 < 1   })
+608 < 1 })
+609 < 1 
+610 < 1 test('a planted FLEET_HOME is the parent\'s, and never the child\'s  [M1 / leg (a)]', () => {
+611 < 1   const simEnv = simEnvOrThrow()
+612 < 2   // TMPDIR is left alone on purpose: `os.tmpdir()` reads it, and M1 sends the
+613 < 2   // default home there. The planted key here is the FLEET_ one that names a
+614 < 2   // home — the fact of the box #833 was about.
+615 < 1   withPlant({ FLEET_HOME: '/planted/home', HOME: '/planted/home' }, () => {
+616 < 1     const e = simEnv()
+617 < 1     assert.notEqual(e.FLEET_HOME, '/planted/home',
+618 < 1       "(a) [M1] FLEET_HOME is minted under the rig's own home, not read off the parent")
+619 < 1     assert.notEqual(e.HOME, '/planted/home', '(a) [M1] and so is HOME')
+620 < 1     assert.ok(e.HOME.startsWith(fs.realpathSync(TMP)) || e.HOME.startsWith(TMP),
+621 < 1       `(a) [M1] under os.tmpdir(): ${e.HOME}`)
+622 < 1   })
+623 < 1 })
+624 < 1 
+625 < 1 test('HOME, TMPDIR and FLEET_HOME sit under one fresh directory in os.tmpdir()  [M1 / leg (a)]', () => {
+626 < 1   const simEnv = simEnvOrThrow()
+627 < 1   withPlant({}, () => {
+628 < 1     const e = simEnv()
+629 < 1     const home = e.HOME
+630 < 1     assert.ok(home, '(a) [M1] simEnv() sets HOME')
+631 < 1     for (const key of ['TMPDIR', 'FLEET_HOME']) {
+632 < 1       assert.ok(e[key] === home || e[key].startsWith(home + path.sep),
+633 < 1         `(a) [M1] ${key} (${e[key]}) is under the same home (${home})`)
+634 < 1     }
+635 < 1     assert.ok(fs.existsSync(home) && fs.statSync(home).isDirectory(),
+636 < 1       `(a) [M1] home defaults to a fresh mkdtemp that exists: ${home}`)
+637 < 1     const under = fs.realpathSync(TMP)
+638 < 1     assert.ok(fs.realpathSync(home).startsWith(under + path.sep),
+639 < 1       `(a) [M1] and it is under os.tmpdir() (${under}): ${fs.realpathSync(home)}`)
+640 < 1     const second = simEnv()
+641 < 1     assert.notEqual(second.HOME, home,
+642 < 1       '(a) [M1] each call mints a fresh home — a shared one is a fact of the box by another name')
+643 < 1   })
+644 < 1 })
+645 < 1 
+646 < 1 test('PATH is bin, then only the directories holding the five interpreters  [M1 / leg (a)]', () => {
+647 < 1   const simEnv = simEnvOrThrow()
+648 < 1   withPlant({}, () => {
+649 < 1     const e = simEnv({ bin: '/x/bin', env: { FLEET_HOME: '/y' } })
+650 < 1     const parts = e.PATH.split(path.delimiter)
+651 < 1     assert.equal(parts[0], '/x/bin',
+652 < 1       `(a) [M1] bin comes first when given: ${e.PATH}`)
+653 < 1     assert.equal(parts[1], path.dirname(process.execPath),
+654 < 1       `(a) [M1] and the directory of process.execPath follows it: ${e.PATH}`)
+655 < 1     const holdsATool = (dir) => TOOLS.some((t) => fs.existsSync(path.join(dir, t)))
+656 < 1     const loose = parts.slice(1).filter((d) => !holdsATool(d))
+657 < 1     assert.deepEqual(loose, [],
+658 < 1       `(a) [M1] every other entry holds one of ${TOOLS.join(', ')}, and nothing else of the parent's ` +
+659 < 1       `PATH is kept: ${JSON.stringify(loose)}`)
+660 < 1     const parent = new Set((process.env.PATH || '').split(path.delimiter))
+661 < 1     const inherited = parts.filter((d) => d !== '/x/bin' && parent.has(d) && !holdsATool(d))
+662 < 1     assert.deepEqual(inherited, [],
+663 < 1       `(a) [M1] no entry of the parent's PATH that holds none of the five: ${JSON.stringify(inherited)}`)
+664 < 1     assert.deepEqual(parts, [...new Set(parts)],
+665 < 1       `(a) [M1] deduplicated in order: ${e.PATH}`)
+666 < 1     assert.equal(e.FLEET_HOME, '/y',
+667 < 1       "(a) [M1] the caller's env is laid over everything else last")
+668 < 1   })
+669 < 1 })
+670 < 1 
+671 < 1 test("a caller's env wins for a key of any name  [M1 / leg (a)]", () => {
+672 < 1   const simEnv = simEnvOrThrow()
+673 < 1   withPlant({}, () => {
+674 < 1     const e = simEnv({ env: { PATH: '/only/this', HOME: '/h', TMPDIR: '/t', ULTRA_KEEP: 'mine', PLAIN: 'x' } })
+675 < 1     assert.equal(e.PATH, '/only/this', '(a) [M1] a caller-supplied PATH wins')
+676 < 1     assert.equal(e.HOME, '/h', '(a) [M1] a caller-supplied HOME wins')
+677 < 1     assert.equal(e.TMPDIR, '/t', '(a) [M1] a caller-supplied TMPDIR wins')
+678 < 1     assert.equal(e.ULTRA_KEEP, 'mine',
+679 < 1       '(a) [M1] a caller-supplied key of a swept name wins — the sweep is about the parent, not the caller')
+680 < 1     assert.equal(e.PLAIN, 'x', '(a) [M1] and so does one of no swept name')
+681 < 1   })
+682 < 1 })
+683 < 1 
+684 < 1 test('home, when given, is where the three keys point  [M1 / leg (a)]', () => {
+685 < 1   const simEnv = simEnvOrThrow()
+686 < 1   withPlant({}, () => {
+687 < 1     const home = fs.mkdtempSync(path.join(TMP, 'hermetic-leg-a-'))
+688 < 1     try {
+689 < 1       const e = simEnv({ home })
+690 < 1       assert.equal(e.HOME, home, '(a) [M1] HOME is the home it was handed')
+691 < 1       assert.ok(e.TMPDIR === home || e.TMPDIR.startsWith(home + path.sep),
+692 < 1         `(a) [M1] TMPDIR is under it: ${e.TMPDIR}`)
+693 < 1       assert.ok(e.FLEET_HOME === home || e.FLEET_HOME.startsWith(home + path.sep),
+694 < 1         `(a) [M1] FLEET_HOME is under it: ${e.FLEET_HOME}`)
+695 < 1     } finally {
+696 < 1       fs.rmSync(home, { recursive: true, force: true })
+697 < 1     }
+698 < 1   })
+699 < 1 })
+700 < 1 
+701 < 2 // ── (b) every spawn is handed its environment  [M2] ──────────────────────────
+702 < 2 
+703 < 1 test('the sweep names zero inheriting spawns in fleet/tests/  [M2 / leg (b)]', () => {
+704 < 2   // The reach, pinned by equality against the files the sweep is defined over
+705 < 2   // and read from the directory here — not by a floor on how many there are. A
+706 < 2   // floor is a fact about how large the pre-flight happened to be on the day it
+707 < 2   // was written, and it says nothing when a retired sim leaves the tree; the
+708 < 2   // set says the one thing that matters, that every file the rules are defined
+709 < 2   // over was read.
+710 < 1   const definedOver = fs.readdirSync(TESTS_DIR).filter((n) => isSwept(n) && n !== SELF)
+711 < 1   assert.deepEqual(SWEPT, [...definedOver].sort(),
+712 < 1     `(b) [M2] the sweep reads every fleet/tests/test_*.mjs and _*.mjs but this file — ` +
+713 < 1     `not a file fewer: ${JSON.stringify(SWEPT)}`)
+714 < 1   const offenders = treeOffenders('inherit')
+715 < 1   assert.deepEqual(named(offenders), [],
+716 < 1     `(b) [M2] every spawn in fleet/tests/test_*.mjs and fleet/tests/_*.mjs takes an env derived ` +
+717 < 1     `from simEnv — ${offenders.length} do not:\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
+718 < 1 })
+719 < 1 
+720 < 1 test('the same sweep names one offender for each inheriting shape  [M2 / leg (b)]', () => {
+721 < 1   const cases = [
+722 < 1     ["spawnSync('git', ['status'], { cwd })", 'no env: at all'],
+723 < 1     ["spawnSync('git', ['status'], { env: process.env })", 'the parent handed over whole'],
+724 < 1     ["execFileSync('git', ['status'], { env: { ...process.env, X: '1' } })", 'the parent spread'],
+725 < 1     ["const ENV = { ...process.env }\nspawnSync('git', ['status'], { env: ENV })", 'the parent behind a name'],
+726 < 1     ["const bootEnv = (ctx, env) => ({ ...process.env, ...env })\nspawn('bash', [script], { env: bootEnv(ctx, env) })",
+727 < 1       'a helper whose body spreads the parent — a name is not what makes it hermetic'],
+728 < 1   ]
+729 < 1   for (const [source, why] of cases) {
+730 < 1     const r = sweep(source, { file: '<case>' })
+731 < 1     assert.equal(r.inherit.length, 1,
+732 < 1       `(b) [M2] one offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.inherit))}`)
+733 < 1   }
+734 < 1 })
+735 < 1 
+736 < 1 test('the same sweep names none for each simEnv-derived shape  [M2 / leg (b)]', () => {
+737 < 1   const cases = [
+738 < 1     ["spawnSync('git', ['status'], { env: simEnv() })", 'a literal simEnv() call'],
+739 < 1     ["spawnSync('git', ['status'], { env: { ...simEnv(), X: '1' } })", 'a spread of one'],
+740 < 1     ["const ENV = simEnv({ bin })\nspawnSync('git', ['status'], { env: ENV })", 'an identifier bound to one'],
+741 < 1     ["const bootEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin, home: ctx.home }), ...env })\nspawn('bash', [script], { env: bootEnv(ctx, env) })",
+742 < 1       'a helper whose body spreads one'],
+743 < 1   ]
+744 < 1   for (const [source, why] of cases) {
+745 < 1     const r = sweep(source, { file: '<case>' })
+746 < 1     assert.deepEqual(named(r.inherit), [],
+747 < 1       `(b) [M2] no offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.inherit))}`)
+748 < 1   }
+749 < 1 })
+750 < 1 
+751 < 1 test("a sibling helper's bootEnv is accepted by its body, across the import  [M2 / leg (b)]", () => {
+752 < 1   const helperSrc = scan("export const bootEnv = (ctx, env) => ({ ...simEnv({ bin: ctx.bin }), ...env })\n")
+753 < 1   const leakySrc = scan("export const bootEnv = (ctx, env) => ({ ...process.env, ...env })\n")
+754 < 1   const caller = "import { bootEnv } from './_sandbox_boot_helpers.mjs'\nspawn('bash', [script], { env: bootEnv(ctx, env) })"
+755 < 1   const green = sweep(caller, { file: '<case>', resolveImport: (id) => (id === 'bootEnv' ? helperSrc : null) })
+756 < 1   assert.deepEqual(named(green.inherit), [],
+757 < 1     '(b) [M2] a name a file imports from a sibling _*.mjs is resolved in that sibling\'s source, and ' +
+758 < 1     'a body that spreads simEnv( is accepted there')
+759 < 1   const red = sweep(caller, { file: '<case>', resolveImport: (id) => (id === 'bootEnv' ? leakySrc : null) })
+760 < 1   assert.equal(red.inherit.length, 1,
+761 < 1     '(b) [M2] and the same name is named when that body spreads the parent instead')
+762 < 1 })
+763 < 1 
+764 < 2 // ── (c) no sim opens a path on the box  [M3] ─────────────────────────────────
+765 < 2 
+766 < 1 test('the sweep names zero literal absolute reads in fleet/tests/  [M3 / leg (c)]', () => {
+767 < 1   const offenders = treeOffenders('absolute')
+768 < 1   assert.deepEqual(named(offenders), [],
+769 < 1     `(c) [M3] no sim reads, stats or sources a string-literal absolute path outside the checkout ` +
+770 < 1     `and os.tmpdir():\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
+771 < 1 })
+772 < 1 
+773 < 1 test('the same sweep names the box\'s render.env and leaves a temp path alone  [M3 / leg (c)]', () => {
+774 < 1   const red = sweep("fs.readFileSync('/etc/fleet/render.env', 'utf8')", { file: '<case>' })
+775 < 1   assert.equal(red.absolute.length, 1,
+776 < 1     `(c) [M3] one offender for a read of /etc/fleet/render.env: ${JSON.stringify(named(red.absolute))}`)
+777 < 1   const green = sweep("fs.readFileSync(path.join(os.tmpdir(), 'x'))", { file: '<case>' })
+778 < 1   assert.deepEqual(named(green.absolute), [],
+779 < 1     '(c) [M3] and none for a read under os.tmpdir()')
+780 < 1 })
+781 < 2 
+782 < 2 // ── (d) no sim runs another  [M4] ────────────────────────────────────────────
+783 < 1 
+784 < 1 test('the sweep names zero sibling-sim spawns in fleet/tests/  [M4 / leg (d)]', () => {
+785 < 1   const offenders = treeOffenders('siblings')
+786 < 1   assert.deepEqual(named(offenders), [],
+787 < 1     `(d) [M4] no fleet/tests/test_*.mjs spawns another test_*.mjs or pytest — the bridge is what ` +
+788 < 1     `runs them:\n  ${named(offenders).slice(0, 40).join('\n  ')}`)
+789 < 1 })
+790 < 1 
+791 < 1 test('the same sweep names each shape of a sim running another  [M4 / leg (d)]', () => {
+792 < 1   const one = [
+793 < 1     ["execFileSync(process.execPath, ['fleet/tests/test_fitness.mjs'])", 'a sim named in the call'],
+794 < 1     ["execFileSync('python3', ['-m', 'pytest'])", 'a shell-out to pytest'],
+795 < 1     ["for (const name of ['test_fitness.mjs']) {\n  execFileSync(process.execPath, [path.join(TESTS_DIR, name)]) }",
+796 < 1       'a sim named by the list the argv walks'],
+797 < 1   ]
+798 < 1   for (const [source, why] of one) {
+799 < 1     const r = sweep(source, { file: '<case>' })
+800 < 1     assert.equal(r.siblings.length, 1,
+801 < 1       `(d) [M4] one offender for ${why}: ${JSON.stringify(source)} gave ${JSON.stringify(named(r.siblings))}`)
+802 < 1   }
+803 < 1   const copy = "const copy = copyWithProbe(simName, probe)\nspawnSync(process.execPath, [copy])"
+804 < 1   const r = sweep(copy, { file: '<case>' })
+805 < 1   assert.deepEqual(named(r.siblings), [],
+806 < 1     '(d) [M4] and none for a mutated copy of a sim\'s own text under the temp root — resolved one ' +
+807 < 1     'level, copyWithProbe(simName, probe) carries no literal, and that pin is not a sibling run')
+808 < 1 })
+809 < 1 
+810 < 2 // ── (g) the fixture, one offender per rule  [M7] ─────────────────────────────
+811 < 2 
+812 < 1 test('the fixture is swept to exactly three offenders, one per rule  [M7 / leg (g)]', () => {
+813 < 1   assert.ok(fs.existsSync(FIXTURE),
+814 < 1     '(g) [M7] fleet/tests/fixtures/hermetic/leaky_sim.mjs is the fixture that proves the sweep can ' +
+815 < 1     'still fail — a probe that names nothing anywhere proves nothing')
+816 < 1   const text = fs.readFileSync(FIXTURE, 'utf8')
+817 < 1   const r = sweep(text, { file: 'fixtures/hermetic/leaky_sim.mjs' })
+818 < 1   assert.equal(r.inherit.length, 1,
+819 < 1     `(g) [M7] one inheriting spawn: ${JSON.stringify(named(r.inherit))}`)
+820 < 1   assert.equal(r.absolute.length, 1,
+821 < 1     `(g) [M7] one absolute read: ${JSON.stringify(named(r.absolute))}`)
+822 < 1   assert.equal(r.siblings.length, 1,
+823 < 1     `(g) [M7] one sibling-sim spawn: ${JSON.stringify(named(r.siblings))}`)
+824 < 1   assert.equal(r.inherit.length + r.absolute.length + r.siblings.length, 3,
+825 < 1     '(g) [M7] and three namings in all, one per rule')
+826 < 1   assert.match(r.absolute[0].why, /\/etc\/fleet\/planted\.env/,
+827 < 1     `(g) [M7] the absolute read is of /etc/fleet/planted.env: ${r.absolute[0].why}`)
+828 < 1 
+829 < 1   assert.equal(path.basename(FIXTURE).startsWith('test_'), false,
+830 < 1     '(g) [M7] and the fixture is never collected by the bridge — its name does not match test_*.mjs')
+831 < 1   assert.equal(SWEPT.includes(path.basename(FIXTURE)), false,
+832 < 1     '(g) [M7] nor swept as a sim of the tree')
+833 < 1 })
+834 < 1 
+835 < 2 // ── the sentinel ─────────────────────────────────────────────────────────────
+836 < 2 
+837 < 1 let failures = 0
+838 < 1 for (const [name, fn] of tests) {
+839 < 1   const started = Date.now()
+840 < 1   try {
+841 < 1     fn()
+842 < 1     console.log(`ok (${Date.now() - started} ms) — ${name}`)
+843 < 1   } catch (error) {
+844 < 1     failures += 1
+845 < 1     console.log(`FAIL — ${name}`)
+846 < 1     console.log(String(error && error.stack ? error.stack : error))
+847 < 1   }
+848 < 1 }
+849 < 1 if (failures) {
+850 < 1   console.log(`${failures} FAILED`)
+851 < 1   process.exit(1)
+852 < 1 }
+853 < 1 console.log(`ALL TESTS PASSED (${SWEPT.length} sims swept, 0 offenders)`)
+854 < 1 

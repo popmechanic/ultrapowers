@@ -1,10 +1,10 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // factory/flock/step_receipts.mjs's latestResults (#1532): a step's receipt is the edge's own checker
-2 < 1 // result (`<clause>@edge.json`) when the edge wrote one, even when a builder's copy wrote a newer file
-4 > 1 // for the same clause; a clause no edge result names falls back to the newest file by mtime. A result
-5 < 1 // with no diff (the step stopped at `do`, before the store was read) still gets its row (#1491).
+1 < 2 // factory/flock/step_receipts.mjs's latestResults (#1532): a step's receipt is the edge's own checker
+2 < 2 // result (`<clause>@edge.json`) when the edge wrote one, even when a builder's copy wrote a newer file
+4 > 2 // for the same clause; a clause no edge result names falls back to the newest file by mtime. A result
+5 < 2 // with no diff (the step stopped at `do`, before the store was read) still gets its row (#1491).
 3 < 2 // for the same clause; a clause no edge result names falls back to the newest file by mtime.
-4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+4 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 5 < 1 import fs from 'node:fs'
 6 < 1 import os from 'node:os'
 7 < 1 import path from 'node:path'
@@ -20,13 +20,13 @@
 17 < 1   const t = new Date(Date.now() - secondsAgo * 1000)
 18 < 1   fs.utimesSync(p, t, t)
 19 < 1 }
-20 < 1 // S1.1: the edge's result is the older file; a builder's copy wrote after it.
+20 < 2 // S1.1: the edge's result is the older file; a builder's copy wrote after it.
 21 < 1 put('S1.1@edge.json', { clause: 'S1.1', exit: 0, diff: [{ cell: 'from-edge' }] }, 60)
 22 < 1 put('S1.1@b1.json', { clause: 'S1.1', exit: 1, diff: [{ cell: 'from-b1' }] }, 5)
-23 < 1 // S1.2: no edge result; two builder copies, the newest wins.
+23 < 2 // S1.2: no edge result; two builder copies, the newest wins.
 24 < 1 put('S1.2@b1.json', { clause: 'S1.2', exit: 1, diff: [{ cell: 'older' }] }, 60)
 25 < 1 put('S1.2@b2.json', { clause: 'S1.2', exit: 0, diff: [{ cell: 'newer' }] }, 5)
-27 > 1 // S2.1: the step stopped at `do`, so its result carries no diff.
+27 > 2 // S2.1: the step stopped at `do`, so its result carries no diff.
 28 < 1 put('S2.1@edge.json', { clause: 'S2.1', exit: 1, stage: 'do' }, 30)
 26 < 1 
 27 < 1 const got = latestResults(dir)

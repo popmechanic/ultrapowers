@@ -1,0 +1,133 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """The weave census (#1401): did a Flock merge ever write a line neither builder wrote? Not a
+2 < 2 test: nothing runs it automatically; run it to re-read the answer over newer runs.
+3 < 2 
+4 < 2     python3 evals/readings/weave_census.py <fleet-evidence clone> <ultrapowers checkout> > census.json
+5 < 2 
+6 < 2 Over every Flock run tagged in the evidence repository (a run whose events carry `builder:open`
+7 < 2 or `edge` rows) it prints three lists as JSON:
+8 < 2   runs        per run: fallback, conflict and peer-rewrite event counts, multi-writer paths;
+9 < 2   fused       per run that landed on this repository's main: every added line holding a token that
+10 < 2               is two of the file's earlier tokens run together (run-277's species), and whether
+11 < 2               that token is still on origin/main. The scan names candidates; a person reads each;
+12 < 2   provenance  per run with a weave-ops digest: every line of the final snapshot is in the base or
+13 < 2               in some builder's edit or recorded rewrite, else `unknown` (a shell rewrite whose
+14 < 2               text was not recorded) or `FOREIGN`. The base read is the landed commit's parent,
+15 < 2               which is later than the run's base when main moved under it (a catch-up): a
+16 < 2               `FOREIGN` line there can be the run's own base line (run-264)."""
+17 < 1 import collections, hashlib, json, os, re, subprocess, sys
+18 < 1 
+20 > 1 FE = sys.argv[1]
+21 < 1 UP = sys.argv[2]
+19 < 2 FE = sys.argv[1]            # fleet-evidence clone
+20 < 2 UP = sys.argv[2]            # ultrapowers checkout
+21 < 1 
+22 < 1 
+23 < 1 def git(repo, *a):
+24 < 1     return subprocess.run(["git", "-C", repo, *a], capture_output=True).stdout.decode("utf-8", "replace")
+25 < 1 
+26 < 1 
+27 < 1 def show(tag, name):
+28 < 1     return git(FE, "show", f"{tag}:{name}")
+29 < 1 
+30 < 1 
+31 < 1 def fused(line, pre_tokens):
+32 < 2     """Whitespace tokens of `line` that are two pre-image tokens run together and are not
+33 < 2     themselves pre-image tokens (`snapshots.jsonlred-checks.json`)."""
+34 < 1     hits = []
+35 < 1     for t in line.split():
+36 < 1         if t in pre_tokens or len(t) < 8:
+37 < 1             continue
+38 < 1         for i in range(4, len(t) - 3):
+39 < 1             if t[:i] in pre_tokens and t[i:] in pre_tokens:
+40 < 1                 hits.append((t, t[:i], t[i:]))
+41 < 1                 break
+42 < 1     return hits
+43 < 1 
+44 < 1 
+45 < 1 rows, fuse_hits, prov = [], [], []
+46 < 1 for tag in git(FE, "tag").split():
+47 < 1     files = git(FE, "ls-tree", "-r", "--name-only", tag).split()
+48 < 1     ev_name = next((f for f in files if f.endswith("/events.jsonl")), None)
+49 < 1     if not ev_name:
+50 < 1         continue
+51 < 1     evs = [json.loads(l) for l in show(tag, ev_name).splitlines() if l.strip().startswith("{")]
+52 < 1     kinds = collections.Counter(e.get("kind") for e in evs)
+53 < 1     if not (kinds["builder:open"] or kinds["edge"]):
+55 > 1         continue
+54 < 2         continue                                                  # not a Flock run
+55 < 1     d = os.path.dirname(ev_name)
+56 < 1     writers = collections.defaultdict(set)
+57 < 1     for e in evs:
+58 < 1         if e.get("kind") in ("edit", "fallback") and e.get("path"):
+59 < 1             writers[e["path"]].add(e["agent"])
+60 < 1     pull_conf = sum(1 for e in evs if e.get("kind") == "pull" for c in e.get("changed", []) if c.get("conflict"))
+61 < 1     status = {}
+62 < 1     if f"{d}/status.json" in files:
+63 < 1         try:
+64 < 1             status = json.loads(show(tag, f"{d}/status.json"))
+65 < 1         except ValueError:
+66 < 1             pass
+67 < 1     ts = next((e.get("ts") for e in evs if e.get("ts")), "")
+68 < 1     row = {
+69 < 1         "tag": tag, "date": ts[:10],
+70 < 1         "fallback": kinds["fallback"],
+71 < 1         "fallback_peer": sum(1 for e in evs if e.get("kind") == "fallback" and e.get("peer_lines", 0) > 0),
+72 < 1         "edit_peer": sum(1 for e in evs if e.get("kind") == "edit" and e.get("peer_lines", 0) > 0),
+73 < 1         "conflict_open": kinds["conflict:open"], "conflict_close": kinds["conflict:close"],
+74 < 1         "conflict_union": kinds["conflict:union"], "pull_conflict": pull_conf,
+75 < 1         "multi_writer_paths": sorted(p for p, w in writers.items() if len(w) > 1),
+76 < 1         "merged": status.get("merged"), "pr": status.get("pr"),
+77 < 1     }
+78 < 1     rows.append(row)
+79 < 1 
+80 < 2     # ── landed text: fused tokens in every added line of the squash commit on this repo's main
+81 < 1     if tag.startswith("popmechanic-ultrapowers/") and row["merged"] and git(UP, "cat-file", "-t", row["merged"]).strip() == "commit":
+82 < 1         sha = row["merged"]
+83 < 1         for path in git(UP, "diff", "--name-only", f"{sha}^", sha).split():
+84 < 1             pre = git(UP, "show", f"{sha}^:{path}")
+85 < 1             pre_tok = set(pre.split())
+86 < 1             post = git(UP, "show", f"{sha}:{path}")
+87 < 1             added = set(post.split("\n")) - set(pre.split("\n"))
+88 < 1             for l in added:
+89 < 1                 for h in fused(l, pre_tok):
+90 < 1                     on_main = h[0] in git(UP, "show", f"origin/main:{path}")
+91 < 1                     fuse_hits.append({"tag": tag, "sha": sha[:8], "path": path, "token": h[0], "parts": h[1:],
+92 < 1                                       "writers": sorted(writers.get(path, [])), "still_on_main": on_main})
+93 < 1 
+94 < 2     # ── provenance: every line of the final snapshot's changed files, against base ∪ what agents wrote
+95 < 1     ops_name = next((f for f in files if "weave-ops" in f), None)
+96 < 1     st_name = f"{d}/snapshot-texts.json"
+97 < 1     sn_name = f"{d}/snapshots.jsonl"
+98 < 1     if ops_name and st_name in files and sn_name in files and row["merged"] and tag.startswith("popmechanic-ultrapowers/"):
+99 < 1         texts = json.loads(show(tag, st_name))["texts"]
+100 < 1         snaps = [json.loads(l) for l in show(tag, sn_name).splitlines() if l.strip()]
+101 < 1         ops = [json.loads(l) for l in show(tag, ops_name).splitlines() if l.strip()]
+103 > 1         wrote = collections.defaultdict(set)
+104 < 1         blind = set()
+102 < 2         wrote = collections.defaultdict(set)      # path -> lines some agent put there
+103 < 2         blind = set()                             # paths with a shell rewrite whose text is not on record
+104 < 1         for o in ops:
+105 < 1             if o["op"] == "edit":
+106 < 1                 wrote[o["path"]].update(o["lines"])
+107 < 1             elif o["op"] == "rewrite":
+108 < 1                 t = texts.get(o.get("content_sha1") or "")
+109 < 1                 if t is None and o.get("content_sha1"):
+110 < 1                     blind.add(o["path"])
+111 < 1                 elif t is not None:
+112 < 1                     wrote[o["path"]].update(t.split("\n"))
+113 < 1         base = f"{row['merged']}^"
+114 < 1         final = snaps[-1] if snaps else {"changed": []}
+115 < 1         for c in final["changed"]:
+116 < 1             text = texts.get(c["sha1"])
+117 < 1             if text is None:
+118 < 1                 prov.append({"tag": tag, "path": c["path"], "class": "final-text-missing"})
+119 < 1                 continue
+120 < 1             base_lines = set(git(UP, "show", f"{base}:{c['path']}").split("\n"))
+121 < 1             stray = [l for l in text.split("\n") if l not in base_lines and l not in wrote[c["path"]]]
+122 < 1             cls = "clean" if not stray else ("unknown(rewrite text unrecorded)" if c["path"] in blind else "FOREIGN")
+123 < 1             prov.append({"tag": tag, "path": c["path"], "class": cls, "lines": len(text.split("\n")),
+124 < 1                          "stray": stray[:5], "n_stray": len(stray)})
+125 < 1 
+126 < 1 json.dump({"runs": rows, "fused": fuse_hits, "provenance": prov}, sys.stdout, indent=1)
+127 < 1 

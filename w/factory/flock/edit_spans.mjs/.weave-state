@@ -1,0 +1,62 @@
+0 < 2 // PROTOTYPE (map #1292, ticket 4). An Edit call, replayed into the weave as line spans.
+1 < 2 //
+2 < 2 // editSpans(before, old, neu, all) -> [{ vstart, vend, lines }], last span first, each in
+3 < 2 // `before`'s visible line numbers, so applying them in order to the weave's copy of
+4 < 2 // `before` yields the text the Edit tool wrote.
+5 < 2 //
+6 < 2 // Ticket 4 follow-up: a replace-all whose matches share a line. Each match used to become
+7 < 2 // its own span covering the whole line, rebuilt from `before` with only that one match
+8 < 2 // replaced, so the earlier match's span put the later match's old text back. Matches whose
+9 < 2 // lines touch are now one group and one span, rebuilt with every match in it replaced.
+10 < 2 // Pinned by readings/replace_all_check.mjs.
+11 < 1 export function editSpans (before, old, neu, all) {
+12 < 1   const idxs = []
+13 < 1   let i = before.indexOf(old)
+14 < 1   while (i >= 0) { idxs.push(i); if (!all) break; i = before.indexOf(old, i + old.length) }
+15 < 1   const lineEndAt = (k) => { const e = before.indexOf('\n', k); return e < 0 ? before.length : e }
+16 < 1   const groups = []
+17 < 1   for (const idx of idxs) {
+18 < 1     const g = groups[groups.length - 1]
+19 < 1     if (g && idx <= lineEndAt(g[g.length - 1] + old.length)) g.push(idx); else groups.push([idx])
+20 < 1   }
+21 < 1   return groups.reverse().map((g) => g.length === 1 ? one(before, old, neu, g[0]) : many(before, old, neu, g, lineEndAt))
+22 < 1 }
+23 < 1 
+24 < 1 function trim (ls, oldLines, newLines) {
+25 < 1   let h = 0
+26 < 1   while (h < oldLines.length && h < newLines.length && oldLines[h] === newLines[h]) h++
+27 < 1   let t = 0
+28 < 1   while (t < oldLines.length - h && t < newLines.length - h && oldLines[oldLines.length - 1 - t] === newLines[newLines.length - 1 - t]) t++
+29 < 1   return { vstart: ls + h, vend: ls + oldLines.length - t, lines: newLines.slice(h, newLines.length - t) }
+30 < 1 }
+31 < 1 
+32 < 2 // one match: unchanged from the first pass
+33 < 1 function one (before, old, neu, idx) {
+34 < 1   const endc = idx + old.length
+35 < 1   const ls = before.slice(0, idx).split('\n').length - 1
+36 < 1   const lineStart = before.lastIndexOf('\n', idx - 1) + 1
+37 < 1   let lineEnd = before.indexOf('\n', endc); if (lineEnd < 0) lineEnd = before.length
+38 < 1   const prefix = before.slice(lineStart, idx)
+39 < 1   let oldLines, newLines
+40 < 1   if (old.endsWith('\n') && (neu.endsWith('\n') || (neu === '' && prefix === ''))) {
+41 < 1     oldLines = before.slice(lineStart, endc).split('\n'); oldLines.pop()
+42 < 1     const s = prefix + neu
+43 < 1     newLines = s === '' ? [] : s.split('\n'); if (s.endsWith('\n')) newLines.pop()
+44 < 1   } else {
+45 < 1     oldLines = before.slice(lineStart, lineEnd).split('\n')
+46 < 1     newLines = (prefix + neu + before.slice(endc, lineEnd)).split('\n')
+47 < 1   }
+48 < 1   return trim(ls, oldLines, newLines)
+49 < 1 }
+50 < 1 
+51 < 2 // several matches whose lines touch: one span over their whole lines, every match replaced
+52 < 1 function many (before, old, neu, g, lineEndAt) {
+53 < 1   const lineStart = before.lastIndexOf('\n', g[0] - 1) + 1
+54 < 1   const regionEnd = lineEndAt(g[g.length - 1] + old.length)
+55 < 1   const ls = before.slice(0, lineStart).split('\n').length - 1
+56 < 1   let s = '', at = lineStart
+57 < 1   for (const idx of g) { s += before.slice(at, idx) + neu; at = idx + old.length }
+58 < 1   s += before.slice(at, regionEnd)
+59 < 1   return trim(ls, before.slice(lineStart, regionEnd).split('\n'), s.split('\n'))
+60 < 1 }
+61 < 1 

@@ -1,44 +1,44 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_factory_record.mjs — the exam for "the run's status page and
-2 < 1  * pull request body are rendered by `factory/record.mjs`, and the publish policy
-3 < 1  * is read fail-closed by `factory/publish.mjs`".
-4 < 1  *
-5 < 1  * `record.mjs`'s CLI is driven as a child process exactly the way `factory/boot.sh`
-6 < 1  * drives `status`; the policy read is called in-process. The rows, payloads and
-7 < 1  * `publish.json` the publish writes are its own JSON since #1441, and their shapes
-8 < 1  * are measured end to end by `test_factory_boot.mjs` (the merge PUT byte-equal,
-9 < 1  * the row kinds in order) and `test_factory_publish.mjs` (every probe case).
-10 < 1  *
-11 < 1  * Legs, each naming the Machine clause it comes from:
-12 < 1  *
-13 < 1  *   (b) [M2] `status key=value ... --events <file>` prints the twelve-cell
-14 < 1  *       page in exactly the pinned key order with `tasks` last; the five
-15 < 1  *       optional cells given empty on the command line come back `null`;
-16 < 1  *       `updatedAt` is a non-empty
-17 < 1  *       string; `tasks` is the two-row projection M2 pins over an events file
-18 < 1  *       holding a `landing` and a `parked` row, and is `{}` over a path that
-19 < 1  *       does not exist.
-20 < 1  *   (c) [M3] `pr-body <plan.md> --events <file>` is byte-equal, over the
-21 < 1  *       fixture plan and one `landing` row, to the paragraph, a blank line,
-22 < 1  *       the one table row, a blank line and `Closes #1222`; and, over a plan
-23 < 1  *       with no `**Closes:**` line and no events file, to the paragraph
-24 < 1  *       followed by two blank lines and nothing else.
-25 < 1  *   (d) [M4] `publishPolicy` over the repo's own `factory/policy.json` reads
-27 > 1  *       the self-merge's bounds and the probe enabled; over a probe cell
-28 < 1  *       carrying no `enabled` key the probe reads disabled and the bounds are
-29 < 1  *       the cell's; over a path that does not exist, the probe reads disabled
-31 > 1  *       with the defaults (3 catch-ups, 120 s, 600 s).
+0 < 2 /**
+1 < 2  * fleet/tests/test_factory_record.mjs — the exam for "the run's status page and
+2 < 2  * pull request body are rendered by `factory/record.mjs`, and the publish policy
+3 < 2  * is read fail-closed by `factory/publish.mjs`".
+4 < 2  *
+5 < 2  * `record.mjs`'s CLI is driven as a child process exactly the way `factory/boot.sh`
+6 < 2  * drives `status`; the policy read is called in-process. The rows, payloads and
+7 < 2  * `publish.json` the publish writes are its own JSON since #1441, and their shapes
+8 < 2  * are measured end to end by `test_factory_boot.mjs` (the merge PUT byte-equal,
+9 < 2  * the row kinds in order) and `test_factory_publish.mjs` (every probe case).
+10 < 2  *
+11 < 2  * Legs, each naming the Machine clause it comes from:
+12 < 2  *
+13 < 2  *   (b) [M2] `status key=value ... --events <file>` prints the twelve-cell
+14 < 2  *       page in exactly the pinned key order with `tasks` last; the five
+15 < 2  *       optional cells given empty on the command line come back `null`;
+16 < 2  *       `updatedAt` is a non-empty
+17 < 2  *       string; `tasks` is the two-row projection M2 pins over an events file
+18 < 2  *       holding a `landing` and a `parked` row, and is `{}` over a path that
+19 < 2  *       does not exist.
+20 < 2  *   (c) [M3] `pr-body <plan.md> --events <file>` is byte-equal, over the
+21 < 2  *       fixture plan and one `landing` row, to the paragraph, a blank line,
+22 < 2  *       the one table row, a blank line and `Closes #1222`; and, over a plan
+23 < 2  *       with no `**Closes:**` line and no events file, to the paragraph
+24 < 2  *       followed by two blank lines and nothing else.
+25 < 2  *   (d) [M4] `publishPolicy` over the repo's own `factory/policy.json` reads
+27 > 2  *       the self-merge's bounds and the probe enabled; over a probe cell
+28 < 2  *       carrying no `enabled` key the probe reads disabled and the bounds are
+29 < 2  *       the cell's; over a path that does not exist, the probe reads disabled
+31 > 2  *       with the defaults (3 catch-ups, 120 s, 600 s).
 30 < 2  *       with the defaults (3 refolds, 120 s, 600 s).
 26 < 2  *       both cells enabled with their bounds; over cells carrying no `enabled`
 27 < 2  *       key, and over a path that does not exist, both read disabled with the
 28 < 2  *       defaults (3 refolds, 120 s, 600 s).
-29 < 1  *
-30 < 1  * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
-31 < 1  * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
-32 < 1  * files, the events files, the policy files — is written under a fresh
-33 < 1  * `fs.mkdtempSync` directory, never a string-literal absolute path.
-34 < 1  */
-35 < 1 
+29 < 2  *
+30 < 2  * Every spawn gets `env: simEnv({ home })` (`test_sims_are_hermetic.mjs` names
+31 < 2  * any spawn whose `env` is not derived from `simEnv`). Every fixture — the plan
+32 < 2  * files, the events files, the policy files — is written under a fresh
+33 < 2  * `fs.mkdtempSync` directory, never a string-literal absolute path.
+34 < 2  */
+35 < 2 
 36 < 1 import assert from 'node:assert/strict'
 37 < 1 import fs from 'node:fs'
 38 < 1 import os from 'node:os'
@@ -56,8 +56,8 @@
 50 < 1 const HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-home-'))
 51 < 1 const FIXTURES = fs.mkdtempSync(path.join(os.tmpdir(), 'record-exam-fixtures-'))
 52 < 1 
-53 < 1 /** Runs `node record.mjs <args>`, never throwing on a non-zero exit — every
-54 < 1  *  case in this exam wants to read the exit code itself. */
+53 < 2 /** Runs `node record.mjs <args>`, never throwing on a non-zero exit — every
+54 < 2  *  case in this exam wants to read the exit code itself. */
 55 < 1 function run (args) {
 56 < 1   const res = spawnSync(process.execPath, [RECORD_MJS, ...args], {
 57 < 1     encoding: 'utf8',
@@ -66,12 +66,12 @@
 60 < 1   return { status: res.status, stdout: res.stdout ?? '', stderr: res.stderr ?? '' }
 61 < 1 }
 62 < 1 
-63 < 1 /** The non-empty, newline-split lines of `text`. */
+63 < 2 /** The non-empty, newline-split lines of `text`. */
 64 < 1 function lines (text) {
 65 < 1   return text.split('\n').filter((l) => l !== '')
 66 < 1 }
 67 < 1 
-68 < 1 // ── b. [M2] `status key=value ... --events <file>` ─────────────────────────
+68 < 2 // ── b. [M2] `status key=value ... --events <file>` ─────────────────────────
 69 < 1 {
 70 < 1   const STATUS_KEYS = [
 71 < 1     'run', 'state', 'phase', 'pr', 'prAuthor', 'merged',
@@ -123,7 +123,7 @@
 117 < 1   assert.equal(status.branch, 'b', '(b) [M2] branch is the given string')
 118 < 1   assert.equal(status.startedAt, 's', '(b) [M2] startedAt is the given string')
 119 < 1 
-120 < 1   // tasks is {} over an events file that does not exist.
+120 < 2   // tasks is {} over an events file that does not exist.
 121 < 1   const missingEvents = path.join(FIXTURES, 'no-such-events.jsonl')
 122 < 1   const r2 = run([
 123 < 1     'status',
@@ -137,7 +137,7 @@
 131 < 1   assert.deepEqual(status2.tasks, {}, '(b) [M2] tasks is exactly {} over a path that does not exist')
 132 < 1 }
 133 < 1 
-134 < 1 // ── c. [M3] `pr-body <plan.md> --events <file>` ─────────────────────────────
+134 < 2 // ── c. [M3] `pr-body <plan.md> --events <file>` ─────────────────────────────
 135 < 1 {
 136 < 1   const PARAGRAPH = 'One widget, one size. It exists so the boot has a plan to carry. It benefits the record.'
 137 < 1 
@@ -194,7 +194,7 @@
 188 < 1   )
 189 < 1 }
 190 < 1 
-191 < 1 // ── e. the screens check shows on a stories-v1 task's Receipt rows (#1523) ───
+191 < 2 // ── e. the screens check shows on a stories-v1 task's Receipt rows (#1523) ───
 192 < 1 {
 193 < 1   const F = '```'
 194 < 1   const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
@@ -241,7 +241,7 @@
 235 < 1   )
 236 < 1 }
 237 < 1 
-239 > 1 // ── f. a `loose:fallback` row with no `terminal` row (a killed engine, #1532) ─
+239 > 2 // ── f. a `loose:fallback` row with no `terminal` row (a killed engine, #1532) ─
 240 < 1 {
 241 < 1   const plan = path.join(FIXTURES, 'plan-fallback.md')
 242 < 1   fs.writeFileSync(plan, '# A widget\n\n**Summary:** One. Two. Three.\n\n### Task 1: The widget\n')
@@ -260,7 +260,7 @@
 255 < 1     `(f) with a draft terminal row the body names its reason: ${r2.stdout}`)
 256 < 1 }
 257 < 1 
-238 < 1 // ── d. [M4] the publish policy, read by `factory/publish.mjs` (#1441) ────────
+238 < 2 // ── d. [M4] the publish policy, read by `factory/publish.mjs` (#1441) ────────
 239 < 1 {
 240 < 1   assert.deepEqual(
 241 < 1     publishPolicy(POLICY_JSON),

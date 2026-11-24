@@ -1,0 +1,113 @@
+0 < 1 #!/usr/bin/env node
+1 < 2 // The gate Jev probe: `skills/ultrawrite/stories/gate_jev.ts` records what Jev would have said at
+2 < 2 // the proof gate beside the agent reader's verdict, and reads how often the two agreed. It runs
+3 < 2 // the script against a local stand-in Jev (a node:http server on 127.0.0.1) that records each
+4 < 2 // request and answers every `fact:` question 0.9, every `caught:` question 0.1 and
+5 < 2 // `contradiction` 0.1. The case is argv[2]:
+6 < 2 //   record     one diet (task 3, hash h1, clauses M1 and M2) read with `--record --agent pass
+7 < 2 //              --reason r1`: one request asking exactly fact/caught per clause plus contradiction,
+8 < 2 //              whose state carries the two clauses; stdout is one JSON line with verdict fail; the
+9 < 2 //              call writes the task's hash h1, verdict pass and reason r1 over the seeded ones, and
+10 < 2 //              the task gains one gate round {h1, pass, fail} with its clause scores;
+11 < 2 //   agreement  `--agreement` over two records (rounds pass/pass, fail/pass and fail/fail) prints
+12 < 2 //              exactly the counts.
+13 < 2 // Prints `GATE JEV <case> OK` and exits 0, or names what differed and exits 1.
+14 < 1 import { spawn } from 'node:child_process'
+15 < 1 import fs from 'node:fs'
+16 < 1 import http from 'node:http'
+17 < 1 import os from 'node:os'
+18 < 1 import path from 'node:path'
+19 < 1 import { fileURLToPath } from 'node:url'
+20 < 1 
+21 < 1 const CASE = process.argv[2]
+22 < 1 if (!['record', 'agreement'].includes(CASE)) { console.log('usage: gate_jev_probe.mjs record|agreement'); process.exit(2) }
+23 < 1 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+24 < 1 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-'))
+25 < 1 const HOME = path.join(tmp, 'home')
+26 < 1 fs.mkdirSync(HOME)
+27 < 1 fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
+28 < 1 
+29 < 1 let server
+30 < 1 const fail = (why) => { console.log(`GATE JEV ${CASE} FAILED: ${why}`); server?.close(); process.exit(1) }
+31 < 1 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+32 < 1 
+33 < 2 // the stand-in Jev
+34 < 1 const requests = []
+35 < 1 const byPrefix = (k) => (k.startsWith('fact:') ? 0.9 : k.startsWith('caught:') ? 0.1 : k === 'contradiction' ? 0.1 : 0.5)
+36 < 1 server = http.createServer((req, res) => {
+37 < 1   let body = ''
+38 < 1   req.on('data', (c) => { body += c })
+39 < 1   req.on('end', () => {
+40 < 1     if (req.method !== 'POST' || req.url !== '/v1/systemone') { res.writeHead(404); res.end(); return }
+41 < 1     let json = {}
+42 < 1     try { json = JSON.parse(body) } catch {}
+43 < 1     requests.push({ headers: req.headers, body: json })
+44 < 1     const answers = Object.fromEntries(Object.keys(json.questions || {}).map((k) => [k, { noul: byPrefix(k) }]))
+45 < 1     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ answers }))
+46 < 1   })
+47 < 1 })
+48 < 1 await new Promise((r) => server.listen(0, '127.0.0.1', r))
+49 < 1 
+50 < 1 const gate = (args) => new Promise((resolve) => {
+51 < 1   const p = spawn('bun', [path.join(REPO, 'skills/ultrawrite/stories/gate_jev.ts'), ...args], {
+52 < 1     cwd: REPO,
+53 < 1     env: { ...process.env, TYPESAFE_BASE_URL: `http://127.0.0.1:${server.address().port}`, ULTRAPOWERS_HOME: HOME },
+54 < 1   })
+55 < 1   let stdout = ''
+56 < 1   let stderr = ''
+57 < 1   p.stdout.on('data', (c) => { stdout += c })
+58 < 1   p.stderr.on('data', (c) => { stderr += c })
+59 < 1   p.on('close', (code) => resolve({ code, stdout, stderr }))
+60 < 1 })
+61 < 1 
+62 < 1 if (CASE === 'record') {
+63 < 1   const diet = path.join(tmp, 'diet.json')
+64 < 1   fs.writeFileSync(diet, JSON.stringify({
+65 < 1     task: '3', hash: 'h1', base: 'b0',
+66 < 1     claim: 'The report prints its total. Machine: M1. `report` exits 0. M2. stdout is exactly `total 3`.',
+67 < 1     proof: '- Run: node report_probe.mjs exit [M1]\n- Run: node report_probe.mjs text [M2]\n- Legs: (a) the report exits 0 [M1]; (b) it prints the total [M2].',
+68 < 1   }))
+69 < 1   const rec = path.join(tmp, 'plan.gate-verdicts.json')
+70 < 1   const seeded = { hash: 'h0', verdict: 'pass', reason: 'layer match: seeded' }
+71 < 1   fs.writeFileSync(rec, JSON.stringify({ tasks: { 3: seeded }, tally: { dispatched: 1, rejected: 0 } }, null, 2))
+72 < 1   const run = await gate([diet, '--record', rec, '--agent', 'pass', '--reason', 'r1'])
+73 < 1   if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
+74 < 1   if (requests.length !== 1) fail(`${requests.length} request(s) made, expected 1`)
+75 < 1   const asked = Object.keys(requests[0].body.questions || {}).sort()
+76 < 1   const want = ['caught:M1', 'caught:M2', 'contradiction', 'fact:M1', 'fact:M2']
+77 < 1   if (!same(asked, want)) fail(`the request asks ${JSON.stringify(asked)}, expected ${JSON.stringify(want)}`)
+78 < 1   const clauses = requests[0].body.state?.clauses
+79 < 1   if (!Array.isArray(clauses) || !same(clauses.map((c) => c.id), ['M1', 'M2'])) fail(`the request's clauses are ${JSON.stringify(clauses)}`)
+80 < 1   const lines = run.stdout.split('\n').filter(Boolean)
+81 < 1   if (lines.length !== 1) fail(`stdout is ${lines.length} line(s), expected 1:\n${run.stdout}`)
+82 < 1   let out
+83 < 1   try { out = JSON.parse(lines[0]) } catch { fail(`stdout is not JSON: ${lines[0]}`) }
+84 < 1   if (out.verdict !== 'fail') fail(`verdict ${JSON.stringify(out.verdict)}, expected "fail"`)
+85 < 1   const t = JSON.parse(fs.readFileSync(rec, 'utf8')).tasks?.['3']
+86 < 1   if (!t) fail('the record has no task 3')
+87 < 1   const written = { hash: 'h1', verdict: 'pass', reason: 'r1' }
+88 < 1   for (const k of ['hash', 'verdict', 'reason']) if (t[k] !== written[k]) fail(`the record's ${k} is ${JSON.stringify(t[k])}, expected ${JSON.stringify(written[k])}`)
+89 < 1   const rounds = t.gate_rounds
+90 < 1   if (!Array.isArray(rounds) || rounds.length !== 1) fail(`gate_rounds is ${JSON.stringify(rounds)}`)
+91 < 1   const r = rounds[0]
+92 < 1   if (!same([r.hash, r.agent, r.jev], ['h1', 'pass', 'fail'])) fail(`the round is ${JSON.stringify(r)}`)
+93 < 1   if (!same(r.clauses, [{ id: 'M1', fact: 0.9, caught: 0.1 }, { id: 'M2', fact: 0.9, caught: 0.1 }])) fail(`the round's clauses are ${JSON.stringify(r.clauses)}`)
+94 < 1   if (r.contradiction !== 0.1 || !('pinned' in r)) fail(`the round is ${JSON.stringify(r)}`)
+95 < 1   if (!same(JSON.parse(fs.readFileSync(rec, 'utf8')).tally, { dispatched: 1, rejected: 0 })) fail('the tally changed')
+96 < 1 } else {
+97 < 1   const dir = path.join(tmp, 'records')
+98 < 1   fs.mkdirSync(dir)
+99 < 1   const task = (rounds) => ({ tasks: { 1: { hash: 'h', verdict: 'pass', reason: 'r', gate_rounds: rounds } } })
+100 < 1   fs.writeFileSync(path.join(dir, 'a.gate-verdicts.json'), JSON.stringify(task([
+101 < 1     { hash: 'h1', agent: 'pass', jev: 'pass' }, { hash: 'h2', agent: 'fail', jev: 'pass' }])))
+102 < 1   fs.writeFileSync(path.join(dir, 'b.gate-verdicts.json'), JSON.stringify(task([{ hash: 'h1', agent: 'fail', jev: 'fail' }])))
+103 < 1   const run = await gate(['--agreement', dir])
+104 < 1   if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
+105 < 1   const want = 'gate-jev: n=2 plans, 3 rounds, agree 2, jev-only fail 0, agent-only fail 1\n' +
+106 < 1     'gate-jev outcomes: disagreements 1, agent right 0, jev right 0, unlabelled 1'
+107 < 1   if (run.stdout !== want + '\n') fail(`stdout is ${JSON.stringify(run.stdout)}, expected ${JSON.stringify(want)}`)
+108 < 1 }
+109 < 1 server.close()
+110 < 1 console.log(`GATE JEV ${CASE} OK`)
+111 < 1 process.exit(0)
+112 < 1 

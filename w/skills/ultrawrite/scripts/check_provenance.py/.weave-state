@@ -1,0 +1,256 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """Resolve a `claims-v1` plan's Claim quotes and Authorized-by anchors.
+2 < 2 
+3 < 2 The parser stays a pure function: `plan_parse.py` reads the provenance tag's
+4 < 2 *form* and stops. Resolution — does `#NNN` exist, and does the operator sentence still
+5 < 2 read verbatim in it — needs the network, so it lives here, in `ultrawrite`'s
+6 < 2 validation step, ahead of the check (spec 2026-08-31 §4.4).
+7 < 2 
+8 < 2     check_provenance.py <plan.md> [--gh <cmd>]
+9 < 2 
+10 < 2 Exit 0 when every `quoted:#NNN` claim string-matches its issue body and every
+11 < 2 Authorized-by anchor resolves; `(derived)` claims are counted, never resolved —
+12 < 2 their signature is the plan-level Claim (#552), not an issue; exit 2 with one
+13 < 2 line per failure; exit 1 on a usage error. `--gh` swaps the `gh` binary — the test seam, and the hook for a
+14 < 2 caller with its own wrapper. Nothing here reaches the network by any other
+15 < 2 route: the binary is never resolved by bare name when `--gh` names one.
+16 < 2 
+17 < 2 The signature is over the quote AT SIGNING TIME (§4.4): a later edit to the
+18 < 2 issue does not retro-invalidate a signed claim — that drift is Stale-if's
+19 < 2 department, not this script's.
+20 < 2 """
+21 < 1 from __future__ import annotations
+22 < 1 
+23 < 1 import argparse
+24 < 1 import json
+25 < 1 import re
+26 < 1 import shlex
+27 < 1 import sys
+28 < 1 from datetime import datetime, timezone
+29 < 1 from pathlib import Path
+30 < 1 
+31 < 1 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+32 < 1 from plan_check import gh_issue_view, verdicts_path  # noqa: E402
+33 < 1 from routing import ask_jev  # noqa: E402
+34 < 1 from plan_parse import (  # noqa: E402
+35 < 1     CLAIMS_GRAMMAR,
+36 < 1     CLAIM_PROVENANCE_RE,
+37 < 1     claim_provenance,
+38 < 1     operator_lines,
+39 < 1     parse_plan_claim,
+40 < 1     parse_plan_full,
+41 < 1     plan_claim_provenance,
+42 < 1     plan_grammar,
+43 < 1 )
+44 < 1 
+45 < 2 # An issue reference inside the Authorized-by slot. A slot may cite several
+46 < 2 # anchors (`#489; spec ... §3`); every issue among them must resolve, and the
+47 < 2 # non-issue anchors (spec sections, decision records) are not this script's to
+48 < 2 # check — no mechanism can.
+49 < 1 ANCHOR_RE = re.compile(r"#(\d+)")
+50 < 1 
+51 < 1 
+52 < 1 def operator_sentence(claim):
+53 < 2     """The operator's signed sentence: the Claim slot up to the `Machine:`
+54 < 2     restatement, with the provenance tag that closes it stripped."""
+55 < 1     return CLAIM_PROVENANCE_RE.sub(
+56 < 1         "", "\n".join(operator_lines(claim)).strip()).strip()
+57 < 1 
+58 < 1 
+59 < 1 def fold(text):
+60 < 2     """CRLF normalization plus wrap folding, so the comparison is over words.
+61 < 2 
+62 < 2     The match is exact — every word, in order, verbatim — but a markdown hard
+63 < 2     wrap is not paraphrase: the authoring agent rewraps the sentence to fit the
+64 < 2     plan's column and the issue wraps it to fit GitHub's. Folding every
+65 < 2     whitespace run to one space is what makes "exact substring" mean the same
+66 < 2     thing on both sides of that."""
+67 < 1     return " ".join(text.replace("\r\n", "\n").replace("\r", "\n").split())
+68 < 1 
+69 < 1 
+70 < 1 def issue_body(number, gh, cache):
+71 < 2     """The body of issue `number`, or None when it does not resolve."""
+72 < 1     if number not in cache:
+73 < 1         proc = gh_issue_view(gh, number, "body")
+74 < 1         cache[number] = proc.stdout if proc.returncode == 0 else None
+75 < 1     return cache[number]
+76 < 1 
+77 < 1 
+78 < 1 def check_plan(md_text, gh, matched=None):
+79 < 2     """Every provenance failure the plan earns, in task order, plus the counts
+80 < 2     of what was resolved. `elicited` claims are skipped outright — there is no
+81 < 2     issue to fetch, so they cost no `gh` call — and so are `derived` ones
+82 < 2     (#552): a derived claim descends from the plan's one elicited operator
+83 < 2     sentence, which has no issue behind it either. They are COUNTED, so a run
+84 < 2     of them is visible in the success line rather than silently absent.
+85 < 2 
+86 < 2     `matched`, when given, gains one `(subject, number, body, sentence)` per
+87 < 2     quote whose issue resolved and holds the sentence verbatim — the quotes
+88 < 2     Jev is asked about."""
+89 < 1     failures, cache = [], {}
+90 < 1     if matched is None:
+91 < 1         matched = []
+92 < 1     quotes = derived = anchors = 0
+93 < 1     plan_claim = parse_plan_claim(md_text)
+94 < 2     # The header Claim signs like a task Claim (#755): `(elicited)` costs no
+95 < 2     # `gh` call, `(quoted from #NNN)` is string-matched against the issue body
+96 < 2     # exactly as a task-level quote is. It is resolved BEFORE the task loop and
+97 < 2     # through the same per-number cache, so a header and a task quoting the
+98 < 2     # same issue cost one fetch between them, and the failure lines name it
+99 < 2     # `plan-level claim` where a task's name `task <id> claim`.
+100 < 1     plan_provenance = plan_claim_provenance(md_text) or ""
+101 < 1     if plan_provenance.startswith("quoted:#"):
+102 < 1         quotes += 1
+103 < 1         number = plan_provenance.split("#", 1)[1]
+104 < 1         body = issue_body(number, gh, cache)
+105 < 1         sentence = fold(plan_claim or "")
+106 < 1         if body is None:
+107 < 1             failures.append("provenance: plan-level claim quotes #%s, which "
+108 < 1                             "does not resolve" % number)
+109 < 1         elif not sentence:
+110 < 2             # The vacuous pass, as at task level: a header that is nothing but
+111 < 2             # its tag strips to "", and "" is a substring of every body.
+112 < 1             failures.append(
+113 < 1                 "provenance: plan-level claim quotes #%s with an empty "
+114 < 1                 "operator sentence — the Claim is nothing but its provenance "
+115 < 1                 "tag" % number)
+116 < 1         elif sentence not in fold(body):
+117 < 1             failures.append("provenance: plan-level claim is not verbatim in "
+118 < 1                             "#%s" % number)
+119 < 1         else:
+120 < 1             matched.append(("plan-level claim", number, body, sentence))
+121 < 1     for task in parse_plan_full(md_text)[1]:
+122 < 1         claims = task
+123 < 1         provenance = claim_provenance(task["claim"]) or ""
+124 < 1         if claims.get("claim") and not provenance:
+125 < 2             # Defense in depth (2026-09-01): a tag mangled past recognition
+126 < 2             # made a claim invisible here — counted N-1 quotes, exited 0. The
+127 < 2             # first layer must not bless what it cannot classify — and since
+128 < 2             # the compiler left, this is the only wall.
+129 < 1             failures.append(
+130 < 1                 "provenance: task %s claim carries no recognizable provenance "
+131 < 1                 "tag — `(elicited)`, `(derived)` or `(quoted from #NNN)`"
+132 < 1                 % task["id"])
+133 < 1         if provenance == "derived":
+134 < 1             derived += 1
+135 < 1         if provenance.startswith("quoted:#"):
+136 < 1             quotes += 1
+137 < 1             number = provenance.split("#", 1)[1]
+138 < 1             body = issue_body(number, gh, cache)
+139 < 1             sentence = fold(operator_sentence(claims["claim"]))
+140 < 1             if body is None:
+141 < 1                 failures.append(
+142 < 1                     "provenance: task %s claim quotes #%s, which does not "
+143 < 1                     "resolve" % (task["id"], number))
+144 < 1             elif not sentence:
+145 < 2                 # The vacuous pass: a Claim that is nothing but its tag strips
+146 < 2                 # to "", and "" is a substring of every body, so the comparison
+147 < 2                 # below would sign off on a quote of nothing.
+148 < 1                 failures.append(
+149 < 1                     "provenance: task %s claim quotes #%s with an empty "
+150 < 1                     "operator sentence — the Claim is nothing but its "
+151 < 1                     "provenance tag" % (task["id"], number))
+152 < 1             elif sentence not in fold(body):
+153 < 1                 failures.append("provenance: task %s claim is not verbatim in "
+154 < 1                                 "#%s" % (task["id"], number))
+155 < 1             else:
+156 < 1                 matched.append(("task %s claim" % task["id"], number, body,
+157 < 1                                 sentence))
+158 < 1         for number in dict.fromkeys(ANCHOR_RE.findall(claims["authorized_by"])):
+159 < 1             anchors += 1
+160 < 1             if issue_body(number, gh, cache) is None:
+161 < 1                 failures.append("provenance: task %s Authorized-by anchor #%s "
+162 < 1                                 "does not resolve" % (task["id"], number))
+163 < 1     return failures, quotes, derived, anchors
+164 < 1 
+165 < 1 
+166 < 1 def jev_desired_state(body, sentence):
+167 < 2     """Jev's reading of whether `sentence` says what should be true after the
+168 < 2     change, or None. Any failure (`ask_jev`) is no reading: the author's own
+169 < 2     read decides."""
+170 < 1     return ask_jev("authoring_desired_state", "desired_state",
+171 < 1                    {"issue_body": body, "sentence": sentence})
+172 < 1 
+173 < 1 
+174 < 1 def record_readings(plan_path, rows):
+175 < 2     """Append `rows` to the `jev_readings` list of the plan's sibling
+176 < 2     `<stem>.gate-verdicts.json`, every other key left as it was. Record-only:
+177 < 2     a record that cannot be read or written is skipped, never a failure."""
+178 < 1     record = verdicts_path(plan_path)
+179 < 1     try:
+180 < 1         data = (json.loads(record.read_text(encoding="utf-8"))
+181 < 1                 if record.exists() else {})
+182 < 1         if not isinstance(data, dict):
+183 < 1             return
+184 < 1         data.setdefault("jev_readings", []).extend(rows)
+185 < 1         record.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+186 < 1     except (OSError, ValueError, AttributeError):
+187 < 1         pass
+188 < 1 
+189 < 1 
+190 < 1 def _plural(n, word):
+191 < 1     return "%d %s%s" % (n, word, "" if n == 1 else "s")
+192 < 1 
+193 < 1 
+194 < 1 def _series(parts):
+195 < 2     """`A`, `A and B`, `A, B and C` — the success line reads as one sentence
+196 < 2     whether or not the plan carries derived claims."""
+197 < 1     if len(parts) == 1:
+198 < 1         return parts[0]
+199 < 1     return ", ".join(parts[:-1]) + " and " + parts[-1]
+200 < 1 
+201 < 1 
+202 < 1 def main(argv=None):
+203 < 1     ap = argparse.ArgumentParser(
+204 < 1         description="Resolve a claims-v1 plan's Claim quotes and "
+205 < 1                     "Authorized-by anchors against GitHub.")
+206 < 1     ap.add_argument("plan", help="path to the plan markdown")
+207 < 1     ap.add_argument("--gh", default="gh",
+208 < 1                     help="the gh binary (or command) to run; default `gh`")
+209 < 1     args = ap.parse_args(argv)
+210 < 1 
+211 < 1     path = Path(args.plan)
+212 < 1     if not path.is_file():
+213 < 1         print("provenance: no such plan `%s`" % args.plan, file=sys.stderr)
+214 < 1         return 1
+215 < 1     md_text = path.read_text(encoding="utf-8")
+216 < 1     if plan_grammar(md_text) != CLAIMS_GRAMMAR:
+217 < 1         print("provenance: `%s` is not a %s plan — nothing to resolve"
+218 < 1               % (args.plan, CLAIMS_GRAMMAR))
+219 < 1         return 0
+220 < 1 
+221 < 1     matched = []
+222 < 1     failures, quotes, derived, anchors = check_plan(
+223 < 1         md_text, shlex.split(args.gh), matched)
+224 < 2     # Jev's desired_state reading (operator decisions 2026-09-29): printed and
+225 < 2     # kept on the record beside the author's own read; it never changes the
+226 < 2     # exit code or the failure lines.
+227 < 1     rows = []
+228 < 1     for subject, number, body, sentence in matched:
+229 < 1         value = jev_desired_state(body, sentence)
+230 < 1         if value is None:
+231 < 1             continue
+232 < 1         print("JEV desired_state: %.2f — %s quotes #%s"
+233 < 1               % (value, subject, number))
+234 < 1         rows.append({"question": "desired_state", "subject": subject,
+235 < 1                      "issue": int(number), "noul": value,
+236 < 1                      "date": datetime.now(timezone.utc).strftime("%Y-%m-%d")})
+237 < 1     if rows:
+238 < 1         record_readings(path, rows)
+239 < 1     for line in failures:
+240 < 1         print(line)
+241 < 1     if failures:
+242 < 1         return 2
+243 < 2     # `<m> derived` is omitted when zero, so a plan with no derived claims
+244 < 2     # prints exactly the line it printed before #552.
+245 < 1     counts = [_plural(quotes, "claim quote")]
+246 < 1     if derived:
+247 < 1         counts.append("%d derived" % derived)
+248 < 1     counts.append(_plural(anchors, "anchor"))
+249 < 1     print("provenance: ok — %s resolve" % _series(counts))
+250 < 1     return 0
+251 < 1 
+252 < 1 
+253 < 1 if __name__ == "__main__":
+254 < 1     sys.exit(main())
+255 < 1 

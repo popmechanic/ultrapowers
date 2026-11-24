@@ -1,24 +1,24 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // The preview server: draws a bundle's screens with a scaffolded TinyApp's own
-2 < 1 // kit (registry, state, store, 1st-Pouf through Tailwind; nothing from a CDN)
-3 < 1 // and pushes every change under <bundle>/screens/ to the open pages over a
-5 > 1 // websocket so they redraw in place. The bundle has one whole-page screen
-6 < 1 // (screens/screen.<V>.json, approved screens/screen.json); /compare shows its
-7 < 1 // versions side by side; picks and notes come back on POST /feedback as JSON lines. GET
+1 < 2 // The preview server: draws a bundle's screens with a scaffolded TinyApp's own
+2 < 2 // kit (registry, state, store, 1st-Pouf through Tailwind; nothing from a CDN)
+3 < 2 // and pushes every change under <bundle>/screens/ to the open pages over a
+5 > 2 // websocket so they redraw in place. The bundle has one whole-page screen
+6 < 2 // (screens/screen.<V>.json, approved screens/screen.json); /compare shows its
+7 < 2 // versions side by side; picks and notes come back on POST /feedback as JSON lines. GET
 4 < 2 // websocket so they redraw in place. /compare shows every version side by
 5 < 2 // side; picks and notes come back on POST /feedback as JSON lines. GET
-6 < 1 // /play?story=<id> has the open page play that story on the screen and answers
-8 > 1 // the report it posts back to POST /played. Only this page talks to it (#1530):
-9 < 1 // every request must name the server's own host, and the data routes refuse a
-10 < 1 // browser request from any other site and a POST that is not JSON.
+6 < 2 // /play?story=<id> has the open page play that story on the screen and answers
+8 > 2 // the report it posts back to POST /played. Only this page talks to it (#1530):
+9 < 2 // every request must name the server's own host, and the data routes refuse a
+10 < 2 // browser request from any other site and a POST that is not JSON.
 7 < 2 // the report it posts back to POST /played.
-8 < 1 //
-9 < 1 //   bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]
+8 < 2 //
+9 < 2 //   bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]
 10 < 1 import {appendFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, watch} from 'node:fs';
 11 < 1 import {dirname, join, resolve, sep} from 'node:path';
 12 < 1 
 13 < 1 const PAGE = join(import.meta.dir, 'preview');
-15 > 1 // The probe core story play maps row aliases with; staged over the page's re-export.
+15 > 2 // The probe core story play maps row aliases with; staged over the page's re-export.
 16 < 1 const PROBE = join(import.meta.dir, '..', '..', '..', 'factory', 'stack', 'tinyapp', 'probe.ts');
 14 < 1 const NEEDS = ['client/src/screens/catalog.ts', 'client/src/store.js', 'node_modules/bun-plugin-tailwind'];
 16 > 1 const VERSION = /^screen\.([A-Z])\.json$/;
@@ -32,13 +32,13 @@
 22 < 1   return 2;
 24 > 1 }
 25 < 1 
-26 < 1 // The routes that read or change the operator's work; the page and its files
-27 < 1 // stay open to a link from anywhere (the request carries no data).
+26 < 2 // The routes that read or change the operator's work; the page and its files
+27 < 2 // stay open to a link from anywhere (the request carries no data).
 28 < 1 const DATA = new Set(['/ws', '/bundle', '/specs', '/play', '/played', '/feedback']);
 29 < 1 
-30 < 1 /** Why this request is refused, or null: another host (a DNS-rebound name), or,
-31 < 1  *  on a data route, a browser request from another site, or a POST not JSON.
-32 < 1  *  A request with no Origin and no Sec-Fetch-Site (curl, Claude) passes. */
+30 < 2 /** Why this request is refused, or null: another host (a DNS-rebound name), or,
+31 < 2  *  on a data route, a browser request from another site, or a POST not JSON.
+32 < 2  *  A request with no Origin and no Sec-Fetch-Site (curl, Claude) passes. */
 33 < 1 export function foreign(req: Request, port: number): string | null {
 34 < 1   const own = [`127.0.0.1:${port}`, `localhost:${port}`];
 35 < 1   if (!own.includes(req.headers.get('host') ?? '')) return 'not this server\'s host';
@@ -53,13 +53,13 @@
 44 < 1   return null;
 23 < 1 }
 24 < 1 
-25 < 1 /** The record to write, keys in their fixed order, or null when it is not one. */
+25 < 2 /** The record to write, keys in their fixed order, or null when it is not one. */
 26 < 1 export function feedbackRecord(body: unknown): Rec | null {
 27 < 1   if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
 28 < 1   const b = body as Rec;
 29 < 1   const keys = Object.keys(b);
 30 < 1   if (b.kind === 'pick') {
-32 > 1     // {kind, piece, chose}; a page from before #1532 sent no piece, still taken.
+32 > 2     // {kind, piece, chose}; a page from before #1532 sent no piece, still taken.
 33 < 1     if (typeof b.chose !== 'string' || keys.some((k) => !['kind', 'piece', 'chose'].includes(k))) return null;
 34 < 1     if ('piece' in b && typeof b.piece !== 'string') return null;
 35 < 1     return 'piece' in b ? {kind: 'pick', piece: b.piece, chose: b.chose} : {kind: 'pick', chose: b.chose};
@@ -74,8 +74,8 @@
 39 < 1   return null;
 40 < 1 }
 41 < 1 
-43 > 1 /** The one whole-page screen: its versions from screen.<V>.json, its approved
-44 < 1  *  spec from screen.json when there is one. Nothing else under screens/ counts. */
+43 > 2 /** The one whole-page screen: its versions from screen.<V>.json, its approved
+44 < 2  *  spec from screen.json when there is one. Nothing else under screens/ counts. */
 45 < 1 function readSpecs(screens: string): Rec {
 46 < 1   const screen: {versions: Rec; approved?: unknown} = {versions: {}};
 42 < 2 function readSpecs(screens: string, pieces: string[]): Rec {
@@ -138,7 +138,7 @@
 95 < 1 
 96 < 1   const pageDir = join(app, '.preview', 'page');
 97 < 1   const dist = join(app, '.preview', 'dist');
-98 < 1   // Only this server's own dirs: arrange.ts stages its composer at .preview/json-render.
+98 < 2   // Only this server's own dirs: arrange.ts stages its composer at .preview/json-render.
 99 < 1   rmSync(pageDir, {recursive: true, force: true});
 100 < 1   rmSync(dist, {recursive: true, force: true});
 101 < 1   mkdirSync(pageDir, {recursive: true});
@@ -156,15 +156,15 @@
 112 < 1   const screens = join(bundle, 'screens');
 113 < 1   mkdirSync(screens, {recursive: true});
 114 < 1   const indexHtml = join(dist, 'index.html');
-115 < 1   // Story plays awaiting a page's report, by story id.
+115 < 2   // Story plays awaiting a page's report, by story id.
 116 < 1   const plays = new Map<string, ((r: Rec) => void)[]>();
-117 < 1   // Open single-screen pages (said hello as 'single'): only they play stories.
+117 < 2   // Open single-screen pages (said hello as 'single'): only they play stories.
 118 < 1   const singles = new Set<unknown>();
 119 < 1 
 120 < 1   const server = Bun.serve({
 121 < 1     hostname: '127.0.0.1',
 122 < 1     port,
-123 < 1     // Seconds; longer than PLAY_WAIT so a slow play ends in its JSON answer.
+123 < 2     // Seconds; longer than PLAY_WAIT so a slow play ends in its JSON answer.
 124 < 1     idleTimeout: Math.ceil(PLAY_WAIT / 1000) + 10,
 125 < 1     async fetch(req, srv) {
 127 > 1       const refused = foreign(req, server.port);

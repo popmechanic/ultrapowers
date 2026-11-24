@@ -1,5 +1,5 @@
-0 < 1 // The gate Jev replay's scoring (#1528): which rounds are replayed, how they are scored, the exit code
-1 < 1 // and the summary line. Pure: no spawn, no file reads.
+0 < 2 // The gate Jev replay's scoring (#1528): which rounds are replayed, how they are scored, the exit code
+1 < 2 // and the summary line. Pure: no spawn, no file reads.
 2 < 1 import assert from 'node:assert/strict'
 3 < 1 import { exitCode, replayRounds, score, summary } from './_gate_replay_helpers.mjs'
 4 < 1 
@@ -29,7 +29,7 @@
 28 < 1 assert.equal(exitCode(s, true), 1)
 29 < 1 assert.equal(exitCode({ ...s, agreedPass: 0 }, true), 0)
 30 < 1 assert.equal(exitCode({ ...s, agreedPass: 0 }, false), 1)
-32 > 1 // one wrong fail in three now passing is under two thirds; two in three is enough
+32 > 2 // one wrong fail in three now passing is under two thirds; two in three is enough
 33 < 1 assert.equal(exitCode({ wrong: 3, wrongPass: 1, agreed: 0, agreedPass: 0 }, true), 1)
 34 < 1 assert.equal(exitCode({ wrong: 3, wrongPass: 2, agreed: 0, agreedPass: 0 }, true), 0)
 31 < 2 assert.equal(exitCode({ wrong: 3, wrongPass: 1, agreedPass: 0 }, true), 1)

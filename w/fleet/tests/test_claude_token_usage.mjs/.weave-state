@@ -1,0 +1,214 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_claude_token_usage.mjs — the exam for "The token tool reads
+2 < 2  * one account's window without rotating" (#1114).
+3 < 2  *
+4 < 2  * In-process only: `import { usage, main, USAGE_URL } from '../claude-token.mjs'`,
+5 < 2  * every call handed a fake `deps` — no child process is spawned, so there is no
+6 < 2  * `simEnv()` to route through (`fleet/claude-token.mjs`'s own `main()` is
+7 < 2  * guarded on `process.argv[1] === import.meta.url`, so importing the module
+8 < 2  * runs nothing by itself). `deps.lock` is omitted, matching `refresh`'s own
+9 < 2  * `deps.lock ? deps.lock() : () => {}` fallback — none of these legs reach
+10 < 2  * `refresh` at all, since every record handed in either already carries an
+11 < 2  * unexpired `accessToken` or is read with `rotate: false`.
+12 < 2  *
+13 < 2  * The Machine clauses under test, restated:
+14 < 2  *   M1 — `usage(deps, { account, rotate: false })` over an unexpired record:
+15 < 2  *        one row shaped exactly `{ name, fiveHour, sevenDay, unread: false,
+16 < 2  *        reason: null }`, one fetch of USAGE_URL bearing that record's
+17 < 2  *        `accessToken`, zero keychain writes, zero edit/add lobby verbs.
+18 < 2  *   M2 — the same over an expired record: one row `unread: true`, `reason`
+19 < 2  *        starting `access token expired`, zero fetches, zero keychain writes.
+20 < 2  *   M3 — `main` with `--account --no-rotate` writes one JSON line, an array
+21 < 2  *        of length 1 named for that account; `main` with plain `--json` over
+22 < 2  *        two listed accounts writes an array of length 2.
+23 < 2  *   M4 — `USAGE_LINE`'s text spells the `usage` verb's flags exactly.
+24 < 2  *
+25 < 2  * Legs, each naming the Machine clause it comes from:
+26 < 2  *   (a) [M1] one unexpired record, `account` + `rotate: false`.
+27 < 2  *   (b) [M2] one expired record, `account` + `rotate: false`.
+28 < 2  *   (c) [M3] `main(['usage', '--json', '--account', 'acct', '--no-rotate'])`.
+29 < 2  *   (d) [M3] `main(['usage', '--json'])` over two listed accounts.
+30 < 2  *   (e) [M4] the source text carries the exact `usage` line.
+31 < 2  *
+32 < 2  * What the exam assumes about the code under test: that `usage(deps, opts)`
+33 < 2  * reads the record through `deps.keychainRead`/`deps.keychainList` (the same
+34 < 2  * seams `refresh`/`accounts` use, per `fleet/claude-token.mjs`'s own header),
+35 < 2  * that an unexpired record's window is read straight off `deps.fetch(USAGE_URL,
+36 < 2  * …)` without touching `deps.lobby` or `deps.keychainWrite` at all, and that
+37 < 2  * `main` still funnels its one JSON line through `deps.stdout` (the seam
+38 < 2  * `accounts`'s branch already uses). None of that is pinned as a clause here,
+39 < 2  * only used as scaffolding to reach the clauses that are.
+40 < 2  */
+41 < 2 
+42 < 1 import assert from 'node:assert/strict'
+43 < 1 import fs from 'node:fs'
+44 < 1 import path from 'node:path'
+45 < 1 import { fileURLToPath } from 'node:url'
+46 < 1 
+47 < 1 import { usage, main, USAGE_URL } from '../claude-token.mjs'
+48 < 1 
+49 < 1 const NOW_ISO = '2026-09-21T12:00:00.000Z'
+50 < 1 const NOW_MS = Date.parse(NOW_ISO)
+51 < 1 const HOUR = 60 * 60 * 1000
+52 < 1 
+53 < 1 const USAGE_BODY = {
+54 < 1   five_hour: { utilization: 12, resets_at: '2026-09-21T18:00:00.000Z' },
+55 < 1   seven_day: { utilization: 34, resets_at: '2026-09-28T12:00:00.000Z' }
+56 < 1 }
+57 < 1 
+58 < 2 /**
+59 < 2  * A fake `deps` over the named keychain `records` (name -> record, or name ->
+60 < 2  * null for "listed, unreadable"). Records every fetch, every keychain write
+61 < 2  * and every lobby verb, plus the stdout lines a `main` call writes, so a leg
+62 < 2  * can assert on all four. A lobby verb that isn't `integrations edit/add`
+63 < 2  * throws — no leg here should ever need the fleet listing or the integration
+64 < 2  * probe, since `rotate: false` never reaches `refresh`.
+65 < 2  */
+66 < 1 function makeDeps (records) {
+67 < 1   const fetchCalls = []
+68 < 1   const keychainWrites = []
+69 < 1   const lobbyCalls = []
+70 < 1   const stdoutLines = []
+71 < 1   const logLines = []
+72 < 1 
+73 < 1   const fetch = async (url, opts) => {
+74 < 1     fetchCalls.push({ url, opts })
+75 < 1     return { ok: true, status: 200, json: async () => USAGE_BODY }
+76 < 1   }
+77 < 1 
+78 < 1   const lobby = (verb, input) => {
+79 < 1     lobbyCalls.push({ verb, input })
+80 < 1     if (verb.startsWith('integrations edit') || verb.startsWith('integrations add') || verb === "ls 'fleet-r*' --json" || verb === 'integrations list --json') {
+81 < 1       return { code: 0, out: '' }
+82 < 1     }
+83 < 1     throw new Error(`test_claude_token_usage: unexpected lobby verb ${JSON.stringify(verb)}`)
+84 < 1   }
+85 < 1 
+86 < 1   return {
+87 < 1     now: () => NOW_MS,
+88 < 1     keychainRead: (name) => (Object.prototype.hasOwnProperty.call(records, name) && records[name] ? JSON.stringify(records[name]) : null),
+89 < 1     keychainWrite: (name, value) => { keychainWrites.push({ name, value }); return true },
+90 < 1     keychainList: () => Object.keys(records),
+91 < 1     lobby,
+92 < 1     fetch,
+93 < 1     log: (line) => logLines.push(line),
+94 < 1     stdout: (text) => stdoutLines.push(text),
+95 < 1     fetchCalls,
+96 < 1     keychainWrites,
+97 < 1     lobbyCalls,
+98 < 1     stdoutLines,
+99 < 1     logLines
+100 < 1   }
+101 < 1 }
+102 < 1 
+103 < 1 const editVerbs = (lobbyCalls) => lobbyCalls.filter((c) => c.verb.startsWith('integrations edit') || c.verb.startsWith('integrations add'))
+104 < 1 
+105 < 2 // ══════════════════════════════════════════════════════════════════════════
+106 < 2 // (a) [M1] unexpired record, account + rotate:false: one row, one fetch,
+107 < 2 //     zero keychain writes, zero edit/add verbs
+108 < 2 // ══════════════════════════════════════════════════════════════════════════
+109 < 1 {
+110 < 1   const record = { refreshToken: 'r1', accessToken: 'a-fresh', expiresAt: NOW_MS + 2 * HOUR }
+111 < 1   const deps = makeDeps({ acct: record })
+112 < 1 
+113 < 1   const rows = await usage(deps, { account: 'acct', rotate: false })
+114 < 1 
+115 < 1   assert.deepEqual(
+116 < 1     rows,
+117 < 1     [{
+118 < 1       name: 'acct',
+119 < 1       fiveHour: { utilization: 12, resetsAt: '2026-09-21T18:00:00.000Z' },
+120 < 1       sevenDay: { utilization: 34, resetsAt: '2026-09-28T12:00:00.000Z' },
+121 < 1       unread: false,
+122 < 1       reason: null
+123 < 1     }],
+124 < 1     `(a) [M1] the resolved row matches the Machine shape exactly. Got: ${JSON.stringify(rows)}`
+125 < 1   )
+126 < 1 
+127 < 1   assert.equal(deps.fetchCalls.length, 1,
+128 < 1     `(a) [M1] exactly one deps.fetch call is made. Got ${deps.fetchCalls.length}`)
+129 < 1   assert.equal(deps.fetchCalls[0].url, USAGE_URL,
+130 < 1     `(a) [M1] the fetch is of USAGE_URL. Got: ${JSON.stringify(deps.fetchCalls[0].url)}`)
+131 < 1   assert.equal(deps.fetchCalls[0].opts?.headers?.Authorization, 'Bearer a-fresh',
+132 < 1     `(a) [M1] the Authorization header bears the record's accessToken. Got: ${JSON.stringify(deps.fetchCalls[0].opts?.headers)}`)
+133 < 1 
+134 < 1   assert.equal(deps.keychainWrites.length, 0,
+135 < 1     `(a) [M1] zero deps.keychainWrite calls are made. Got ${deps.keychainWrites.length}`)
+136 < 1   assert.equal(editVerbs(deps.lobbyCalls).length, 0,
+137 < 1     `(a) [M1] zero integrations edit/add lobby verbs are issued. Got: ${JSON.stringify(deps.lobbyCalls.map((c) => c.verb))}`)
+138 < 1 }
+139 < 1 
+140 < 2 // ══════════════════════════════════════════════════════════════════════════
+141 < 2 // (b) [M2] expired record, account + rotate:false: unread, reason prefix,
+142 < 2 //     zero fetches, zero keychain writes
+143 < 2 // ══════════════════════════════════════════════════════════════════════════
+144 < 1 {
+145 < 1   const record = { refreshToken: 'r1', accessToken: 'a-old', expiresAt: NOW_MS - HOUR }
+146 < 1   const deps = makeDeps({ acct: record })
+147 < 1 
+148 < 1   const rows = await usage(deps, { account: 'acct', rotate: false })
+149 < 1 
+150 < 1   assert.equal(rows.length, 1,
+151 < 1     `(b) [M2] exactly one row is resolved. Got ${rows.length}`)
+152 < 1   assert.equal(rows[0].name, 'acct',
+153 < 1     `(b) [M2] the row names the account. Got: ${JSON.stringify(rows[0])}`)
+154 < 1   assert.equal(rows[0].unread, true,
+155 < 1     `(b) [M2] the row's unread is strictly true. Got: ${JSON.stringify(rows[0])}`)
+156 < 1   assert.ok(typeof rows[0].reason === 'string' && rows[0].reason.startsWith('access token expired'),
+157 < 1     `(b) [M2] the row's reason begins "access token expired". Got: ${JSON.stringify(rows[0].reason)}`)
+158 < 1 
+159 < 1   assert.equal(deps.fetchCalls.length, 0,
+160 < 1     `(b) [M2] zero deps.fetch calls are made. Got ${deps.fetchCalls.length}`)
+161 < 1   assert.equal(deps.keychainWrites.length, 0,
+162 < 1     `(b) [M2] zero deps.keychainWrite calls are made. Got ${deps.keychainWrites.length}`)
+163 < 1 }
+164 < 1 
+165 < 2 // ══════════════════════════════════════════════════════════════════════════
+166 < 2 // (c) [M3] main(['usage', '--json', '--account', 'acct', '--no-rotate']):
+167 < 2 //     one stdout line, array of length 1, named for the account
+168 < 2 // ══════════════════════════════════════════════════════════════════════════
+169 < 1 {
+170 < 1   const record = { refreshToken: 'r1', accessToken: 'a-fresh', expiresAt: NOW_MS + 2 * HOUR }
+171 < 1   const deps = makeDeps({ acct: record })
+172 < 1 
+173 < 1   await main(['usage', '--json', '--account', 'acct', '--no-rotate'], deps)
+174 < 1 
+175 < 1   assert.equal(deps.stdoutLines.length, 1,
+176 < 1     `(c) [M3] exactly one line is written to deps.stdout. Got ${deps.stdoutLines.length}: ${JSON.stringify(deps.stdoutLines)}`)
+177 < 1   const parsed = JSON.parse(deps.stdoutLines[0])
+178 < 1   assert.ok(Array.isArray(parsed) && parsed.length === 1,
+179 < 1     `(c) [M3] the line parses as a JSON array of length 1. Got: ${deps.stdoutLines[0]}`)
+180 < 1   assert.equal(parsed[0].name, 'acct',
+181 < 1     `(c) [M3] the one row's name is "acct". Got: ${JSON.stringify(parsed[0])}`)
+182 < 1 }
+183 < 1 
+184 < 2 // ══════════════════════════════════════════════════════════════════════════
+185 < 2 // (d) [M3] main(['usage', '--json']) over two listed accounts: array of
+186 < 2 //     length 2
+187 < 2 // ══════════════════════════════════════════════════════════════════════════
+188 < 1 {
+189 < 1   const record1 = { refreshToken: 'r1', accessToken: 'a-fresh-1', expiresAt: NOW_MS + 2 * HOUR }
+190 < 1   const record2 = { refreshToken: 'r2', accessToken: 'a-fresh-2', expiresAt: NOW_MS + 2 * HOUR }
+191 < 1   const deps = makeDeps({ acct1: record1, acct2: record2 })
+192 < 1 
+193 < 1   await main(['usage', '--json'], deps)
+194 < 1 
+195 < 1   assert.equal(deps.stdoutLines.length, 1,
+196 < 1     `(d) [M3] exactly one line is written to deps.stdout. Got ${deps.stdoutLines.length}: ${JSON.stringify(deps.stdoutLines)}`)
+197 < 1   const parsed = JSON.parse(deps.stdoutLines[0])
+198 < 1   assert.ok(Array.isArray(parsed) && parsed.length === 2,
+199 < 1     `(d) [M3] the line parses as a JSON array of length 2, one row per listed account. Got: ${deps.stdoutLines[0]}`)
+200 < 1 }
+201 < 1 
+202 < 2 // ══════════════════════════════════════════════════════════════════════════
+203 < 2 // (e) [M4] USAGE_LINE spells the usage verb exactly
+204 < 2 // ══════════════════════════════════════════════════════════════════════════
+205 < 1 {
+206 < 1   const here = path.dirname(fileURLToPath(import.meta.url))
+207 < 1   const src = fs.readFileSync(path.join(here, '..', 'claude-token.mjs'), 'utf8')
+208 < 1   assert.ok(src.includes('usage [--json] [--account <name>] [--no-rotate]'),
+209 < 1     '(e) [M4] the source text carries the exact usage line `usage [--json] [--account <name>] [--no-rotate]`')
+210 < 1 }
+211 < 1 
+212 < 1 console.log('ALL TESTS PASSED')
+213 < 1 

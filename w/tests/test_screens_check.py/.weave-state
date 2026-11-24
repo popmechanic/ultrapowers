@@ -1,5 +1,5 @@
-0 < 1 """The TinyApp screens check (factory/stack/tinyapp/screens.ts): what a screen's root draws,
-1 < 1 and every element's props against the catalog. Needs bun and an offline-installable app."""
+0 < 2 """The TinyApp screens check (factory/stack/tinyapp/screens.ts): what a screen's root draws,
+1 < 2 and every element's props against the catalog. Needs bun and an offline-installable app."""
 3 > 1 import json
 2 < 1 import os
 3 < 1 import shutil
@@ -11,7 +11,8 @@
 9 < 1 SCREENS = os.path.join(ROOT, "factory/stack/tinyapp/screens.ts")
 10 < 1 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
 11 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
-13 > 1 SCREEN = "client/src/screen.json"  # the one page the scaffold writes
+14 > 1 SCREEN = "client/src/screen.json"
+13 > 2 SCREEN = "client/src/screen.json"  # the one page the scaffold writes
 12 < 1 
 13 < 1 MISSING = ["SCREENS todo: no element runs addTodo", "SCREENS todo: no element runs completeTodo",
 14 < 1            "SCREENS todo: no element runs deleteTodo"]
@@ -55,7 +56,7 @@
 47 < 1 
 48 < 1 
 50 > 1 def _copy(app, tmp_path):
-51 < 1     """A copy of the app sharing its node_modules."""
+51 < 2     """A copy of the app sharing its node_modules."""
 52 < 1     a = str(tmp_path / "app")
 53 < 1     shutil.copytree(app, a, symlinks=True, ignore=lambda d, names: ["node_modules"] if d == app else [])
 54 < 1     os.symlink(os.path.join(app, "node_modules"), os.path.join(a, "node_modules"))
@@ -147,7 +148,7 @@
 100 < 1 
 101 < 1 
 102 < 1 def _with_file(app, rel, change, run):
-103 < 1     """Change one app file in place for `run`, then put it back."""
+103 < 2     """Change one app file in place for `run`, then put it back."""
 104 < 1     p = os.path.join(app, rel)
 105 < 1     with open(p, "rb") as f:
 106 < 1         kept = f.read()
@@ -168,7 +169,8 @@
 121 < 1     return change
 122 < 1 
 123 < 1 
-124 < 1 def test_a_part_with_no_draws_line_is_a_finding(app):  # #1491
+125 > 1 def test_a_part_with_no_draws_line_is_a_finding(app):
+124 < 2 def test_a_part_with_no_draws_line_is_a_finding(app):  # #1491
 125 < 1     got = _with_file(app, "client/src/screens/draws.json", _draws_edit(lambda parts: parts.pop("Badge")),
 126 < 1                      lambda: _screens(app, _todo()))
 127 < 1     assert got == (1, ["SCREENS parts: part Badge has no line in client/src/screens/draws.json saying what it draws",

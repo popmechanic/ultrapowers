@@ -1,0 +1,96 @@
+0 < 2 // One celld per check, on a temp copy of the app's server/, so nothing is
+1 < 2 // written inside the builder's copy. Restart (clean: false) reloads the
+2 < 2 // Durable Object's SQLite from the same temp dir: that is the saved-check.
+3 < 1 import {cpSync, mkdtempSync, rmSync, symlinkSync} from 'node:fs';
+4 < 1 import {createServer} from 'node:net';
+5 < 1 import {tmpdir} from 'node:os';
+6 < 1 import {join, resolve} from 'node:path';
+7 < 1 
+8 < 1 export class EnvError extends Error {}
+9 < 1 
+10 < 1 export type Celld = {
+11 < 1   url: string;
+12 < 1   ws: string;
+13 < 1   port: number;
+14 < 1   dir: string;
+15 < 1   stop(keepDir?: boolean): Promise<void>;
+16 < 1 };
+17 < 1 
+18 < 1 const freePort = (): Promise<number> =>
+19 < 1   new Promise((ok, no) => {
+20 < 1     const s = createServer();
+21 < 1     s.once('error', no);
+22 < 1     s.listen(0, '127.0.0.1', () => {
+23 < 1       const port = (s.address() as {port: number}).port;
+24 < 1       s.close(() => ok(port));
+25 < 1     });
+26 < 1   });
+27 < 1 
+28 < 1 const portFree = (port: number): Promise<boolean> =>
+29 < 1   new Promise((ok) => {
+30 < 1     const s = createServer();
+31 < 1     s.once('error', () => ok(false));
+32 < 1     s.listen(port, '127.0.0.1', () => s.close(() => ok(true)));
+33 < 1   });
+34 < 1 
+35 < 1 export const startCelld = async (
+36 < 1   appDir: string,
+37 < 1   opts: {dir?: string; clean?: boolean; readyMs?: number} = {},
+38 < 1 ): Promise<Celld> => {
+39 < 1   const bin = process.env.CELLD_BIN || Bun.which('celld');
+40 < 1   if (!bin) throw new EnvError('celld is not on PATH (set CELLD_BIN)');
+41 < 1   const app = resolve(appDir);
+42 < 1   let dir = opts.dir;
+43 < 1   if (!dir) {
+44 < 1     dir = mkdtempSync(join(tmpdir(), 'tinyapp-celld-'));
+45 < 1     cpSync(join(app, 'server'), dir, {
+46 < 1       recursive: true,
+47 < 1       filter: (p) => !p.includes('node_modules'),
+48 < 1     });
+49 < 1     symlinkSync(join(app, 'node_modules'), join(dir, 'node_modules'));
+50 < 1   }
+51 < 1   const port = await freePort();
+52 < 1   const argv = [bin, 'dev', dir, '--no-watch', ...(opts.clean === false ? [] : ['--clean']), '--port', String(port)];
+53 < 1   const proc = Bun.spawn(argv, {
+54 < 1     cwd: dir,
+55 < 1     stdout: 'pipe',
+56 < 1     stderr: 'pipe',
+57 < 1     env: {
+58 < 1       ...process.env,
+59 < 1       CELLD_ESBUILD: join(app, 'node_modules', '.bin', 'esbuild'),
+60 < 1       CELLD_MAX_RSS_MB: process.env.CELLD_MAX_RSS_MB ?? '512',
+61 < 1     },
+62 < 1   });
+63 < 1   const url = `http://127.0.0.1:${port}`;
+64 < 1   const stop = async (keepDir = false) => {
+65 < 1     proc.kill('SIGTERM');
+66 < 1     await proc.exited;
+67 < 1     for (let i = 0; i < 100 && !(await portFree(port)); i++) await Bun.sleep(100);
+68 < 1     if (!keepDir) rmSync(dir!, {recursive: true, force: true});
+69 < 1   };
+70 < 1   const deadline = Date.now() + (opts.readyMs ?? 20000);
+71 < 1   while (Date.now() < deadline) {
+72 < 1     if (proc.exitCode !== null) {
+73 < 1       const err = await new Response(proc.stderr).text();
+74 < 1       throw new EnvError(`celld exited ${proc.exitCode} before it was ready:\n${err.slice(-600)}`);
+75 < 1     }
+76 < 2     // Packed apps answer /health with {"ok":true}; older apps answer / with 'tinyapp root'.
+77 < 1     try {
+78 < 1       const res = await fetch(url + '/health');
+79 < 1       const body = res.ok ? await res.json().catch(() => null) : null;
+80 < 1       if (body && body.ok === true) {
+81 < 1         return {url, ws: `ws://127.0.0.1:${port}`, port, dir, stop};
+82 < 1       }
+83 < 1     } catch {}
+84 < 1     try {
+85 < 1       const body = await (await fetch(url + '/')).text();
+86 < 1       if (body.includes('tinyapp root')) {
+87 < 1         return {url, ws: `ws://127.0.0.1:${port}`, port, dir, stop};
+88 < 1       }
+89 < 1     } catch {}
+90 < 1     await Bun.sleep(100);
+91 < 1   }
+92 < 1   await stop();
+93 < 1   throw new EnvError(`celld was not ready on ${url} within ${opts.readyMs ?? 20000} ms`);
+94 < 1 };
+95 < 1 

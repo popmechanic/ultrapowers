@@ -1,4 +1,4 @@
-0 < 1 // fleet/tests/_flock_helpers.mjs — a throwaway git target and a scripted Flock run, for the flock sims.
+0 < 2 // fleet/tests/_flock_helpers.mjs — a throwaway git target and a scripted Flock run, for the flock sims.
 1 < 1 import { spawn, spawnSync } from 'node:child_process'
 2 < 1 import fs from 'node:fs'
 3 < 1 import os from 'node:os'
@@ -8,8 +8,8 @@
 7 < 1 
 8 < 1 export const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 9 < 1 
-11 > 1 // A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's.
-12 < 1 // `git` throws on a non-zero exit.
+11 > 2 // A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's.
+12 < 2 // `git` throws on a non-zero exit.
 10 < 2 // A temp dir holding `target/` with `files` committed as its base. `env` is laid over simEnv's; Jev is
 11 < 2 // off (TYPESAFE_BASE_URL empty) unless `env` names it. `git` throws on a non-zero exit.
 12 < 1 export function flockTarget (files, { env = {} } = {}) {
@@ -29,7 +29,7 @@
 25 < 1   return { tmp, T, RUN: path.join(tmp, 'run'), over, git, base: git('rev-parse', 'HEAD'), done: () => fs.rmSync(tmp, { recursive: true, force: true }) }
 26 < 1 }
 27 < 1 
-28 < 1 // One claims-v1 task. `files` are the Files lines (`Modify: \`a.txt\``), `run` the one probe (tagged M1).
+28 < 2 // One claims-v1 task. `files` are the Files lines (`Modify: \`a.txt\``), `run` the one probe (tagged M1).
 29 < 1 export const task = ({ id, title, files, claim, run, stale, iface = '- Produces: none' }) => `### Task ${id}: ${title}
 30 < 1 
 31 < 1 **Type:** implementation
@@ -55,7 +55,7 @@
 51 < 1 - ${stale}
 52 < 1 `
 53 < 1 
-54 < 1 // A claims-v1 plan of `tasks` with one run-wide `check`, written into the target's temp dir.
+54 < 2 // A claims-v1 plan of `tasks` with one run-wide `check`, written into the target's temp dir.
 55 < 1 export function writePlan (t, { claim, check, tasks }) {
 56 < 1   const plan = path.join(t.tmp, 'plan.md')
 57 < 1   fs.writeFileSync(plan, `# Sim plan
@@ -74,8 +74,8 @@
 70 < 1   return plan
 71 < 1 }
 72 < 1 
-73 < 1 // The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}. `args` are
-74 < 1 // further engine arguments.
+73 < 2 // The Flock on `t` with the scripted builder: {code, out, rows (events.jsonl), of(kind)}. `args` are
+74 < 2 // further engine arguments.
 75 < 1 export async function flockRun (t, { plan, script, args = [] }) {
 76 < 1   const scriptFile = path.join(t.tmp, 'script.json')
 77 < 1   fs.writeFileSync(scriptFile, JSON.stringify(script))

@@ -1,0 +1,61 @@
+0 < 2 // Given code: one Durable Object holds the app's store, saved to its SQLite.
+1 < 2 // /me says who is signed in: the email Cloudflare Access vouches for, or null.
+2 < 2 // /public.json is the store's content as JSON; /health says the Worker is up;
+3 < 2 // any other path is the packed page (client-files.ts, written by `bun run pack`).
+4 < 1 import {createMergeableStore} from 'tinybase';
+5 < 1 import {createDurableObjectSqlStoragePersister} from 'tinybase/persisters/persister-durable-object-sql-storage';
+6 < 1 import {WsServerDurableObject, getWsServerDurableObjectFetch} from 'tinybase/synchronizers/synchronizer-ws-server-durable-object';
+7 < 1 import {FILES} from './client-files';
+8 < 1 
+9 < 1 export class AppStore extends WsServerDurableObject {
+10 < 1   createPersister() {
+11 < 1     return createDurableObjectSqlStoragePersister(createMergeableStore(), this.ctx.storage.sql, {mode: 'fragmented'});
+12 < 1   }
+13 < 1 
+14 < 2   // A string, because the content object does not survive the RPC boundary.
+15 < 1   async snapshot(): Promise<string> {
+16 < 1     const store = createMergeableStore();
+17 < 1     await createDurableObjectSqlStoragePersister(store, this.ctx.storage.sql, {mode: 'fragmented'}).load();
+18 < 1     return JSON.stringify(store.getContent());
+19 < 1   }
+20 < 1 }
+21 < 1 
+22 < 1 const sync = getWsServerDurableObjectFetch('APP_STORE');
+23 < 1 
+24 < 1 type Access = {getIdentity: () => Promise<{email?: string} | undefined>};
+25 < 1 
+26 < 1 const me = async (ctx?: {access?: Access}) => {
+27 < 1   const id = ctx?.access ? await ctx.access.getIdentity().catch(() => undefined) : undefined;
+28 < 1   return Response.json({email: id?.email ?? null}, {headers: {'access-control-allow-origin': '*'}});
+29 < 1 };
+30 < 1 
+31 < 1 type Env = {APP_STORE: {idFromName: (name: string) => unknown; get: (id: unknown) => {snapshot: () => Promise<string>}}};
+32 < 1 
+33 < 2 // TinyBase names the Durable Object after the sync path without its leading '/'.
+34 < 1 const snapshot = async (env: Env) => {
+35 < 1   const stub = env.APP_STORE.get(env.APP_STORE.idFromName('sync/app'));
+36 < 1   return new Response(await stub.snapshot(), {
+37 < 1     headers: {'content-type': 'application/json', 'cache-control': 'no-store'},
+38 < 1   });
+39 < 1 };
+40 < 1 
+41 < 1 const page = (path: string) => {
+42 < 1   const file = FILES[path] ?? FILES['/index.html'];
+43 < 1   if (!file) return new Response('The page is not packed: run `bun run pack`.', {status: 404});
+44 < 1   const body = file.base64 !== undefined
+45 < 1     ? Uint8Array.from(atob(file.base64), (c) => c.charCodeAt(0))
+46 < 1     : (file.text ?? '');
+47 < 1   return new Response(body, {headers: {'content-type': file.type}});
+48 < 1 };
+49 < 1 
+50 < 1 export default {
+51 < 1   fetch: (request: Request, env: unknown, ctx?: {access?: Access}) => {
+52 < 1     const path = new URL(request.url).pathname;
+53 < 1     if (path === '/health') return Response.json({ok: true});
+54 < 1     if (path === '/me') return me(ctx);
+55 < 1     if (path === '/public.json') return snapshot(env as Env);
+56 < 1     if (path.startsWith('/sync/')) return sync(request, env as never);
+57 < 1     return page(path);
+58 < 1   },
+59 < 1 };
+60 < 1 

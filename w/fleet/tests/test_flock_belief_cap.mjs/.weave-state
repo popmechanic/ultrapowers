@@ -1,10 +1,10 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // A belief's stale text is held to a length where it is recorded (#1529): a one-task scripted run
-2 < 1 // posts two beliefs through the `@beliefs` seam, one with a 5,000-character `stale` and one with a
-3 < 1 // 20-character `stale`. Checks the `belief` rows in events.jsonl:
-4 < 1 //   - the long one's `stale` is at most 300 characters and is the start of what was posted;
-5 < 1 //   - the short one's `stale` is byte-equal to what was posted.
-6 < 1 // Prints `ALL TESTS PASSED` and exits 0, or `FAIL belief cap: ...` and exits 1.
+1 < 2 // A belief's stale text is held to a length where it is recorded (#1529): a one-task scripted run
+2 < 2 // posts two beliefs through the `@beliefs` seam, one with a 5,000-character `stale` and one with a
+3 < 2 // 20-character `stale`. Checks the `belief` rows in events.jsonl:
+4 < 2 //   - the long one's `stale` is at most 300 characters and is the start of what was posted;
+5 < 2 //   - the short one's `stale` is byte-equal to what was posted.
+6 < 2 // Prints `ALL TESTS PASSED` and exits 0, or `FAIL belief cap: ...` and exits 1.
 7 < 1 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'
 8 < 1 
 9 < 1 const LONG = Array.from({ length: 5000 }, (_, i) => 'abcdefghij'[i % 10]).join('')

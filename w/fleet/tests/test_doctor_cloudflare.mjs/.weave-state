@@ -1,51 +1,51 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_doctor_cloudflare.mjs — the exam for "The doctor names the
-2 < 1  * cloudflare integration, the docs walk it, and the launcher refuses a
-3 < 1  * publishing plan without it" (#835).
-4 < 1  *
-5 < 1  * `doctor.mjs` gains a ninth row, `cloudflare`: the deploy's credential, an
-6 < 1  * http-proxy integration needed only by a plan with a `**Publish:**` line.
-7 < 1  * Unlike every other row, absent is green — most plans never publish. Present
-8 < 1  * is judged the way every integration is (#1434): its attachment `tag:fleet`
-9 < 1  * in `integrations list --json`.
-10 < 1  *
-11 < 1  * Legs, each naming the Machine clause it comes from:
-12 < 1  *
-16 > 1  *   (a) [M1] `ROW_IDS` is exactly the nine pinned ids, the ninth `cloudflare`,
-17 < 1  *       and `doctor()` answers nine rows in that same order.
+0 < 2 /**
+1 < 2  * fleet/tests/test_doctor_cloudflare.mjs — the exam for "The doctor names the
+2 < 2  * cloudflare integration, the docs walk it, and the launcher refuses a
+3 < 2  * publishing plan without it" (#835).
+4 < 2  *
+5 < 2  * `doctor.mjs` gains a ninth row, `cloudflare`: the deploy's credential, an
+6 < 2  * http-proxy integration needed only by a plan with a `**Publish:**` line.
+7 < 2  * Unlike every other row, absent is green — most plans never publish. Present
+8 < 2  * is judged the way every integration is (#1434): its attachment `tag:fleet`
+9 < 2  * in `integrations list --json`.
+10 < 2  *
+11 < 2  * Legs, each naming the Machine clause it comes from:
+12 < 2  *
+16 > 2  *   (a) [M1] `ROW_IDS` is exactly the nine pinned ids, the ninth `cloudflare`,
+17 < 2  *       and `doctor()` answers nine rows in that same order.
 15 > 2  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the ninth `cloudflare`,
 16 < 2  *       and `doctor()` answers ten rows in that same order.
 14 > 2  *   (a) [M1] `ROW_IDS` is exactly the eleven pinned ids, the tenth `cloudflare`,
 15 < 2  *       and `doctor()` answers eleven rows in that same order.
 13 < 2  *   (a) [M1] `ROW_IDS` is exactly the ten pinned ids, the tenth `cloudflare`,
 14 < 2  *       and `doctor()` answers ten rows in that same order.
-15 < 1  *   (b) [M2] with no `cloudflare` object in `integrations list --json`: the
-16 < 1  *       row is `ok`, and its detail contains `absent` and `Publish:`.
-17 < 1  *   (c) [M2] with the object present and attached to `tag:fleet`: `ok`.
-18 < 1  *   (d) [M2] with the object present and not attached to `tag:fleet`: the
-19 < 1  *       row is `missing`, and its detail names
-20 < 1  *       `integrations attach cloudflare tag:fleet`.
-21 < 1  *
-22 < 1  * (b)-(d) drive `doctor({ config, exec, configKeys, account })` in-process,
-23 < 1  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
-24 < 1  * by spaces) — the doctor's own `ssh exe.dev <remote>` reads (`READS` in
-25 < 1  * `fleet/doctor.mjs`) — answering
-26 < 1  * `integrations list --json` with the listing each leg needs and everything
-27 < 1  * unmatched — including every `help <verb>` read `verb-drift` issues — with
-28 < 1  * `{ code: 1, stdout: '' }`. Only the `cloudflare` row's outcome is asserted;
-29 < 1  * the other eight rows are left unasserted, per the task's own instruction.
-30 < 1  */
-31 < 1 
+15 < 2  *   (b) [M2] with no `cloudflare` object in `integrations list --json`: the
+16 < 2  *       row is `ok`, and its detail contains `absent` and `Publish:`.
+17 < 2  *   (c) [M2] with the object present and attached to `tag:fleet`: `ok`.
+18 < 2  *   (d) [M2] with the object present and not attached to `tag:fleet`: the
+19 < 2  *       row is `missing`, and its detail names
+20 < 2  *       `integrations attach cloudflare tag:fleet`.
+21 < 2  *
+22 < 2  * (b)-(d) drive `doctor({ config, exec, configKeys, account })` in-process,
+23 < 2  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
+24 < 2  * by spaces) — the doctor's own `ssh exe.dev <remote>` reads (`READS` in
+25 < 2  * `fleet/doctor.mjs`) — answering
+26 < 2  * `integrations list --json` with the listing each leg needs and everything
+27 < 2  * unmatched — including every `help <verb>` read `verb-drift` issues — with
+28 < 2  * `{ code: 1, stdout: '' }`. Only the `cloudflare` row's outcome is asserted;
+29 < 2  * the other eight rows are left unasserted, per the task's own instruction.
+30 < 2  */
+31 < 2 
 32 < 1 import assert from 'node:assert/strict'
 33 < 1 
 34 < 1 import { doctor, ROW_IDS } from '../doctor.mjs'
 35 < 1 
-36 < 1 // ── the exec stub every leg shares ──────────────────────────────────────────
-37 < 1 
-38 < 1 /** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
-39 < 1  *  the command and its argv joined by spaces. */
+36 < 2 // ── the exec stub every leg shares ──────────────────────────────────────────
+37 < 2 
+38 < 2 /** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
+39 < 2  *  the command and its argv joined by spaces. */
 40 < 1 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
-41 < 1 /** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
+41 < 2 /** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
 42 < 1 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
 43 < 1 
 44 < 1 const BASE_KNOWN = new Map([
@@ -56,12 +56,12 @@
 48 < 2   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 49 < 1 ])
 50 < 1 
-51 < 1 /**
-52 < 1  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
-53 < 1  * `keyOf`), answering `integrations list --json` with `listStdout`, the shared base
-54 < 1  * table, and everything else — the token/accounts/usage reads and every
-55 < 1  * `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
-56 < 1  */
+51 < 2 /**
+52 < 2  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
+53 < 2  * `keyOf`), answering `integrations list --json` with `listStdout`, the shared base
+54 < 2  * table, and everything else — the token/accounts/usage reads and every
+55 < 2  * `verb-drift` `help <verb>` read included — with `{ code: 1, stdout: '' }`.
+56 < 2  */
 57 < 1 function makeExec (listStdout) {
 58 < 1   const known = new Map([
 59 < 1     ...BASE_KNOWN,
@@ -80,7 +80,7 @@
 72 < 1 
 73 < 1 const cloudflareRowOf = (result) => result.rows.find((r) => r.id === 'cloudflare')
 74 < 1 
-75 < 1 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
+75 < 2 // ── (a) [M1] ROW_IDS and row order ───────────────────────────────────────
 76 < 1 {
 80 > 1   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare']
 79 > 2   const want = ['exe-dev', 'capacity', 'claude', 'accounts', 'github', 'integrations', 'evidence', 'verb-drift', 'cloudflare', 'reaper']
@@ -106,7 +106,7 @@
 89 < 1   )
 90 < 1 }
 91 < 1 
-92 < 1 // ── (b) [M2] absent — ok, "absent" and "Publish:" in the detail ────────────
+92 < 2 // ── (b) [M2] absent — ok, "absent" and "Publish:" in the detail ────────────
 93 < 1 {
 94 < 1   const exec = makeExec(JSON.stringify([{ name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }]))
 95 < 1   const result = await doctor({ config: {}, exec, configKeys: null, account: null })
@@ -123,7 +123,7 @@
 106 < 1   )
 107 < 1 }
 108 < 1 
-109 < 1 // ── (c) [M2] present, attached to tag:fleet — ok ───────────────────────────
+109 < 2 // ── (c) [M2] present, attached to tag:fleet — ok ───────────────────────────
 110 < 1 {
 111 < 1   const listStdout = JSON.stringify([
 112 < 1     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },
@@ -134,7 +134,7 @@
 117 < 1   assert.equal(cloudflare.status, 'ok', `(c) [M2] present on tag:fleet is ok — got: ${JSON.stringify(cloudflare)}`)
 118 < 1 }
 119 < 1 
-120 < 1 // ── (d) [M2] present, not attached — missing, names the attach ──────────────
+120 < 2 // ── (d) [M2] present, not attached — missing, names the attach ──────────────
 121 < 1 {
 122 < 1   const listStdout = JSON.stringify([
 123 < 1     { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' },

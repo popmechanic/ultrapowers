@@ -1,0 +1,70 @@
+0 < 1 #!/usr/bin/env bash
+1 < 2 # Stop hook: a session that used ultrawrite or ultrapowers spends most of its
+2 < 2 # clock waiting on a Monitor, a background Agent or a sandbox run; when the
+3 < 2 # last tool call of a turn is a background dispatch the agent ends the turn
+4 < 2 # and the operator had to notice the pause and ask "anything else productive
+5 < 2 # while that runs?" by hand. This hook asks it instead: the first stop of a
+6 < 2 # turn with background work still running is blocked with the in-flight list
+7 < 2 # and the question; a second stop (stop_hook_active), or a stop with nothing
+8 < 2 # in flight, is allowed silently.
+9 < 1 set -euo pipefail
+10 < 1 
+11 < 1 python3 -c "$(cat <<'PY'
+12 < 1 import json
+13 < 1 import sys
+14 < 1 
+15 < 1 raw = sys.stdin.read()
+16 < 1 
+17 < 1 try:
+18 < 1     d = json.loads(raw)
+19 < 1 except Exception:
+20 < 1     sys.exit(0)
+21 < 1 
+22 < 1 if not isinstance(d, dict):
+23 < 1     sys.exit(0)
+24 < 1 
+25 < 1 if d.get("stop_hook_active") is True:
+26 < 1     sys.exit(0)
+27 < 1 
+28 < 1 tasks = [
+29 < 1     t for t in (d.get("background_tasks") or [])
+30 < 1     if isinstance(t, dict) and str(t.get("status")) in ("running", "pending")
+31 < 1 ]
+32 < 1 
+33 < 1 if not tasks:
+34 < 1     sys.exit(0)
+35 < 1 
+36 < 1 lines = []
+37 < 1 for t in tasks:
+38 < 1     ttype = t.get("type")
+39 < 1     ttype = str(ttype) if ttype is not None else ""
+40 < 1     desc = t.get("description")
+41 < 1     if desc is None:
+42 < 1         desc = t.get("id")
+43 < 1     desc = str(desc)
+44 < 1     lines.append(f"- {ttype}: {desc}")
+45 < 1 
+46 < 1 reason = (
+47 < 1     "Background work is still in flight:\n"
+48 < 1     + "\n".join(lines)
+49 < 1     + "\n\nBefore idling, ask yourself: is there anything else productive to "
+50 < 1     "do while that runs — work that does not depend on those results (prep, "
+51 < 1     "verification, the next step's inputs, an issue to file, a record to "
+52 < 1     "write)? If yes, do it now. If genuinely nothing, say so in one line and "
+53 < 1     "stop."
+54 < 1 )
+55 < 1 
+56 < 1 print(json.dumps({
+57 < 1     "decision": "block",
+58 < 1     "reason": reason,
+59 < 1     "hookSpecificOutput": {
+60 < 1         "hookEventName": "Stop",
+61 < 1         "continueLoop": True,
+62 < 1         "additionalContext": reason,
+63 < 1     },
+64 < 1 }))
+65 < 1 PY
+66 < 1 )" || true
+67 < 1 
+68 < 1 exit 0
+69 < 1 

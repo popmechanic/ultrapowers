@@ -1,0 +1,66 @@
+0 < 2 """Tests for hooks/keep_working.sh, the Stop hook ultrawrite/ultrapowers declare."""
+1 < 1 import json
+2 < 1 import pathlib
+3 < 1 import subprocess
+4 < 1 
+5 < 1 HOOK = pathlib.Path(__file__).resolve().parent.parent / "hooks" / "keep_working.sh"
+6 < 1 
+7 < 1 BLOCK_INPUT = {
+8 < 1     "stop_hook_active": False,
+9 < 1     "background_tasks": [
+10 < 1         {"id": "a1", "type": "subagent", "status": "running",
+11 < 1          "description": "Author wave-1 plan R1", "agent_type": "general-purpose"},
+12 < 1         {"id": "m2", "type": "monitor", "status": "running",
+13 < 1          "description": "run-9 transitions"},
+14 < 1     ],
+15 < 1     "session_crons": [],
+16 < 1 }
+17 < 1 
+18 < 1 ALLOW_INPUTS = [
+19 < 1     {"stop_hook_active": True, "background_tasks": [
+20 < 1         {"id": "a1", "type": "subagent", "status": "running", "description": "x"}]},
+21 < 1     {"stop_hook_active": False, "background_tasks": []},
+22 < 1     {"stop_hook_active": False},
+23 < 1     {"stop_hook_active": False, "background_tasks": [
+24 < 1         {"id": "a1", "type": "shell", "status": "completed", "description": "done"}]},
+25 < 1 ]
+26 < 1 
+27 < 1 RAW_ALLOW_INPUTS = ["", "not json"]
+28 < 1 
+29 < 1 
+30 < 1 def run_hook(input_text):
+31 < 1     result = subprocess.run(
+32 < 1         ["bash", str(HOOK)], input=input_text, capture_output=True, text=True
+33 < 1     )
+34 < 1     return result.returncode, result.stdout
+35 < 1 
+36 < 1 
+37 < 1 def test_block_when_background_work_running():
+38 < 1     rc, out = run_hook(json.dumps(BLOCK_INPUT))
+39 < 1     assert rc == 0
+40 < 1     lines = [l for l in out.splitlines() if l.strip()]
+41 < 1     assert len(lines) == 1
+42 < 1     d = json.loads(lines[0])
+43 < 1     reason = d["reason"]
+44 < 1     assert d["decision"] == "block"
+45 < 1     assert reason.startswith(
+46 < 1         "Background work is still in flight:\n"
+47 < 1         "- subagent: Author wave-1 plan R1\n"
+48 < 1         "- monitor: run-9 transitions\n\n"
+49 < 1         "Before idling, ask yourself: is there anything else productive to do while that runs"
+50 < 1     )
+51 < 1     assert reason.endswith("say so in one line and stop.")
+52 < 1     hso = d["hookSpecificOutput"]
+53 < 1     assert hso["hookEventName"] == "Stop"
+54 < 1     assert hso["continueLoop"] is True
+55 < 1     assert hso["additionalContext"] == reason
+56 < 1 
+57 < 1 
+58 < 1 def test_allow_cases_produce_no_output():
+59 < 1     for inp in ALLOW_INPUTS:
+60 < 1         rc, out = run_hook(json.dumps(inp))
+61 < 1         assert rc == 0 and out == ""
+62 < 1     for inp in RAW_ALLOW_INPUTS:
+63 < 1         rc, out = run_hook(inp)
+64 < 1         assert rc == 0 and out == ""
+65 < 1 

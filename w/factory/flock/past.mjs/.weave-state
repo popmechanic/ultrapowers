@@ -1,0 +1,30 @@
+0 < 2 // A failed run's record as at most ten short items, in the order a fixer needs them.
+1 < 2 //
+2 < 2 // pastItems({ status, events, redChecks }) -> null when the run is done, else
+3 < 2 // [{ kind, text, task?, about? }]: why it stopped, each red check, each agent belief
+4 < 2 // (the host's own left out), then each stall. Pure: no I/O. `redChecks` may be null.
+5 < 1 const MAX_TEXT = 300
+6 < 1 const MAX_ITEMS = 10
+7 < 1 
+8 < 1 const cut = (s) => String(s).slice(0, MAX_TEXT)
+9 < 1 
+10 < 1 export function pastItems ({ status, events = [], redChecks = null } = {}) {
+11 < 1   if (status?.state === 'done') return null
+12 < 1   const rows = events || []
+13 < 1   const items = []
+14 < 1   const terminal = rows.filter((e) => e.kind === 'terminal').pop()
+15 < 1   items.push({ kind: 'stopped', text: cut(terminal ? `${terminal.pr}: ${terminal.why}` : `${status?.state}: ${status?.phase}`) })
+16 < 1   for (const r of redChecks?.red || []) {
+17 < 1     items.push({ kind: 'red-check', task: r.task, text: cut(`${r.cmd} exited ${r.exit}: ${r.tail}`) })
+18 < 1   }
+19 < 1   for (const b of rows.filter((e) => e.kind === 'belief' && e.by !== 'host')) {
+20 < 1     const text = b.about ? `${b.by} about the ${b.about}: ${b.claim}` : `${b.by}: ${b.claim}`
+21 < 1     items.push({ kind: 'belief', about: b.about, text: cut(text) })
+22 < 1   }
+23 < 1   for (const s of rows.filter((e) => typeof e.kind === 'string' && e.kind.startsWith('stall:'))) {
+24 < 1     const evidence = s.evidence ? ` ${JSON.stringify(s.evidence)}` : ''
+25 < 1     items.push({ kind: 'stall', text: cut(`${s.kind.slice('stall:'.length)}${evidence}`) })
+26 < 1   }
+27 < 1   return items.slice(0, MAX_ITEMS)
+28 < 1 }
+29 < 1 

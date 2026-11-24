@@ -1,0 +1,315 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """Build the proof gate's diet for one claims-v1 task — mechanically capped.
+2 < 2 
+3 < 2 The gate's judgment is not mechanizable; what it READS is (spec 2026-08-31 §4,
+4 < 2 "deterministic input, non-deterministic judgment"). This script is that cap: it
+5 < 2 parses the plan with the sandbox's own parser (`plan_parse.py`) and prints exactly the
+6 < 2 task's Claim and Proof, plus the hash the gate's verdict is keyed on. Context,
+7 < 2 Authorized-by, Interfaces, Stale-if and every sibling task stay out — not by the
+8 < 2 reader's restraint but because they never reach the reader.
+9 < 2 
+10 < 2     extract_gate_input.py <plan.md> --task <id>
+11 < 2 
+12 < 2 prints `{"task", "claim", "proof", "hash"}` where hash is
+13 < 2 `sha256(claim + "\\x00" + proof)` — the same value `plan_check.py` recomputes
+14 < 2 when it checks `<plan-stem>.gate-verdicts.json` (§4.5). `verdicts_path` is
+15 < 2 re-exported here so gate tooling has one import for both halves of the contract.
+16 < 2 
+17 < 2     extract_gate_input.py <plan.md> --task <id> --base <sha|dir>
+18 < 2 
+19 < 2 adds one top-level key, `base` (#989): a capped excerpt of what the task's
+20 < 2 Files and the paths its Proof names hold at that base — present or absent,
+21 < 2 line count, headings or test names, and the lines carrying the diet's own
+22 < 2 literals — so the reader can say "a test already pins the opposite" or "the
+23 < 2 section this leg names does not exist" instead of judging shape alone. The
+24 < 2 hash does not change: it is over the Claim and Proof only, so a moved base
+25 < 2 never stales a verdict (the base a verdict was read against is the tally's).
+26 < 2 An entry for a path the task's own `Modify:` or `Delete:` bullet names gains
+27 < 2 `"own": "modify"` or `"own": "delete"` (#1497) — present or absent alike — so
+28 < 2 the text the task is about to replace is never read as a rival pin; it is
+29 < 2 marked, never dropped, since the reader still checks what a leg names exists.
+30 < 2 Own entries spend the excerpt budget last (#1528): the files the task rewrites
+31 < 2 never starve the siblings its Proof names; the output order is unchanged.
+32 < 2 """
+33 < 1 from __future__ import annotations
+34 < 1 
+35 < 1 import argparse
+36 < 1 import json
+37 < 1 import re
+38 < 1 import sys
+39 < 1 from pathlib import Path
+40 < 1 
+41 < 2 # scripts -> ultrawrite -> skills; `plan_parse.py` owns the grammar and this
+42 < 2 # script never re-implements it.
+43 < 1 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "ultrapowers/scripts"))
+44 < 1 
+45 < 1 from plan_check import (  # noqa: E402
+46 < 1     BaseTree,
+47 < 1     base_flag_refusal,
+48 < 1     gate_input_hash,
+49 < 1     verdicts_path,
+50 < 1 )
+51 < 1 from plan_parse import (  # noqa: E402
+52 < 1     BACKTICK_PATH_RE as PATH_RE,
+53 < 1     CLAIMS_GRAMMAR,
+54 < 1     Refusal,
+55 < 1     _fence_aware_lines,
+56 < 1     _file_bullets,
+57 < 1     _pre_slot,
+58 < 1     parse_plan_full,
+59 < 1     plan_grammar,
+60 < 1 )
+61 < 1 
+62 < 2 # What a test file at BASE looks like and which backticked tokens name a
+63 < 2 # repo path (moved from plan_check.py, #1440).
+64 < 1 EXT_RE = re.compile(r"\.([A-Za-z0-9]{1,8})$")
+65 < 1 _CASE_LINE_RE = re.compile(r"^\s*(?:test\(|it\(|def test_)")
+66 < 2 # A section banner: a comment line that is a shouted heading, or a rule.
+67 < 1 _BANNER_RE = re.compile(
+68 < 1     r"^\s*(?://|#)\s*((?:[A-Z][A-Z0-9'’#,:\-]*\s+){2}[A-Z][A-Z0-9'’#,:\-]*.*?)\s*$")
+69 < 1 _RULE_RE = re.compile(r"^\s*(?://|#)\s*[═─=\-]{20,}\s*$")
+70 < 2 # Eight characters is where a quoted string starts to name one thing.
+71 < 1 _LITERAL_MIN = 8
+72 < 1 
+73 < 1 _REFERENT_EXTS = frozenset(
+74 < 1     "py js mjs cjs ts tsx jsx md json jsonl sh yml yaml toml txt html css "
+75 < 1     "sql csv lock cfg ini env tgz log".split())
+76 < 1 _MIME_RE = re.compile(r"^(text|application|image|audio|video|multipart)/")
+77 < 1 
+78 < 1 
+79 < 1 def _path_referent(tok):
+80 < 2     """The normalized repo path a backticked token names, or None when the
+81 < 2     token is not a repo-path referent (identifier, dotted field, URL, glob,
+82 < 2     template, placeholder, absolute path, import specifier, MIME type)."""
+83 < 1     t = tok.strip()
+84 < 1     if (not t or any(c in t for c in "*?{}<>$~ ()'\"") or "://" in t
+85 < 1             or t.startswith(("-", "/", "./", "../")) or _MIME_RE.match(t)):
+86 < 1         return None
+87 < 1     t = re.sub(r":\d+(?:-\d+)?$", "", t).rstrip("/")
+88 < 1     if "/" in t:
+89 < 1         return t
+90 < 1     if t.startswith("."):
+92 > 1         return None
+91 < 2         return None  # a dotfile name alone is not a referent worth resolving
+92 < 1     m = EXT_RE.search(t)
+93 < 1     if m and m.group(1).lower() in _REFERENT_EXTS:
+94 < 1         return t
+95 < 1     return None
+96 < 1 
+97 < 1 
+98 < 1 __all__ = ["base_excerpt", "gate_input", "gate_input_hash", "verdicts_path",
+99 < 1            "main"]
+100 < 1 
+101 < 2 # The excerpt's caps (#989): three times the largest excerpt measured on the
+102 < 2 # four tasks of the 2026-09-15 authoring-cost plan (6,216 bytes for one file,
+103 < 2 # 9,542 for one task), so a normal task's files reach the reader whole.
+104 < 1 EXCERPT_FILE_CAP = 8000
+105 < 1 EXCERPT_TOTAL_CAP = 24000
+106 < 2 # A carrier line rides with the two lines before it and the two after.
+107 < 1 EXCERPT_MARGIN = 2
+108 < 1 
+109 < 1 _RUN_PATH_TOKEN = re.compile(r"^[^\s]*/[^\s]*\.[A-Za-z0-9]{1,8}$")
+110 < 1 
+111 < 1 
+112 < 1 def _claims_text(plan_path):
+113 < 2     """The plan's text, or a refusal when it is not written in claims-v1."""
+114 < 1     text = Path(plan_path).read_text()
+115 < 1     if plan_grammar(text) != CLAIMS_GRAMMAR:
+116 < 1         raise SystemExit(
+117 < 1             "extract_gate_input: %s declares no `**Grammar:** %s` header — the "
+118 < 1             "proof gate reads claims-v1 plans only." % (plan_path, CLAIMS_GRAMMAR))
+119 < 1     return text
+120 < 1 
+121 < 1 
+122 < 1 def _task(plan_path, task_id):
+123 < 1     try:
+124 < 1         tasks = parse_plan_full(_claims_text(plan_path))[1]
+125 < 1     except Refusal as exc:
+126 < 1         raise SystemExit("extract_gate_input: %s — %s" % (plan_path, exc))
+127 < 1     task = next((t for t in tasks if t["id"] == task_id), None)
+128 < 1     if task is None:
+129 < 1         raise SystemExit(
+130 < 1             "extract_gate_input: no task %s in %s (found: %s)"
+131 < 1             % (task_id, plan_path, ", ".join(t["id"] for t in tasks) or "none"))
+132 < 1     return task
+133 < 1 
+134 < 1 
+135 < 1 def gate_input(plan_path, task_id):
+136 < 2     """The (Claim, Proof) diet for one task of a claims-v1 plan, plus its hash."""
+137 < 1     task = _task(plan_path, task_id)
+138 < 1     claim, proof = task["claim"], task["proof"]
+139 < 1     return {"task": task["id"], "claim": claim, "proof": proof,
+140 < 1             "hash": gate_input_hash(claim, proof)}
+141 < 1 
+142 < 1 
+143 < 1 def _files_in_block_order(body):
+144 < 2     """The task's Files paths as the block lists them — `Create:`, `Modify:`
+145 < 2     and `Delete:` bullets in their written order, first mention wins, read by
+146 < 2     the parser's own Files scan. The reader is shown the author's order."""
+147 < 1     paths = []
+148 < 1     for _label, toks in _file_bullets(_pre_slot(_fence_aware_lines(body))):
+149 < 1         for tok in toks:
+150 < 1             ref = _path_referent(tok)
+151 < 1             if ref and ref not in paths:
+152 < 1                 paths.append(ref)
+153 < 1     return paths
+154 < 1 
+155 < 1 
+156 < 1 def _proof_paths(task):
+157 < 2     """Every repository path the Proof names: its backticked tokens that are
+158 < 2     path referents, then every whitespace-separated token of a `Run:` command
+159 < 2     that contains `/` and ends in a dot and 1–8 alphanumerics."""
+160 < 1     paths = []
+161 < 1     for tok in PATH_RE.findall(task["proof"]):
+162 < 1         ref = _path_referent(tok)
+163 < 1         if ref and ref not in paths:
+164 < 1             paths.append(ref)
+165 < 1     for command in task["proofRuns"]:
+166 < 1         for tok in command.split():
+167 < 1             tok = tok.strip("'\"")
+168 < 1             if _RUN_PATH_TOKEN.match(tok) and not tok.startswith(("-", "/", "./", "../")):
+169 < 1                 if tok not in paths:
+170 < 1                     paths.append(tok)
+171 < 1     return paths
+172 < 1 
+173 < 1 
+174 < 1 def _diet_literals(claim, proof):
+175 < 2     """The backticked tokens of the Claim and Proof that are at least
+176 < 2     `_LITERAL_MIN` characters and carry no newline — the words a file line
+177 < 2     must contain, verbatim, to be a carrier."""
+178 < 1     out = []
+179 < 1     for tok in PATH_RE.findall(claim) + PATH_RE.findall(proof):
+180 < 1         if len(tok) >= _LITERAL_MIN and "\n" not in tok and tok not in out:
+181 < 1             out.append(tok)
+182 < 1     return out
+183 < 1 
+184 < 1 
+185 < 1 def _headings(path, lines):
+186 < 2     """A `.md` file's `#` lines; any other file's test-case lines and section
+187 < 2     banners (`plan_check.py`'s own two shapes), in file order."""
+188 < 1     if path.endswith(".md"):
+189 < 1         return [l for l in lines if l.startswith("#")]
+190 < 1     out = []
+191 < 1     for l in lines:
+192 < 1         if _CASE_LINE_RE.match(l):
+193 < 1             out.append(l)
+194 < 1             continue
+195 < 1         m = _BANNER_RE.match(l)
+196 < 1         if m and not _RULE_RE.match(l):
+197 < 1             out.append(l)
+198 < 1     return out
+199 < 1 
+200 < 1 
+201 < 1 def _carrier_excerpt(lines, literals):
+202 < 2     """The numbered carrier regions: every line holding a literal, with
+203 < 2     `EXCERPT_MARGIN` lines either side, each line once, ascending."""
+204 < 1     keep = set()
+205 < 1     for i, l in enumerate(lines):
+206 < 1         if any(lit in l for lit in literals):
+207 < 1             for j in range(max(0, i - EXCERPT_MARGIN),
+208 < 1                            min(len(lines), i + EXCERPT_MARGIN + 1)):
+209 < 1                 keep.add(j)
+210 < 1     return ["%d: %s" % (j + 1, lines[j]) for j in sorted(keep)]
+211 < 1 
+212 < 1 
+213 < 1 def _cap(rows, budget):
+214 < 2     """Join `rows` with newlines, cut at a line boundary so the text is at
+215 < 2     most `budget` bytes of UTF-8. (text, truncated)."""
+216 < 1     out = []
+217 < 1     size = 0
+218 < 1     for r in rows:
+219 < 1         add = len(r.encode("utf-8")) + (1 if out else 0)
+220 < 1         if size + add > budget:
+221 < 1             return "\n".join(out), True
+222 < 1         out.append(r)
+223 < 1         size += add
+224 < 1     return "\n".join(out), False
+225 < 1 
+226 < 1 
+227 < 1 def base_excerpt(plan_path, task_id, base):
+228 < 2     """The `base` key (#989): what the task's Files and its Proof's paths hold
+229 < 2     at `base` — a `BaseTree` flag value (40-hex sha of the plan's repository,
+230 < 2     or a checkout directory). Never touches the hash."""
+231 < 1     task = _task(plan_path, task_id)
+232 < 1     literals = _diet_literals(task["claim"], task["proof"])
+233 < 1     tree = BaseTree.from_flag(base, plan_path)
+234 < 1     paths = _files_in_block_order(task["body"])
+235 < 1     for p in _proof_paths(task):
+236 < 1         if p not in paths:
+237 < 1             paths.append(p)
+238 < 2     # the task's own Modify:/Delete: paths (#1497): marked, never dropped
+239 < 1     own = {}
+240 < 1     for label, listed in (("modify", task["modifies"]), ("delete", task["deletes"])):
+241 < 1         for tok in listed:
+242 < 1             ref = _path_referent(tok)
+243 < 1             if ref and ref not in own:
+244 < 1                 own[ref] = label
+245 < 1     files = []
+247 > 1     readable = []
+246 < 2     readable = []  # (entry, lines) for each present file, in file order
+247 < 1     for path in paths:
+248 < 1         if tree._blob_mode(path) is None:
+249 < 1             files.append({"path": path, "status": "absent"})
+250 < 1             continue
+251 < 1         raw = tree.read_text(path)
+252 < 1         if raw is None:
+253 < 1             files.append({"path": path, "status": "absent"})
+254 < 1             continue
+255 < 1         lines = raw.splitlines()
+256 < 1         entry = {"path": path, "status": "present", "lines": len(lines),
+257 < 1                  "headings": _headings(path, lines)}
+258 < 1         files.append(entry)
+259 < 1         readable.append((entry, lines))
+260 < 2     # the budget goes to unmarked entries first, own ones after (stable sort)
+261 < 1     spent = 0
+263 > 1     exhausted = False
+262 < 2     exhausted = False  # the total cap has cut an entry: nothing later rides
+263 < 1     for entry, lines in sorted(readable, key=lambda el: el[0]["path"] in own):
+264 < 1         if exhausted or spent >= EXCERPT_TOTAL_CAP:
+265 < 1             entry["excerpt"], entry["truncated"] = "", True
+266 < 1         else:
+267 < 1             rows = _carrier_excerpt(lines, literals)
+268 < 1             budget = min(EXCERPT_FILE_CAP, EXCERPT_TOTAL_CAP - spent)
+269 < 1             excerpt, cut = _cap(rows, budget)
+270 < 1             entry["excerpt"], entry["truncated"] = excerpt, cut
+271 < 1             spent += len(excerpt.encode("utf-8"))
+272 < 1             if cut and budget < EXCERPT_FILE_CAP:
+274 > 1                 exhausted = True
+273 < 2                 exhausted = True  # it was the TOTAL that cut this one
+274 < 1     for entry in files:
+275 < 1         if entry["path"] in own:
+276 < 1             entry["own"] = own[entry["path"]]
+277 < 1     return {"rev": str(base), "files": files}
+278 < 1 
+279 < 1 
+280 < 1 def main(argv=None):
+281 < 1     ap = argparse.ArgumentParser(
+282 < 1         description="Print the proof gate's capped input for one claims-v1 "
+283 < 1                     "task.")
+284 < 1     ap.add_argument("plan", type=Path)
+285 < 1     ap.add_argument("--task", metavar="ID", required=True,
+286 < 1                     help="the task id as it appears in `### Task <id>:`")
+287 < 1     ap.add_argument("--base", metavar="SHA|DIR", default=None,
+288 < 1                     help="add a capped excerpt of the task's files at this "
+289 < 1                          "base (a 40-hex commit of the plan's repository, or "
+290 < 1                          "a checkout directory); the hash is unchanged")
+291 < 1     args = ap.parse_args(argv)
+292 < 2     # A base that is neither a checkout directory nor a 40-hex sha is refused
+293 < 2     # here, before the tree reader sees it: that reader treats any non-sha
+294 < 2     # value as a directory on purpose, so an 8-character abbreviation became
+295 < 2     # `git -C <abbrev>` and every file read `absent` — a diet six gate readers
+296 < 2     # were handed on 2026-09-15 (#1025). A 40-hex sha the repository does not
+297 < 2     # have is still the reader's own `error:` refusal.
+298 < 1     if args.base is not None and base_flag_refusal(args.base) is not None:
+299 < 1         sys.stderr.write("extract: %s\n" % base_flag_refusal(args.base))
+300 < 1         return 2
+301 < 1     payload = gate_input(args.plan, args.task)
+302 < 1     if args.base is not None:
+303 < 1         payload["base"] = base_excerpt(args.plan, args.task, args.base)
+304 < 1     print(json.dumps(payload, indent=2))
+305 < 1     return 0
+306 < 1 
+307 < 1 
+308 < 1 if __name__ == "__main__":
+309 < 1     raise SystemExit(main())
+310 < 1 

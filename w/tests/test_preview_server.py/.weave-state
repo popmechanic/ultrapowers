@@ -1,9 +1,9 @@
-1 > 1 """The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): /specs answers
-2 < 1 the one whole-page screen, a pick names its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
+1 > 2 """The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): /specs answers
+2 < 2 the one whole-page screen, a pick names its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
 0 < 2 """The story preview (skills/ultrawrite/stories/preview.ts and preview/, #1532): a pick names
 1 < 2 its piece and the old shape still lands, a malformed path answers 400 not 500, plays run one at
-2 < 1 a time, and the page names elements the way the browser checker does. The server legs need bun
-3 < 1 and an offline-installable app; the naming leg needs the checker's own browser."""
+2 < 2 a time, and the page names elements the way the browser checker does. The server legs need bun
+3 < 2 and an offline-installable app; the naming leg needs the checker's own browser."""
 4 < 1 import json
 5 < 1 import os
 6 < 1 import shutil
@@ -78,7 +78,7 @@
 75 < 1     other["elements"]["add"]["props"]["label"] = "Add it"
 76 < 1     screens = os.path.join(bundle, "screens")
 77 < 1     os.makedirs(screens, exist_ok=True)
-78 < 1     # A per-piece file from before the whole-page screen: /specs must not read it.
+78 < 2     # A per-piece file from before the whole-page screen: /specs must not read it.
 79 < 1     for name, s in [("screen.A.json", spec), ("screen.B.json", other), ("screen.json", other), ("todo.A.json", spec)]:
 80 < 1         with open(os.path.join(screens, name), "w") as f:
 81 < 1             json.dump(s, f)
@@ -165,9 +165,9 @@
 141 < 1 
 142 < 1 
 143 < 1 def test_the_page_names_elements_the_way_the_checker_does(bun, tmp_path):
-144 < 1     """Each (role, name) counted by preview/names.ts and by the checker's Chrome must agree.
-145 < 1     Names only: Chrome's own role mapping (an <img> is `image`, a table with no header is a
-146 < 1     layout table with no cells) is not what this leg reads."""
+144 < 2     """Each (role, name) counted by preview/names.ts and by the checker's Chrome must agree.
+145 < 2     Names only: Chrome's own role mapping (an <img> is `image`, a table with no header is a
+146 < 2     layout table with no cells) is not what this leg reads."""
 147 < 1     browser = os.path.join(ROOT, "factory/stack/tinyapp/browser.ts")
 148 < 1     entry = tmp_path / "entry.ts"
 149 < 1     entry.write_text("import * as n from %s;\n(window as any).__names = n;\n"

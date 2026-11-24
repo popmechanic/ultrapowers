@@ -1,8 +1,8 @@
-0 < 1 // The compact record: what each tested snapshot changed, as a unified diff against the previous
-1 < 1 // tested snapshot (base for the first) that `git apply` accepts, and the weave's ops with file
-2 < 1 // texts as fingerprints. No file text is copied whole into the record: a snapshot is replayed by
-3 < 1 // applying the rows' patches in order onto base. The 512 KB cap over all patches is about ten
-4 < 1 // times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
+0 < 2 // The compact record: what each tested snapshot changed, as a unified diff against the previous
+1 < 2 // tested snapshot (base for the first) that `git apply` accepts, and the weave's ops with file
+2 < 2 // texts as fingerprints. No file text is copied whole into the record: a snapshot is replayed by
+3 < 2 // applying the rows' patches in order onto base. The 512 KB cap over all patches is about ten
+4 < 2 // times the largest changed text measured (54,027 bytes, n=2 runs, 2026-09-28).
 5 < 1 import crypto from 'node:crypto'
 6 < 1 
 8 > 1 const PATCH_LIMIT = 524288
@@ -11,7 +11,7 @@
 9 < 1 
 10 < 1 const sha1 = (x) => crypto.createHash('sha1').update(x).digest('hex')
 11 < 1 
-12 < 1 // Lines with their terminators kept, so a last line without '\n' compares unequal to one with it.
+12 < 2 // Lines with their terminators kept, so a last line without '\n' compares unequal to one with it.
 13 < 1 function lines (text) {
 14 < 1   const out = text.match(/[^\n]*\n|[^\n]+$/g)
 15 < 1   return out || []
@@ -21,7 +21,7 @@
 19 < 1   return l.endsWith('\n') ? mark + l : mark + l + '\n\\ No newline at end of file\n'
 20 < 1 }
 21 < 1 
-22 < 1 // One hunk around the region between the common prefix and the common suffix.
+22 < 2 // One hunk around the region between the common prefix and the common suffix.
 23 < 1 function hunk (a, b) {
 24 < 1   let pre = 0
 25 < 1   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++
@@ -40,7 +40,7 @@
 38 < 1   return out
 39 < 1 }
 40 < 1 
-41 < 1 // A unified diff of one path from `before` to `after` (null: absent).
+41 < 2 // A unified diff of one path from `before` to `after` (null: absent).
 43 > 1 function fileDiff (p, before, after) {
 42 < 2 export function fileDiff (p, before, after) {
 43 < 1   if (before === after) return ''
@@ -54,8 +54,8 @@
 51 < 1   return head + `--- a/${p}\n+++ b/${p}\n` + hunk(lines(before), lines(after))
 52 < 1 }
 53 < 1 
-54 < 1 // snapshots: [{snap, t, files, exists}]; baseFiles: {path: text}; weaveOpsLines: the raw
-55 < 1 // weave-ops.jsonl lines. Answers the contents of snapshots.jsonl and weave-ops.digest.jsonl.
+54 < 2 // snapshots: [{snap, t, files, exists}]; baseFiles: {path: text}; weaveOpsLines: the raw
+55 < 2 // weave-ops.jsonl lines. Answers the contents of snapshots.jsonl and weave-ops.digest.jsonl.
 56 < 1 export function compactRecord (snapshots, baseFiles, weaveOpsLines) {
 57 < 1   let bytes = 0
 58 < 1   let prev = { ...baseFiles }; let prevSnap = 'base'

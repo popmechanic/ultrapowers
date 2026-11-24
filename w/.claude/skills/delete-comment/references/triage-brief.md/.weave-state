@@ -1,0 +1,60 @@
+0 < 1 # Comment triage brief
+1 < 1 
+2 < 1 The repository root (read `CLAUDE.md` first for vocabulary: Flock, weave,
+3 < 1 Manyana, plan/probes, fleet, sandbox, Jev, TinyApp). We are removing code comments from the codebase.
+4 < 1 You categorise every comment block in your shard. **You never edit any repository file.**
+5 < 1 
+6 < 1 Your input: a JSONL shard, one comment block per line: `{id, file, start, end, own, kind, text}`.
+7 < 1 `start`/`end` are 1-based lines in the file as it is on `main` now. `own` is false for a trailing
+8 < 1 comment on a code line. `kind` is `comment` or `docstring` (Python docstrings count as comments).
+9 < 1 
+10 < 1 For each block, open the file and read the code around it (and anything it references) before judging.
+11 < 1 
+12 < 1 ## Categories (pick exactly one)
+13 < 1 
+14 < 1 - `tautology` — repeats what the code already says (names, obvious control flow, "loop over X",
+15 < 1   section banners, a docstring that restates the signature/name).
+16 < 1 - `stale` — references code, behaviour, files, flags, tickets or an implementation that no longer
+17 < 1   exists or is no longer true; also change-history narration ("added for #359", "was X, now Y",
+18 < 1   "the old factory did…") whose only content is history that git already holds.
+19 < 1 - `excuse` — licenses a hacky or knowingly-imperfect implementation: workaround, "for now",
+20 < 1   "temporary", "bridge", "best effort", "good enough", swallowed error, magic sleep/retry, copy-paste
+21 < 1   "kept in sync with", TODO/FIXME/XXX, "can't do X because Y so we do Z" where Z is a hack.
+22 < 1 - `decision` — documents an important, non-obvious decision a future reader needs and cannot recover
+23 < 1   from the code: why this shape over the obvious one, an invariant, a protocol or wire contract, a
+24 < 1   constraint from an external system (exe.dev, GitHub, git, Claude Code), a measured reading behind a
+25 < 1   threshold. It will be moved into an ADR, so it must survive being read away from the code.
+26 < 1 - `keep` — must stay for now: load-bearing text (a test or code reads the source text, a usage string
+27 < 1   printed at runtime, a license/provenance header, a marker another tool greps for), or you genuinely
+28 < 1   cannot decide. Use sparingly; it leaves the comment for a later pass under the lint ratchet.
+29 < 1 
+30 < 1 Tie-breaks: a comment that is mostly history but states a still-true non-obvious constraint is
+31 < 1 `decision`. A comment explaining *what* a clear line does is `tautology` even if long. A test's
+32 < 1 docstring that lists the cases the test asserts is `tautology` unless it records why a case exists.
+33 < 1 Before calling something `keep` because a test may read it, grep `tests/` and `fleet/tests/` for a
+34 < 1 distinctive phrase of it.
+35 < 1 
+36 < 1 ## Output
+37 < 1 
+38 < 1 Write `<work>/out/shardNN.jsonl` (same NN as your input shard),
+39 < 1 one JSON object per input id, every id exactly once:
+40 < 1 
+41 < 1 ```
+42 < 1 {"id": "C0123", "category": "tautology|stale|excuse|decision|keep", "reason": "<= 20 words"}
+43 < 1 ```
+44 < 1 
+45 < 1 plus, by category:
+46 < 1 
+47 < 1 - `decision`: `"adr_topic"` (kebab-case slug naming the decision area, e.g. `weave-protocol`,
+48 < 1   `fleet-token-rotation`, `plan-parser-grammar`; reuse one slug for related decisions),
+49 < 1   `"symbol"` (the function/constant/module it governs), and `"decision"`: 1–4 sentences in present
+50 < 1   tense restating the context, the decision and its consequence in plain words, self-contained
+51 < 1   (no "this function", no line numbers; name the file and symbol).
+52 < 1 - `excuse`: `"issue_title"` (imperative, <= 70 chars) and `"issue_body"`: what the hack is (file +
+53 < 1   symbol), why it is hacky, what a proper fix looks like, and the comment text quoted. Several blocks
+54 < 1   excusing the same hack share an identical `issue_title`.
+55 < 1 - `keep`: say in `reason` what reads it.
+56 < 1 
+57 < 1 Validate your file before finishing: every input id present once, valid JSON per line.
+58 < 1 Final reply: only the counts per category and the path of your output file.
+59 < 1 

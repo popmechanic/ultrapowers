@@ -1,0 +1,137 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_doctor_evidence.mjs — the exam for "The doctor's evidence
+2 < 2  * row walks the one-time setup" (#1395).
+3 < 2  *
+4 < 2  * The `evidence` row, reported right after `integrations`, walks the three
+5 < 2  * steps that let a run keep its record in the operator's evidence repository,
+6 < 2  * stopping at the first miss and naming its fix.
+7 < 2  *
+8 < 2  * Legs, each naming the Machine clause it comes from:
+9 < 2  *
+10 < 2  *   (b) [M2] `evidence: null` — `missing`, the detail names `"evidence"` and
+11 < 2  *       `~/.ultrapowers/fleet.json`, and no `gh api repos/` call is issued.
+12 < 2  *   (c) [M3] `evidence: 'ops/evidence'`, `gh api repos/ops/evidence` exiting
+13 < 2  *       1 — `missing`, naming `gh repo create ops/evidence --private`.
+14 < 2  *   (d) [M4] that read answering: no `gh-ops-evidence` in the listing is
+15 < 2  *       `missing` naming `node fleet/target.mjs ops/evidence`; listed and
+16 < 2  *       attached to `tag:fleet` is `ok`; attached elsewhere is `missing`
+17 < 2  *       naming `gh-ops-evidence` (#1434).
+18 < 2  *   (e) [M5] the `capacity` row over config keys `cpu`, `memory`, `account`
+19 < 2  *       and `evidence` calls none of them a key nothing reads.
+20 < 2  *
+21 < 2  * Every leg drives `doctor()` in-process over a stub `exec(cmd, argv)` keyed
+22 < 2  * on the command and its argv joined by spaces (`ssh exe.dev <remote>`,
+23 < 2  * `gh api …`), the shape of `test_doctor_claude.mjs`; everything unmatched
+24 < 2  * answers `{ code: 1, stdout: '' }`. No socket is opened.
+25 < 2  */
+26 < 2 
+27 < 1 import assert from 'node:assert/strict'
+28 < 1 
+29 < 1 import { doctor } from '../doctor.mjs'
+30 < 1 
+31 < 1 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
+32 < 1 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
+33 < 1 
+34 < 1 const EVIDENCE = 'ops/evidence'
+35 < 1 const OBJECT = 'gh-ops-evidence'
+36 < 1 const REPO_READ = keyOf('gh', ['api', `repos/${EVIDENCE}`])
+37 < 1 
+38 < 1 const CLAUDE_MAX = { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }
+39 < 1 
+40 < 1 function makeExec (known = new Map()) {
+41 < 1   const calls = []
+42 < 1   const exec = async (command, argv) => {
+43 < 1     const cmd = keyOf(command, argv)
+44 < 1     calls.push(cmd)
+45 < 1     if (known.has(cmd)) return known.get(cmd)
+46 < 1     return { code: 1, stdout: '' }
+47 < 1   }
+48 < 1   exec.calls = calls
+49 < 1   return exec
+50 < 1 }
+51 < 1 
+52 < 1 const listing = (entries) => [lobbyKey('integrations list --json'), { code: 0, stdout: JSON.stringify(entries) }]
+53 < 1 const evidenceRowOf = (result) => result.rows.find((r) => r.id === 'evidence')
+54 < 1 
+55 < 2 // ── (b) [M2] no setting ────────────────────────────────────────────────────
+56 < 1 {
+57 < 1   const exec = makeExec(new Map([listing([CLAUDE_MAX])]))
+58 < 1   const result = await doctor({ config: {}, exec, evidence: null })
+59 < 1   const ev = evidenceRowOf(result)
+60 < 1   assert.ok(ev, '(b) [M2] the result carries an evidence row')
+61 < 1   assert.equal(ev.status, 'missing', `(b) [M2] no setting is missing — got ${JSON.stringify(ev)}`)
+62 < 1   assert.ok(ev.detail.includes('"evidence"'), `(b) [M2] detail names "evidence" — got ${JSON.stringify(ev.detail)}`)
+63 < 1   assert.ok(
+64 < 1     ev.detail.includes('~/.ultrapowers/fleet.json'),
+65 < 1     `(b) [M2] detail names ~/.ultrapowers/fleet.json — got ${JSON.stringify(ev.detail)}`
+66 < 1   )
+67 < 1   assert.ok(
+68 < 1     !exec.calls.some((c) => c.includes('gh api repos/')),
+69 < 1     `(b) [M2] no gh api repos/ call — calls:\n${exec.calls.join('\n')}`
+70 < 1   )
+71 < 1   const ids = result.rows.map((r) => r.id)
+72 < 1   assert.equal(ids.indexOf('evidence'), ids.indexOf('integrations') + 1, '(b) the row follows integrations')
+73 < 1 }
+74 < 1 
+75 < 2 // ── (c) [M3] the repository is absent ──────────────────────────────────────
+76 < 1 {
+77 < 1   const exec = makeExec(new Map([listing([CLAUDE_MAX]), [REPO_READ, { code: 1, stdout: '' }]]))
+78 < 1   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
+79 < 1   assert.ok(exec.calls.includes(REPO_READ), `(c) [M3] the repository is read — calls:\n${exec.calls.join('\n')}`)
+80 < 1   assert.equal(ev.status, 'missing', `(c) [M3] an absent repository is missing — got ${JSON.stringify(ev)}`)
+81 < 1   assert.ok(
+82 < 1     ev.detail.includes(`gh repo create ${EVIDENCE} --private`),
+83 < 1     `(c) [M3] detail names gh repo create — got ${JSON.stringify(ev.detail)}`
+84 < 1   )
+85 < 1 }
+86 < 1 
+87 < 2 // ── (d) [M4] the integration and its attachment ────────────────────────────────
+88 < 1 const REPO_OK = [REPO_READ, { code: 0, stdout: JSON.stringify({ full_name: EVIDENCE }) }]
+89 < 1 {
+90 < 1   const exec = makeExec(new Map([listing([CLAUDE_MAX]), REPO_OK]))
+91 < 1   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
+92 < 1   assert.equal(ev.status, 'missing', `(d) [M4] no integration is missing — got ${JSON.stringify(ev)}`)
+93 < 1   assert.ok(
+94 < 1     ev.detail.includes(`node fleet/target.mjs ${EVIDENCE}`),
+95 < 1     `(d) [M4] detail names node fleet/target.mjs — got ${JSON.stringify(ev.detail)}`
+96 < 1   )
+97 < 1 }
+98 < 1 {
+99 < 1   const exec = makeExec(new Map([
+100 < 1     listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE, attachments: ['tag:fleet'] }]), REPO_OK
+101 < 1   ]))
+102 < 1   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
+103 < 1   assert.equal(ev.status, 'ok', `(d) [M4] tag:fleet is ok — got ${JSON.stringify(ev)}`)
+104 < 1 }
+105 < 1 {
+106 < 1   const exec = makeExec(new Map([
+107 < 1     listing([CLAUDE_MAX, { name: OBJECT, repository: EVIDENCE, attachments: ['vm:one'] }]), REPO_OK
+108 < 1   ]))
+109 < 1   const ev = evidenceRowOf(await doctor({ config: {}, exec, evidence: EVIDENCE }))
+110 < 1   assert.equal(ev.status, 'missing', `(d) [M4] attached elsewhere is missing — got ${JSON.stringify(ev)}`)
+111 < 1   assert.ok(ev.detail.includes(OBJECT), `(d) [M4] detail names ${OBJECT} — got ${JSON.stringify(ev.detail)}`)
+112 < 1 }
+113 < 1 
+114 < 2 // ── (e) [M5] evidence is not a stale key ───────────────────────────────────
+115 < 1 {
+116 < 1   const exec = makeExec(new Map([
+117 < 1     listing([CLAUDE_MAX]),
+118 < 1     [lobbyKey('billing plan --json'), { code: 0, stdout: JSON.stringify({ max_cpus: 16, max_memory_gb: 64, tier: 'pro' }) }]
+119 < 1   ]))
+120 < 1   const result = await doctor({
+121 < 1     config: { cpu: '2', memory: '8GB' },
+122 < 1     exec,
+123 < 1     configKeys: ['cpu', 'memory', 'account', 'evidence'],
+124 < 1     account: 'acct',
+125 < 1     evidence: EVIDENCE
+126 < 1   })
+127 < 1   const capacity = result.rows.find((r) => r.id === 'capacity')
+128 < 1   assert.ok(
+129 < 1     !capacity.detail.includes('nothing reads'),
+130 < 1     `(e) [M5] no key is called one nothing reads — got ${JSON.stringify(capacity)}`
+131 < 1   )
+132 < 1   assert.equal(capacity.status, 'ok', `(e) [M5] the capacity row is ok — got ${JSON.stringify(capacity)}`)
+133 < 1 }
+134 < 1 
+135 < 1 console.log('ALL TESTS PASSED')
+136 < 1 

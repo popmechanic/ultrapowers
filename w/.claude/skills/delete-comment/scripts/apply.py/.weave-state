@@ -1,0 +1,124 @@
+0 < 1 #!/usr/bin/env python3
+1 < 1 import ast
+2 < 1 import collections
+3 < 1 import glob
+4 < 1 import json
+5 < 1 import sys
+6 < 1 from pathlib import Path
+7 < 1 
+8 < 1 USAGE = """Usage: apply.py <workdir> [path...]
+9 < 1 
+10 < 1 Deletes every comment block whose verdict in <workdir>/out/*.jsonl is tautology, stale,
+11 < 1 excuse or decision, from the files named in <workdir>/blocks.json (or only [path...])."""
+12 < 1 
+13 < 1 if len(sys.argv) < 2:
+14 < 1     print(USAGE)
+15 < 1     sys.exit(1)
+16 < 1 R = str(Path(__file__).resolve().parents[4]) + "/"
+17 < 1 S = sys.argv[1].rstrip("/") + "/"
+18 < 1 DELETE = {"tautology", "stale", "excuse", "decision"}
+19 < 1 
+20 < 1 blocks = {b["id"]: b for b in json.load(open(S + "blocks.json"))}
+21 < 1 verdicts = {}
+22 < 1 for f in sorted(glob.glob(S + "out/shard*.jsonl")):
+23 < 1     for l in open(f):
+24 < 1         l = l.strip()
+25 < 1         if l:
+26 < 1             v = json.loads(l); verdicts[v["id"]] = v
+27 < 1 
+28 < 1 only = set(sys.argv[2:])
+29 < 1 byfile = collections.defaultdict(list)
+30 < 1 for cid, v in verdicts.items():
+31 < 1     if v["category"] in DELETE:
+32 < 1         b = blocks[cid]
+33 < 1         if only and b["file"] not in only:
+34 < 1             continue
+35 < 1         byfile[b["file"]].append(b)
+36 < 1 
+37 < 1 def line_spans(lines):
+38 < 1     out, pos = [], 0
+39 < 1     for l in lines:
+40 < 1         out.append(pos); pos += len(l)
+41 < 1     return out
+42 < 1 
+43 < 1 stats = collections.Counter()
+44 < 1 failed = []
+45 < 1 for f, bs in sorted(byfile.items()):
+46 < 1     src = open(R + f, encoding="utf-8").read()
+47 < 1     lines = src.splitlines(keepends=True)
+48 < 1     kill = set()
+49 < 1     cuts = []
+50 < 1     for b in bs:
+51 < 1         for p in b["parts"]:
+52 < 1             if b["kind"] == "docstring":
+53 < 1                 for n in range(p["start"] - 1, p["end"]):
+54 < 1                     kill.add(n)
+55 < 1                 continue
+56 < 1             text = p["text"]
+57 < 1             first = text.split("\n")[0]
+58 < 1             nl = text.count("\n")
+59 < 1             cands = [i for i, l in enumerate(lines) if first in l]
+60 < 1             if not cands:
+61 < 1                 failed.append((f, p["start"], "not found")); continue
+62 < 1             i = min(cands, key=lambda i: abs(i - (p["start"] - 1)))
+63 < 1             if abs(i - (p["start"] - 1)) > 8:
+64 < 1                 failed.append((f, p["start"], "too far")); continue
+65 < 1             col = lines[i].index(first)
+66 < 1             endline = i + nl
+67 < 1             before = lines[i][:col]
+68 < 1             if nl == 0:
+69 < 1                 after = lines[i][col + len(first):]
+70 < 1             else:
+71 < 1                 last = text.split("\n")[-1]
+72 < 1                 after = lines[endline][lines[endline].index(last) + len(last):]
+73 < 1             b_strip, a_strip = before.strip(), after.strip()
+74 < 1             if b_strip == "" and a_strip == "":
+75 < 1                 kill.update(range(i, endline + 1))
+76 < 1             elif b_strip == "{" and a_strip == "}" and f.endswith((".tsx", ".jsx")):
+77 < 1                 kill.update(range(i, endline + 1))
+78 < 1             elif nl == 0:
+79 < 1                 if a_strip == "":
+80 < 1                     cuts.append((i, len(before.rstrip()), len(lines[i].rstrip("\r\n"))))
+81 < 1                 else:
+82 < 1                     cuts.append((i, col, col + len(first) + (len(after) - len(after.lstrip(" ")))))
+83 < 1             else:
+84 < 1                 failed.append((f, p["start"], "multiline mixed")); continue
+85 < 1     new = list(lines)
+86 < 1     for i, a, z in sorted(cuts, reverse=True):
+87 < 1         if i in kill: continue
+88 < 1         l = new[i]; eol = l[len(l.rstrip("\r\n")):]
+89 < 1         new[i] = l[:a] + l[z:].rstrip("\r\n") + eol if z < len(l.rstrip("\r\n")) else l[:a] + eol
+90 < 1     if f.endswith(".py"):
+91 < 1         for b in bs:
+92 < 1             if b["kind"] != "docstring": continue
+93 < 1             s0, e0 = b["start"] - 1, b["end"] - 1
+94 < 1             nxt = next((k for k in range(e0 + 1, len(new)) if k not in kill and new[k].strip() and not new[k].strip().startswith("#")), None)
+95 < 1             ind = len(new[s0]) - len(new[s0].lstrip())
+96 < 1             nind = None if nxt is None else len(new[nxt]) - len(new[nxt].lstrip())
+97 < 1             if ind > 0 and (nind is None or nind < ind):
+98 < 1                 new[s0] = " " * ind + "pass\n"; kill.discard(s0)
+99 < 1     res, gap, top = [], False, True
+100 < 1     for n, l in enumerate(new):
+101 < 1         if n in kill:
+102 < 1             stats["lines"] += 1; gap = True; continue
+103 < 1         if l.strip() == "" and gap and (not res or res[-1].strip() == "" or res[-1].rstrip().endswith(("{", "(", "["))):
+104 < 1             stats["blank"] += 1; continue
+105 < 1         if l.strip() and l.strip()[0] in "}])" and gap and res and res[-1].strip() == "":
+106 < 1             res.pop(); stats["blank"] += 1
+107 < 1         if l.strip(): gap = False
+108 < 1         res.append(l)
+109 < 1     while res and res[0].strip() == "" and 0 in kill:
+110 < 1         res.pop(0); stats["blank"] += 1
+111 < 1     final = "".join(res)
+112 < 1     open(R + f, "w", encoding="utf-8").write(final)
+113 < 1     stats["files"] += 1
+114 < 1     if f.endswith(".py"):
+115 < 1         try:
+116 < 1             ast.parse(final)
+117 < 1         except SyntaxError as e:
+118 < 1             failed.append((f, e.lineno, "py syntax: " + str(e)))
+119 < 1 print(dict(stats))
+120 < 1 for x in failed:
+121 < 1     print("FAIL", x)
+122 < 1 sys.exit(1 if failed else 0)
+123 < 1 

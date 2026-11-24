@@ -1,0 +1,18 @@
+0 < 2 // The scope rule (#1333). A snapshot may change only paths some task's Files names, or
+1 < 2 // paths a builder wrote in its copy (an amendment). Pure, no I/O.
+2 < 2 //
+3 < 2 // scopeOf({ changed, files, written }) -> { outside, amended }, both sorted and deduplicated.
+4 < 2 // A changed path in no task's Files goes to `amended` if some builder wrote it, else to
+5 < 2 // `outside`; a Flock run refuses to settle while `outside` is non-empty.
+6 < 1 export function scopeOf ({ changed = [], files = [], written = [] }) {
+7 < 1   const inFiles = new Set(files)
+8 < 1   const wrote = new Set(written)
+9 < 1   const outside = new Set()
+10 < 1   const amended = new Set()
+11 < 1   for (const p of changed) {
+12 < 1     if (inFiles.has(p)) continue
+13 < 1     ;(wrote.has(p) ? amended : outside).add(p)
+14 < 1   }
+15 < 1   return { outside: [...outside].sort(), amended: [...amended].sort() }
+16 < 1 }
+17 < 1 

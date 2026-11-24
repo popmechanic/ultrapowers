@@ -1,14 +1,14 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // factory/flock/catchup.mjs — the Flock's catch-up of a finished run onto a moved main.
-2 < 1 // `node factory/flock/catchup.mjs --plan <p> [--plan-json <parse>] --target <dir> --base <run base> --onto <moved tip> --run-dir <dir>`
-3 < 1 // The target sits on the run's branch, the run's own commit at HEAD, the tree clean. The paths
-4 < 1 // changed on both sides are joined on main's memory (weave_store.py `join`: the run's stored entry
-5 < 1 // merged with the moved main's, every line's identity kept) when the run has one, else by the weave
-6 < 1 // keeper rebuilt from the three texts (weave.py); a clean join becomes one commit
-7 < 1 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
-9 > 1 // Last stdout line: {"caughtUp": true, "head", "onto"} (exit 0) or {"caughtUp": false, "reason":
+1 < 2 // factory/flock/catchup.mjs — the Flock's catch-up of a finished run onto a moved main.
+2 < 2 // `node factory/flock/catchup.mjs --plan <p> [--plan-json <parse>] --target <dir> --base <run base> --onto <moved tip> --run-dir <dir>`
+3 < 2 // The target sits on the run's branch, the run's own commit at HEAD, the tree clean. The paths
+4 < 2 // changed on both sides are joined on main's memory (weave_store.py `join`: the run's stored entry
+5 < 2 // merged with the moved main's, every line's identity kept) when the run has one, else by the weave
+6 < 2 // keeper rebuilt from the three texts (weave.py); a clean join becomes one commit
+7 < 2 // on top of --onto, which must pass the plan's setup, every task's facts and the run-wide check.
+9 > 2 // Last stdout line: {"caughtUp": true, "head", "onto"} (exit 0) or {"caughtUp": false, "reason":
 8 < 2 // Last stdout line: {"refolded": true, "head", "onto"} (exit 0) or {"refolded": false, "reason":
-9 < 1 // "conflict" | "red", "onto"} (exit 1). A conflict or a red leaves the run's own commit at HEAD.
+9 < 2 // "conflict" | "red", "onto"} (exit 1). A conflict or a red leaves the run's own commit at HEAD.
 10 < 1 import { spawnSync } from 'node:child_process'
 11 < 1 import fs from 'node:fs'
 12 < 1 import os from 'node:os'
@@ -19,7 +19,7 @@
 17 < 1 import { gitIn, utf8, writeFiles, startWeave, EXAM_MS, POLICY_FLOCK } from './io.mjs'
 18 < 1 
 19 < 1 const STORE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'weave_store.py')
-20 < 1 // one weave_store.py verb; its last stdout line as JSON, or null
+20 < 2 // one weave_store.py verb; its last stdout line as JSON, or null
 21 < 1 const store = (...args) => {
 22 < 1   const r = spawnSync('python3', [STORE, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], maxBuffer: 256 * 1024 * 1024 })
 23 < 1   try { return JSON.parse((r.stdout || '').trimEnd().split('\n').pop()) } catch { return null }
@@ -32,7 +32,7 @@
 29 < 1 
 30 < 1 const git = (args, opts) => gitIn(T, args, { identity: true, ...opts })
 31 < 1 const out = (args) => git(args).stdout.trim()
-32 < 1 // A path's bytes at a rev, or null when the path is absent there.
+32 < 2 // A path's bytes at a rev, or null when the path is absent there.
 33 < 1 const blob = (rev, p) => { const r = git(['cat-file', 'blob', `${rev}:${p}`], { ok: true, encoding: 'buffer' }); return r.status === 0 ? r.stdout : null }
 34 < 1 const finish = (o, code) => { console.log(JSON.stringify({ ...o, onto: ONTO })); process.exit(code) }
 35 < 1 
@@ -40,7 +40,7 @@
 37 < 1 const changed = (a, b) => new Set(out(['diff', '--name-only', '--no-renames', a, b]).split('\n').filter(Boolean))
 38 < 1 const ours = changed(BASE, runSha), theirs = changed(BASE, ONTO)
 39 < 1 
-40 < 1 // path -> Buffer (the result) or null (deleted); only paths the run changed need writing over --onto.
+40 < 2 // path -> Buffer (the result) or null (deleted); only paths the run changed need writing over --onto.
 41 < 1 const result = new Map()
 42 < 1 const both = []
 43 < 1 for (const p of ours) {
@@ -50,13 +50,14 @@
 47 < 1   both.push(p)
 48 < 1 }
 49 < 1 
-51 > 1 // main's memory: the paths the store decides are joined there, on the weaves the run and main really
-52 < 1 // wrote; a path it does not hold (never text, or a run whose store could not be read) falls to the
-53 < 1 // three-text join below.
+52 > 1 let memory = null
+51 > 2 // main's memory: the paths the store decides are joined there, on the weaves the run and main really
+52 < 2 // wrote; a path it does not hold (never text, or a run whose store could not be read) falls to the
+53 < 2 // three-text join below.
 50 < 2 // main's memory (policy flock.main.mode `memory` or `peer`): the paths the store decides are joined there, on
 51 < 2 // the weaves the run and main really wrote; a path it does not hold (never text, or a run that began
 52 < 2 // frozen) falls to the three-text join below, which is also the rollback (`frozen`).
-53 < 1 let memory = null   // { file, stored }: the joined Memory, kept for the commit this catch-up makes
+53 < 2 let memory = null   // { file, stored }: the joined Memory, kept for the commit this catch-up makes
 55 > 1 if (both.length) {
 54 < 2 if (both.length && ['memory', 'peer'].includes(POLICY_FLOCK?.main?.mode)) {
 55 < 1   const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'catchup-memory-')), 'memory.json')
@@ -66,7 +67,7 @@
 60 > 1     if (j.conflicts.some((p) => both.includes(p))) finish({ caughtUp: false, reason: 'conflict' }, 1)
 59 < 2     if (j.conflicts.some((p) => both.includes(p))) finish({ refolded: false, reason: 'conflict' }, 1)
 60 < 1     for (const p of both.filter((x) => decided.has(x))) {
-61 < 1       // absent from `files`: the join's text is the moved main's own, so nothing is written over it
+61 < 2       // absent from `files`: the join's text is the moved main's own, so nothing is written over it
 62 < 1       if (p in j.files) result.set(p, j.files[p] === null ? null : Buffer.from(j.files[p], 'utf8'))
 63 < 1     }
 64 < 1     both.splice(0, both.length, ...both.filter((x) => !decided.has(x)))
@@ -108,7 +109,7 @@
 98 < 1   }
 99 < 1 }
 100 < 1 
-101 < 1 // The join is clean: one commit on --onto, then every exam of the plan with ULTRA_BASE = --onto.
+101 < 2 // The join is clean: one commit on --onto, then every exam of the plan with ULTRA_BASE = --onto.
 102 < 1 git(['reset', '-q', '--hard', ONTO])
 103 < 1 writeFiles(T, result)
 104 < 1 git(['add', '-A'])
@@ -129,15 +130,15 @@
 118 < 1   const r = spawnSync(cmd[0], cmd.slice(1), { cwd: T, env, encoding: 'utf8', timeout, maxBuffer: 64 * 1024 * 1024 })
 119 < 1   if (r.status !== 0) back(`${cmd.join(' ')} exited ${r.status ?? r.signal}: ${(r.stdout + r.stderr).slice(-400)}`)
 120 < 1 }
-121 < 1 // the run's own limits (EXAM_MS), so a fact red on time in the run is red here too
+121 < 2 // the run's own limits (EXAM_MS), so a fact red on time in the run is red here too
 122 < 1 if (work.setup) exam(work.setup, EXAM_MS.setup)
 123 < 1 for (const t of work.tasks) for (const f of t.facts) exam(f, EXAM_MS.fact)
 124 < 1 if (work.check) exam(work.check, work.checkTimeoutMs ?? 120_000)
-125 < 1 // The exams may leave artifacts; the commit is what the boot pushes.
+125 < 2 // The exams may leave artifacts; the commit is what the boot pushes.
 126 < 1 if (out(['rev-parse', 'HEAD']) !== head) back('an exam moved HEAD')
-127 < 1 // the caught-up commit's entry in main's memory; the publish pushes it before the merge request.
-128 < 1 // A path the three-text join decided is not in the joined Memory, so its stored weave would not
-129 < 1 // be the commit's text: the entry is then refused as drift, and the next reader replays the commit.
+127 < 2 // the caught-up commit's entry in main's memory; the publish pushes it before the merge request.
+128 < 2 // A path the three-text join decided is not in the joined Memory, so its stored weave would not
+129 < 2 // be the commit's text: the entry is then refused as drift, and the next reader replays the commit.
 130 < 1 if (memory) {
 131 < 1   const r = store('settle', '--repo', T, '--commit', head, '--from', memory.file)
 132 < 1   memory.stored = !!(r && r.stored)
@@ -145,12 +146,12 @@
 134 < 1   fs.rmSync(path.dirname(memory.file), { recursive: true, force: true })
 135 < 1 }
 136 < 2 if (RUN_DIR) { try { fs.mkdirSync(RUN_DIR, { recursive: true }); fs.writeFileSync(path.join(RUN_DIR, 'catchup.json'), JSON.stringify({ head, onto: ONTO, run: runSha, memory: memory ? { joined: true, stored: memory.stored } : { joined: false } }) + '\n') } catch {} }
-137 < 1 // The record's line numbers were the run's commit's; carry them to the caught-up commit's.
+137 < 2 // The record's line numbers were the run's commit's; carry them to the caught-up commit's.
 138 < 1 const provFile = RUN_DIR && path.join(RUN_DIR, 'provenance.json')
 139 < 1 if (provFile && fs.existsSync(provFile)) {
 140 < 1   try {
 141 < 1     const record = JSON.parse(fs.readFileSync(provFile, 'utf8'))
-142 < 1     // only the paths the record names, null on a side where the path is absent
+142 < 2     // only the paths the record names, null on a side where the path is absent
 143 < 1     const named = new Set()
 144 < 1     for (const k of ['hunks', 'exceptions']) for (const e of Array.isArray(record[k]) ? record[k] : []) if (e && typeof e.path === 'string') named.add(e.path)
 145 < 1     const moved = changed(runSha, head)

@@ -1,48 +1,48 @@
 0 < 1 #!/usr/bin/env python3
-2 > 1 """The weave store: main's memory (the main-is-a-peer design).
+2 > 2 """The weave store: main's memory (the main-is-a-peer design).
 1 < 2 """The weave store: main's memory (the main-is-a-peer design, stage 1). No engine reads it yet.
-2 < 1 
-3 < 1 Each tree of a target's default branch has at most one stored weave, an *entry*: one commit on
-4 < 1 the ref `refs/ultrapowers/weave/v1` of the target repository, subject `weave <tree sha>`. The ref
-5 < 1 is an append-only log of entries; their order means nothing, and lookup is by subject. Where two
-6 < 1 entries name one tree, the one nearer the root is the entry.
-7 < 1 
-8 < 1 An entry's tree:
-9 < 1   meta.json                   {"v": 1, "tree", "via": "genesis" | "replay" | "run", "unwoven": [path]}
-10 < 1   w/<path>/.weave-state       the Manyana state string of <path>
-11 < 1   w/<path>/.weave-auth        {line key: [label]}, who wrote each line (weave.py's kauth)
-12 < 1   w/<path>/.weave-dels        {line key: [label]}, who deleted each line (weave.py's kdel)
-13 < 1 
-14 < 1 A path with no `.weave-state` has the weave `initial_state` of its text at that tree. A path that
-15 < 1 is ever not a regular UTF-8 file is listed in `unwoven` and never woven again.
-16 < 1 
-17 < 1 The one rule (probe, n=25 files, 917 commits, 2026-11-12: two weaves of one text built by
-18 < 1 different routes merged back to that text 0 times in 25): a tree's weave is built once and shared.
-19 < 1 A commit with no entry is replayed from the nearest stored first-parent ancestor, one commit at a
-20 < 1 time, each changed file through the keeper's `rewrite`. That recipe is a pure function of the
-21 < 1 ancestor's entry and the commits, so two sandboxes write byte-identical entries, and replaying
-22 < 1 A->B->C equals replaying B->C from a stored B. A replayed line is authored `@c:<commit sha12>`.
-23 < 1 
-24 < 1 Git stays the fact: every load checks each stored path's visible text against git's text at that
-25 < 1 tree, and a mismatch raises Drift.
-26 < 1 
-27 < 1     python3 factory/flock/weave_store.py open --repo <dir> --commit <sha> [--remote origin]
-28 < 1     python3 factory/flock/weave_store.py push --repo <dir> [--remote origin]
-29 < 1 
-30 < 1     python3 factory/flock/weave_store.py join --repo <dir> --run <sha> --onto <sha> --out <file> [--remote origin]
-31 < 1     python3 factory/flock/weave_store.py settle --repo <dir> --commit <sha> --from <file>
-32 < 1 
-33 < 1 `join` is the catch-up's merge: the run's entry joined with the moved main's, one JSON line
-34 < 1 {"joined": true, "conflicts": [path], "files": {path: text | null}, "paths": [path]}: `paths` every
-35 < 1 path it decided, `files` those whose text differs from the moved main's; or {"joined": false,
-36 < 1 "reason"}. The joined Memory goes to --out.
-37 < 1 `settle` stores that Memory as the entry of the commit the catch-up then made:
-38 < 1 {"stored": true, "entry"} or {"stored": false, "reason"}.
-39 < 1 
-40 < 1 `open` prints one JSON line: {"memory": true, "tree", "via", "stored", "unwoven"} (exit 0),
-41 < 1 {"memory": false, "reason": "before-genesis"} (exit 0), or {"memory": false, "reason": "drift",
-42 < 1 "paths"} (exit 1). With --remote it syncs first, and a store it begins is pushed before it is used.
-43 < 1 """
+2 < 2 
+3 < 2 Each tree of a target's default branch has at most one stored weave, an *entry*: one commit on
+4 < 2 the ref `refs/ultrapowers/weave/v1` of the target repository, subject `weave <tree sha>`. The ref
+5 < 2 is an append-only log of entries; their order means nothing, and lookup is by subject. Where two
+6 < 2 entries name one tree, the one nearer the root is the entry.
+7 < 2 
+8 < 2 An entry's tree:
+9 < 2   meta.json                   {"v": 1, "tree", "via": "genesis" | "replay" | "run", "unwoven": [path]}
+10 < 2   w/<path>/.weave-state       the Manyana state string of <path>
+11 < 2   w/<path>/.weave-auth        {line key: [label]}, who wrote each line (weave.py's kauth)
+12 < 2   w/<path>/.weave-dels        {line key: [label]}, who deleted each line (weave.py's kdel)
+13 < 2 
+14 < 2 A path with no `.weave-state` has the weave `initial_state` of its text at that tree. A path that
+15 < 2 is ever not a regular UTF-8 file is listed in `unwoven` and never woven again.
+16 < 2 
+17 < 2 The one rule (probe, n=25 files, 917 commits, 2026-11-12: two weaves of one text built by
+18 < 2 different routes merged back to that text 0 times in 25): a tree's weave is built once and shared.
+19 < 2 A commit with no entry is replayed from the nearest stored first-parent ancestor, one commit at a
+20 < 2 time, each changed file through the keeper's `rewrite`. That recipe is a pure function of the
+21 < 2 ancestor's entry and the commits, so two sandboxes write byte-identical entries, and replaying
+22 < 2 A->B->C equals replaying B->C from a stored B. A replayed line is authored `@c:<commit sha12>`.
+23 < 2 
+24 < 2 Git stays the fact: every load checks each stored path's visible text against git's text at that
+25 < 2 tree, and a mismatch raises Drift.
+26 < 2 
+27 < 2     python3 factory/flock/weave_store.py open --repo <dir> --commit <sha> [--remote origin]
+28 < 2     python3 factory/flock/weave_store.py push --repo <dir> [--remote origin]
+29 < 2 
+30 < 2     python3 factory/flock/weave_store.py join --repo <dir> --run <sha> --onto <sha> --out <file> [--remote origin]
+31 < 2     python3 factory/flock/weave_store.py settle --repo <dir> --commit <sha> --from <file>
+32 < 2 
+33 < 2 `join` is the catch-up's merge: the run's entry joined with the moved main's, one JSON line
+34 < 2 {"joined": true, "conflicts": [path], "files": {path: text | null}, "paths": [path]}: `paths` every
+35 < 2 path it decided, `files` those whose text differs from the moved main's; or {"joined": false,
+36 < 2 "reason"}. The joined Memory goes to --out.
+37 < 2 `settle` stores that Memory as the entry of the commit the catch-up then made:
+38 < 2 {"stored": true, "entry"} or {"stored": false, "reason"}.
+39 < 2 
+40 < 2 `open` prints one JSON line: {"memory": true, "tree", "via", "stored", "unwoven"} (exit 0),
+41 < 2 {"memory": false, "reason": "before-genesis"} (exit 0), or {"memory": false, "reason": "drift",
+42 < 2 "paths"} (exit 1). With --remote it syncs first, and a store it begins is pushed before it is used.
+43 < 2 """
 44 < 1 import json, os, subprocess, sys, tempfile
 45 < 1 
 46 < 1 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -59,7 +59,7 @@
 57 < 1 
 58 < 1 
 59 < 1 class Drift(Exception):
-60 < 1     """Stored weaves whose visible text is not git's text at their tree."""
+60 < 2     """Stored weaves whose visible text is not git's text at their tree."""
 61 < 1 
 62 < 1     def __init__(self, tree, paths):
 63 < 1         super().__init__("weave drift at %s: %s" % (tree[:12], ", ".join(paths[:5])))
@@ -67,7 +67,7 @@
 65 < 1 
 66 < 1 
 67 < 1 def git(repo, *args, data=None, env=None, ok=False):
-68 < 1     """One git process in `repo`; its stdout as bytes. A non-zero exit raises unless `ok`."""
+68 < 2     """One git process in `repo`; its stdout as bytes. A non-zero exit raises unless `ok`."""
 69 < 1     r = subprocess.run(["git", "-C", repo, *args], input=data, capture_output=True,
 70 < 1                        env=None if env is None else {**os.environ, **env})
 71 < 1     if r.returncode != 0 and not ok:
@@ -85,10 +85,11 @@
 83 < 1 
 84 < 1 
 85 < 1 def entries(repo, ref=REF):
-86 < 1     """{tree sha: entry commit} off `ref`; of two entries for one tree, the one nearer the root."""
+86 < 2     """{tree sha: entry commit} off `ref`; of two entries for one tree, the one nearer the root."""
 87 < 1     log = out(repo, "log", "--format=%H %s", ref, ok=True)
 88 < 1     found = {}
-89 < 1     for line in (log or "").splitlines():   # tip first, so a rootward entry overwrites
+90 > 1     for line in (log or "").splitlines():
+89 < 2     for line in (log or "").splitlines():   # tip first, so a rootward entry overwrites
 90 < 1         sha, _, subject = line.partition(" ")
 91 < 1         if subject.startswith("weave "):
 92 < 1             found[subject[len("weave "):]] = sha
@@ -96,7 +97,7 @@
 94 < 1 
 95 < 1 
 96 < 1 def cat(repo, shas):
-97 < 1     """{blob sha: bytes} for `shas`, through one `cat-file --batch`."""
+97 < 2     """{blob sha: bytes} for `shas`, through one `cat-file --batch`."""
 98 < 1     shas = list(dict.fromkeys(shas))
 99 < 1     if not shas:
 100 < 1         return {}
@@ -114,7 +115,7 @@
 112 < 1 
 113 < 1 
 114 < 1 def listing(repo, tree):
-115 < 1     """{path: (mode, blob sha)} for every blob under `tree`."""
+115 < 2     """{path: (mode, blob sha)} for every blob under `tree`."""
 116 < 1     raw = git(repo, "ls-tree", "-r", "-z", tree)
 117 < 1     found = {}
 118 < 1     for rec in raw.split(b"\0"):
@@ -127,7 +128,7 @@
 125 < 1 
 126 < 1 
 127 < 1 def text_of(data):
-128 < 1     """A blob's bytes as text, or None when they are not UTF-8."""
+128 < 2     """A blob's bytes as text, or None when they are not UTF-8."""
 129 < 1     try:
 130 < 1         return data.decode("utf-8")
 131 < 1     except UnicodeDecodeError:
@@ -135,15 +136,19 @@
 133 < 1 
 134 < 1 
 135 < 1 class Memory:
-136 < 1     """One tree's weaves: the stored paths' states and sidecars, and the paths never woven."""
+136 < 2     """One tree's weaves: the stored paths' states and sidecars, and the paths never woven."""
 137 < 1 
 138 < 1     def __init__(self, tree, entry=None, via=None):
 139 < 1         self.tree, self.entry, self.via = tree, entry, via
-140 < 1         self.states = {}      # path -> Manyana state string
-141 < 1         self.auth = {}        # path -> {line key: set(label)}
-142 < 1         self.dels = {}        # path -> {line key: set(label)}
+141 > 1         self.states = {}
+142 < 1         self.auth = {}
+143 < 1         self.dels = {}
+140 < 2         self.states = {}      # path -> Manyana state string
+141 < 2         self.auth = {}        # path -> {line key: set(label)}
+142 < 2         self.dels = {}        # path -> {line key: set(label)}
 143 < 1         self.unwoven = set()
-144 < 1         self.dirty = set()    # paths changed since `entry` was read
+145 > 1         self.dirty = set()
+144 < 2         self.dirty = set()    # paths changed since `entry` was read
 145 < 1 
 146 < 1     def summary(self):
 147 < 1         return {"memory": True, "tree": self.tree, "via": self.via, "stored": len(self.states), "unwoven": len(self.unwoven)}
@@ -163,7 +168,7 @@
 161 < 1 
 162 < 1 
 163 < 1 def load(repo, entry):
-164 < 1     """The Memory an entry commit holds."""
+164 < 2     """The Memory an entry commit holds."""
 165 < 1     blobs = listing(repo, tree_of(repo, entry))
 166 < 1     data = cat(repo, [sha for _, sha in blobs.values()])
 167 < 1     meta = json.loads(data[blobs["meta.json"][1]])
@@ -182,12 +187,13 @@
 180 < 1 
 181 < 1 
 182 < 1 def verify(repo, mem):
-183 < 1     """The stored paths whose visible text is not git's text at the Memory's tree."""
+183 < 2     """The stored paths whose visible text is not git's text at the Memory's tree."""
 184 < 1     at = listing(repo, mem.tree)
 185 < 1     data = cat(repo, [at[p][1] for p in mem.states if p in at])
 186 < 1     bad = []
 187 < 1     for p, state in mem.states.items():
-188 < 1         want = []   # absent at this tree: every line deleted
+189 > 1         want = []
+188 < 2         want = []   # absent at this tree: every line deleted
 189 < 1         if p in at:
 190 < 1             text = text_of(data[at[p][1]]) if at[p][0] in REGULAR else None
 191 < 1             if text is None:
@@ -200,8 +206,8 @@
 198 < 1 
 199 < 1 
 200 < 1 def replay(repo, mem, parent, commit):
-201 < 1     """Carry `mem` from `parent`'s tree to `commit`'s: each changed text file through the keeper's
-202 < 1     rewrite, authored `@c:<commit sha12>`. The one recipe by which a tree with no entry gets one."""
+201 < 2     """Carry `mem` from `parent`'s tree to `commit`'s: each changed text file through the keeper's
+202 < 2     rewrite, authored `@c:<commit sha12>`. The one recipe by which a tree with no entry gets one."""
 203 < 1     raw = git(repo, "diff-tree", "-r", "--no-renames", "--raw", "-z", parent, commit)
 204 < 1     parts = raw.split(b"\0")
 205 < 1     changes = []
@@ -211,7 +217,8 @@
 209 < 1     data = cat(repo, [s for _, om, nm, osha, nsha in changes for m, s in ((om, osha), (nm, nsha)) if m in REGULAR])
 210 < 1     label = "@c:" + commit[:12]
 211 < 1     keeper = W.Keeper()
-212 < 1     keeper.kauth[label], keeper.kdel[label] = mem.auth, mem.dels   # shared: the keeper's writes are the Memory's
+213 > 1     keeper.kauth[label], keeper.kdel[label] = mem.auth, mem.dels
+212 < 2     keeper.kauth[label], keeper.kdel[label] = mem.auth, mem.dels   # shared: the keeper's writes are the Memory's
 213 < 1     work = []
 214 < 1     for path, old_mode, new_mode, old_sha, new_sha in changes:
 215 < 1         if path in mem.unwoven:
@@ -245,8 +252,8 @@
 243 < 1 
 244 < 1 
 245 < 1 def write_entry(repo, mem, via):
-246 < 1     """Store `mem` as the entry for its tree and return the entry commit. The first entry for a
-247 < 1     tree is the only one: when one is already there it is returned and nothing is written."""
+246 < 2     """Store `mem` as the entry for its tree and return the entry commit. The first entry for a
+247 < 2     tree is the only one: when one is already there it is returned and nothing is written."""
 248 < 1     have = entries(repo)
 249 < 1     if mem.tree in have:
 250 < 1         return have[mem.tree]
@@ -278,8 +285,8 @@
 276 < 1 
 277 < 1 
 278 < 1 def resolve(repo, commit):
-279 < 1     """The Memory of `commit`'s tree: its entry, or one replayed from the nearest stored
-280 < 1     first-parent ancestor and stored. None when no ancestor has an entry (before genesis)."""
+279 < 2     """The Memory of `commit`'s tree: its entry, or one replayed from the nearest stored
+280 < 2     first-parent ancestor and stored. None when no ancestor has an entry (before genesis)."""
 281 < 1     have = entries(repo)
 282 < 1     if not have:
 283 < 1         return None
@@ -302,7 +309,8 @@
 300 < 1         raise Drift(mem.tree, bad)
 301 < 1     if not path:
 302 < 1         return mem
-303 < 1     chain = path[::-1]   # oldest first
+304 > 1     chain = path[::-1]
+303 < 2     chain = path[::-1]   # oldest first
 304 < 1     replay(repo, mem, chain[0] + "^", chain[0])
 305 < 1     for parent, child in zip(chain, chain[1:]):
 306 < 1         replay(repo, mem, parent, child)
@@ -314,22 +322,22 @@
 312 < 1 
 313 < 1 
 314 < 1 def genesis(repo, commit):
-315 < 1     """Begin the store: an empty entry at `commit`'s tree, where every path's weave is its text."""
+315 < 2     """Begin the store: an empty entry at `commit`'s tree, where every path's weave is its text."""
 316 < 1     mem = Memory(tree_of(repo, commit))
 317 < 1     write_entry(repo, mem, "genesis")
 318 < 1     return mem
 319 < 1 
 320 < 1 
 321 < 1 def union(into, other):
-322 < 1     """Take `other`'s labels into `into`: both are one path's {line key: set(label)}."""
+322 < 2     """Take `other`'s labels into `into`: both are one path's {line key: set(label)}."""
 323 < 1     for k, who in other.items():
 324 < 1         into.setdefault(k, set()).update(who)
 325 < 1 
 326 < 1 
 327 < 1 def settle(repo, commit, mem, via="run"):
-328 < 1     """Store `mem` as the entry of `commit`'s tree: the weaves a run (or a catch-up's join) ended on.
-329 < 1     A stored path that is not a regular UTF-8 file there becomes unwoven. Raises Drift, and stores
-330 < 1     nothing, when a stored path's visible text is not git's text at that tree."""
+328 < 2     """Store `mem` as the entry of `commit`'s tree: the weaves a run (or a catch-up's join) ended on.
+329 < 2     A stored path that is not a regular UTF-8 file there becomes unwoven. Raises Drift, and stores
+330 < 2     nothing, when a stored path's visible text is not git's text at that tree."""
 331 < 1     mem.tree = tree_of(repo, commit)
 332 < 1     at = listing(repo, mem.tree)
 333 < 1     data = cat(repo, [at[p][1] for p in mem.states if p in at and at[p][0] in REGULAR])
@@ -345,10 +353,10 @@
 343 < 1 
 344 < 1 
 345 < 1 def join(repo, run, onto):
-346 < 1     """The catch-up's merge. `run` is the run's own commit, whose entry the engine stored; `onto` is
-347 < 1     the moved main. Both weaves descend from the entry the run started on, so this is one
-348 < 1     `merge_states` per path that differs, with every line's identity kept: no text is diffed.
-349 < 1     Returns ({"joined": True, "conflicts", "files", "paths"}, Memory) or ({"joined": False, "reason"}, None)."""
+346 < 2     """The catch-up's merge. `run` is the run's own commit, whose entry the engine stored; `onto` is
+347 < 2     the moved main. Both weaves descend from the entry the run started on, so this is one
+348 < 2     `merge_states` per path that differs, with every line's identity kept: no text is diffed.
+349 < 2     Returns ({"joined": True, "conflicts", "files", "paths"}, Memory) or ({"joined": False, "reason"}, None)."""
 350 < 1     have = entries(repo)
 351 < 1     if tree_of(repo, run) not in have:
 352 < 1         return {"joined": False, "reason": "no-run-entry"}, None
@@ -367,12 +375,14 @@
 365 < 1         if theirs is None and p in at:
 366 < 1             text = text_of(data[at[p][1]]) if at[p][0] in REGULAR else None
 367 < 1             if text is None:
-368 < 1                 continue                      # not text on main: the catch-up's own byte rule decides it
+369 > 1                 continue
+368 < 2                 continue                      # not text on main: the catch-up's own byte rule decides it
 369 < 1             theirs = M.initial_state(text.split("\n"))
 370 < 1         mine = ours.states[p]
 371 < 1         decided.append(p)
 372 < 1         if theirs is None:
-373 < 1             new = mine                        # the run made this path
+374 > 1             new = mine
+373 < 2             new = mine                        # the run made this path
 374 < 1         elif theirs == mine:
 375 < 1             continue
 376 < 1         else:
@@ -393,9 +403,9 @@
 391 < 1 
 392 < 1 
 393 < 1 def sync(repo, remote="origin"):
-394 < 1     """Take in the remote's entries. Local entries whose trees the remote lacks are kept, re-parented
-395 < 1     onto the remote's tip; one whose tree the remote holds is dropped, and named in `forks` when the
-396 < 1     two differ. A local genesis is dropped once the remote has any entry: a store has one beginning."""
+394 < 2     """Take in the remote's entries. Local entries whose trees the remote lacks are kept, re-parented
+395 < 2     onto the remote's tip; one whose tree the remote holds is dropped, and named in `forks` when the
+396 < 2     two differ. A local genesis is dropped once the remote has any entry: a store has one beginning."""
 397 < 1     fetched = git(repo, "fetch", "-q", remote, "+%s:%s" % (REF, REMOTE_REF), ok=True)
 398 < 1     theirs = entries(repo, REMOTE_REF) if fetched is not None else {}
 399 < 1     tip = out(repo, "rev-parse", "--verify", "-q", REMOTE_REF, ok=True) if theirs else None
@@ -419,21 +429,21 @@
 417 < 1 
 418 < 1 
 419 < 1 def push(repo, remote="origin", tries=5):
-420 < 1     """Sync, then push the local entries without force; a refused push syncs and tries again."""
+420 < 2     """Sync, then push the local entries without force; a refused push syncs and tries again."""
 421 < 1     forks = []
 422 < 1     for _ in range(tries):
 423 < 1         forks += sync(repo, remote)["forks"]
 424 < 1         if forks:
-425 < 1             # this clone built a tree's weave the remote holds differently, so what it wove on top
-426 < 1             # of its own is not main's memory: keep the remote's and push nothing
+425 < 2             # this clone built a tree's weave the remote holds differently, so what it wove on top
+426 < 2             # of its own is not main's memory: keep the remote's and push nothing
 427 < 1             return {"pushed": False, "forks": forks}
 428 < 1         tip = out(repo, "rev-parse", "--verify", "-q", REF, ok=True)
 429 < 1         if not tip:
 430 < 1             return {"pushed": False, "forks": forks}
 431 < 1         if tip == out(repo, "rev-parse", "--verify", "-q", REMOTE_REF, ok=True):
 432 < 1             return {"pushed": True, "forks": forks}
-433 < 1         # the lease is the remote tip this clone last saw (none: the ref must not exist yet), so the
-434 < 1         # push lands only on the entries it was built on
+433 < 2         # the lease is the remote tip this clone last saw (none: the ref must not exist yet), so the
+434 < 2         # push lands only on the entries it was built on
 435 < 1         lease = "--force-with-lease=%s:%s" % (REF, out(repo, "rev-parse", "--verify", "-q", REMOTE_REF, ok=True) or "")
 436 < 1         if git(repo, "push", "-q", lease, remote, "%s:%s" % (REF, REF), ok=True) is not None:
 437 < 1             git(repo, "update-ref", REMOTE_REF, tip)
@@ -442,9 +452,9 @@
 440 < 1 
 441 < 1 
 442 < 1 def open_store(repo, commit, remote=None):
-443 < 1     """The Memory a run starts from at `commit`, or None when the commit is older than the store.
-444 < 1     With no store anywhere, begins one at `commit`; with a remote, a store begun here is pushed
-445 < 1     before it is used, so two sandboxes beginning at once end on one beginning."""
+443 < 2     """The Memory a run starts from at `commit`, or None when the commit is older than the store.
+444 < 2     With no store anywhere, begins one at `commit`; with a remote, a store begun here is pushed
+445 < 2     before it is used, so two sandboxes beginning at once end on one beginning."""
 446 < 1     if remote:
 447 < 1         sync(repo, remote)
 448 < 1     mem = resolve(repo, commit)

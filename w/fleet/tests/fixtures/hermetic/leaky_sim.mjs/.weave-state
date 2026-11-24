@@ -1,0 +1,35 @@
+0 < 2 /**
+1 < 2  * fleet/tests/fixtures/hermetic/leaky_sim.mjs — the probe's own red.
+2 < 2  *
+3 < 2  * A sim-shaped file that breaks all three of the hermetic rules at once, one
+4 < 2  * offence per rule: a spawn that inherits the parent's environment, a read of
+5 < 2  * an absolute path on the box, and a spawn of another `test_*.mjs`. It is never
+6 < 2  * collected (its name does not match `test_*.mjs`) and never executed — the
+7 < 2  * probe's sweep is a static read of this text, and it exists so the sweep is
+8 < 2  * shown to name what it claims to name.
+9 < 2  */
+10 < 2 
+11 < 1 import fs from 'node:fs'
+12 < 1 import { spawnSync } from 'node:child_process'
+13 < 1 
+14 < 1 import { simEnv } from '../../_helpers.mjs'
+15 < 1 
+16 < 2 // (1) An inheriting spawn: the environment is the parent's, so every fact of
+17 < 2 // the box reaches the child.
+18 < 1 export const inherits = () => spawnSync('bash', ['-c', 'true'], { env: { ...process.env } })
+19 < 1 
+20 < 2 // (2) An absolute read: a file the box's own setup installed, swallowed so the
+21 < 2 // leak is silent.
+22 < 1 export const reads = () => {
+23 < 1   try {
+24 < 1     return fs.readFileSync('/etc/fleet/planted.env', 'utf8')
+25 < 1   } catch {
+26 < 1     return ''
+27 < 1   }
+28 < 1 }
+29 < 1 
+30 < 2 // (3) A sibling-sim spawn: hermetic on the first rule and still a sim running
+31 < 2 // another sim, which is the bridge's job and not a sim's.
+32 < 1 export const runsSibling = () =>
+33 < 1   spawnSync(process.execPath, ['fleet/tests/test_fitness.mjs'], { env: simEnv() })
+34 < 1 

@@ -1,15 +1,15 @@
-0 < 1 /**
-1 < 1  * The sandbox-toolchain check: what a fresh sandbox can run, by name, and the
-2 < 1  * pure walk that names every `Run:` probe or `Check:` word it lacks. Pure — no
-3 < 1  * imports. `fleet/launch.mjs` calls `toolchainViolations` before any VM exists.
-4 < 1  */
-5 < 1 
-6 < 1 /**
-7 < 1  * The shell's own words — keywords and builtins — that stand at command
-8 < 1  * position without naming a program the sandbox must have. `probeWordsOf`
-9 < 1  * skips them; a `Run:` line's `test`, `echo` and `for` are bash's, not the
-10 < 1  * box's.
-11 < 1  */
+0 < 2 /**
+1 < 2  * The sandbox-toolchain check: what a fresh sandbox can run, by name, and the
+2 < 2  * pure walk that names every `Run:` probe or `Check:` word it lacks. Pure — no
+3 < 2  * imports. `fleet/launch.mjs` calls `toolchainViolations` before any VM exists.
+4 < 2  */
+5 < 2 
+6 < 2 /**
+7 < 2  * The shell's own words — keywords and builtins — that stand at command
+8 < 2  * position without naming a program the sandbox must have. `probeWordsOf`
+9 < 2  * skips them; a `Run:` line's `test`, `echo` and `for` are bash's, not the
+10 < 2  * box's.
+11 < 2  */
 12 < 1 const SHELL_WORDS = Object.freeze([
 13 < 1   'for', 'in', 'do', 'done', 'if', 'then', 'else', 'elif', 'fi', 'while', 'until',
 14 < 1   'case', 'esac', 'test', '[', '[[', 'export', 'set', 'cd', 'exit', 'return', 'read',
@@ -18,22 +18,22 @@
 17 < 1   'kill'
 18 < 1 ])
 19 < 1 
-20 < 1 /**
-21 < 1  * What a fresh sandbox can run, by name (#645). Two groups: what the exeuntu
-22 < 1  * image ships — `claude`, `gh`, `git`, `jq`, `python3`, `curl`, bash and the
-23 < 1  * coreutils — and the delta `fleet/setup-script.mjs` installs, exactly node
-24 < 1  * (with npm and npx), bun (with bunx), celld and pytest. A `Run:` probe or a
-25 < 1  * `Check:` line runs on that box under `timeout <s> bash -lc <line>`, so a
-26 < 1  * command word missing here exits 127 in its first second, after the plan was
-27 < 1  * pushed and a VM created; `toolchainViolations` refuses it on the laptop
-28 < 1  * instead, by name — never by language (the operator's shape, 2026-09-05).
-29 < 1  * A word this list lacks is a refusal until someone adds it here beside the
-30 < 1  * setup-script rung that installs it.
-31 < 1  */
+20 < 2 /**
+21 < 2  * What a fresh sandbox can run, by name (#645). Two groups: what the exeuntu
+22 < 2  * image ships — `claude`, `gh`, `git`, `jq`, `python3`, `curl`, bash and the
+23 < 2  * coreutils — and the delta `fleet/setup-script.mjs` installs, exactly node
+24 < 2  * (with npm and npx), bun (with bunx), celld and pytest. A `Run:` probe or a
+25 < 2  * `Check:` line runs on that box under `timeout <s> bash -lc <line>`, so a
+26 < 2  * command word missing here exits 127 in its first second, after the plan was
+27 < 2  * pushed and a VM created; `toolchainViolations` refuses it on the laptop
+28 < 2  * instead, by name — never by language (the operator's shape, 2026-09-05).
+29 < 2  * A word this list lacks is a refusal until someone adds it here beside the
+30 < 2  * setup-script rung that installs it.
+31 < 2  */
 32 < 1 export const SANDBOX_TOOLCHAIN = Object.freeze([
-33 < 1   // the setup script's delta
+33 < 2   // the setup script's delta
 34 < 1   'node', 'npm', 'npx', 'bun', 'bunx', 'celld', 'python3', 'pytest',
-35 < 1   // the image
+35 < 2   // the image
 36 < 1   'claude', 'gh', 'git', 'jq', 'curl', 'bash', 'sh', 'env', 'sudo', 'install',
 37 < 1   'apt-get', 'timeout', 'xargs', 'find', 'grep', 'egrep', 'fgrep', 'sed', 'awk', 'tr',
 38 < 1   'cut', 'sort', 'uniq', 'head', 'tail', 'wc', 'cat', 'tee', 'diff', 'cmp', 'comm',
@@ -46,27 +46,27 @@
 45 < 1   'nproc', 'free', 'ss', 'nc', 'ssh'
 46 < 1 ])
 47 < 1 
-48 < 1 /**
-49 < 1  * The command words of one shell line: the first word of the line and of
-50 < 1  * every segment after `|`, `||`, `&&`, `;`, `$(` or `(`, and the word after
-51 < 1  * each of `do`, `then`, `else`, `elif` — skipping `!`, a `NAME=value`
-52 < 1  * assignment and every `SHELL_WORDS` entry, and dropping a word that carries
-53 < 1  * a `/` (a path in the target, not a program by name) or opens with `$`, a
-54 < 1  * quote, `-` or a digit (an expansion, a string, a flag, a redirection).
-55 < 1  * Quote-aware: an operator inside a single- or double-quoted span splits
-56 < 1  * nothing (`grep -E "a|b"` names one program), and a `$(` inside double
-57 < 1  * quotes still opens a segment, because bash runs what is inside it.
-58 < 1  * Duplicates are kept; the caller deduplicates per task.
-59 < 1  */
+48 < 2 /**
+49 < 2  * The command words of one shell line: the first word of the line and of
+50 < 2  * every segment after `|`, `||`, `&&`, `;`, `$(` or `(`, and the word after
+51 < 2  * each of `do`, `then`, `else`, `elif` — skipping `!`, a `NAME=value`
+52 < 2  * assignment and every `SHELL_WORDS` entry, and dropping a word that carries
+53 < 2  * a `/` (a path in the target, not a program by name) or opens with `$`, a
+54 < 2  * quote, `-` or a digit (an expansion, a string, a flag, a redirection).
+55 < 2  * Quote-aware: an operator inside a single- or double-quoted span splits
+56 < 2  * nothing (`grep -E "a|b"` names one program), and a `$(` inside double
+57 < 2  * quotes still opens a segment, because bash runs what is inside it.
+58 < 2  * Duplicates are kept; the caller deduplicates per task.
+59 < 2  */
 60 < 1 export function probeWordsOf (line) {
 61 < 1   const text = String(line ?? '')
-62 < 1   // Segments: split on the operators outside quotes, and on `$(` outside
-63 < 1   // single quotes; each segment is a list of whitespace-split tokens with
-64 < 1   // quoted spans kept whole.
+62 < 2   // Segments: split on the operators outside quotes, and on `$(` outside
+63 < 2   // single quotes; each segment is a list of whitespace-split tokens with
+64 < 2   // quoted spans kept whole.
 65 < 1   const segments = [[]]
 66 < 1   let token = ''
 67 < 1   let quote = null
-68 < 1   // The quote state to restore when a `$(` … `)` substitution closes.
+68 < 2   // The quote state to restore when a `$(` … `)` substitution closes.
 69 < 1   const substitutions = []
 70 < 1   const endToken = () => { if (token !== '') { segments[segments.length - 1].push(token); token = '' } }
 71 < 1   const newSegment = () => { endToken(); segments.push([]) }
@@ -117,13 +117,13 @@
 116 < 1   return words
 117 < 1 }
 118 < 1 
-119 < 1 /**
-121 > 1  * Every command word of every task's `proofRuns` in `compiled.payload.tasks`, and
+119 < 2 /**
+121 > 2  * Every command word of every task's `proofRuns` in `compiled.payload.tasks`, and
 120 < 2  * Every command word of every task's `proofRuns` across `compiled.waves`, and
-121 < 1  * of every `compiled.payload.checks[].cmd` (task `check`), that
-122 < 1  * `SANDBOX_TOOLCHAIN` lacks — one `{ task, word, cmd }` per (task, word), in
-123 < 1  * document order. Pure; empty means every probe and check can run on the box.
-124 < 1  */
+121 < 2  * of every `compiled.payload.checks[].cmd` (task `check`), that
+122 < 2  * `SANDBOX_TOOLCHAIN` lacks — one `{ task, word, cmd }` per (task, word), in
+123 < 2  * document order. Pure; empty means every probe and check can run on the box.
+124 < 2  */
 125 < 1 export function toolchainViolations (compiled) {
 126 < 1   const out = []
 127 < 1   const seen = new Set()

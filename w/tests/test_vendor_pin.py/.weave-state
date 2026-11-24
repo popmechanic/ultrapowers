@@ -1,0 +1,45 @@
+0 < 2 """The vendored kernel (Manyana) is pinned: its tracked file list and a digest
+1 < 2 over those files' bytes are frozen here, so a vendor file that is added,
+2 < 2 removed or changed is caught. `vendor/manyana.py` is never edited; re-vendoring
+3 < 2 updates `FROZEN_VENDOR_DIGEST` in the same commit (see `vendor/PROVENANCE.md`).
+4 < 2 """
+5 < 1 import hashlib
+6 < 1 import os
+7 < 1 import subprocess
+8 < 1 from pathlib import Path
+9 < 1 
+10 < 1 REPO_ROOT = Path(__file__).resolve().parents[1]
+11 < 1 VENDOR_DIR = "skills/ultrapowers/kernel/vendor"
+12 < 1 
+13 < 1 GIT_ENV = {
+14 < 1     **os.environ,
+15 < 1     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_SYSTEM": "/dev/null",
+16 < 1 }
+17 < 1 
+18 < 1 FROZEN_VENDOR_FILES = [
+19 < 1     "skills/ultrapowers/kernel/vendor/PROVENANCE.md",
+20 < 1     "skills/ultrapowers/kernel/vendor/manyana.py",
+21 < 1 ]
+22 < 1 FROZEN_VENDOR_DIGEST = \
+23 < 1     "7b3d33893b21d39e8c05c63b72cfb10b605b2a0f198692d46c5e71a3149276cb"
+24 < 1 
+25 < 1 
+26 < 1 def test_vendored_kernel_is_pinned():
+27 < 1     listed = subprocess.run(["git", "-C", str(REPO_ROOT), "ls-files", "-z",
+28 < 1                              "--", VENDOR_DIR], capture_output=True,
+29 < 1                             text=True, env=GIT_ENV)
+30 < 1     assert listed.returncode == 0, (
+31 < 1         "could not list the vendored kernel:\n%s" % listed.stderr)
+32 < 1     files = sorted(p for p in listed.stdout.split("\0") if p)
+33 < 1     assert files == FROZEN_VENDOR_FILES, (
+34 < 1         "the vendored kernel's file list changed, got %r" % files)
+35 < 1 
+36 < 1     digest = hashlib.sha256()
+37 < 1     for rel in files:
+38 < 1         blob = (REPO_ROOT / rel).read_bytes()
+39 < 1         digest.update(("%d\0%s\0%d\0" % (len(rel), rel, len(blob))).encode())
+40 < 1         digest.update(blob)
+41 < 1     assert digest.hexdigest() == FROZEN_VENDOR_DIGEST, (
+42 < 1         "the vendored kernel's bytes changed (%s), and "
+43 < 1         "`vendor/manyana.py` is never edited" % digest.hexdigest())
+44 < 1 

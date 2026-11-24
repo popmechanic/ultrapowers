@@ -1,55 +1,55 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_doctor_claude.mjs — the exam for "The doctor's claude row
-2 < 1  * carries the window reading" (#1114 desired state 3).
-3 < 1  *
-4 < 1  * `doctor()` gains one more read beside the token status read: the same
-5 < 1  * `claude-token.mjs` tool invoked `usage --json --no-rotate` (plus
-6 < 1  * `--account <account>` when one is configured), whose first row answers the
-7 < 1  * account's seven-day and five-hour usage windows. `claudeRow` appends that
-8 < 1  * reading to the `claude` row's `detail` — after the existing
-9 < 1  * "`claude-max` carries the bearer at the edge; <token status>" text — in
-10 < 1  * both the `ok` and `missing` outcomes, and leaves `status` exactly as it was
-11 < 1  * decided before this read existed (a bearer-carrying `claude-max` in
-12 < 1  * `integrations list --json` is `ok`).
-13 < 1  *
-14 < 1  * Legs, each naming the Machine clause it comes from:
-15 < 1  *
-16 < 1  *   (a) [M1] with `account: 'acct'` and the usage command answered with one
-17 < 1  *       `unread: false` row: exactly one recorded command ends
-18 < 1  *       `usage --json --account acct --no-rotate`, and the `claude` row's
-19 < 1  *       `detail` ends with the four-value window suffix built from that row,
-20 < 1  *       `status` `ok` under a bearer-carrying `claude-max`.
-21 < 1  *   (b) [M2] the usage command answered with a non-zero code: `detail` ends
-22 < 1  *       `; usage unread — usage answered code 1`; answered with a row
-23 < 1  *       `{ unread: true, reason: 'x' }`: `detail` ends
-24 < 1  *       `; usage unread — x`. Both `status` `ok`.
-25 < 1  *   (c) [M3] with `account` null, the recorded command ends
-26 < 1  *       `usage --json --no-rotate` and carries no `--account`.
-27 < 1  *   (d) [M4] `skills/ultrapowers/references/first-run.md` §claude says the
-28 < 1  *       row carries the two window readings and that a read never rotates
-29 < 1  *       the token, checked with the task's own `Run:` guard.
-30 < 1  *
-31 < 1  * (a)-(c) drive `doctor({ config, exec, configKeys, account })` in-process,
-32 < 1  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
-33 < 1  * by spaces) for every other read `doctor()` issues (its `ssh exe.dev
-34 < 1  * <remote>` reads, read straight off `fleet/doctor.mjs`'s own `READS` and
-35 < 1  * the listing), answering `integrations list --json` with a
-36 < 1  * `claude-max` entry that carries the bearer (so the `claude` row's `status`
-37 < 1  * is `ok` before this read exists) and everything unmatched — including every
-38 < 1  * `help <verb>` read `verb-drift` issues — with `{ code: 1, stdout: '' }`.
-39 < 1  * Only the other rows' statuses are left unasserted, per the task's own
-40 < 1  * instruction; `claudeRow`'s `status` is asserted directly because M1/M2 both
-41 < 1  * turn on it staying unchanged.
-42 < 1  *
-43 < 1  * The exam assumes `doctor.mjs` is changed exactly as the task's Context
-44 < 1  * describes: one more read (`READS.usage`, the same account-suffix rule as
-45 < 1  * the token read) threaded into `claudeRow` as a third argument, and that the
-46 < 1  * account suffix (when present) does not simply get appended after
-47 < 1  * `--no-rotate` — M1's exact wording, `--account acct --no-rotate`, is
-48 < 1  * asserted by string suffix rather than assumed from the Context's looser
-49 < 1  * "plus `--account <wantAccount>`" phrasing.
-50 < 1  */
-51 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/test_doctor_claude.mjs — the exam for "The doctor's claude row
+2 < 2  * carries the window reading" (#1114 desired state 3).
+3 < 2  *
+4 < 2  * `doctor()` gains one more read beside the token status read: the same
+5 < 2  * `claude-token.mjs` tool invoked `usage --json --no-rotate` (plus
+6 < 2  * `--account <account>` when one is configured), whose first row answers the
+7 < 2  * account's seven-day and five-hour usage windows. `claudeRow` appends that
+8 < 2  * reading to the `claude` row's `detail` — after the existing
+9 < 2  * "`claude-max` carries the bearer at the edge; <token status>" text — in
+10 < 2  * both the `ok` and `missing` outcomes, and leaves `status` exactly as it was
+11 < 2  * decided before this read existed (a bearer-carrying `claude-max` in
+12 < 2  * `integrations list --json` is `ok`).
+13 < 2  *
+14 < 2  * Legs, each naming the Machine clause it comes from:
+15 < 2  *
+16 < 2  *   (a) [M1] with `account: 'acct'` and the usage command answered with one
+17 < 2  *       `unread: false` row: exactly one recorded command ends
+18 < 2  *       `usage --json --account acct --no-rotate`, and the `claude` row's
+19 < 2  *       `detail` ends with the four-value window suffix built from that row,
+20 < 2  *       `status` `ok` under a bearer-carrying `claude-max`.
+21 < 2  *   (b) [M2] the usage command answered with a non-zero code: `detail` ends
+22 < 2  *       `; usage unread — usage answered code 1`; answered with a row
+23 < 2  *       `{ unread: true, reason: 'x' }`: `detail` ends
+24 < 2  *       `; usage unread — x`. Both `status` `ok`.
+25 < 2  *   (c) [M3] with `account` null, the recorded command ends
+26 < 2  *       `usage --json --no-rotate` and carries no `--account`.
+27 < 2  *   (d) [M4] `skills/ultrapowers/references/first-run.md` §claude says the
+28 < 2  *       row carries the two window readings and that a read never rotates
+29 < 2  *       the token, checked with the task's own `Run:` guard.
+30 < 2  *
+31 < 2  * (a)-(c) drive `doctor({ config, exec, configKeys, account })` in-process,
+32 < 2  * over a stub `exec(cmd, argv)` keyed on the call's command and argv (joined
+33 < 2  * by spaces) for every other read `doctor()` issues (its `ssh exe.dev
+34 < 2  * <remote>` reads, read straight off `fleet/doctor.mjs`'s own `READS` and
+35 < 2  * the listing), answering `integrations list --json` with a
+36 < 2  * `claude-max` entry that carries the bearer (so the `claude` row's `status`
+37 < 2  * is `ok` before this read exists) and everything unmatched — including every
+38 < 2  * `help <verb>` read `verb-drift` issues — with `{ code: 1, stdout: '' }`.
+39 < 2  * Only the other rows' statuses are left unasserted, per the task's own
+40 < 2  * instruction; `claudeRow`'s `status` is asserted directly because M1/M2 both
+41 < 2  * turn on it staying unchanged.
+42 < 2  *
+43 < 2  * The exam assumes `doctor.mjs` is changed exactly as the task's Context
+44 < 2  * describes: one more read (`READS.usage`, the same account-suffix rule as
+45 < 2  * the token read) threaded into `claudeRow` as a third argument, and that the
+46 < 2  * account suffix (when present) does not simply get appended after
+47 < 2  * `--no-rotate` — M1's exact wording, `--account acct --no-rotate`, is
+48 < 2  * asserted by string suffix rather than assumed from the Context's looser
+49 < 2  * "plus `--account <wantAccount>`" phrasing.
+50 < 2  */
+51 < 2 
 52 < 1 import assert from 'node:assert/strict'
 53 < 1 import fs from 'node:fs'
 54 < 1 import path from 'node:path'
@@ -60,19 +60,19 @@
 59 < 1 const FLEET_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 60 < 1 const REPO_ROOT = path.resolve(FLEET_DIR, '..')
 61 < 1 
-62 < 1 // ── the exec stub every leg shares ──────────────────────────────────────────
-63 < 1 
-64 < 1 /** `integrations list --json`: one entry, `claude-max`, carrying the bearer —
-65 < 1  *  so the `claude` row's `status` is `ok` under every leg, letting M1/M2's
-66 < 1  *  "status is unchanged" claim be checked directly. */
+62 < 2 // ── the exec stub every leg shares ──────────────────────────────────────────
+63 < 2 
+64 < 2 /** `integrations list --json`: one entry, `claude-max`, carrying the bearer —
+65 < 2  *  so the `claude` row's `status` is `ok` under every leg, letting M1/M2's
+66 < 2  *  "status is unchanged" claim be checked directly. */
 67 < 1 const LIST_STDOUT = JSON.stringify([
 68 < 1   { name: 'claude-max', config_summary: 'Authorization:Bearer xyz' }
 69 < 1 ])
 70 < 1 
-71 < 1 /** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
-72 < 1  *  the command and its argv joined by spaces. */
+71 < 2 /** One call on the seam `exec(cmd, argv)`, as the stub keys and records it:
+72 < 2  *  the command and its argv joined by spaces. */
 73 < 1 const keyOf = (cmd, argv = []) => [cmd, ...argv].join(' ')
-74 < 1 /** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
+74 < 2 /** A lobby read, `exec('ssh', ['exe.dev', remote])`, as the stub keys it. */
 75 < 1 const lobbyKey = (remote) => keyOf('ssh', ['exe.dev', remote])
 76 < 1 
 77 < 1 const KNOWN = new Map([
@@ -84,13 +84,13 @@
 82 < 2   [lobbyKey('ls kata-hub --json'), { code: 1, stdout: '' }]
 83 < 1 ])
 84 < 1 
-85 < 1 /**
-86 < 1  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
-87 < 1  * `keyOf`), answering the known reads above, answering any call containing
-88 < 1  * `usage --json` with `usageAnswer`, and answering everything else — the
-89 < 1  * token/accounts reads and every `verb-drift` `help <verb>` read included —
-90 < 1  * with `{ code: 1, stdout: '' }`.
-91 < 1  */
+85 < 2 /**
+86 < 2  * Builds an `exec(cmd, argv)` stub recording every call it is asked (as
+87 < 2  * `keyOf`), answering the known reads above, answering any call containing
+88 < 2  * `usage --json` with `usageAnswer`, and answering everything else — the
+89 < 2  * token/accounts reads and every `verb-drift` `help <verb>` read included —
+90 < 2  * with `{ code: 1, stdout: '' }`.
+91 < 2  */
 92 < 1 function makeExec (usageAnswer) {
 93 < 1   const calls = []
 94 < 1   const exec = async (command, argv) => {
@@ -106,7 +106,7 @@
 104 < 1 
 105 < 1 const claudeRowOf = (result) => result.rows.find((r) => r.id === 'claude')
 106 < 1 
-107 < 1 // ── (a) [M1] account set, usage answered with an unread:false row ──────────
+107 < 2 // ── (a) [M1] account set, usage answered with an unread:false row ──────────
 108 < 1 {
 109 < 1   const row = {
 110 < 1     unread: false,
@@ -133,7 +133,7 @@
 131 < 1   assert.equal(claude.status, 'ok', '(a) [M1] status is ok under a bearer-carrying claude-max')
 132 < 1 }
 133 < 1 
-134 < 1 // ── (b) [M2] usage unreadable — a bad exit, then an unread row ─────────────
+134 < 2 // ── (b) [M2] usage unreadable — a bad exit, then an unread row ─────────────
 135 < 1 {
 136 < 1   const exec = makeExec({ code: 1, stdout: 'usage: not authorized\n' })
 137 < 1   const result = await doctor({ config: {}, exec, configKeys: null, account: 'acct' })
@@ -155,7 +155,7 @@
 153 < 1   assert.equal(claude.status, 'ok', '(b) [M2] status is unchanged (still ok) on an unread row')
 154 < 1 }
 155 < 1 
-156 < 1 // ── (c) [M3] account null — no --account clause ─────────────────────────────
+156 < 2 // ── (c) [M3] account null — no --account clause ─────────────────────────────
 157 < 1 {
 158 < 1   const exec = makeExec({ code: 1, stdout: '' })
 159 < 1   await doctor({ config: {}, exec, configKeys: null, account: null })
@@ -170,10 +170,10 @@
 168 < 1   )
 169 < 1 }
 170 < 1 
-171 < 1 // ── (d) [M4] first-run.md §claude, via the task's own Run: guard ───────────
+171 < 2 // ── (d) [M4] first-run.md §claude, via the task's own Run: guard ───────────
 172 < 1 {
-173 < 1   // Read in-process, never a spawned shell: the hermetic rule
-174 < 1   // (test_sims_are_hermetic.mjs M2) wants every spawn under simEnv.
+173 < 2   // Read in-process, never a spawned shell: the hermetic rule
+174 < 2   // (test_sims_are_hermetic.mjs M2) wants every spawn under simEnv.
 175 < 1   const doc = fs.readFileSync(path.join(REPO_ROOT, 'skills/ultrapowers/references/first-run.md'), 'utf8')
 176 < 1   const start = doc.indexOf('\n## claude\n')
 177 < 1   assert.ok(start !== -1, '(d) [M4] first-run.md carries a `## claude` section')

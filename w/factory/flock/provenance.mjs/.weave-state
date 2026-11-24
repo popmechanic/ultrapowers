@@ -1,21 +1,21 @@
-0 < 1 // A run's provenance (#1404): what no other source holds. Git has the text and the plan has each
-1 < 1 // task's Files and Claim, so neither is copied; this names which task wrote every changed line of
-2 < 1 // the landed snapshot and the surprises. (The coverage pass that named the changed code no probe
-3 < 1 // ran was retired unread, #1442.)
-4 < 1 //
-5 < 1 // buildProvenance({ landed, blame, events, lost }) is pure:
-6 < 1 //   landed    {path: text} of the landed snapshot
-7 < 1 //   blame     the weave's `blame` map: {path: [label per landed line]}: `base`, a task label `A.2`,
-8 < 1 //             labels joined `|` when several wrote identical text, or a label with no dot (no task)
-9 < 1 //   events    events.jsonl rows
-10 < 1 //   lost      the snapshot's `survival` list [{path, author, by, lines}]
-11 < 1 // answers { hunks, exceptions }. The final empty line of a text ending in a newline is not a hunk line.
-12 < 1 
+0 < 2 // A run's provenance (#1404): what no other source holds. Git has the text and the plan has each
+1 < 2 // task's Files and Claim, so neither is copied; this names which task wrote every changed line of
+2 < 2 // the landed snapshot and the surprises. (The coverage pass that named the changed code no probe
+3 < 2 // ran was retired unread, #1442.)
+4 < 2 //
+5 < 2 // buildProvenance({ landed, blame, events, lost }) is pure:
+6 < 2 //   landed    {path: text} of the landed snapshot
+7 < 2 //   blame     the weave's `blame` map: {path: [label per landed line]}: `base`, a task label `A.2`,
+8 < 2 //             labels joined `|` when several wrote identical text, or a label with no dot (no task)
+9 < 2 //   events    events.jsonl rows
+10 < 2 //   lost      the snapshot's `survival` list [{path, author, by, lines}]
+11 < 2 // answers { hunks, exceptions }. The final empty line of a text ending in a newline is not a hunk line.
+12 < 2 
 13 < 1 const cmp = (a, b) => (a < b ? -1 : a > b ? 1 : 0)
 14 < 2 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 15 < 1 
-16 < 1 // a label's task: the text after its dot; several labels give their tasks joined `|` in label
-17 < 1 // order; `base` or any label with no dot answers null
+16 < 2 // a label's task: the text after its dot; several labels give their tasks joined `|` in label
+17 < 2 // order; `base` or any label with no dot answers null
 18 < 1 function taskOf (label) {
 19 < 1   const parts = String(label).split('|')
 20 < 1   if (parts.some((l) => l.indexOf('.') < 0)) return null
@@ -24,7 +24,7 @@
 23 < 1 
 24 < 1 const span = (a, b) => (a === b ? String(a) : `${a}-${b}`)
 25 < 1 
-26 < 1 // runs of consecutive lines (1-based) whose key is equal and not undefined, in line order
+26 < 2 // runs of consecutive lines (1-based) whose key is equal and not undefined, in line order
 27 < 1 function runs (keys) {
 28 < 1   const out = []
 29 < 1   let cur = null
@@ -54,7 +54,7 @@
 53 < 1   const contested = []
 54 < 1   for (const w of rows.filter((e) => e.kind === 'peer:rewrite')) {
 55 < 1     if (!(w.path in (landed || {})) || !Array.isArray(w.after) || !w.after.length) continue
-56 < 1     // only the writer's own lines count: a rewrite landed when every `after` line is among them
+56 < 2     // only the writer's own lines count: a rewrite landed when every `after` line is among them
 57 < 1     const text = linesOf(w.path), labels = blame[w.path] || [], own = `${w.agent}.${w.task}`
 58 < 1     const mine = text.map((l, i) => (String(labels[i] ?? '').split('|').includes(own) ? l : undefined))
 59 < 1     if (!w.after.every((l) => mine.includes(l))) continue
@@ -78,17 +78,17 @@
 76 < 1   return { hunks, exceptions: [...contested, ...lostRows, ...ordered, ...foreign] }
 77 < 1 }
 78 < 1 
-79 < 1 // remapProvenance(prov, texts) is pure: texts {path: {from, to}} gives a path's text in the run's
-80 < 1 // commit and in the caught-up commit. Every line span of such a path (in hunks and the
-81 < 1 // exceptions' `lines` span or `line`) is carried line by line through the longest common subsequence
-82 < 1 // of the two texts' lines; a line with no match drops, and each mapped set is cut back into runs of
-83 < 1 // consecutive lines (an entry whose lines all drop disappears). A side may be null for a file absent
-84 < 1 // there: with `to` null every entry of that path drops. Other paths and keys are kept.
+79 < 2 // remapProvenance(prov, texts) is pure: texts {path: {from, to}} gives a path's text in the run's
+80 < 2 // commit and in the caught-up commit. Every line span of such a path (in hunks and the
+81 < 2 // exceptions' `lines` span or `line`) is carried line by line through the longest common subsequence
+82 < 2 // of the two texts' lines; a line with no match drops, and each mapped set is cut back into runs of
+83 < 2 // consecutive lines (an entry whose lines all drop disappears). A side may be null for a file absent
+84 < 2 // there: with `to` null every entry of that path drops. Other paths and keys are kept.
 85 < 1 const SPAN = /^\d+(-\d+)?$/
 86 < 1 
-87 < 1 // old line (1-based) -> new line (1-based), for the lines a longest common subsequence keeps; a
-88 < 1 // null side (the file is absent there) keeps none. Myers' diff with its middle snake, so memory
-89 < 1 // stays linear in the two lengths and time is O((n+m)·D).
+87 < 2 // old line (1-based) -> new line (1-based), for the lines a longest common subsequence keeps; a
+88 < 2 // null side (the file is absent there) keeps none. Myers' diff with its middle snake, so memory
+89 < 2 // stays linear in the two lengths and time is O((n+m)·D).
 90 < 1 function lineMap (from, to) {
 91 < 1   const map = new Map()
 92 < 1   if (from === null || from === undefined || to === null || to === undefined) return map
@@ -104,7 +104,7 @@
 102 < 1     for (let x = x0, y = y0; x < x1; x++, y++) map.set(a0 + x + 1, b0 + y + 1)
 103 < 1     match(a0 + x1, a1, b0 + y1, b1)
 104 < 1   }
-105 < 1   // the snake (start and end, relative to a0 and b0) a shortest edit path crosses halfway
+105 < 2   // the snake (start and end, relative to a0 and b0) a shortest edit path crosses halfway
 106 < 1   const middleSnake = (a0, a1, b0, b1) => {
 107 < 1     const N = a1 - a0, M = b1 - b0, delta = N - M, odd = (delta & 1) !== 0
 108 < 1     const max = Math.ceil((N + M) / 2), off = max + 1
@@ -135,7 +135,7 @@
 133 < 1   return map
 134 < 1 }
 135 < 1 
-136 < 1 // a span through the map, as the spans of its surviving lines' runs
+136 < 2 // a span through the map, as the spans of its surviving lines' runs
 137 < 1 function mapSpan (text, map) {
 138 < 1   const [x, y] = String(text).split('-').map(Number)
 139 < 1   const got = []

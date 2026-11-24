@@ -1,0 +1,33 @@
+0 < 2 // What a story step changed: every table cell and store value whose JSON differs
+1 < 2 // between the state before the step and the state after it.
+2 < 1 import type {Content} from './probe';
+3 < 1 
+4 < 1 export type DiffEntry = {
+5 < 1   tbl: string; row: string; cell: string;
+6 < 1   from: string | null; to: string | null;
+7 < 1   diff_type: 'added' | 'removed' | 'modified';
+8 < 1 };
+9 < 1 
+10 < 1 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
+11 < 1 const keys = (a?: object, b?: object) => [...new Set([...Object.keys(a ?? {}), ...Object.keys(b ?? {})])].sort(cmp);
+12 < 1 const str = (o: Record<string, unknown> | undefined, k: string) =>
+13 < 1   o && Object.prototype.hasOwnProperty.call(o, k) ? JSON.stringify(o[k]) ?? null : null;
+14 < 1 
+15 < 1 export function stepDiff(before: Content, after: Content): DiffEntry[] {
+16 < 1   const out: DiffEntry[] = [];
+17 < 1   const add = (tbl: string, row: string, cell: string, from: string | null, to: string | null) => {
+18 < 1     if (from === to) return;
+19 < 1     out.push({tbl, row, cell, from, to, diff_type: from === null ? 'added' : to === null ? 'removed' : 'modified'});
+20 < 1   };
+21 < 1   const [bt, bv] = before, [at, av] = after;
+22 < 1   for (const name of keys(bv, av)) add('$values', '', name, str(bv, name), str(av, name));
+23 < 1   for (const tbl of keys(bt, at)) {
+24 < 1     for (const row of keys(bt[tbl], at[tbl])) {
+25 < 1       const b = bt[tbl]?.[row] as Record<string, unknown> | undefined;
+26 < 1       const a = at[tbl]?.[row] as Record<string, unknown> | undefined;
+27 < 1       for (const cell of keys(b, a)) add(tbl, row, cell, str(b, cell), str(a, cell));
+28 < 1     }
+29 < 1   }
+30 < 1   return out;
+31 < 1 }
+32 < 1 

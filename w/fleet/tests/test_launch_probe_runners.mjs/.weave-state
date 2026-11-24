@@ -1,30 +1,30 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_launch_probe_runners.mjs — the launcher refuses a plan whose
-2 < 1  * `Run:` probe or `Check:` line calls a program the sandbox does not have,
-3 < 1  * before anything is pushed (#645, the 2026-09-22 plan).
-4 < 1  *
-5 < 1  * Three pure exports of `fleet/toolchain.mjs` and one launch:
-6 < 1  *
-7 < 1  *   (a) [M1] `probeWordsOf(line)` answers the command words of one shell
-8 < 1  *       line — the two example lines the plan pins, a regex alternation inside
-9 < 1  *       quotes (one program, not two), and a `$(…)` inside double quotes.
-10 < 1  *   (b) [M2] `SANDBOX_TOOLCHAIN` is frozen, carries the words the plan names
-11 < 1  *       and no duplicate; `toolchainViolations(compiled)` answers `1:cargo`,
-12 < 1  *       `2:go`, `check:make` in that order over the plan's fixture, and `[]`
-13 < 1  *       over a plan whose probes only use toolchain words.
-14 < 1  *   (c) [M3] a launch of a plan whose one task carries `proofRuns: ["cargo
-15 < 1  *       test"]` throws a `Refusal` (exit 2) whose message names `task 1`,
-16 < 1  *       `'cargo'` and the line, and the recorded exec calls carry no `git
-17 < 1  *       push`, no `ssh exe.dev new` and no `billing plan` — nothing was
-18 < 1  *       pushed and no lobby verb was issued.
-19 < 1  *
-20 < 1  * Hermetic in the shape of `test_launch_plan_path.mjs`: a stubbed lobby
-21 < 1  * (`makeExec`), a real temporary target with a bare origin (`makeTargetRepo`),
-22 < 1  * the compiler's fetch and every `python3` run stubbed. Imports only
-23 < 1  * `./_helpers.mjs` and `./_lobby_helpers.mjs` — a sim may not name a sibling
-24 < 1  * sim.
-25 < 1  */
-26 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/test_launch_probe_runners.mjs — the launcher refuses a plan whose
+2 < 2  * `Run:` probe or `Check:` line calls a program the sandbox does not have,
+3 < 2  * before anything is pushed (#645, the 2026-09-22 plan).
+4 < 2  *
+5 < 2  * Three pure exports of `fleet/toolchain.mjs` and one launch:
+6 < 2  *
+7 < 2  *   (a) [M1] `probeWordsOf(line)` answers the command words of one shell
+8 < 2  *       line — the two example lines the plan pins, a regex alternation inside
+9 < 2  *       quotes (one program, not two), and a `$(…)` inside double quotes.
+10 < 2  *   (b) [M2] `SANDBOX_TOOLCHAIN` is frozen, carries the words the plan names
+11 < 2  *       and no duplicate; `toolchainViolations(compiled)` answers `1:cargo`,
+12 < 2  *       `2:go`, `check:make` in that order over the plan's fixture, and `[]`
+13 < 2  *       over a plan whose probes only use toolchain words.
+14 < 2  *   (c) [M3] a launch of a plan whose one task carries `proofRuns: ["cargo
+15 < 2  *       test"]` throws a `Refusal` (exit 2) whose message names `task 1`,
+16 < 2  *       `'cargo'` and the line, and the recorded exec calls carry no `git
+17 < 2  *       push`, no `ssh exe.dev new` and no `billing plan` — nothing was
+18 < 2  *       pushed and no lobby verb was issued.
+19 < 2  *
+20 < 2  * Hermetic in the shape of `test_launch_plan_path.mjs`: a stubbed lobby
+21 < 2  * (`makeExec`), a real temporary target with a bare origin (`makeTargetRepo`),
+22 < 2  * the compiler's fetch and every `python3` run stubbed. Imports only
+23 < 2  * `./_helpers.mjs` and `./_lobby_helpers.mjs` — a sim may not name a sibling
+24 < 2  * sim.
+25 < 2  */
+26 < 2 
 27 < 1 import assert from 'node:assert/strict'
 28 < 1 import fs from 'node:fs'
 29 < 1 import path from 'node:path'
@@ -41,9 +41,9 @@
 40 < 1   `${leg} \`${name}\` must be exported by ${name === 'launch' ? 'fleet/launch.mjs' : 'fleet/toolchain.mjs'} — the task's Produces: names it`
 41 < 1 )
 42 < 1 
-43 < 1 // ══════════════════════════════════════════════════════════════════════════
-44 < 1 // (a) [M1] probeWordsOf
-45 < 1 // ══════════════════════════════════════════════════════════════════════════
+43 < 2 // ══════════════════════════════════════════════════════════════════════════
+44 < 2 // (a) [M1] probeWordsOf
+45 < 2 // ══════════════════════════════════════════════════════════════════════════
 46 < 1 {
 47 < 1   isFunction('(a) [M1]', 'probeWordsOf', probeWordsOf)
 48 < 1   assert.deepEqual(
@@ -74,9 +74,9 @@
 73 < 1   assert.deepEqual(probeWordsOf(''), [], '(a) [M1] an empty line answers []')
 74 < 1 }
 75 < 1 
-76 < 1 // ══════════════════════════════════════════════════════════════════════════
-77 < 1 // (b) [M2] SANDBOX_TOOLCHAIN and toolchainViolations
-78 < 1 // ══════════════════════════════════════════════════════════════════════════
+76 < 2 // ══════════════════════════════════════════════════════════════════════════
+77 < 2 // (b) [M2] SANDBOX_TOOLCHAIN and toolchainViolations
+78 < 2 // ══════════════════════════════════════════════════════════════════════════
 79 < 1 {
 80 < 1   isFunction('(b) [M2]', 'toolchainViolations', toolchainViolations)
 81 < 1   assert.ok(Array.isArray(SANDBOX_TOOLCHAIN) && Object.isFrozen(SANDBOX_TOOLCHAIN),
@@ -128,9 +128,9 @@
 115 < 2   assert.deepEqual(toolchainViolations({}), [], '(b) [M2] no waves, no checks: []')
 116 < 1 }
 117 < 1 
-118 < 1 // ══════════════════════════════════════════════════════════════════════════
-119 < 1 // (c) [M3] the launch refuses before the push and before any lobby verb
-120 < 1 // ══════════════════════════════════════════════════════════════════════════
+118 < 2 // ══════════════════════════════════════════════════════════════════════════
+119 < 2 // (c) [M3] the launch refuses before the push and before any lobby verb
+120 < 2 // ══════════════════════════════════════════════════════════════════════════
 121 < 1 {
 122 < 1   isFunction('(c) [M3]', 'launch', launch)
 123 < 1   const TARGET = 'acme/widgets'
@@ -142,8 +142,8 @@
 129 < 1   const CAPPED = { cpu: '6', memory: '8GB', evidence: EVIDENCE }
 130 < 1   const PLAN = '# a plan\n\nOne plan whose probe runs cargo.\n'
 131 < 1 
-132 < 1   // The compiled plan the stubbed parser answers: one task, one probe the
-133 < 1   // sandbox cannot run.
+132 < 2   // The compiled plan the stubbed parser answers: one task, one probe the
+133 < 2   // sandbox cannot run.
 134 < 1   const COMPILED = {
 136 > 1     tasks: [{ id: '1', title: 'task 1', files: ['src/a.rs'], wave: 1, proofRuns: ['cargo test'], proofRunClauses: [['M1']] }],
 137 < 1     dag_edges: [], width: 1, checks: [], bootstrapCmd: null
@@ -154,8 +154,8 @@
 139 < 2     dag_edges: [], pairs: [], checks: [], bootstrapCmd: null
 140 < 1   }
 141 < 1 
-142 < 1   // The evidence repository's URL goes to its own bare; every other github.com
-143 < 1   // URL, and `origin`, to the target's. No engine rule: the refusal comes first.
+142 < 2   // The evidence repository's URL goes to its own bare; every other github.com
+143 < 2   // URL, and `origin`, to the target's. No engine rule: the refusal comes first.
 144 < 1   const ws = launchWorkspace({
 145 < 1     prefix: 'fleet-launch-probe-runners-',
 146 < 1     originUrl: ORIGIN_URL,

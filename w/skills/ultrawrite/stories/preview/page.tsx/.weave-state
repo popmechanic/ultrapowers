@@ -1,10 +1,10 @@
-1 > 1 // The preview page: the app's own kit draws the one whole-page screen through
-2 < 1 // one Renderer over a store filled from the bundle's stories. At / the approved
-3 < 1 // spec (else ?v=<V>, else A); at /compare every whole-page version side by
-4 < 1 // side, each with a "Choose <V>" button; the chosen version (clicked here, else
-5 < 1 // the one whose spec equals the approved screen) reads "Chosen ✓" and is
-6 < 1 // outlined. Specs arrive over /ws and redraw in place; when the versions change
-7 < 1 // the pick clicked here is dropped. Plays run one at a time on the one shared store.
+1 > 2 // The preview page: the app's own kit draws the one whole-page screen through
+2 < 2 // one Renderer over a store filled from the bundle's stories. At / the approved
+3 < 2 // spec (else ?v=<V>, else A); at /compare every whole-page version side by
+4 < 2 // side, each with a "Choose <V>" button; the chosen version (clicked here, else
+5 < 2 // the one whose spec equals the approved screen) reads "Chosen ✓" and is
+6 < 2 // outlined. Specs arrive over /ws and redraw in place; when the versions change
+7 < 2 // the pick clicked here is dropped. Plays run one at a time on the one shared store.
 0 < 2 // The preview page: the app's own kit draws each piece's spec over a store
 1 < 2 // filled from the bundle's stories. At / each piece's approved spec (else
 2 < 2 // ?v=<V>, else A); at /compare every version side by side, each with a
@@ -56,7 +56,7 @@
 41 < 1 ]);
 42 < 1 document.title = `${bundle.title} — preview`;
 43 < 1 
-44 < 1 // Sample data: every step whose tool takes no row, once each, in story order.
+44 < 2 // Sample data: every step whose tool takes no row, once each, in story order.
 45 < 1 function fill(s: unknown) {
 46 < 1   const seen = new Set<string>();
 47 < 1   for (const story of bundle.stories ?? []) {
@@ -66,14 +66,15 @@
 51 < 1       const key = JSON.stringify([step.tool, step.args ?? {}]);
 52 < 1       if (seen.has(key)) continue;
 53 < 1       seen.add(key);
-54 < 1       try { tool.run(s, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
+55 > 1       try { tool.run(s, step.args ?? {}, null); } catch {}
+54 < 2       try { tool.run(s, step.args ?? {}, null); } catch { /* a refused step changes nothing */ }
 55 < 1     }
 56 < 1   }
 57 < 1 }
 58 < 1 fill(store);
 59 < 1 
-60 < 1 // On /compare each version gets its own store, filled the same way, so
-61 < 1 // acting in one version leaves the others' rows alone.
+60 < 2 // On /compare each version gets its own store, filled the same way, so
+61 < 2 // acting in one version leaves the others' rows alone.
 62 < 1 const viewer = () => ({staff: true, who: null});
 63 < 1 const sandboxes = new Map<string, {state: ReturnType<typeof tinybaseState>; tools: ReturnType<typeof bind>}>();
 64 < 1 function sandbox(key: string) {
@@ -109,13 +110,13 @@
 88 < 2   void fetch('/feedback', {method: 'POST', headers: {'content-type': 'application/json'}, body: JSON.stringify({kind: 'pick', chose: v})});
 89 < 1 }
 90 < 1 
-91 < 1 // The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
-92 < 1 // copy of the chosen version, so equal JSON names it.
+91 < 2 // The recorded pick: `arrange.ts --pick` writes the approved screen as a byte
+92 < 2 // copy of the chosen version, so equal JSON names it.
 93 < 1 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 94 < 1 const recorded = (p: Piece) => (p.approved ? letters(p).find((v) => same(p.versions[v], p.approved)) : undefined);
 95 < 1 
-98 > 1 // The pick still standing once `next` replaces `prev`: versions that changed
-99 < 1 // were re-arranged, so the earlier click no longer names what is drawn.
+98 > 2 // The pick still standing once `next` replaces `prev`: versions that changed
+99 < 2 // were re-arranged, so the earlier click no longer names what is drawn.
 100 < 1 const kept = (pick: string | null, prev: Pieces, next: Pieces) =>
 101 < 1   same(prev.screen?.versions ?? {}, next.screen?.versions ?? {}) ? pick : null;
 97 > 2 // The picks still standing once `next` replaces `prev`: a piece whose versions

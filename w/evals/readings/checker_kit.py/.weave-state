@@ -1,0 +1,94 @@
+0 < 1 #!/usr/bin/env python3
+1 < 2 """Score the state-probe checker against a good todo app and broken copies of
+2 < 2 it: the seed of story-planning part 4's broken-copy kit. Not a test: nothing
+3 < 2 runs it automatically; run it when factory/stack/tinyapp/ changes.
+4 < 2 
+5 < 2     python3 evals/readings/checker_kit.py
+6 < 2 
+7 < 2 Needs bun, celld and a browser (TINYAPP_BROWSER, /headless-shell, or the
+8 < 2 Mac's Chrome). Prints one row per case, expected against got, and exits 0 only
+9 < 2 when every case lands where it should."""
+10 < 1 import json
+11 < 1 import os
+12 < 1 import shutil
+13 < 1 import subprocess
+14 < 1 import sys
+15 < 1 import tempfile
+16 < 1 
+17 < 1 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+18 < 1 CHECK = os.path.join(ROOT, "factory/stack/tinyapp/check.ts")
+19 < 1 FIX = os.path.join(ROOT, "evals/fixtures/tinyapp-todo")
+20 < 1 TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo")
+21 < 1 
+22 < 2 # (case, screen, server, clause, extra env, plan edit, expected exit, expected stage)
+23 < 1 CASES = [
+24 < 1     ("good app, S1.1", "todo.json", None, "S1.1", {}, None, 0, "ok"),
+25 < 1     ("good app, S2.2", "todo.json", None, "S2.2", {}, None, 0, "ok"),
+26 < 1     ("good app, S3.1", "todo.json", None, "S3.1", {}, None, 0, "ok"),
+27 < 1     ("good app, S4.2", "todo.json", None, "S4.2", {}, None, 0, "ok"),
+28 < 1     ("starting app (nothing built)", None, None, "S1.1", {}, None, 1, "do"),
+29 < 1     ("Add button does nothing", "todo_add_noop.json", None, "S1.1", {}, None, 1, "after"),
+30 < 1     ("wrong text on screen", "todo_wrong_text.json", None, "S1.1", {}, None, 1, "see"),
+31 < 1     ("server never saves", "todo.json", "server_no_persister.ts", "S1.1", {}, None, 1, "saved"),
+32 < 1     ("hollow step", "todo.json", None, "S1.1", {}, "hollow", 1, "before"),
+33 < 1     ("no browser", "todo.json", None, "S1.1", {"TINYAPP_BROWSER": "/nonexistent"}, None, 2, "env"),
+34 < 1 ]
+35 < 1 
+36 < 1 
+37 < 1 def run(cmd, **kw):
+38 < 1     return subprocess.run(cmd, check=True, capture_output=True, text=True, **kw)
+39 < 1 
+40 < 1 
+41 < 1 def make_base(dst):
+42 < 1     run(["bun", os.path.join(ROOT, "skills/ultrawrite/stories/scaffold.ts"), TODO, dst])
+43 < 1     run(["bun", "install"], cwd=dst, timeout=300)
+44 < 1     run(["bun", os.path.join(ROOT, "skills/ultrawrite/stories/compile.ts"), TODO, "--app", dst,
+45 < 1          "--plan-id", "p1", "--date", "2026-09-27", "--out", os.path.join(dst, ".ultrapowers/plan.md")])
+46 < 1 
+47 < 1 
+48 < 1 def make_copy(base, dst, screen, server, edit):
+49 < 1     shutil.copytree(base, dst, ignore=shutil.ignore_patterns("node_modules"))
+50 < 1     os.symlink(os.path.join(base, "node_modules"), os.path.join(dst, "node_modules"))
+51 < 1     if screen:
+53 > 1         shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/screen.json"))
+52 < 2         shutil.copyfile(os.path.join(FIX, screen), os.path.join(dst, "client/src/pieces/todo.json"))
+53 < 1     if server:
+54 < 1         shutil.copyfile(os.path.join(FIX, server), os.path.join(dst, "server/index.ts"))
+55 < 1     if edit == "hollow":
+56 < 1         plan = os.path.join(dst, ".ultrapowers/plan.md")
+57 < 1         lines = open(plan).read().splitlines()
+58 < 1         i = next(n for n, l in enumerate(lines) if l.startswith("{") and '"clause":"S1.1"' in l)
+59 < 1         p = json.loads(lines[i])
+60 < 1         p["given"] = [{"tool": "addTodo", "args": {"text": "buy milk"}}]
+61 < 1         lines[i] = json.dumps(p, sort_keys=True)
+62 < 1         open(plan, "w").write("\n".join(lines) + "\n")
+63 < 1 
+64 < 1 
+65 < 1 def main():
+66 < 1     work = tempfile.mkdtemp(prefix="checker-kit-", dir="/tmp")
+67 < 1     try:
+68 < 1         base = os.path.join(work, "base")
+69 < 1         make_base(base)
+70 < 1         misses = 0
+71 < 1         for n, (name, screen, server, clause, env, edit, want_exit, want_stage) in enumerate(CASES):
+72 < 1             app = os.path.join(work, "case%d" % n, "app")
+73 < 1             os.makedirs(os.path.dirname(app))
+74 < 1             make_copy(base, app, screen, server, edit)
+75 < 1             out = os.path.join(os.path.dirname(app), "result.json")
+76 < 1             r = subprocess.run(["bun", CHECK, "--plan", os.path.join(app, ".ultrapowers/plan.md"), "--clause", clause,
+77 < 1                                 "--copy", app, "--out", out], capture_output=True, text=True, timeout=120,
+78 < 1                                env={**os.environ, **env})
+79 < 1             stage = json.load(open(out))["stage"] if os.path.exists(out) else "?"
+80 < 1             ok = (r.returncode, stage) == (want_exit, want_stage)
+81 < 1             misses += not ok
+82 < 1             print("%-4s %-30s want %d/%-7s got %d/%s" % ("ok" if ok else "MISS", name, want_exit, want_stage,
+83 < 1                                                        r.returncode, stage))
+84 < 1         print("%d/%d cases landed where they should" % (len(CASES) - misses, len(CASES)))
+85 < 1         return 1 if misses else 0
+86 < 1     finally:
+87 < 1         shutil.rmtree(work, ignore_errors=True)
+88 < 1 
+89 < 1 
+90 < 1 if __name__ == "__main__":
+91 < 1     sys.exit(main())
+92 < 1 

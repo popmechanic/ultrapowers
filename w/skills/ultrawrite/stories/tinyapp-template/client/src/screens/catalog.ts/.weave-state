@@ -1,11 +1,11 @@
-0 < 1 /** The screens catalog: which 1st-Pouf pieces a screen may name, and their props.
-1 < 1  *
-2 < 1  * A screen is a json-render spec over this catalog. Its props mirror each
-3 < 1  * 1st-Pouf component's own variant props, so the registry hands them straight
-4 < 1  * through and `tsc` refuses a value 1st-Pouf would not accept.
-5 < 1  *
-6 < 1  * This file imports no React and no 1st-Pouf, so it loads in Bun with no DOM.
-7 < 1  */
+0 < 2 /** The screens catalog: which 1st-Pouf pieces a screen may name, and their props.
+1 < 2  *
+2 < 2  * A screen is a json-render spec over this catalog. Its props mirror each
+3 < 2  * 1st-Pouf component's own variant props, so the registry hands them straight
+4 < 2  * through and `tsc` refuses a value 1st-Pouf would not accept.
+5 < 2  *
+6 < 2  * This file imports no React and no 1st-Pouf, so it loads in Bun with no DOM.
+7 < 2  */
 8 < 1 import { defineCatalog } from '@json-render/core'
 9 < 1 import { schema } from '@json-render/react/schema'
 10 < 1 import { z } from 'zod'
@@ -146,16 +146,16 @@
 131 < 1   },
 121 < 1 }
 122 < 1 
-123 < 1 /** json-render's built-in actions; a screen may use them to write under /draft/ only. */
+123 < 2 /** json-render's built-in actions; a screen may use them to write under /draft/ only. */
 124 < 1 export const BUILT_IN = ['setState', 'pushState', 'removeState', 'validateForm']
 125 < 1 
-126 < 1 /** The catalog for a store whose actions are `tools`, in their order. */
+126 < 2 /** The catalog for a store whose actions are `tools`, in their order. */
 127 < 1 export function catalogFor(tools: { name: string; description: string }[]) {
 128 < 1   const actions: Record<string, { params: z.ZodType; description: string }> = {}
 129 < 1   for (const t of tools) actions[t.name] = { params: z.record(z.string(), z.unknown()), description: t.description }
 130 < 1   return defineCatalog(schema, { components, actions })
 131 < 1 }
 132 < 1 
-133 < 1 /** The catalog with no actions, which the registry draws. */
+133 < 2 /** The catalog with no actions, which the registry draws. */
 134 < 1 export const baseCatalog = defineCatalog(schema, { components, actions: {} })
 135 < 1 

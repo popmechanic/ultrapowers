@@ -1,7 +1,7 @@
-0 < 1 // The state-probe core: one probe read out of a stories-v1 plan, the closed
-1 < 1 // checks decided on TinyBase [tables, values] content, and row ids matched by
-2 < 1 // creation order. The one definition of probe semantics: compile.ts derives
-3 < 1 // probes with checksFor, and the checker decides them with holds.
+0 < 2 // The state-probe core: one probe read out of a stories-v1 plan, the closed
+1 < 2 // checks decided on TinyBase [tables, values] content, and row ids matched by
+2 < 2 // creation order. The one definition of probe semantics: compile.ts derives
+3 < 2 // probes with checksFor, and the checker decides them with holds.
 4 < 1 export type Row = Record<string, unknown>;
 5 < 1 export type Content = [Record<string, Record<string, Row>>, Record<string, unknown>];
 6 < 1 export type Check = Record<string, unknown>;
@@ -10,8 +10,8 @@
 10 < 2   | {select: Locator & {option: string}};
 9 > 1 export type UiStep = {click: Locator} | {type: Locator & {text: string}} | {key: Locator & {key: string}} | {select: Locator & {option: string}};
 8 < 2 export type UiStep = {click: Locator} | {type: Locator & {text: string}} | {key: Locator & {key: string}};
-9 < 1 // `as` is who is signed in (an email, or null for nobody) from this call on;
-10 < 1 // absent, the page's own sign-in stands.
+9 < 2 // `as` is who is signed in (an email, or null for nobody) from this call on;
+10 < 2 // absent, the page's own sign-in stands.
 11 < 1 export type ToolCall = {tool: string; args: Record<string, unknown>; as?: string | null};
 12 < 1 export type See = {role: string; name: string; count?: number};
 13 < 1 export type Probe = {
@@ -71,9 +71,9 @@
 66 < 1 
 67 < 1 const keysOf = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
 68 < 1 
-69 < 1 // The closed checks that say exactly how `after` differs from `before`: only
-70 < 1 // rows and cells that changed, so a cell another piece adds later never
-71 < 1 // breaks them. No difference at all is [{unchanged: true}].
+69 < 2 // The closed checks that say exactly how `after` differs from `before`: only
+70 < 2 // rows and cells that changed, so a cell another piece adds later never
+71 < 2 // breaks them. No difference at all is [{unchanged: true}].
 72 < 1 export function checksFor(before: Content, after: Content): Check[] {
 73 < 1   const [bt, bv] = before;
 74 < 1   const [at, av] = after;

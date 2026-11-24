@@ -1,8 +1,8 @@
-0 < 1 // What a TinyApp's screen parts can draw (#1491): each part's line in the app's
-1 < 1 // client/src/screens/draws.json names the accessibility role it draws and the props
-2 < 1 // that name it. A story that expects to see a role no part draws cannot pass until a
-3 < 1 // part is added, so the planning checks say so and the compiler writes it into the
-4 < 1 // task that needs it; a builder then adds the part in the open.
+0 < 2 // What a TinyApp's screen parts can draw (#1491): each part's line in the app's
+1 < 2 // client/src/screens/draws.json names the accessibility role it draws and the props
+2 < 2 // that name it. A story that expects to see a role no part draws cannot pass until a
+3 < 2 // part is added, so the planning checks say so and the compiler writes it into the
+4 < 2 // task that needs it; a builder then adds the part in the open.
 5 < 1 import {existsSync, readFileSync} from 'node:fs';
 6 < 1 import {join} from 'node:path';
 7 < 1 import type {Bundle} from './bundle';
@@ -12,20 +12,20 @@
 11 < 1 
 12 < 1 export type Draws = Record<string, {role: string | null; name?: string[]}>;
 13 < 1 
-14 < 1 /** The parts' lines from a draws.json, or null when there is no such file (an app scaffolded before it). */
+14 < 2 /** The parts' lines from a draws.json, or null when there is no such file (an app scaffolded before it). */
 15 < 1 export function readDraws(file: string): Draws | null {
 16 < 1   if (!existsSync(file)) return null;
 17 < 1   const j = JSON.parse(readFileSync(file, 'utf8'));
 18 < 1   return (j && typeof j === 'object' && j.parts && typeof j.parts === 'object' ? j.parts : {}) as Draws;
 19 < 1 }
 20 < 1 
-21 < 1 /** Every role some part draws. */
+21 < 2 /** Every role some part draws. */
 22 < 1 export const drawnRoles = (d: Draws) => new Set(Object.values(d).map((p) => p?.role).filter((r): r is string => typeof r === 'string'));
 23 < 1 
-24 < 1 /** The roles a list of `see` entries expects, in first-seen order. */
+24 < 2 /** The roles a list of `see` entries expects, in first-seen order. */
 25 < 1 export const rolesSeen = (sees: {role: string; count?: number}[]) => [...new Set(sees.filter((s) => (s.count ?? 1) > 0).map((s) => s.role))];
 26 < 1 
-27 < 1 /** Each role the stories expect that no part draws, with the stories expecting it and one name they expect. */
+27 < 2 /** Each role the stories expect that no part draws, with the stories expecting it and one name they expect. */
 28 < 1 export function undrawn(b: Bundle, d: Draws): {role: string; stories: string[]; name: string}[] {
 29 < 1   const roles = drawnRoles(d);
 30 < 1   const out: {role: string; stories: string[]; name: string}[] = [];

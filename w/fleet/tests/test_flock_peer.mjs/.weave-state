@@ -1,33 +1,33 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // The peer sim (the main-is-a-peer design, stage 3): the target's default branch moves while a
-2 < 1 // scripted Flock run is live, and the run takes the move in. Each case builds a throwaway target
-3 < 1 // with a bare `origin` beside it (_flock_helpers.mjs), runs the engine looking at main every two seconds,
-4 < 1 // and pushes one commit to origin's main from a second clone while task 2 holds the run open.
-5 < 1 //   clean     task 1 wrote a.txt's first line; main changes its last line, changes a file that is
-6 < 1 //             not text and adds a file. The run settles ready on the moved main: `main:moved` names
-7 < 1 //             the tip, the landed commit's one parent is the tip, a.txt carries both lines, the
-8 < 1 //             other two files are main's, `base` and summary.json name the tip, and the stored
-9 < 1 //             entry names both writers of a.txt, the run's task and main's commit.
-10 < 1 //   conflict  task 1 put a line between two lines that main deletes. The conflict opens inside the
-11 < 1 //             run, with a resolve task for it; the scripted builder cannot resolve one, so the
-12 < 1 //             run ends a draft, and its draft commit sits on the moved main.
-13 < 1 //   behind    main moved before the run began. The run takes the move in before its first builder
-14 < 1 //             opens (`main:moved` with why `start`), and settles ready on the moved main.
-15 < 1 //   created   task 1 creates new.txt and main creates new.txt too. The merge can only put one whole
-16 < 1 //             file after the other, so a conflict opens (`created: both`) with a resolve task for
-17 < 1 //             it, where the run once settled ready on the two files stacked; the scripted builder
-18 < 1 //             cannot resolve one, so the run ends a draft.
-19 < 1 //   made in the run  two tasks of one plan each create new.txt, with no main in it. Both tasks'
-20 < 1 //             probes run on the join, so it stays a union: no conflict opens, and the run is ready.
-22 > 1 //   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it. The
-23 < 1 //             edit is recorded as a `peer:rewrite` row naming main's commit, and the run ends
-24 < 1 //             ready: nothing reads the rewrite as lost (the Jev read was cut, 2026-11-14).
+1 < 2 // The peer sim (the main-is-a-peer design, stage 3): the target's default branch moves while a
+2 < 2 // scripted Flock run is live, and the run takes the move in. Each case builds a throwaway target
+3 < 2 // with a bare `origin` beside it (_flock_helpers.mjs), runs the engine looking at main every two seconds,
+4 < 2 // and pushes one commit to origin's main from a second clone while task 2 holds the run open.
+5 < 2 //   clean     task 1 wrote a.txt's first line; main changes its last line, changes a file that is
+6 < 2 //             not text and adds a file. The run settles ready on the moved main: `main:moved` names
+7 < 2 //             the tip, the landed commit's one parent is the tip, a.txt carries both lines, the
+8 < 2 //             other two files are main's, `base` and summary.json name the tip, and the stored
+9 < 2 //             entry names both writers of a.txt, the run's task and main's commit.
+10 < 2 //   conflict  task 1 put a line between two lines that main deletes. The conflict opens inside the
+11 < 2 //             run, with a resolve task for it; the scripted builder cannot resolve one, so the
+12 < 2 //             run ends a draft, and its draft commit sits on the moved main.
+13 < 2 //   behind    main moved before the run began. The run takes the move in before its first builder
+14 < 2 //             opens (`main:moved` with why `start`), and settles ready on the moved main.
+15 < 2 //   created   task 1 creates new.txt and main creates new.txt too. The merge can only put one whole
+16 < 2 //             file after the other, so a conflict opens (`created: both`) with a resolve task for
+17 < 2 //             it, where the run once settled ready on the two files stacked; the scripted builder
+18 < 2 //             cannot resolve one, so the run ends a draft.
+19 < 2 //   made in the run  two tasks of one plan each create new.txt, with no main in it. Both tasks'
+20 < 2 //             probes run on the join, so it stays a union: no conflict opens, and the run is ready.
+22 > 2 //   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it. The
+23 < 2 //             edit is recorded as a `peer:rewrite` row naming main's commit, and the run ends
+24 < 2 //             ready: nothing reads the rewrite as lost (the Jev read was cut, 2026-11-14).
 21 < 2 //   folded    task 2, held until main's last line MAIN has arrived, writes FOLDED over it, and the
 22 < 2 //             stand-in Jev reads that edit as `loses`. Before the draft the engine looks again:
 23 < 2 //             it shows Jev main's lines, the lost one and the whole settled file, with main's
 24 < 2 //             commit subject as what main meant. Answered `carried`, the run ends ready.
 25 < 2 //   dropped   the same, the second look answered `drops`: the run ends a draft.
-26 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+26 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 27 < 1 import { spawnSync } from 'node:child_process'
 28 < 2 import http from 'node:http'
 29 < 1 import fs from 'node:fs'
@@ -42,8 +42,8 @@
 38 < 1 const lines = (l) => l.join('\n') + '\n'
 39 < 1 const BIN = Buffer.from([0xff, 0xfe, 0x00, 0x01]), BIN2 = Buffer.from([0xff, 0xfe, 0x00, 0x02, 0x03])
 40 < 1 
-41 < 1 // A target with an origin it follows, and a second clone that moves origin's main.
-42 < 1 // `o.env` reaches the engine; `o.late` is the a.txt task 2 writes once its hold is over
+41 < 2 // A target with an origin it follows, and a second clone that moves origin's main.
+42 < 2 // `o.env` reaches the engine; `o.late` is the a.txt task 2 writes once its hold is over
 43 < 1 function rig (first = lines(['RUN', ...BODY.slice(1)]), made = null, o = {}) {
 44 < 1   const t = flockTarget({ 'a.txt': lines(BODY), 'b.txt': 'none\n', 'logo.bin': BIN }, { env: o.env })
 45 < 1   const env = simEnv({ home: t.tmp, env: t.over })
@@ -56,7 +56,7 @@
 52 < 1   sh(t.tmp, 'clone', '-q', '--bare', t.T, origin)
 53 < 1   t.git('remote', 'add', 'origin', origin); t.git('fetch', '-q', 'origin'); t.git('remote', 'set-head', 'origin', 'main')
 54 < 1   sh(t.tmp, 'clone', '-q', origin, mover)
-55 < 1   // one commit on origin's main, made of `files` ({path: text | Buffer}); its sha
+55 < 2   // one commit on origin's main, made of `files` ({path: text | Buffer}); its sha
 56 < 1   const move = (files) => {
 57 < 1     for (const [p, body] of Object.entries(files)) fs.writeFileSync(path.join(mover, p), body)
 58 < 1     sh(mover, 'add', '-A'); sh(mover, 'commit', '-qm', 'main moved'); sh(mover, 'push', '-q', 'origin', 'HEAD:main')
@@ -69,14 +69,14 @@
 65 < 1       task({ id: 2, title: 'Hold the run open', files: ['Modify: `b.txt`', ...(o.late ? ['Modify: `a.txt`'] : [])], claim: 'b.txt carries B.', stale: 'path-absent: `b.txt`', run: 'grep -q B b.txt' }),
 66 < 1     ],
 67 < 1   })
-68 < 1   // task 1 lands at once (`first` is the a.txt it writes), before the engine's first look at main;
-69 < 1   // task 2 holds seven seconds, the window main moves in
-70 < 1   // `made`: task 1 also creates new.txt with this text
+68 < 2   // task 1 lands at once (`first` is the a.txt it writes), before the engine's first look at main;
+69 < 2   // task 2 holds seven seconds, the window main moves in
+70 < 2   // `made`: task 1 also creates new.txt with this text
 71 < 1   const script = { '@hold_ms': { 2: 7000 }, 1: { 'a.txt': first, ...(made ? { 'new.txt': made } : {}) }, 2: { 'b.txt': 'B\n', ...(o.late ? { 'a.txt': o.late } : {}) } }
 72 < 1   return { t, move, run: () => flockRun(t, { plan, script, args: ['--main-poll', '2'] }) }
 73 < 1 }
 74 < 1 
-75 < 1 // ── clean ───────────────────────────────────────────────────────────────────────
+75 < 2 // ── clean ───────────────────────────────────────────────────────────────────────
 76 < 1 {
 77 < 1   const { t, move, run } = rig()
 78 < 1   const going = run()
@@ -103,7 +103,7 @@
 99 < 1   t.done()
 100 < 1 }
 101 < 1 
-102 < 1 // ── conflict ────────────────────────────────────────────────────────────────────
+102 < 2 // ── conflict ────────────────────────────────────────────────────────────────────
 103 < 1 {
 104 < 1   const { t, move, run } = rig(lines(['alpha', 'beta', 'RUN', ...BODY.slice(2)]))
 105 < 1   const going = run()
@@ -120,7 +120,7 @@
 116 < 1   t.done()
 117 < 1 }
 118 < 1 
-119 < 1 // ── behind ──────────────────────────────────────────────────────────────────────
+119 < 2 // ── behind ──────────────────────────────────────────────────────────────────────
 120 < 1 {
 121 < 1   const { t, move, run } = rig()
 122 < 1   const tip = move({ 'logo.bin': BIN2, 'n.txt': 'new\n' })
@@ -136,7 +136,7 @@
 132 < 1   t.done()
 133 < 1 }
 134 < 1 
-135 < 1 // ── created ─────────────────────────────────────────────────────────────────────
+135 < 2 // ── created ─────────────────────────────────────────────────────────────────────
 136 < 1 {
 137 < 1   const { t, move, run } = rig(undefined, 'def run():\n    return "RUN"\n')
 138 < 1   const going = run()
@@ -155,7 +155,7 @@
 151 < 1   t.done()
 152 < 1 }
 153 < 1 
-154 < 1 // ── made in the run ─────────────────────────────────────────────────────────────
+154 < 2 // ── made in the run ─────────────────────────────────────────────────────────────
 155 < 1 {
 156 < 1   const t = flockTarget({ 'a.txt': lines(BODY) })
 157 < 1   const plan = writePlan(t, {
@@ -174,7 +174,7 @@
 170 < 1   t.done()
 171 < 1 }
 172 < 1 
-174 > 1 // ── folded ──────────────────────────────────────────────────────────────────────
+174 > 2 // ── folded ──────────────────────────────────────────────────────────────────────
 173 < 2 // ── folded, dropped ─────────────────────────────────────────────────────────────
 174 < 1 {
 176 > 1   const { t, move, run } = rig(undefined, null, { late: lines(['RUN', ...BODY.slice(1, -1), 'FOLDED']) })

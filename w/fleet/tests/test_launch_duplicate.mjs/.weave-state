@@ -1,45 +1,45 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_launch_duplicate.mjs — the exam for "The launcher refuses a
-2 < 1  * plan that is live on the target, names the run, and takes `--again`" (#1036).
-3 < 1  *
-4 < 1  * On 2026-09-15 the same plan was launched twice within a minute on
-5 < 1  * popmechanic/tinyapp-fixture (runs 10 and 11). The second launch re-answered
-6 < 1  * the first run's task issues on the hub and bumped their revision, and run-10
-7 < 1  * died at Setup with `kata-revision-mismatch`. The two launches carried
-8 < 1  * DIFFERENT `plan=` commits (the subject names the run) and ONE plan blob, so
-9 < 1  * "the same plan" is the plan text's git blob sha, never the comment's sha.
-10 < 1  *
-11 < 1  * Legs, each naming the Machine clause it comes from:
-12 < 1  *
-13 < 1  *   (a) [M1] one running row on the target whose live branch in the evidence
-14 < 1  *       repository, `live/<slug>/run-7`, holds this plan's bytes at
-15 < 1  *       `runs/<slug>/7/plan.md` — and nowhere else — and no record (empty
-16 < 1  *       `gh api`) — a Refusal (exit 2)
-17 < 1  *       naming run-7, the VM and `--again`, with nothing mutated and no push;
-18 < 1  *       the same with a `running` record;
-19 < 1  *   (b) [M2] the same fleet with `--again` — the launch resolves as run-8, one
-20 < 1  *       push, one `new`, `again` on the result and on the rendered line;
-21 < 1  *   (c) [M3] the same row whose record says `done` five minutes ago — no
-22 < 1  *       refusal, `again` empty (the VM is inside the janitor's hour and stays);
-23 < 1  *   (d) [M4] a row on another target with this plan, and a row on this target
-24 < 1  *       with a different plan — neither refuses;
-25 < 1  *   (e) [M5] `--again=1` is refused before any exec call; USAGE names the flag;
-26 < 1  *   (f) [M6] `janitor()` answers `runs` — one entry per assignment row, with
-27 < 1  *       `live`/`state` from the record and null when there is none;
-28 < 1  *   (g) [M7] is the plan's `Run:` greps over CONTRACT.md and RUNBOOK.md.
-29 < 1  *
-30 < 1  * The rig is the launch sims' shared one in `_lobby_helpers.mjs` (a sim may
-31 < 1  * not name a sibling sim): a local bare origin stands in for GitHub, every
-32 < 1  * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
-33 < 1  * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
-34 < 1  * (`compilerRule`).
-35 < 1  *
-36 < 1  * Kept at zero catches over 29 runs (#1264, 2026-09-24): the run-number check
-37 < 1  * runs on the laptop before any sandbox exists, and no fleet probe can launch
-38 < 1  * twice, so this sim is the only alarm for the race that killed run-10
-39 < 1  * (2026-09-15).
-40 < 1  */
-41 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/test_launch_duplicate.mjs — the exam for "The launcher refuses a
+2 < 2  * plan that is live on the target, names the run, and takes `--again`" (#1036).
+3 < 2  *
+4 < 2  * On 2026-09-15 the same plan was launched twice within a minute on
+5 < 2  * popmechanic/tinyapp-fixture (runs 10 and 11). The second launch re-answered
+6 < 2  * the first run's task issues on the hub and bumped their revision, and run-10
+7 < 2  * died at Setup with `kata-revision-mismatch`. The two launches carried
+8 < 2  * DIFFERENT `plan=` commits (the subject names the run) and ONE plan blob, so
+9 < 2  * "the same plan" is the plan text's git blob sha, never the comment's sha.
+10 < 2  *
+11 < 2  * Legs, each naming the Machine clause it comes from:
+12 < 2  *
+13 < 2  *   (a) [M1] one running row on the target whose live branch in the evidence
+14 < 2  *       repository, `live/<slug>/run-7`, holds this plan's bytes at
+15 < 2  *       `runs/<slug>/7/plan.md` — and nowhere else — and no record (empty
+16 < 2  *       `gh api`) — a Refusal (exit 2)
+17 < 2  *       naming run-7, the VM and `--again`, with nothing mutated and no push;
+18 < 2  *       the same with a `running` record;
+19 < 2  *   (b) [M2] the same fleet with `--again` — the launch resolves as run-8, one
+20 < 2  *       push, one `new`, `again` on the result and on the rendered line;
+21 < 2  *   (c) [M3] the same row whose record says `done` five minutes ago — no
+22 < 2  *       refusal, `again` empty (the VM is inside the janitor's hour and stays);
+23 < 2  *   (d) [M4] a row on another target with this plan, and a row on this target
+24 < 2  *       with a different plan — neither refuses;
+25 < 2  *   (e) [M5] `--again=1` is refused before any exec call; USAGE names the flag;
+26 < 2  *   (f) [M6] `janitor()` answers `runs` — one entry per assignment row, with
+27 < 2  *       `live`/`state` from the record and null when there is none;
+28 < 2  *   (g) [M7] is the plan's `Run:` greps over CONTRACT.md and RUNBOOK.md.
+29 < 2  *
+30 < 2  * The rig is the launch sims' shared one in `_lobby_helpers.mjs` (a sim may
+31 < 2  * not name a sibling sim): a local bare origin stands in for GitHub, every
+32 < 2  * lobby verb and `gh api` is answered by the seam, and the compiler is stubbed
+33 < 2  * — both its fetch at `engine=` (`COMPILER_FETCH`) and its every `python3` run
+34 < 2  * (`compilerRule`).
+35 < 2  *
+36 < 2  * Kept at zero catches over 29 runs (#1264, 2026-09-24): the run-number check
+37 < 2  * runs on the laptop before any sandbox exists, and no fleet probe can launch
+38 < 2  * twice, so this sim is the only alarm for the race that killed run-10
+39 < 2  * (2026-09-15).
+40 < 2  */
+41 < 2 
 42 < 1 import assert from 'node:assert/strict'
 43 < 1 
 44 < 1 import { USAGE, launch, renderLaunch } from '../launch.mjs'
@@ -65,9 +65,9 @@
 63 < 1 const OLD_VM = 'fleet-r6-2609160800-cd34'
 64 < 1 const FOREIGN_VM = 'fleet-r3-2609160700-ef56'
 65 < 1 
-66 < 1 // ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
-67 < 1 
-68 < 1 /** A status page as the contents API hands it back. */
+66 < 2 // ── The seam's rules (the shared ones live in _lobby_helpers.mjs) ───────────
+67 < 2 
+68 < 2 /** A status page as the contents API hands it back. */
 69 < 1 const page = (state, updatedAt) => answer({
 70 < 1   content: Buffer.from(JSON.stringify({ state, updatedAt })).toString('base64'),
 71 < 1   sha: 'x'
@@ -75,15 +75,15 @@
 73 < 1 const RUNNING = page('running', NOW.toISOString())
 74 < 1 const DONE_5_MIN_AGO = page('done', new Date(NOW.getTime() - 5 * 60 * 1000).toISOString())
 75 < 1 
-76 < 1 /** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
+76 < 2 /** `gh api …` answers one page for every ref — or nothing at all (`NO_RECORD`). */
 77 < 1 const readRules = ({ repo, evidence, rows, record }) =>
 79 > 1   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record })
 78 < 2   launchRules({ engine: ENGINE, repo, evidence, gh: GH, rows, record, help: HELP_FROM_VERBS })
 79 < 1 
-80 < 1 // ── The workspace: a target whose origin already carries plan branches ──────
-81 < 1 
-82 < 1 /** Commit `text` as `runs/<slug>/<n>/plan.md` on the evidence repository's
-83 < 1  *  `live/<slug>/run-<n>` — the only place the live run's plan is held; the sha. */
+80 < 2 // ── The workspace: a target whose origin already carries plan branches ──────
+81 < 2 
+82 < 2 /** Commit `text` as `runs/<slug>/<n>/plan.md` on the evidence repository's
+83 < 2  *  `live/<slug>/run-<n>` — the only place the live run's plan is held; the sha. */
 84 < 1 const livePlan = (evidence, n, text) => evidence.seed(
 85 < 1   `refs/heads/live/${SLUG}/run-${n}`,
 86 < 1   { [`runs/${SLUG}/${n}/plan.md`]: text },
@@ -128,8 +128,8 @@
 124 < 1   return { ws, exec, result, error }
 125 < 1 }
 126 < 1 
-127 < 1 // ── Reading the calls ───────────────────────────────────────────────────────
-128 < 1 
+127 < 2 // ── Reading the calls ───────────────────────────────────────────────────────
+128 < 2 
 129 < 1 const newVerbs = (exec) => exec.mutating().filter((line) => line.startsWith('new '))
 130 < 1 
 131 < 1 const assertRefused = (d, leg) => {
@@ -158,7 +158,7 @@
 154 < 1   assert.equal(newVerbs(d.exec).length, 1, `${leg} exactly one \`new\` verb`)
 155 < 1 }
 156 < 1 
-157 < 1 // ── a. [M1] a live duplicate is refused before anything is pushed ───────────
+157 < 2 // ── a. [M1] a live duplicate is refused before anything is pushed ───────────
 158 < 1 {
 159 < 1   const unrecorded = await drive({ rows: (ws) => [liveRow(ws)], record: NO_RECORD })
 160 < 1   assertRefused(unrecorded, '(a) [M1] no record yet —')
@@ -169,7 +169,7 @@
 165 < 1   running.ws.cleanup()
 166 < 1 }
 167 < 1 
-168 < 1 // ── b. [M2] --again is the one way past it ──────────────────────────────────
+168 < 2 // ── b. [M2] --again is the one way past it ──────────────────────────────────
 169 < 1 {
 170 < 1   const again = await drive({ rows: (ws) => [liveRow(ws)], record: NO_RECORD, extra: ['--again'] })
 171 < 1   assertLaunched(again, '(b) [M2]')
@@ -181,7 +181,7 @@
 177 < 1   again.ws.cleanup()
 178 < 1 }
 179 < 1 
-180 < 1 // ── c. [M3] a run whose record says it ended never refuses ──────────────────
+180 < 2 // ── c. [M3] a run whose record says it ended never refuses ──────────────────
 181 < 1 {
 182 < 1   const ended = await drive({ rows: (ws) => [liveRow(ws)], record: DONE_5_MIN_AGO })
 183 < 1   assertLaunched(ended, '(c) [M3]')
@@ -189,7 +189,7 @@
 185 < 1   ended.ws.cleanup()
 186 < 1 }
 187 < 1 
-188 < 1 // ── d. [M4] another target, or another plan, is not a duplicate ─────────────
+188 < 2 // ── d. [M4] another target, or another plan, is not a duplicate ─────────────
 189 < 1 {
 190 < 1   const others = await drive({ rows: (ws) => [foreignRow(ws), oldRow(ws)], record: NO_RECORD })
 191 < 1   assertLaunched(others, '(d) [M4]')
@@ -197,7 +197,7 @@
 193 < 1   others.ws.cleanup()
 194 < 1 }
 195 < 1 
-196 < 1 // ── e. [M5] the flag takes no value, and is offered ─────────────────────────
+196 < 2 // ── e. [M5] the flag takes no value, and is offered ─────────────────────────
 197 < 1 {
 198 < 1   const ws = workspace()
 199 < 1   const exec = makeExec({ rules: readRules({ repo: ws.repo, evidence: ws.evidence, rows: [liveRow(ws)], record: NO_RECORD }) })
@@ -208,7 +208,7 @@
 204 < 1   ws.cleanup()
 205 < 1 }
 206 < 1 
-207 < 1 // ── f. [M6] the janitor answers `runs` ──────────────────────────────────────
+207 < 2 // ── f. [M6] the janitor answers `runs` ──────────────────────────────────────
 208 < 1 {
 209 < 1   const ws = workspace()
 210 < 1   const rows = [

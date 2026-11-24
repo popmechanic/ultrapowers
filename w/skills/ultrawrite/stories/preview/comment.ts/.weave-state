@@ -1,9 +1,9 @@
-0 < 1 // Comment mode: a floating bar outside #app with "About this view" and
-1 < 1 // "Comment". While the mode is on (and no story plays), hovering a named
-2 < 1 // element inside #app outlines it and labels it with its target; a click on it
-3 < 1 // or a dragged box over the page opens a note form instead of running the
-5 > 1 // page's own action. A pinned note posts to /feedback and, once the server has
-6 < 1 // kept it, leaves a numbered pin; a refused post keeps the form open with why.
+0 < 2 // Comment mode: a floating bar outside #app with "About this view" and
+1 < 2 // "Comment". While the mode is on (and no story plays), hovering a named
+2 < 2 // element inside #app outlines it and labels it with its target; a click on it
+3 < 2 // or a dragged box over the page opens a note form instead of running the
+5 > 2 // page's own action. A pinned note posts to /feedback and, once the server has
+6 < 2 // kept it, leaves a numbered pin; a refused post keeps the form open with why.
 4 < 2 // page's own action. A pinned note posts to /feedback and leaves a numbered pin.
 5 < 1 import {named, nameOf, roleOf, targetOf} from './names';
 6 < 1 
@@ -109,7 +109,8 @@
 87 < 1         pin.style.top = `${note.at.top + scrollY}px`;
 88 < 1         document.body.append(pin);
 89 < 1       }
-91 > 1       if (form === f) closeForm(); // another form opened while the post was out stays
+92 > 1       if (form === f) closeForm();
+91 > 2       if (form === f) closeForm(); // another form opened while the post was out stays
 90 < 2       closeForm();
 91 < 1     });
 92 < 1     form = f;

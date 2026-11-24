@@ -1,0 +1,332 @@
+0 < 2 """The proof-gate reader reads BASE (#989) — the exam of
+1 < 2 `skills/ultrawrite/scripts/extract_gate_input.py --base`.
+2 < 2 
+3 < 2 One test per leg of the 2026-09-15 plan `gate-reader-reads-base`, task 1:
+4 < 2 
+5 < 2   (a) [M1] `--base <sha>` and `--base <dir>` add exactly one key, `base`, whose
+6 < 2       `rev` is the value given; the hash equals the no-`--base` hash; and the
+7 < 2       no-`--base` output carries no `base` key.
+8 < 2   (b) [M2] `files` is the Files block's paths in written order, then the
+9 < 2       Proof's backticked path, then the `Run:` command's path, no duplicate;
+10 < 2       an absent path (or a directory) is `{"path", "status": "absent"}` alone.
+11 < 2   (c) [M3] headings per file kind; the excerpt is the numbered carrier regions,
+12 < 2       ±2 lines, no line twice, no non-carrier region, no 7-character literal.
+13 < 2   (d) [M4] the 8,000-byte per-file cap and the 24,000-byte total cap, with
+14 < 2       `truncated` exactly on the entries the cap cut.
+15 < 2   (e) [M5] an unknown sha exits non-zero with an `error:` line.
+16 < 2 
+17 < 2 The fixture is a one-commit git repository under tmp_path holding the plan
+18 < 2 itself, so a 40-hex `--base` names a commit of the plan's own repository.
+19 < 2 """
+20 < 1 from __future__ import annotations
+21 < 1 
+22 < 1 import json
+23 < 1 import re
+24 < 1 import subprocess
+25 < 1 import sys
+26 < 1 from pathlib import Path
+27 < 1 
+28 < 1 import pytest
+29 < 1 
+30 < 1 ROOT = Path(__file__).resolve().parents[1]
+31 < 1 SCRIPT = ROOT / "skills/ultrawrite/scripts/extract_gate_input.py"
+32 < 1 
+33 < 2 # A 7-character literal is under the compiler's `_LITERAL_MIN` of 8; the
+34 < 2 # nine-character one is the carrier the exam looks for.
+35 < 1 SHORT_LIT = "sevench"
+36 < 1 LONG_LIT = "carrier_x"
+37 < 1 OTHER_LIT = "second_carrier"
+38 < 1 
+39 < 1 
+40 < 1 def _git(repo, *args):
+41 < 1     return subprocess.run(["git", "-C", str(repo), *args], check=True,
+42 < 1                           capture_output=True, text=True).stdout
+43 < 1 
+44 < 1 
+45 < 1 def _plan_text(md_path, py_path, mjs_path, absent_path, dir_path,
+46 < 1                proof_extra, run_path, verb="Modify"):
+47 < 1     return f"""# A plan for the exam
+48 < 1 
+49 < 1 **Grammar:** claims-v1
+50 < 1 
+51 < 1 **Claim:** After this run I can see the thing. (elicited)
+52 < 1 **Summary:** One. Two. Three.
+53 < 1 
+54 < 1 **Goal:** the exam's fixture.
+55 < 1 
+56 < 1 **Tech Stack:** none
+57 < 1 
+58 < 1 **Spec:** none
+59 < 1 
+60 < 1 **Parallelization rationale:** one task.
+61 < 1 
+62 < 1 ## Global Constraints
+63 < 1 
+64 < 1 - none
+65 < 1 
+66 < 1 ### Task 1: The fixture task
+67 < 1 
+68 < 1 **Type:** implementation
+69 < 1 
+70 < 1 **Files:**
+71 < 1 - {verb}: `{md_path}`
+72 < 1 - {verb}: `{py_path}`
+73 < 1 - Create: `{absent_path}`
+74 < 1 - {verb}: `{mjs_path}`
+75 < 1 - Create: `{dir_path}`
+76 < 1 
+77 < 1 **Claim:** The thing holds `{LONG_LIT}` and `{SHORT_LIT}`. (derived)
+78 < 1 Machine: M1. The file carries `{LONG_LIT}` and `{OTHER_LIT}`.
+79 < 1 
+80 < 1 **Authorized-by:** none
+81 < 1 
+82 < 1 **Interfaces:**
+83 < 1 - Consumes: none
+84 < 1 - Produces: none
+85 < 1 
+86 < 1 **Context:** none.
+87 < 1 
+88 < 1 **Proof:**
+89 < 1 - Legs: (a) [M1] the carrier is there and `{md_path}` is read again.
+90 < 1 - Run: cat {proof_extra}
+91 < 1 - Run: python3 -c 'print(1)' {run_path}
+92 < 1 
+93 < 1 **Stale-if:**
+94 < 1 - path-absent: `{py_path}`
+95 < 1 """
+96 < 1 
+97 < 1 
+98 < 1 @pytest.fixture
+99 < 1 def repo(tmp_path):
+100 < 2     """A one-commit repository holding the plan and its fixture files."""
+101 < 1     r = tmp_path / "repo"
+102 < 1     r.mkdir()
+103 < 1     _git(r, "init", "-q", ".")
+104 < 1     _git(r, "config", "user.email", "exam@example.invalid")
+105 < 1     _git(r, "config", "user.name", "exam")
+106 < 1 
+107 < 1     (r / "docs").mkdir()
+108 < 1     (r / "docs/guide.md").write_text(
+109 < 1         "# Title\n\nprose\n\n## Section one\n\nmore\n\n### Deep\n\nend\n")
+110 < 1 
+111 < 1     py_lines = ["import os", "", "# THE FIXTURE MODULE — its banner", "",
+112 < 1                 "def test_alpha():", "    pass", "", "def test_beta():",
+113 < 1                 "    x = 1", "    y = 2", "    z = 3", "    w = 4",
+114 < 1                 f"    assert {LONG_LIT} == 1", "    a = 5", "    b = 6",
+115 < 1                 "    c = 7", f"    assert {OTHER_LIT} == 2", "    d = 8",
+116 < 1                 "    e = 9", "    f = 10", f"    print('{SHORT_LIT}')",
+117 < 1                 "    g = 11", "    h = 12", "    i = 13", "    j = 14",
+118 < 1                 "    k = 15", "def not_a_test():", "    pass", ""]
+119 < 1     (r / "tests").mkdir()
+120 < 1     (r / "tests/test_mod.py").write_text("\n".join(py_lines))
+121 < 1 
+122 < 1     (r / "tests/sim.mjs").write_text(
+123 < 1         "import x from 'y'\n\ndescribe('outer', () => {\n"
+124 < 1         "  test('one', () => {})\n  it('two', () => {})\n})\n"
+125 < 1         "// ─────────────────────────────────────────\n")
+126 < 1 
+127 < 1     (r / "tests/extra.py").write_text(f"# extra\nq = '{LONG_LIT}'\n")
+128 < 1     (r / "tests/runme.sh").write_text("echo hi\n")
+129 < 1     (r / "adir/sub").mkdir(parents=True)
+130 < 1     (r / "adir/sub/keep").write_text("k\n")
+131 < 1 
+132 < 1     plan = r / "plan.md"
+133 < 1     plan.write_text(_plan_text(
+134 < 1         "docs/guide.md", "tests/test_mod.py", "tests/sim.mjs",
+135 < 1         "docs/new.md", "adir/sub", "tests/extra.py", "tests/runme.sh"))
+136 < 1     _git(r, "add", "-A")
+137 < 1     _git(r, "commit", "-qm", "fixture")
+138 < 1     head = _git(r, "rev-parse", "HEAD").strip()
+139 < 1     assert re.fullmatch(r"[0-9a-f]{40}", head)
+140 < 1     return r, plan, head
+141 < 1 
+142 < 1 
+143 < 1 def run(plan, *args):
+144 < 1     return subprocess.run([sys.executable, str(SCRIPT), str(plan), *args],
+145 < 1                           capture_output=True, text=True)
+146 < 1 
+147 < 1 
+148 < 1 def load(p):
+149 < 1     assert p.returncode == 0, p.stderr
+150 < 1     return json.loads(p.stdout)
+151 < 1 
+152 < 1 
+153 < 1 def test_a_m1_base_adds_one_key_and_keeps_the_hash(repo):
+154 < 1     r, plan, head = repo
+155 < 1     plain = load(run(plan, "--task", "1"))
+156 < 1     assert "base" not in plain and sorted(plain) == ["claim", "hash", "proof", "task"]
+157 < 1     for rev in (head, str(r)):
+158 < 1         d = load(run(plan, "--task", "1", "--base", rev))
+159 < 1         assert sorted(d) == ["base", "claim", "hash", "proof", "task"], sorted(d)
+160 < 1         assert d["base"]["rev"] == rev
+161 < 1         assert d["hash"] == plain["hash"], "(a) [M1] the hash must not change"
+162 < 1         assert d["claim"] == plain["claim"] and d["proof"] == plain["proof"]
+163 < 1 
+164 < 1 
+165 < 1 def test_b_m2_files_order_and_absent_entries(repo):
+166 < 1     r, plan, head = repo
+167 < 1     d = load(run(plan, "--task", "1", "--base", head))
+168 < 1     paths = [f["path"] for f in d["base"]["files"]]
+169 < 1     assert paths == ["docs/guide.md", "tests/test_mod.py", "docs/new.md",
+170 < 1                      "tests/sim.mjs", "adir/sub", "tests/extra.py",
+171 < 1                      "tests/runme.sh"], paths
+172 < 1     assert len(paths) == len(set(paths)), "(b) [M2] no duplicate path"
+173 < 1     by = {f["path"]: f for f in d["base"]["files"]}
+174 < 1     assert by["docs/new.md"] == {"path": "docs/new.md", "status": "absent"}
+175 < 1     assert by["adir/sub"] == {"path": "adir/sub", "status": "absent"}, \
+176 < 1         "(b) [M2] a directory is absent"
+177 < 1     for p in ("docs/guide.md", "tests/test_mod.py", "tests/sim.mjs",
+178 < 1               "tests/extra.py", "tests/runme.sh"):
+179 < 1         assert by[p]["status"] == "present", p
+180 < 1 
+181 < 1 
+182 < 1 def test_c_m3_headings_and_carrier_excerpt(repo):
+183 < 1     r, plan, head = repo
+184 < 1     d = load(run(plan, "--task", "1", "--base", head))
+185 < 1     by = {f["path"]: f for f in d["base"]["files"]}
+186 < 1     assert by["docs/guide.md"]["headings"] == ["# Title", "## Section one", "### Deep"]
+187 < 1     assert by["docs/guide.md"]["lines"] == 11
+188 < 1     assert by["tests/test_mod.py"]["headings"] == [
+189 < 1         "# THE FIXTURE MODULE — its banner", "def test_alpha():", "def test_beta():"]
+190 < 1     assert by["tests/sim.mjs"]["headings"] == [
+191 < 1         "  test('one', () => {})", "  it('two', () => {})"], \
+192 < 1         by["tests/sim.mjs"]["headings"]
+193 < 1     ex = by["tests/test_mod.py"]["excerpt"].splitlines()
+194 < 1     nums = [int(l.split(":", 1)[0]) for l in ex]
+195 < 1     assert nums == sorted(nums) and len(nums) == len(set(nums)), \
+196 < 1         "(c) [M3] ascending, no line twice"
+197 < 2     # LONG_LIT sits on line 13, OTHER_LIT on 17: regions 11–15 and 15–19
+198 < 2     # overlap on 15 and print once; SHORT_LIT (line 21) is not a carrier.
+199 < 1     assert nums == list(range(11, 20)), nums
+200 < 1     assert ex[2] == f"13:     assert {LONG_LIT} == 1"
+201 < 1     assert not any(SHORT_LIT in l for l in ex), "(c) [M3] a 7-char literal is not a carrier"
+202 < 1     assert by["docs/guide.md"]["excerpt"] == "" and by["docs/guide.md"]["truncated"] is False
+203 < 1     assert by["tests/extra.py"]["excerpt"] == f"1: # extra\n2: q = '{LONG_LIT}'"
+204 < 1 
+205 < 1 
+206 < 1 def test_d_m4_caps(tmp_path):
+207 < 1     r = tmp_path / "repo2"
+208 < 1     r.mkdir()
+209 < 1     _git(r, "init", "-q", ".")
+210 < 1     _git(r, "config", "user.email", "exam@example.invalid")
+211 < 1     _git(r, "config", "user.name", "exam")
+212 < 1     (r / "t").mkdir()
+213 < 1     big = "\n".join(f"line {i} {LONG_LIT} " + "x" * 60 for i in range(200)) + "\n"
+215 > 1     (r / "t/big.py").write_text(big)
+214 < 2     (r / "t/big.py").write_text(big)          # far over 8,000 bytes of carriers
+215 < 1     (r / "t/small.py").write_text(f"a = '{LONG_LIT}'\n")
+217 > 1     for i in range(4):
+216 < 2     for i in range(4):                        # 4 × ~8 KB crosses 24,000
+217 < 1         (r / f"t/fill{i}.py").write_text(big)
+218 < 1     plan = r / "plan.md"
+219 < 2     # Files: big, small, (nothing — absent), fill0, fill1 (Create:); Proof:
+220 < 2     # fill2 (Run: cat) and fill3 (Run: python3). Present entries in order:
+221 < 2     # big, small, fill0, fill1, fill2, fill3 — the total cap lands inside fill1.
+222 < 1     plan.write_text(_plan_text("t/big.py", "t/small.py", "t/fill0.py",
+223 < 1                                "t/nothing.py", "t/fill1.py", "t/fill2.py",
+224 < 1                                "t/fill3.py", verb="Create"))
+225 < 1     _git(r, "add", "-A")
+226 < 1     _git(r, "commit", "-qm", "caps")
+227 < 1     head = _git(r, "rev-parse", "HEAD").strip()
+228 < 1     d = load(run(plan, "--task", "1", "--base", head))
+229 < 1     by = {f["path"]: f for f in d["base"]["files"]}
+230 < 1     e = by["t/big.py"]["excerpt"]
+231 < 1     assert len(e.encode()) <= 8000 and by["t/big.py"]["truncated"] is True
+232 < 1     assert not e.endswith("\n") and e.splitlines()[-1].startswith(tuple("0123456789")), \
+233 < 1         "(d) [M4] cut at a line boundary"
+234 < 1     assert by["t/small.py"]["truncated"] is False
+235 < 1     present = [f for f in d["base"]["files"] if f["status"] == "present"]
+236 < 1     total = sum(len(f["excerpt"].encode()) for f in present)
+237 < 1     assert 23000 < total <= 24000, total
+238 < 2     # big (file cap), small (whole), fill0 (file cap), fill1 (the total cap
+239 < 2     # cuts it, non-empty), then every later entry empty and truncated.
+240 < 1     order = [f["path"] for f in present]
+241 < 1     assert order == ["t/big.py", "t/small.py", "t/fill0.py", "t/fill1.py",
+242 < 1                      "t/fill2.py", "t/fill3.py"], order
+243 < 1     assert by["t/fill0.py"]["truncated"] is True and by["t/fill0.py"]["excerpt"]
+244 < 2     # The entry the TOTAL cap cut keeps what fit (non-empty, truncated); every
+245 < 2     # later entry is empty and truncated while still carrying lines/headings.
+246 < 1     nonempty = [i for i, f in enumerate(present) if f["excerpt"]]
+247 < 1     last = nonempty[-1]
+248 < 1     assert last >= order.index("t/fill1.py"), "(d) [M4] the total lands past fill1"
+249 < 1     assert last < len(present) - 1, "(d) [M4] at least one entry after the cut"
+250 < 1     assert present[last]["truncated"] is True
+251 < 1     for f in present[last + 1:]:
+252 < 1         assert f["excerpt"] == "" and f["truncated"] is True, f["path"]
+253 < 1         assert "lines" in f and "headings" in f, f["path"]
+254 < 1 
+255 < 1 
+256 < 1 def test_h_own_entries_spend_the_budget_after_their_siblings(tmp_path):
+257 < 2     """(#1528) an own entry spends the excerpt budget last, so a sibling the
+258 < 2     task's Proof names is never starved by the files the task rewrites."""
+259 < 1     r = tmp_path / "repo3"
+260 < 1     r.mkdir()
+261 < 1     _git(r, "init", "-q", ".")
+262 < 1     _git(r, "config", "user.email", "exam@example.invalid")
+263 < 1     _git(r, "config", "user.name", "exam")
+264 < 1     (r / "t").mkdir()
+265 < 1     big = "\n".join(f"line {i} {LONG_LIT} " + "x" * 60 for i in range(200)) + "\n"
+266 < 1     for i in range(3):
+267 < 1         (r / f"t/own{i}.py").write_text(big)
+268 < 1     (r / "t/sib_test.py").write_text(
+269 < 1         "\n".join(f"s{i} = '{LONG_LIT}'" for i in range(40)) + "\n")
+270 < 1     plan = r / "plan.md"
+271 < 1     plan.write_text(_plan_text("t/own0.py", "t/own1.py", "t/own2.py",
+272 < 1                                "t/nothing.py", "t/none.py", "t/sib_test.py",
+273 < 1                                "t/runme.sh"))
+274 < 1     _git(r, "add", "-A")
+275 < 1     _git(r, "commit", "-qm", "own")
+276 < 1     head = _git(r, "rev-parse", "HEAD").strip()
+277 < 1     d = load(run(plan, "--task", "1", "--base", head))
+278 < 1     files = d["base"]["files"]
+279 < 1     by = {f["path"]: f for f in files}
+280 < 1     s = by["t/sib_test.py"]
+281 < 1     assert [f["path"] for f in files if f["status"] == "present"] == [
+282 < 1         "t/own0.py", "t/own1.py", "t/own2.py", "t/sib_test.py"]
+283 < 1     assert "own" not in s and s["truncated"] is False
+284 < 1     assert s["excerpt"].splitlines()[0] == f"1: s0 = '{LONG_LIT}'"
+285 < 1     assert len(s["excerpt"].splitlines()) == 40
+286 < 1     assert [by[f"t/own{i}.py"]["own"] for i in range(3)] == ["modify"] * 3
+287 < 1     total = sum(len(f["excerpt"].encode()) for f in files if f["status"] == "present")
+288 < 1     assert total <= 24000 and by["t/own2.py"]["truncated"] is True
+289 < 1 
+290 < 1 
+291 < 1 def test_e_m5_refusals(repo):
+292 < 1     r, plan, head = repo
+293 < 1     zeros = "0" * 40
+294 < 1     q = run(plan, "--task", "1", "--base", zeros)
+295 < 1     assert q.returncode != 0 and q.stdout == ""
+296 < 1     assert q.stderr.strip().startswith("error:") and zeros in q.stderr, q.stderr
+297 < 1 
+298 < 1 
+299 < 2 # ── extractor-and-authoring-refusals task 1 (#1025): a base that is neither a
+300 < 2 # checkout directory nor a 40-hex sha is refused on one line, exit 2 ─────────
+301 < 2 
+302 < 1 REFUSAL = ("extract: --base %s is not a commit this repository has — "
+303 < 1            "pass the 40-hex sha or a checkout directory")
+304 < 1 
+305 < 1 
+306 < 1 @pytest.mark.parametrize("label", ["abbrev", "word"])
+307 < 1 def test_g_m1_a_short_or_unknown_base_is_refused_on_one_line(repo, label):
+308 < 2     """(a) [M1]: the fixture HEAD's first 8 characters, and the word
+309 < 2     `notasha` — exit 2, empty stdout, exactly one stderr line, the issue's
+310 < 2     message with the value substituted."""
+311 < 1     r, plan, head = repo
+312 < 1     value = head[:8] if label == "abbrev" else "notasha"
+313 < 1     p = run(plan, "--task", "1", "--base", value)
+314 < 1     assert p.returncode == 2, (p.returncode, p.stderr)
+315 < 1     assert p.stdout == "", p.stdout
+316 < 1     assert p.stderr.strip().splitlines() == [REFUSAL % value], p.stderr
+317 < 1 
+318 < 1 
+319 < 1 def test_g_m3_a_real_sha_and_a_directory_still_read_present(repo):
+320 < 2     """(d) [M3]: the 40-hex sha and the checkout directory both print
+321 < 2     `present` for a file that exists, and the hash equals the no-base diet's."""
+322 < 1     r, plan, head = repo
+323 < 1     plain = load(run(plan, "--task", "1"))
+324 < 1     for rev in (head, str(r)):
+325 < 1         d = load(run(plan, "--task", "1", "--base", rev))
+326 < 1         by = {f["path"]: f for f in d["base"]["files"]}
+327 < 1         assert by["tests/test_mod.py"]["status"] == "present", rev
+328 < 1         assert d["hash"] == plain["hash"], rev
+329 < 1 

@@ -1,4 +1,4 @@
-0 < 1 """The stories-v1 parser, reached through plan_parse.py as the sandbox runs it."""
+0 < 2 """The stories-v1 parser, reached through plan_parse.py as the sandbox runs it."""
 1 < 1 import json
 2 < 1 import subprocess
 3 < 1 import sys
@@ -65,7 +65,7 @@
 62 < 1 
 63 < 1 
 64 < 1 def test_plan_parse_alone_in_a_temp_dir_still_parses_a_claims_plan(tmp_path):
-65 < 1     # fleet/compiler.mjs fetches plan_parse.py alone into a temp dir; it must not need stories_parse there.
+65 < 2     # fleet/compiler.mjs fetches plan_parse.py alone into a temp dir; it must not need stories_parse there.
 66 < 1     import shutil
 67 < 1     shutil.copy(PARSER, tmp_path / "plan_parse.py")
 68 < 1     res = subprocess.run([sys.executable, str(tmp_path / "plan_parse.py"),

@@ -1,25 +1,25 @@
-0 < 1 """The plan-check exams: every test that drives
-1 < 1 `skills/ultrapowers/scripts/plan_check.py`, in one file, each shared helper
-3 > 1 defined once. Three sections, in order:
+0 < 2 """The plan-check exams: every test that drives
+1 < 2 `skills/ultrapowers/scripts/plan_check.py`, in one file, each shared helper
+3 > 2 defined once. Three sections, in order:
 2 < 2 defined once. Three sections, in order: GREEN-AT-BASE, the run-wide freeze,
 3 < 2 and the authoring record.
-4 < 1 
-6 > 1   * GREEN-AT-BASE (#1098): with `--base`, every Proof `Run:` is rehearsed in a
-7 < 1     detached worktree at BASE, and each one already green prints a
-8 < 1     `GREEN-AT-BASE fact:` line, plus one reading of what the rehearsal cost.
-9 < 1     A fact, never a refusal: the verdict stays `PLAN OK`.
-10 < 1   * The run-wide freeze (#1202): a `Check:` freeze whose pathspec covers a
-11 < 1     task's own Files is refused (`freeze_violations`).
-12 < 1   * The authoring record: with `--base`, the gate record's `authoring` object
-13 < 1     prints one `AUTHORING fact:` line (minutes, gate dispatches and
-14 < 1     rejections, routing, question counts), each unsaid field read as `-`;
-15 < 1     the record is telemetry and never refuses (#1440).
+4 < 2 
+6 > 2   * GREEN-AT-BASE (#1098): with `--base`, every Proof `Run:` is rehearsed in a
+7 < 2     detached worktree at BASE, and each one already green prints a
+8 < 2     `GREEN-AT-BASE fact:` line, plus one reading of what the rehearsal cost.
+9 < 2     A fact, never a refusal: the verdict stays `PLAN OK`.
+10 < 2   * The run-wide freeze (#1202): a `Check:` freeze whose pathspec covers a
+11 < 2     task's own Files is refused (`freeze_violations`).
+12 < 2   * The authoring record: with `--base`, the gate record's `authoring` object
+13 < 2     prints one `AUTHORING fact:` line (minutes, gate dispatches and
+14 < 2     rejections, routing, question counts), each unsaid field read as `-`;
+15 < 2     the record is telemetry and never refuses (#1440).
 5 < 2 === GREEN-AT-BASE ===
-6 < 1 
-8 > 1 The direct legs import plan_check and call its functions; the subprocess legs
-9 < 1 write a real claims-v1 plan (inside a one-commit git repository when they
-10 < 1 need a BASE), sign its gate-verdict record with the gate's own extractor, and
-11 < 1 read the exit code and both output channels.
+6 < 2 
+8 > 2 The direct legs import plan_check and call its functions; the subprocess legs
+9 < 2 write a real claims-v1 plan (inside a one-commit git repository when they
+10 < 2 need a BASE), sign its gate-verdict record with the gate's own extractor, and
+11 < 2 read the exit code and both output channels.
 7 < 2 GREEN-AT-BASE: the compiler rehearses every Proof `Run:` at BASE (#1098).
 8 < 2 
 9 < 2 A `Run:` line that already passes at BASE proves nothing about the task —
@@ -160,7 +160,7 @@
 144 < 2 so nothing here reaches into the compiler's internals. The `--base` legs put
 145 < 2 that plan inside a one-commit git repository, because a 40-hex `--base` is
 146 < 2 resolved in the plan's own toplevel.
-147 < 1 """
+147 < 2 """
 148 < 1 import copy
 149 < 1 import json
 150 < 1 import os
@@ -187,16 +187,16 @@
 171 < 1 SOURCE = COMPILER.read_text()
 172 < 1 
 173 < 1 
-174 < 1 # ########################################################################### #
-175 < 1 # GREEN-AT-BASE                                                               #
-176 < 1 # ########################################################################### #
-177 < 1 
-178 < 1 
-179 < 1 # --------------------------------------------------------------------------- #
-180 < 1 # The lines M4, M5 and M6 pin, as format strings. Every assertion below builds  #
-181 < 1 # its expectation from these, so a line is compared whole and not by fragment.  #
-182 < 1 # --------------------------------------------------------------------------- #
-183 < 1 
+174 < 2 # ########################################################################### #
+175 < 2 # GREEN-AT-BASE                                                               #
+176 < 2 # ########################################################################### #
+177 < 2 
+178 < 2 
+179 < 2 # --------------------------------------------------------------------------- #
+180 < 2 # The lines M4, M5 and M6 pin, as format strings. Every assertion below builds  #
+181 < 2 # its expectation from these, so a line is compared whole and not by fragment.  #
+182 < 2 # --------------------------------------------------------------------------- #
+183 < 2 
 184 < 1 FACT = "GREEN-AT-BASE fact: "
 185 < 1 
 186 < 1 PROVER_LINE = (FACT + "task %s: Run: %s — exits 0 at BASE; "
@@ -205,22 +205,22 @@
 189 < 1               "a guard, no leg cites it")
 190 < 1 TIMEOUT_LINE = FACT + "task %s: Run: %s — not run (timeout after %s s)"
 191 < 1 READING_LINE = FACT + "%s s over %s lines run, %s not run (timeout)"
-192 < 1 # M6's `<S>`, as leg (f) words it: one or more digits, a point, one digit.
+192 < 2 # M6's `<S>`, as leg (f) words it: one or more digits, a point, one digit.
 193 < 1 READING_RE = re.compile(
 194 < 1     r"^GREEN-AT-BASE fact: ([0-9]+\.[0-9]) s over (\d+) lines run, "
 195 < 1     r"(\d+) not run \(timeout\)$")
 196 < 1 
-197 < 1 # M2's refusal, with the span `clause_citation_violations` already prints.
+197 < 2 # M2's refusal, with the span `clause_citation_violations` already prints.
 198 < 1 UNKNOWN_CLAUSE_LINE = ("grammar: Run: cites an unknown clause — task %s: %s "
 199 < 1                        "cites %s; the Machine line numbers %s")
 200 < 1 NO_CITING_LEG = "Machine clause %s has no citing Proof leg"
 201 < 1 
-202 < 1 
-203 < 1 # --------------------------------------------------------------------------- #
-204 < 1 # The plan. One task, id 1, parameterized on the three things these legs vary:  #
-205 < 1 # the Machine clauses, the Proof `Run:` lines, and the prose legs. Everything   #
-206 < 1 # else is the fixed claims-v1 grammar the compiler requires.                    #
-207 < 1 # --------------------------------------------------------------------------- #
+202 < 2 
+203 < 2 # --------------------------------------------------------------------------- #
+204 < 2 # The plan. One task, id 1, parameterized on the three things these legs vary:  #
+205 < 2 # the Machine clauses, the Proof `Run:` lines, and the prose legs. Everything   #
+206 < 2 # else is the fixed claims-v1 grammar the compiler requires.                    #
+207 < 2 # --------------------------------------------------------------------------- #
 208 < 1 
 209 < 1 HEAD = """# Green probe
 210 < 1 
@@ -263,27 +263,27 @@
 247 < 1 LEG_M1 = "- (a) The suite asserts the prover exits 0. [M1]"
 248 < 1 LEGS_M1_M2 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
 249 < 1               "- (b) The suite asserts the prover prints nothing. [M2]")
-250 < 1 # A prose leg citing a ninth clause the Machine line does not number: the
-251 < 1 # refusal leg (g)'s last witness needs, drawn by the leg grammar that already
-252 < 1 # exists at BASE.
+250 < 2 # A prose leg citing a ninth clause the Machine line does not number: the
+251 < 2 # refusal leg (g)'s last witness needs, drawn by the leg grammar that already
+252 < 2 # exists at BASE.
 253 < 1 LEGS_M1_AND_M9 = ("- (a) The suite asserts the prover exits 0. [M1]\n"
 254 < 1                   "- (b) The suite asserts the ninth thing. [M9]")
 255 < 1 
-256 < 1 # The file the one-commit repository holds, and an entry the Stale-if machine
-257 < 1 # cannot decide — `sha-matches:` with no `@` pins no id — so every
-258 < 1 # `--check --base` fixture below prints one `STALE fact:` advisory. That
-259 < 1 # advisory is what leg (g)'s ordering is measured against.
+256 < 2 # The file the one-commit repository holds, and an entry the Stale-if machine
+257 < 2 # cannot decide — `sha-matches:` with no `@` pins no id — so every
+258 < 2 # `--check --base` fixture below prints one `STALE fact:` advisory. That
+259 < 2 # advisory is what leg (g)'s ordering is measured against.
 260 < 1 AT_BASE = "at-base.txt"
 261 < 1 STALE_ADVISORY = "sha-matches: `%s`" % AT_BASE
 262 < 1 
 263 < 1 
 264 < 1 def make_plan(check=None, machine=ONE_CLAUSE, runs="", legs=LEG_M1,
 265 < 1               stale=STALE_ADVISORY):
-266 < 1     """The one-task claims-v1 plan. With `check`, the freeze section's plan:
-267 < 1     `FREEZE_HEAD`, a `## Global Constraints` whose one `- Check:` bullet is
-268 < 1     `check`, then `FREEZE_TASK`. Without it, the GREEN-AT-BASE plan
-269 < 1     parameterized on its Machine clauses, `Run:` lines, prose legs and
-270 < 1     Stale-if entry."""
+266 < 2     """The one-task claims-v1 plan. With `check`, the freeze section's plan:
+267 < 2     `FREEZE_HEAD`, a `## Global Constraints` whose one `- Check:` bullet is
+268 < 2     `check`, then `FREEZE_TASK`. Without it, the GREEN-AT-BASE plan
+269 < 2     parameterized on its Machine clauses, `Run:` lines, prose legs and
+270 < 2     Stale-if entry."""
 271 < 1     if check is not None:
 272 < 1         constraints = "\n## Global Constraints\n\n- Check: %s\n" % check
 273 < 1         return FREEZE_HEAD + constraints + FREEZE_TASK
@@ -292,13 +292,13 @@
 276 < 1 
 277 < 1 
 278 < 1 def run_bullets(*commands):
-279 < 1     """The Proof `Run:` bullets for `commands`, in Proof order."""
+279 < 2     """The Proof `Run:` bullets for `commands`, in Proof order."""
 280 < 1     return "".join("- Run: %s\n" % c for c in commands)
 281 < 1 
-282 < 1 
-283 < 1 # --------------------------------------------------------------------------- #
-284 < 1 # The repository, the plan on disk, and the two ways the compiler is invoked.   #
-285 < 1 # --------------------------------------------------------------------------- #
+282 < 2 
+283 < 2 # --------------------------------------------------------------------------- #
+284 < 2 # The repository, the plan on disk, and the two ways the compiler is invoked.   #
+285 < 2 # --------------------------------------------------------------------------- #
 286 < 1 
 287 < 1 def _git(repo, *args):
 288 < 1     p = subprocess.run(["git", "-C", str(repo), *args],
@@ -308,10 +308,10 @@
 292 < 1 
 293 < 1 
 294 < 1 def base_repo(tmp_path):
-295 < 1     """A one-commit git repository whose commit holds `at-base.txt` and
-296 < 1     nothing else, returned as (repo path, HEAD sha). The plan is written
-297 < 1     inside it, so a 40-hex `--base` names a commit of the plan's own
-298 < 1     repository — which is the repository M3's worktree is cut from."""
+295 < 2     """A one-commit git repository whose commit holds `at-base.txt` and
+296 < 2     nothing else, returned as (repo path, HEAD sha). The plan is written
+297 < 2     inside it, so a 40-hex `--base` names a commit of the plan's own
+298 < 2     repository — which is the repository M3's worktree is cut from."""
 299 < 1     repo = tmp_path / "repo"
 300 < 1     repo.mkdir()
 301 < 1     _git(repo, "init", "-q", ".")
@@ -326,12 +326,12 @@
 310 < 1 
 311 < 1 
 312 < 1 def write_plan(dirpath, name, text, rec=None):
-313 < 1     """The plan plus the gate-verdict artifact claims-v1 compiles against
-315 > 1     (ultrawrite §The proof gate), hashed by the gate's own extractor so a fixture edit re-signs
+313 < 2     """The plan plus the gate-verdict artifact claims-v1 compiles against
+315 > 2     (ultrawrite §The proof gate), hashed by the gate's own extractor so a fixture edit re-signs
 314 < 2     (spec §4.5), hashed by the gate's own extractor so a fixture edit re-signs
-315 < 1     itself rather than going stale against a hand-copied digest. `rec` is the
-316 < 1     record's every key but `tasks` (the authoring section passes its own);
-317 < 1     omitted, it is a one-dispatch, zero-rejection `tally`."""
+315 < 2     itself rather than going stale against a hand-copied digest. `rec` is the
+316 < 2     record's every key but `tasks` (the authoring section passes its own);
+317 < 2     omitted, it is a one-dispatch, zero-rejection `tally`."""
 318 < 1     plan = pathlib.Path(dirpath) / name
 319 < 1     plan.write_text(text)
 320 < 1     entry = gate_input(plan, "1")
@@ -355,11 +355,11 @@
 338 < 1 
 339 < 1 
 340 < 1 def check_at_unsigned(repo, name, text, *flags):
-341 < 1     """`check_at`, but with the gate-verdict record removed right after the
-342 < 1     plan is signed and written — a refusal for a reason that has nothing to
-343 < 1     do with the plan's own commands, which `gate_verdict_violations` already
-344 < 1     refuses with `grammar: gate verdicts missing …`. Used by leg (g)'s
-345 < 1     refused-plan-runs-nothing scenario."""
+341 < 2     """`check_at`, but with the gate-verdict record removed right after the
+342 < 2     plan is signed and written — a refusal for a reason that has nothing to
+343 < 2     do with the plan's own commands, which `gate_verdict_violations` already
+344 < 2     refuses with `grammar: gate verdicts missing …`. Used by leg (g)'s
+345 < 2     refused-plan-runs-nothing scenario."""
 346 < 1     plan = write_plan(repo, name, text)
 347 < 1     verdicts_path(plan).unlink()
 348 < 1     return subprocess.run([sys.executable, str(COMPILER), str(plan),
@@ -368,62 +368,62 @@
 351 < 1 
 352 < 1 
 353 < 1 def tasks_of(text):
-354 < 1     """The task dicts `main()` hands `green_at_base_lines`, built the way the
-355 < 1     `--check` branch builds them."""
+354 < 2     """The task dicts `main()` hands `green_at_base_lines`, built the way the
+355 < 2     `--check` branch builds them."""
 356 < 1     return plan_parse.parse_plan_full(text)[1]
 357 < 1 
 358 < 1 
 359 < 1 def base_tree_for(plan):
-360 < 1     """The `BaseTree` a 40-hex `--base` names for this plan — the same reader
-361 < 1     the `--check` branch builds from the flag."""
+360 < 2     """The `BaseTree` a 40-hex `--base` names for this plan — the same reader
+361 < 2     the `--check` branch builds from the flag."""
 362 < 1     repo = plan.parent
 363 < 1     head = _git(repo, "rev-parse", "HEAD").strip()
 364 < 1     return plan_check.BaseTree.from_flag(head, plan), head
 365 < 1 
 366 < 1 
 367 < 1 def green_lines(repo, name, text, **kw):
-368 < 1     """`green_at_base_lines` on a real plan, reached through the module so a
-369 < 1     BASE tree fails here with `module 'plan_check' has no attribute
-370 < 1     'green_at_base_lines'` — the absent implementation, not a bad import."""
+368 < 2     """`green_at_base_lines` on a real plan, reached through the module so a
+369 < 2     BASE tree fails here with `module 'plan_check' has no attribute
+370 < 2     'green_at_base_lines'` — the absent implementation, not a bad import."""
 371 < 1     plan = write_plan(repo, name, text)
 372 < 1     base_tree, _head = base_tree_for(plan)
 373 < 1     return plan_check.green_at_base_lines(tasks_of(text), base_tree, **kw)
 374 < 1 
 375 < 1 
 376 < 1 def fact_lines(stdout, prefix=FACT):
-377 < 1     """Every line beginning `prefix` — by default `GREEN-AT-BASE fact:`; the
-378 < 1     authoring section passes `AUTHORING fact:` — in the order printed."""
+377 < 2     """Every line beginning `prefix` — by default `GREEN-AT-BASE fact:`; the
+378 < 2     authoring section passes `AUTHORING fact:` — in the order printed."""
 379 < 1     return [line for line in stdout.splitlines() if line.startswith(prefix)]
 380 < 1 
 381 < 1 
 382 < 1 def command_facts(lines):
-383 < 1     """The per-command lines of M4/M5 — every fact line but M6's reading, which
-384 < 1     names no `Run:`."""
+383 < 2     """The per-command lines of M4/M5 — every fact line but M6's reading, which
+384 < 2     names no `Run:`."""
 385 < 1     return [line for line in lines if line.startswith(FACT) and "Run:" in line]
 386 < 1 
-387 < 1 
-388 < 1 # =========================================================================== #
-389 < 1 # (a)/[M1] — the tag is parsed off the command and recorded beside it          #
-390 < 1 # =========================================================================== #
-391 < 1 # "(a) `parse_task` on a task whose Proof carries `- Run: true [M1]`,
-392 < 1 # `- Run: false [M1, M2]` and `- Run: true` records `proof_runs` as exactly
-393 < 1 # `[\"true\", \"false\", \"true\"]` — no bracket in any command — and
-394 < 1 # `proof_run_cites` as exactly `[[\"M1\"], [\"M1\", \"M2\"], []]` [M1]"
+387 < 2 
+388 < 2 # =========================================================================== #
+389 < 2 # (a)/[M1] — the tag is parsed off the command and recorded beside it          #
+390 < 2 # =========================================================================== #
+391 < 2 # "(a) `parse_task` on a task whose Proof carries `- Run: true [M1]`,
+392 < 2 # `- Run: false [M1, M2]` and `- Run: true` records `proof_runs` as exactly
+393 < 2 # `[\"true\", \"false\", \"true\"]` — no bracket in any command — and
+394 < 2 # `proof_run_cites` as exactly `[[\"M1\"], [\"M1\", \"M2\"], []]` [M1]"
 395 < 1 
 396 < 1 RUNS_A = run_bullets("true [M1]", "false [M1, M2]", "true")
 397 < 1 PLAN_A = make_plan(machine=TWO_CLAUSES, runs=RUNS_A, legs=LEGS_M1_M2)
 398 < 1 
-399 < 1 
-400 < 1 # =========================================================================== #
-401 < 1 # (b)/[M2] — an unknown clause is refused, and a tag cites nothing             #
-402 < 1 # =========================================================================== #
-403 < 1 # "(b) `--check` on a plan whose Machine line numbers M1 and M2 and whose Proof
-404 < 1 # carries `- Run: true` tagged with the ninth clause, M9 in the bracket shape,
-405 < 1 # exits 2 with the line `grammar: Run: cites an unknown clause — task 1: true
-406 < 1 # cites M9; the Machine line numbers M1–M2` on stdout, and `--check` on a plan
-407 < 1 # whose leg (a) cites `[M1]` alone while `- Run: true [M2]` is the only
-408 < 1 # citation of M2 exits 2 carrying `Machine clause M2 has no citing Proof leg`
-409 < 1 # — the tag satisfied nothing [M2]"
+399 < 2 
+400 < 2 # =========================================================================== #
+401 < 2 # (b)/[M2] — an unknown clause is refused, and a tag cites nothing             #
+402 < 2 # =========================================================================== #
+403 < 2 # "(b) `--check` on a plan whose Machine line numbers M1 and M2 and whose Proof
+404 < 2 # carries `- Run: true` tagged with the ninth clause, M9 in the bracket shape,
+405 < 2 # exits 2 with the line `grammar: Run: cites an unknown clause — task 1: true
+406 < 2 # cites M9; the Machine line numbers M1–M2` on stdout, and `--check` on a plan
+407 < 2 # whose leg (a) cites `[M1]` alone while `- Run: true [M2]` is the only
+408 < 2 # citation of M2 exits 2 carrying `Machine clause M2 has no citing Proof leg`
+409 < 2 # — the tag satisfied nothing [M2]"
 410 < 1 
 411 < 1 PLAN_B_UNKNOWN = make_plan(machine=TWO_CLAUSES,
 412 < 1                            runs=run_bullets("true [M9]"),
@@ -433,38 +433,38 @@
 416 < 1                                  legs=LEG_M1)
 417 < 1 
 418 < 1 
-419 < 1 # =========================================================================== #
-420 < 1 # (c)/[M3] — one detached worktree at BASE, and nothing left of it             #
-421 < 1 # =========================================================================== #
-422 < 1 # "(c) in a one-commit repository whose commit holds `at-base.txt`, a plan
-423 < 1 # whose `Run:` is `test -f at-base.txt && test \"$ULTRA_BASE\" = <head> && test
-424 < 1 # \"$(git rev-parse HEAD)\" = <head> && test \"$PWD\" != <repo> && touch
-425 < 1 # wrote-here.txt` yields that command's prover line under `--check --base
-426 < 1 # <head>`, and afterwards `git -C <repo> worktree list --porcelain` names
-427 < 1 # exactly one worktree (the repository itself), no directory named
-428 < 1 # `ultra-green-` survives under the temp root, and `<repo>/wrote-here.txt` does
-429 < 1 # not exist — the command ran at BASE, elsewhere than the checkout, and its
-430 < 1 # worktree was removed with what it wrote [M3]"
-431 < 1 
+419 < 2 # =========================================================================== #
+420 < 2 # (c)/[M3] — one detached worktree at BASE, and nothing left of it             #
+421 < 2 # =========================================================================== #
+422 < 2 # "(c) in a one-commit repository whose commit holds `at-base.txt`, a plan
+423 < 2 # whose `Run:` is `test -f at-base.txt && test \"$ULTRA_BASE\" = <head> && test
+424 < 2 # \"$(git rev-parse HEAD)\" = <head> && test \"$PWD\" != <repo> && touch
+425 < 2 # wrote-here.txt` yields that command's prover line under `--check --base
+426 < 2 # <head>`, and afterwards `git -C <repo> worktree list --porcelain` names
+427 < 2 # exactly one worktree (the repository itself), no directory named
+428 < 2 # `ultra-green-` survives under the temp root, and `<repo>/wrote-here.txt` does
+429 < 2 # not exist — the command ran at BASE, elsewhere than the checkout, and its
+430 < 2 # worktree was removed with what it wrote [M3]"
+431 < 2 
 432 < 1 def witness_command(repo, head):
-433 < 1     """The leg's command, with `<head>` and `<repo>` substituted."""
+433 < 2     """The leg's command, with `<head>` and `<repo>` substituted."""
 434 < 1     return ('test -f %s && test "$ULTRA_BASE" = %s && '
 435 < 1             'test "$(git rev-parse HEAD)" = %s && test "$PWD" != "%s" && '
 436 < 1             'touch wrote-here.txt' % (AT_BASE, head, head, repo))
 437 < 1 
 438 < 1 
 439 < 1 def worktree_paths(repo):
-440 < 1     """Every worktree `git` knows of for `repo`, by path."""
+440 < 2     """Every worktree `git` knows of for `repo`, by path."""
 441 < 1     out = _git(repo, "worktree", "list", "--porcelain")
 442 < 1     return [line.split(" ", 1)[1] for line in out.splitlines()
 443 < 1             if line.startswith("worktree ")]
 444 < 1 
 445 < 1 
 446 < 1 def test_c_the_run_line_runs_at_base_in_a_worktree_that_is_then_gone(tmp_path):
-447 < 1     """(c)/[M3]: the command's own tests say where it ran — BASE's file
-448 < 1     present, `ULTRA_BASE` and the worktree HEAD both the 40-hex commit, the
-449 < 1     working directory not the repository — and the exam says what is left of
-450 < 1     the worktree afterwards: nothing."""
+447 < 2     """(c)/[M3]: the command's own tests say where it ran — BASE's file
+448 < 2     present, `ULTRA_BASE` and the worktree HEAD both the 40-hex commit, the
+449 < 2     working directory not the repository — and the exam says what is left of
+450 < 2     the worktree afterwards: nothing."""
 451 < 1     repo, head = base_repo(tmp_path)
 452 < 1     command = witness_command(repo, head)
 453 < 1     tmpdir = tmp_path / "tmproot"
@@ -481,37 +481,37 @@
 464 < 1         "expected: %s\nstdout:\n%s\nstderr:\n%s"
 465 < 1         % (expected, p.stdout, p.stderr))
 466 < 1     assert p.returncode == 0, out
-467 < 1     # "git -C <repo> worktree list --porcelain names exactly one worktree"
+467 < 2     # "git -C <repo> worktree list --porcelain names exactly one worktree"
 468 < 1     paths = worktree_paths(repo)
 469 < 1     assert len(paths) == 1, paths
 470 < 1     assert pathlib.Path(paths[0]).resolve() == repo.resolve(), (paths, repo)
-471 < 1     # "no directory named ultra-green- survives under the temp root" — the
-472 < 1     # root the compile was handed, and the machine's own.
+471 < 2     # "no directory named ultra-green- survives under the temp root" — the
+472 < 2     # root the compile was handed, and the machine's own.
 473 < 1     assert sorted(tmpdir.glob("ultra-green-*")) == [], sorted(
 474 < 1         tmpdir.glob("ultra-green-*"))
-475 < 1     # The machine's own temp root is shared with every other pytest worker, and
-476 < 1     # a sibling's live worktree appears here between `before` and now — so this
-477 < 1     # half is read only when this process is the whole suite (#1120). The
-478 < 1     # handed root above is the assertion that holds either way, and it is the
-479 < 1     # one that catches a leak the compile is responsible for.
+475 < 2     # The machine's own temp root is shared with every other pytest worker, and
+476 < 2     # a sibling's live worktree appears here between `before` and now — so this
+477 < 2     # half is read only when this process is the whole suite (#1120). The
+478 < 2     # handed root above is the assertion that holds either way, and it is the
+479 < 2     # one that catches a leak the compile is responsible for.
 480 < 1     if os.environ.get("PYTEST_XDIST_WORKER") is None:
 481 < 1         assert sorted(machine_root.glob("ultra-green-*")) == before, (
 482 < 1             "an ultra-green- directory survived under %s" % machine_root)
-483 < 1     # "<repo>/wrote-here.txt does not exist" — --force took the worktree away
-484 < 1     # with what the command wrote into it.
+483 < 2     # "<repo>/wrote-here.txt does not exist" — --force took the worktree away
+484 < 2     # with what the command wrote into it.
 485 < 1     assert not (repo / "wrote-here.txt").exists(), (
 486 < 1         "the command's file landed in the repository's own working tree")
 487 < 1 
-488 < 1 
-489 < 1 # =========================================================================== #
-490 < 1 # (d)/[M4] — prover line, guard line, and nothing for a red command            #
-491 < 1 # =========================================================================== #
-492 < 1 # "(d) one plan carrying `- Run: true [M1]`, `- Run: true` and `- Run: false`
-493 < 1 # yields, from `green_at_base_lines` and from the `--check --base` stdout
-494 < 1 # alike, exactly `GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this
-495 < 1 # line cannot falsify its clause` and `GREEN-AT-BASE fact: task 1: Run: true —
-496 < 1 # exits 0 at BASE; a guard, no leg cites it` in that order and no line naming
-497 < 1 # `false` [M4]"
+488 < 2 
+489 < 2 # =========================================================================== #
+490 < 2 # (d)/[M4] — prover line, guard line, and nothing for a red command            #
+491 < 2 # =========================================================================== #
+492 < 2 # "(d) one plan carrying `- Run: true [M1]`, `- Run: true` and `- Run: false`
+493 < 2 # yields, from `green_at_base_lines` and from the `--check --base` stdout
+494 < 2 # alike, exactly `GREEN-AT-BASE fact: task 1: Run: true — exits 0 at BASE; this
+495 < 2 # line cannot falsify its clause` and `GREEN-AT-BASE fact: task 1: Run: true —
+496 < 2 # exits 0 at BASE; a guard, no leg cites it` in that order and no line naming
+497 < 2 # `false` [M4]"
 498 < 1 
 499 < 1 RUNS_D = run_bullets("true [M1]", "true", "false")
 500 < 1 PLAN_D = make_plan(runs=RUNS_D)
@@ -520,8 +520,8 @@
 503 < 1 
 504 < 1 def test_d_the_function_prints_the_prover_and_the_guard_and_nothing_else(
 505 < 1         tmp_path):
-506 < 1     """(d)/[M4]: the two lines, in that order, by equality — and no line
-507 < 1     naming the command that exited non-zero."""
+506 < 2     """(d)/[M4]: the two lines, in that order, by equality — and no line
+507 < 2     naming the command that exited non-zero."""
 508 < 1     repo, _head = base_repo(tmp_path)
 509 < 1     lines = green_lines(repo, "d1.md", PLAN_D)
 510 < 1     assert command_facts(lines) == EXPECTED_D, lines
@@ -529,8 +529,8 @@
 512 < 1 
 513 < 1 
 514 < 1 def test_d_check_at_base_prints_the_same_two_lines(tmp_path):
-515 < 1     """(d)/[M4]: "from the `--check --base` stdout alike" — the same two
-516 < 1     lines, in the same order, on the compiler's own stdout."""
+515 < 2     """(d)/[M4]: "from the `--check --base` stdout alike" — the same two
+516 < 2     lines, in the same order, on the compiler's own stdout."""
 517 < 1     repo, head = base_repo(tmp_path)
 518 < 1     p = check_at(repo, "d2.md", PLAN_D, "--base", head)
 519 < 1     assert p.returncode == 0, p.stdout + p.stderr
@@ -539,27 +539,27 @@
 522 < 1                 if "Run: false" in line], p.stdout
 523 < 1 
 524 < 1 
-525 < 1 # =========================================================================== #
-526 < 1 # (e)/[M5] — the timeout line, the bound, and the killed process group         #
-527 < 1 # =========================================================================== #
-528 < 1 # "(e) `green_at_base_lines` with `timeout_s=1` on a task whose `Run:` is
-529 < 1 # `sleep 30` returns `GREEN-AT-BASE fact: task 1: Run: sleep 30 — not run
-530 < 1 # (timeout after 1 s)`, the call returns in under 4 seconds by
-531 < 1 # `time.monotonic()`, and afterwards no `sleep 30` process the call started is
-532 < 1 # alive [M5]"
-533 < 1 
-534 < 1 # The sleeper carries a fraction no other worker is using, so `ps` can tell
-535 < 1 # THIS test's `sleep` from the one a sibling pytest worker is running at the
-536 < 1 # same moment (#1120): a bare `sleep 30` is indistinguishable across workers,
-537 < 1 # and the before/after diff then counts a sibling's sleeper as a leftover.
-538 < 1 # `sleep` takes a fractional argument on macOS and on GNU coreutils alike, and
-539 < 1 # any value over the 1-second limit exercises the same kill path.
+525 < 2 # =========================================================================== #
+526 < 2 # (e)/[M5] — the timeout line, the bound, and the killed process group         #
+527 < 2 # =========================================================================== #
+528 < 2 # "(e) `green_at_base_lines` with `timeout_s=1` on a task whose `Run:` is
+529 < 2 # `sleep 30` returns `GREEN-AT-BASE fact: task 1: Run: sleep 30 — not run
+530 < 2 # (timeout after 1 s)`, the call returns in under 4 seconds by
+531 < 2 # `time.monotonic()`, and afterwards no `sleep 30` process the call started is
+532 < 2 # alive [M5]"
+533 < 2 
+534 < 2 # The sleeper carries a fraction no other worker is using, so `ps` can tell
+535 < 2 # THIS test's `sleep` from the one a sibling pytest worker is running at the
+536 < 2 # same moment (#1120): a bare `sleep 30` is indistinguishable across workers,
+537 < 2 # and the before/after diff then counts a sibling's sleeper as a leftover.
+538 < 2 # `sleep` takes a fractional argument on macOS and on GNU coreutils alike, and
+539 < 2 # any value over the 1-second limit exercises the same kill path.
 540 < 1 SLEEPER = "sleep 30.%03d" % (os.getpid() % 1000)
 541 < 1 PLAN_E = make_plan(runs=run_bullets(SLEEPER))
 542 < 1 
 543 < 1 
 544 < 1 def sleeper_pids():
-545 < 1     """Every live process whose command line is exactly this test's sleeper."""
+545 < 2     """Every live process whose command line is exactly this test's sleeper."""
 546 < 1     p = subprocess.run(["ps", "-eo", "pid=,args="],
 547 < 1                        capture_output=True, text=True)
 548 < 1     pids = set()
@@ -571,8 +571,8 @@
 554 < 1 
 555 < 1 
 556 < 1 def test_e_a_command_past_the_limit_is_killed_and_reported(tmp_path):
-557 < 1     """(e)/[M5]: the exact line, the 3-second bound over a 1-second limit, and
-558 < 1     no `sleep 30` this call started left alive — `killpg`, not `kill`."""
+557 < 2     """(e)/[M5]: the exact line, the 3-second bound over a 1-second limit, and
+558 < 2     no `sleep 30` this call started left alive — `killpg`, not `kill`."""
 559 < 1     assert shutil.which("ps"), "the exam needs a real `ps` to see the sleeper"
 560 < 1     repo, _head = base_repo(tmp_path)
 561 < 1     before = sleeper_pids()
@@ -591,15 +591,15 @@
 574 < 1         "a `sleep 30` this call started outlived it: %s" % sorted(leftover))
 575 < 1 
 576 < 1 
-577 < 1 # =========================================================================== #
-578 < 1 # (f)/[M6] — the reading line, in all three shapes                             #
-579 < 1 # =========================================================================== #
-580 < 1 # "(f) the same call's last line is `GREEN-AT-BASE fact: <S> s over 0 lines
-581 < 1 # run, 1 not run (timeout)` with `<S>` matching `[0-9]+\\.[0-9]`, the leg (d)
-582 < 1 # call's last line is `GREEN-AT-BASE fact: <S> s over 3 lines run, 0 not run
-583 < 1 # (timeout)`, and a task with no `Run:` line returns exactly one line,
-584 < 1 # `GREEN-AT-BASE fact: 0.0 s over 0 lines run, 0 not run (timeout)` [M6]"
-585 < 1 
+577 < 2 # =========================================================================== #
+578 < 2 # (f)/[M6] — the reading line, in all three shapes                             #
+579 < 2 # =========================================================================== #
+580 < 2 # "(f) the same call's last line is `GREEN-AT-BASE fact: <S> s over 0 lines
+581 < 2 # run, 1 not run (timeout)` with `<S>` matching `[0-9]+\\.[0-9]`, the leg (d)
+582 < 2 # call's last line is `GREEN-AT-BASE fact: <S> s over 3 lines run, 0 not run
+583 < 2 # (timeout)`, and a task with no `Run:` line returns exactly one line,
+584 < 2 # `GREEN-AT-BASE fact: 0.0 s over 0 lines run, 0 not run (timeout)` [M6]"
+585 < 2 
 586 < 1 PLAN_F_NO_RUNS = make_plan()
 587 < 1 
 588 < 1 
@@ -611,8 +611,8 @@
 594 < 1 
 595 < 1 
 596 < 1 def test_f_the_timeout_calls_reading_counts_it_as_not_run(tmp_path):
-597 < 1     """(f)/[M6]: leg (e)'s call — 0 lines run, 1 not run, `<S>` to one
-598 < 1     decimal."""
+597 < 2     """(f)/[M6]: leg (e)'s call — 0 lines run, 1 not run, `<S>` to one
+598 < 2     decimal."""
 599 < 1     repo, _head = base_repo(tmp_path)
 600 < 1     lines = green_lines(repo, "f1.md", PLAN_E, timeout_s=1)
 601 < 1     assert lines, "green_at_base_lines returned nothing"
@@ -620,8 +620,8 @@
 603 < 1 
 604 < 1 
 605 < 1 def test_f_the_three_command_calls_reading_counts_every_one(tmp_path):
-606 < 1     """(f)/[M6]: leg (d)'s call — three commands reached an exit inside the
-607 < 1     limit, whatever that exit was, and none was killed."""
+606 < 2     """(f)/[M6]: leg (d)'s call — three commands reached an exit inside the
+607 < 2     limit, whatever that exit was, and none was killed."""
 608 < 1     repo, _head = base_repo(tmp_path)
 609 < 1     lines = green_lines(repo, "f2.md", PLAN_D)
 610 < 1     assert lines, "green_at_base_lines returned nothing"
@@ -629,27 +629,27 @@
 612 < 1 
 613 < 1 
 614 < 1 def test_f_a_plan_with_no_run_line_still_gets_the_reading(tmp_path):
-615 < 1     """(f)/[M6]: exactly one line, the zero reading, verbatim."""
+615 < 2     """(f)/[M6]: exactly one line, the zero reading, verbatim."""
 616 < 1     repo, _head = base_repo(tmp_path)
 617 < 1     lines = green_lines(repo, "f3.md", PLAN_F_NO_RUNS)
 618 < 1     assert lines == [READING_LINE % ("0.0", 0, 0)], lines
 619 < 1 
 620 < 1 
-621 < 1 # =========================================================================== #
-622 < 1 # (g)/[M7] — where the lines sit, and when nothing runs at all                 #
-623 < 1 # =========================================================================== #
-624 < 1 # "(g) under `--check --base <head>` on the leg (d) plan stdout begins `PLAN
-625 < 1 # OK`, the exit is 0, every `GREEN-AT-BASE fact:` line sits after the last
-626 < 1 # `BASE fact:`/`STALE fact:` line and before the `AUTHORING fact:` line, and
-627 < 1 # with `- Run: touch <tmp>/ran` in the Proof the file `<tmp>/ran` exists after
-628 < 1 # `--check --base <head>` but not after a bare `--check`, not after a plain
-629 < 1 # compile with `--base <head>`, and not after `--check --base <head>` on a plan
-630 < 1 # the grammar refuses (a leg citing a ninth clause the Machine line does not
-631 < 1 # number), none of which prints a `GREEN-AT-BASE fact:` line [M7]"
-632 < 1 
+621 < 2 # =========================================================================== #
+622 < 2 # (g)/[M7] — where the lines sit, and when nothing runs at all                 #
+623 < 2 # =========================================================================== #
+624 < 2 # "(g) under `--check --base <head>` on the leg (d) plan stdout begins `PLAN
+625 < 2 # OK`, the exit is 0, every `GREEN-AT-BASE fact:` line sits after the last
+626 < 2 # `BASE fact:`/`STALE fact:` line and before the `AUTHORING fact:` line, and
+627 < 2 # with `- Run: touch <tmp>/ran` in the Proof the file `<tmp>/ran` exists after
+628 < 2 # `--check --base <head>` but not after a bare `--check`, not after a plain
+629 < 2 # compile with `--base <head>`, and not after `--check --base <head>` on a plan
+630 < 2 # the grammar refuses (a leg citing a ninth clause the Machine line does not
+631 < 2 # number), none of which prints a `GREEN-AT-BASE fact:` line [M7]"
+632 < 2 
 633 < 1 def test_g_the_verdict_still_comes_first_and_the_exit_is_still_zero(tmp_path):
-634 < 1     """(g)/[M7]: a fact is not a refusal — `PLAN OK` is still the first line
-635 < 1     of stdout and the exit is still 0, with the rehearsal's lines below it."""
+634 < 2     """(g)/[M7]: a fact is not a refusal — `PLAN OK` is still the first line
+635 < 2     of stdout and the exit is still 0, with the rehearsal's lines below it."""
 636 < 1     repo, head = base_repo(tmp_path)
 637 < 1     p = check_at(repo, "g1.md", PLAN_D, "--base", head)
 638 < 1     assert p.returncode == 0, p.stdout + p.stderr
@@ -658,9 +658,9 @@
 641 < 1 
 642 < 1 def test_g_the_lines_sit_between_the_stale_facts_and_the_authoring_fact(
 643 < 1         tmp_path):
-644 < 1     """(g)/[M7]: after the last `BASE fact:`/`STALE fact:` line and before the
-645 < 1     `AUTHORING fact:` line. The fixture's undecidable `sha-matches:` entry
-646 < 1     guarantees there is a `STALE fact:` line to sit after."""
+644 < 2     """(g)/[M7]: after the last `BASE fact:`/`STALE fact:` line and before the
+645 < 2     `AUTHORING fact:` line. The fixture's undecidable `sha-matches:` entry
+646 < 2     guarantees there is a `STALE fact:` line to sit after."""
 647 < 1     repo, head = base_repo(tmp_path)
 648 < 1     p = check_at(repo, "g2.md", PLAN_D, "--base", head)
 649 < 1     assert p.returncode == 0, p.stdout + p.stderr
@@ -688,9 +688,9 @@
 671 < 1 
 672 < 1 
 673 < 1 def test_g_check_at_base_runs_the_run_line(tmp_path):
-674 < 1     """(g)/[M7]: the witness — `--check --base <head>` really does run the
-675 < 1     command, so the file it touches outside the worktree is there afterwards,
-676 < 1     and the guard line is printed."""
+674 < 2     """(g)/[M7]: the witness — `--check --base <head>` really does run the
+675 < 2     command, so the file it touches outside the worktree is there afterwards,
+676 < 2     and the guard line is printed."""
 677 < 1     repo, head = base_repo(tmp_path)
 678 < 1     marker = tmp_path / "ran"
 679 < 1     p = check_at(repo, "g3.md", touch_plan(marker), "--base", head)
@@ -703,8 +703,8 @@
 686 < 1 
 687 < 1 
 688 < 1 def test_g_a_bare_check_runs_nothing_and_says_nothing(tmp_path):
-689 < 1     """(g)/[M7]: running a plan's commands is what `--base` asks for, never
-690 < 1     what a grammar check does."""
+689 < 2     """(g)/[M7]: running a plan's commands is what `--base` asks for, never
+690 < 2     what a grammar check does."""
 691 < 1     repo, _head = base_repo(tmp_path)
 692 < 1     marker = tmp_path / "ran"
 693 < 1     p = check_at(repo, "g4.md", touch_plan(marker))
@@ -715,8 +715,8 @@
 698 < 1 
 699 < 1 
 700 < 1 def test_g_a_refused_check_at_base_runs_nothing_and_says_nothing(tmp_path):
-701 < 1     """(g)/[M7]: a verdict that is a refusal rehearses nothing — the plan the
-702 < 1     engine will not run is not a plan worth timing."""
+701 < 2     """(g)/[M7]: a verdict that is a refusal rehearses nothing — the plan the
+702 < 2     engine will not run is not a plan worth timing."""
 703 < 1     repo, head = base_repo(tmp_path)
 704 < 1     marker = tmp_path / "ran"
 705 < 1     p = check_at_unsigned(repo, "g6.md", touch_plan(marker), "--base", head)
@@ -727,35 +727,35 @@
 710 < 1     assert FACT not in out, out
 711 < 1 
 712 < 1 
-713 < 1 # =========================================================================== #
-714 < 1 # (h)/[M3, M5] — the Proof's own `Run:` lines                                  #
-715 < 1 # =========================================================================== #
-716 < 1 # "(h) the first and second `Run:` lines find the constant at 30 and the
-717 < 1 # function's signature, and the third reports the exam passing [M3, M5]"
-718 < 1 #
-719 < 1 # The signature is exercised by legs (d)-(f), which call the function with
-720 < 1 # `timeout_s`; no source read pins it. The third, `python3 -m pytest -q
-721 < 1 # tests/test_plan_check.py`, is this file: an exam never runs
-722 < 1 # an exam, and it cannot run itself, so the driver runs that line.
-723 < 1 
-724 < 1 
+713 < 2 # =========================================================================== #
+714 < 2 # (h)/[M3, M5] — the Proof's own `Run:` lines                                  #
+715 < 2 # =========================================================================== #
+716 < 2 # "(h) the first and second `Run:` lines find the constant at 30 and the
+717 < 2 # function's signature, and the third reports the exam passing [M3, M5]"
+718 < 2 #
+719 < 2 # The signature is exercised by legs (d)-(f), which call the function with
+720 < 2 # `timeout_s`; no source read pins it. The third, `python3 -m pytest -q
+721 < 2 # tests/test_plan_check.py`, is this file: an exam never runs
+722 < 2 # an exam, and it cannot run itself, so the driver runs that line.
+723 < 2 
+724 < 2 
 725 < 1 def test_h_the_default_timeout_is_a_module_constant_of_thirty():
-726 < 1     """(h)/[M5]: the Proof's first `Run:` line — `^GREEN_AT_BASE_TIMEOUT_S =
-727 < 1     30$` — so a leg can name the default without paying 30 seconds for it."""
+726 < 2     """(h)/[M5]: the Proof's first `Run:` line — `^GREEN_AT_BASE_TIMEOUT_S =
+727 < 2     30$` — so a leg can name the default without paying 30 seconds for it."""
 728 < 1     assert re.search(r"^GREEN_AT_BASE_TIMEOUT_S = 30$", SOURCE, re.M), (
 729 < 1         "plan_check.py carries no `GREEN_AT_BASE_TIMEOUT_S = 30` line")
 730 < 1     assert getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None) == 30, (
 731 < 1         getattr(plan_check, "GREEN_AT_BASE_TIMEOUT_S", None))
 732 < 1 
-733 < 1 
-734 < 1 # ########################################################################### #
-735 < 1 # The run-wide freeze                                                         #
-736 < 1 # ########################################################################### #
-737 < 1 
-738 < 1 # --------------------------------------------------------------------------- #
-739 < 1 # The plan: one signed claims-v1 task, `## Global Constraints` varying only   #
-740 < 1 # in its one `- Check:` bullet — the three commands M1, M2 and M3 each name.  #
-741 < 1 # --------------------------------------------------------------------------- #
+733 < 2 
+734 < 2 # ########################################################################### #
+735 < 2 # The run-wide freeze                                                         #
+736 < 2 # ########################################################################### #
+737 < 2 
+738 < 2 # --------------------------------------------------------------------------- #
+739 < 2 # The plan: one signed claims-v1 task, `## Global Constraints` varying only   #
+740 < 2 # in its one `- Check:` bullet — the three commands M1, M2 and M3 each name.  #
+741 < 2 # --------------------------------------------------------------------------- #
 742 < 1 
 743 < 1 FREEZE_HEAD = """# Freeze probe
 744 < 1 
@@ -793,7 +793,7 @@
 776 < 1 - sha-matches: `at-base.txt`
 777 < 1 """
 778 < 1 
-779 < 1 # The three commands the Machine clauses name, verbatim.
+779 < 2 # The three commands the Machine clauses name, verbatim.
 780 < 1 CMD_M1 = "git diff --quiet $ULTRA_BASE -- fleet/"
 781 < 1 CMD_M2 = "git diff --quiet $ULTRA_BASE -- fleet/launch.mjs fleet/te"
 782 < 1 CMD_M3 = "git diff --quiet $ULTRA_BASE -- docs src/prover.ts"
@@ -801,26 +801,26 @@
 784 < 1 
 786 > 1 def run_plan_check(tmp_path, name, text):
 785 < 2 def compile_plan(tmp_path, name, text):
-786 < 1     """`plan_check.py <plan>` — no `--base`: the Context says this refusal
-787 < 1     needs no repository, and none is set up here."""
+786 < 2     """`plan_check.py <plan>` — no `--base`: the Context says this refusal
+787 < 2     needs no repository, and none is set up here."""
 788 < 1     plan = write_plan(tmp_path, name, text)
 789 < 1     return subprocess.run([sys.executable, str(COMPILER), str(plan)],
 790 < 1                           capture_output=True, text=True)
 791 < 1 
 792 < 1 
 793 < 1 def freeze_lines(stdout):
-794 < 1     """Every stdout line carrying the word `freezes`."""
+794 < 2     """Every stdout line carrying the word `freezes`."""
 795 < 1     return [line for line in stdout.splitlines() if "freezes" in line]
 796 < 1 
 797 < 1 
-798 < 1 # =========================================================================== #
-799 < 1 # (a)/[M1] — the freeze is refused, one line, naming everything M1 names      #
-800 < 1 # =========================================================================== #
-801 < 1 
+798 < 2 # =========================================================================== #
+799 < 2 # (a)/[M1] — the freeze is refused, one line, naming everything M1 names      #
+800 < 2 # =========================================================================== #
+801 < 2 
 802 < 1 def test_a_a_directory_pathspec_covering_the_test_path_is_refused(tmp_path):
-803 < 1     """[M1]: exit 2, no `PLAN OK`, exactly one `freezes` line, carrying the
-804 < 1     check's whole command, the pathspec `fleet/`, `task 1` and the covered
-805 < 1     path `fleet/tests/test_x.mjs`."""
+803 < 2     """[M1]: exit 2, no `PLAN OK`, exactly one `freezes` line, carrying the
+804 < 2     check's whole command, the pathspec `fleet/`, `task 1` and the covered
+805 < 2     path `fleet/tests/test_x.mjs`."""
 807 > 1     p = run_plan_check(tmp_path, "a.md", make_plan(CMD_M1))
 806 < 2     p = compile_plan(tmp_path, "a.md", make_plan(CMD_M1))
 807 < 1     out = p.stdout + p.stderr
@@ -834,13 +834,13 @@
 815 < 1         assert token in line, "%r missing from freeze line: %r" % (token, line)
 816 < 1 
 817 < 1 
-818 < 1 # =========================================================================== #
-819 < 1 # (b)/[M2] — a string prefix that is not a directory prefix covers nothing    #
-820 < 1 # =========================================================================== #
-821 < 1 
+818 < 2 # =========================================================================== #
+819 < 2 # (b)/[M2] — a string prefix that is not a directory prefix covers nothing    #
+820 < 2 # =========================================================================== #
+821 < 2 
 822 < 1 def test_b_a_string_prefix_pathspec_is_not_a_directory_prefix(tmp_path):
-823 < 1     """[M2]: `fleet/te` is a string prefix of `fleet/tests/test_x.mjs`, not a
-824 < 1     directory prefix — `PLAN OK`, exit 0, no `freezes` line at all."""
+823 < 2     """[M2]: `fleet/te` is a string prefix of `fleet/tests/test_x.mjs`, not a
+824 < 2     directory prefix — `PLAN OK`, exit 0, no `freezes` line at all."""
 826 > 1     p = run_plan_check(tmp_path, "b.md", make_plan(CMD_M2))
 825 < 2     p = compile_plan(tmp_path, "b.md", make_plan(CMD_M2))
 826 < 1     out = p.stdout + p.stderr
@@ -849,16 +849,16 @@
 829 < 1     assert freeze_lines(p.stdout) == [], p.stdout
 830 < 1 
 831 < 1 
-832 < 1 # =========================================================================== #
-833 < 1 # (c)/[M3] — a pathspec equal to a task's path covers it                      #
-834 < 1 # =========================================================================== #
-835 < 1 
+832 < 2 # =========================================================================== #
+833 < 2 # (c)/[M3] — a pathspec equal to a task's path covers it                      #
+834 < 2 # =========================================================================== #
+835 < 2 
 836 < 1 def test_c_a_pathspec_equal_to_the_modify_path_is_refused(tmp_path):
-837 < 1     """[M3]: `src/prover.ts` named exactly among the freeze's pathspecs
-838 < 1     refuses the plan; at least one stdout line carries `freezes`,
-839 < 1     `src/prover.ts` and `task 1` together (`command_violations`' own "names"
-840 < 1     line may also fire here — that line says a different thing and is not
-841 < 1     asserted against)."""
+837 < 2     """[M3]: `src/prover.ts` named exactly among the freeze's pathspecs
+838 < 2     refuses the plan; at least one stdout line carries `freezes`,
+839 < 2     `src/prover.ts` and `task 1` together (`command_violations`' own "names"
+840 < 2     line may also fire here — that line says a different thing and is not
+841 < 2     asserted against)."""
 843 > 1     p = run_plan_check(tmp_path, "c.md", make_plan(CMD_M3))
 842 < 2     p = compile_plan(tmp_path, "c.md", make_plan(CMD_M3))
 843 < 1     out = p.stdout + p.stderr
@@ -867,12 +867,12 @@
 846 < 1     assert lines, "expected at least one 'freezes' line:\n%s" % p.stdout
 847 < 1     assert any(all(tok in line for tok in ("freezes", "src/prover.ts", "task 1"))
 848 < 1                for line in lines), lines
-849 < 1 
-850 < 1 
-851 < 1 # =========================================================================== #
-852 < 1 # (d)/[M4] — the module-level function, answering from strings alone, and    #
-853 < 1 # the two doc greps                                                          #
-854 < 1 # =========================================================================== #
+849 < 2 
+850 < 2 
+851 < 2 # =========================================================================== #
+852 < 2 # (d)/[M4] — the module-level function, answering from strings alone, and    #
+853 < 2 # the two doc greps                                                          #
+854 < 2 # =========================================================================== #
 855 < 1 
 856 < 1 
 857 < 1 def fake_task(id_, modifies=(), creates=(), deletes=(),
@@ -890,10 +890,10 @@
 869 < 1 
 870 < 1 
 871 < 1 def test_d_freeze_violations_answers_m1_m2_m3_from_plain_dicts_alone():
-872 < 1     """[M4]: called directly on plain `checks`/`tasks` dicts — no `tmp_path`,
-873 < 1     no git, no subprocess anywhere in this test — `freeze_violations`
-874 < 1     reproduces the M1, M2 and M3 verdicts on its own, which is what "reads
-875 < 1     only the strings the parser printed" means in practice."""
+872 < 2     """[M4]: called directly on plain `checks`/`tasks` dicts — no `tmp_path`,
+873 < 2     no git, no subprocess anywhere in this test — `freeze_violations`
+874 < 2     reproduces the M1, M2 and M3 verdicts on its own, which is what "reads
+875 < 2     only the strings the parser printed" means in practice."""
 876 < 1     m1 = plan_check.freeze_violations([fake_check(CMD_M1)], [TASK1])
 877 < 1     assert len(m1) == 1, m1
 878 < 1     for token in (CMD_M1, "fleet/", "task 1", "fleet/tests/test_x.mjs"):
@@ -907,18 +907,18 @@
 886 < 1     assert any(all(tok in line for tok in
 887 < 1                    ("freezes", "src/prover.ts", "task 1")) for line in m3), m3
 888 < 1 
-889 < 1 
-890 < 1 # ########################################################################### #
-891 < 1 # The authoring record                                                        #
-892 < 1 # ########################################################################### #
-893 < 1 
-894 < 1 # --------------------------------------------------------------------------- #
-895 < 1 # The plan. One claims-v1 task carrying the fixed grammar the compiler         #
-896 < 1 # requires — the header, the six body slots, a numbered Machine clause, a      #
-897 < 1 # cited leg, a provenance tag, a predicate Stale-if whose path is absent from  #
-898 < 1 # the temp repository, so no plan below is refused for anything but its        #
-899 < 1 # record.                                                                      #
-900 < 1 # --------------------------------------------------------------------------- #
+889 < 2 
+890 < 2 # ########################################################################### #
+891 < 2 # The authoring record                                                        #
+892 < 2 # ########################################################################### #
+893 < 2 
+894 < 2 # --------------------------------------------------------------------------- #
+895 < 2 # The plan. One claims-v1 task carrying the fixed grammar the compiler         #
+896 < 2 # requires — the header, the six body slots, a numbered Machine clause, a      #
+897 < 2 # cited leg, a provenance tag, a predicate Stale-if whose path is absent from  #
+898 < 2 # the temp repository, so no plan below is refused for anything but its        #
+899 < 2 # record.                                                                      #
+900 < 2 # --------------------------------------------------------------------------- #
 901 < 1 
 902 < 1 PLAN = """# Authoring record probe
 903 < 1 
@@ -953,7 +953,7 @@
 932 < 1 - path-exists: `fleet/tests/sim_probe.mjs`
 933 < 1 """
 934 < 1 
-935 < 1 # The Context's example record, verbatim, and the `tally` it is read beside.
+935 < 2 # The Context's example record, verbatim, and the `tally` it is read beside.
 936 < 1 AUTHORING = {
 937 < 1     "minutes": 118,
 938 < 2     "probes": 12,
@@ -963,20 +963,20 @@
 942 < 1 }
 943 < 1 TALLY = {"dispatched": 4, "rejected": 1}
 944 < 1 
-945 < 1 # M1's line for that pair, exactly as the Context writes it.
+945 < 2 # M1's line for that pair, exactly as the Context writes it.
 947 > 1 EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
 946 < 2 EXAMPLE_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
 947 < 1                 "4 gate dispatches, 1 rejected, routing risk->ultrapowers, "
 948 < 1                 "1 questions, 1/1 recommended picked, 0 explain rounds")
-949 < 1 # M2's line for a record with no `authoring` key.
+949 < 2 # M2's line for a record with no `authoring` key.
 950 < 1 NONE_LINE = "AUTHORING fact: none recorded"
 951 < 1 
 952 < 1 FACT_PREFIX = "AUTHORING fact:"
 953 < 1 
 954 < 1 
 955 < 1 def record(authoring=..., tally=TALLY):
-956 < 1     """The gate-verdict record minus its `tasks` key (which is hashed per
-957 < 1     plan). `authoring` omitted entirely when passed as None."""
+956 < 2     """The gate-verdict record minus its `tasks` key (which is hashed per
+957 < 2     plan). `authoring` omitted entirely when passed as None."""
 958 < 1     rec = {}
 959 < 1     if tally is not None:
 960 < 1         rec["tally"] = copy.deepcopy(tally)
@@ -997,15 +997,15 @@
 975 < 1 
 976 < 1 
 977 < 1 def carrying_lines(stdout):
-978 < 1     """Every line mentioning the fact prefix anywhere, so leg (d)'s "zero
-979 < 1     lines containing `AUTHORING fact:`" is read as written."""
+978 < 2     """Every line mentioning the fact prefix anywhere, so leg (d)'s "zero
+979 < 2     lines containing `AUTHORING fact:`" is read as written."""
 980 < 1     return [line for line in stdout.splitlines() if FACT_PREFIX in line]
 981 < 1 
 982 < 1 
 983 < 1 def assert_one_fact_after_the_verdict(p, expected):
-984 < 1     """[M1]/[M2]: exit 0, `PLAN OK` as the first stdout line, and exactly one
-985 < 1     `AUTHORING fact:` line — equal to `expected` in full, and printed after
-986 < 1     the verdict line."""
+984 < 2     """[M1]/[M2]: exit 0, `PLAN OK` as the first stdout line, and exactly one
+985 < 2     `AUTHORING fact:` line — equal to `expected` in full, and printed after
+986 < 2     the verdict line."""
 987 < 1     out = p.stdout + p.stderr
 988 < 1     assert p.returncode == 0, out
 989 < 1     assert p.stdout.splitlines()[:1] == ["PLAN OK"], out
@@ -1014,30 +1014,30 @@
 992 < 1     assert lines.index(expected) > lines.index("PLAN OK"), out
 993 < 1 
 994 < 1 
-995 < 1 # ── (a) M1: the well-formed record prints the Context's example line ────────
-996 < 1 # "a claims-v1 plan whose `<stem>.gate-verdicts.json` carries a well-formed
-997 < 1 # top-level `authoring` object prints, after the verdict line, exactly one line
-999 > 1 # of the form `AUTHORING fact: <minutes> min to PLAN OK, 
+995 < 2 # ── (a) M1: the well-formed record prints the Context's example line ────────
+996 < 2 # "a claims-v1 plan whose `<stem>.gate-verdicts.json` carries a well-formed
+997 < 2 # top-level `authoring` object prints, after the verdict line, exactly one line
+999 > 2 # of the form `AUTHORING fact: <minutes> min to PLAN OK, 
 998 < 2 # of the form `AUTHORING fact: <minutes> min to PLAN OK, <probes> hub probes,
-999 < 1 # <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
-1000 < 1 # <n> questions, <p>/<q> recommended picked, <e> explain rounds` ... and the
-1001 < 1 # compile still exits 0 with `PLAN OK`."
-1002 < 1 
+999 < 2 # <dispatched> gate dispatches, <rejected> rejected, routing <branch>-><lane>,
+1000 < 2 # <n> questions, <p>/<q> recommended picked, <e> explain rounds` ... and the
+1001 < 2 # compile still exits 0 with `PLAN OK`."
+1002 < 2 
 1003 < 1 def test_a_the_example_record_prints_the_example_line(tmp_path):
-1004 < 1     """(a)/[M1]: the Context's example `authoring` object beside a `tally` of
-1005 < 1     dispatched 4 / rejected 1, compiled `--check --base <head>` inside a
-1006 < 1     one-commit repository — exit 0, `PLAN OK` first, and exactly one
-1007 < 1     `AUTHORING fact:` line, the Context's example line verbatim."""
+1004 < 2     """(a)/[M1]: the Context's example `authoring` object beside a `tally` of
+1005 < 2     dispatched 4 / rejected 1, compiled `--check --base <head>` inside a
+1006 < 2     one-commit repository — exit 0, `PLAN OK` first, and exactly one
+1007 < 2     `AUTHORING fact:` line, the Context's example line verbatim."""
 1008 < 1     repo, head = base_repo(tmp_path)
 1009 < 1     p = check(repo, "a.md", record(), "--base", head)
 1010 < 1     assert_one_fact_after_the_verdict(p, EXAMPLE_LINE)
 1011 < 1 
-1012 < 1 
-1013 < 1 # ── (b) M1: the tally's absent key, and the question counts ─────────────────
-1014 < 1 # "`<dispatched>` and `<rejected>` read from the record's `tally` (`-` when the
-1015 < 1 # key is absent), `<n>` the length of `questions`, `<q>` the count of questions
-1016 < 1 # whose `recommended` is not null and `<p>` the count of those whose `picked`
-1017 < 1 # equals `recommended`."
+1012 < 2 
+1013 < 2 # ── (b) M1: the tally's absent key, and the question counts ─────────────────
+1014 < 2 # "`<dispatched>` and `<rejected>` read from the record's `tally` (`-` when the
+1015 < 2 # key is absent), `<n>` the length of `questions`, `<q>` the count of questions
+1016 < 2 # whose `recommended` is not null and `<p>` the count of those whose `picked`
+1017 < 2 # equals `recommended`."
 1018 < 1 
 1020 > 1 REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, "
 1019 < 2 REJECTED_ABSENT_LINE = ("AUTHORING fact: 118 min to PLAN OK, 12 hub probes, "
@@ -1046,8 +1046,8 @@
 1022 < 1                         "1 questions, 1/1 recommended picked, "
 1023 < 1                         "0 explain rounds")
 1024 < 1 
-1025 < 1 # One question carrying no recommended option, one whose pick is the
-1026 < 1 # recommendation: two questions, one of them recommended, that one picked.
+1025 < 2 # One question carrying no recommended option, one whose pick is the
+1026 < 2 # recommendation: two questions, one of them recommended, that one picked.
 1027 < 1 TWO_QUESTIONS = [
 1028 < 1     {"question": "Claim and summary", "options": ["A", "B"],
 1029 < 1      "recommended": None, "picked": "B", "explain_rounds": 2},
@@ -1063,16 +1063,16 @@
 1038 < 1 
 1039 < 1 
 1040 < 1 def test_b_a_tally_without_rejected_prints_a_dash(tmp_path):
-1041 < 1     """(b)/[M1]: the same record with `tally` lacking `rejected` — the line is
-1042 < 1     the example line with `- rejected` in place of `1 rejected`."""
+1041 < 2     """(b)/[M1]: the same record with `tally` lacking `rejected` — the line is
+1042 < 2     the example line with `- rejected` in place of `1 rejected`."""
 1043 < 1     repo, head = base_repo(tmp_path)
 1044 < 1     p = check(repo, "b1.md", record(tally={"dispatched": 4}), "--base", head)
 1045 < 1     assert_one_fact_after_the_verdict(p, REJECTED_ABSENT_LINE)
 1046 < 1 
 1047 < 1 
 1048 < 1 def test_b_two_questions_count_only_the_recommended_ones(tmp_path):
-1049 < 1     """(b)/[M1]: two questions, one with `recommended` null and one picked
-1050 < 1     equal to its recommendation — `2 questions, 1/1 recommended picked`."""
+1049 < 2     """(b)/[M1]: two questions, one with `recommended` null and one picked
+1050 < 2     equal to its recommendation — `2 questions, 1/1 recommended picked`."""
 1051 < 1     repo, head = base_repo(tmp_path)
 1052 < 1     authoring = copy.deepcopy(AUTHORING)
 1053 < 1     authoring["questions"] = TWO_QUESTIONS
@@ -1081,9 +1081,9 @@
 1056 < 1 
 1057 < 1 
 1058 < 1 def test_b_a_multi_select_question_is_one_row(tmp_path):
-1059 < 1     """#1189: `picked` may be a list for a multi-select question — one row, one
-1060 < 1     question, counted as recommended-picked when the recommendation is among
-1061 < 1     the picks."""
+1059 < 2     """#1189: `picked` may be a list for a multi-select question — one row, one
+1060 < 2     question, counted as recommended-picked when the recommendation is among
+1061 < 2     the picks."""
 1062 < 1     repo, head = base_repo(tmp_path)
 1063 < 1     authoring = copy.deepcopy(AUTHORING)
 1064 < 1     authoring["questions"] = [{"question": "which features", "options":
@@ -1092,35 +1092,36 @@
 1067 < 1                                "picked": ["rename", "sort"]}]
 1068 < 1     p = check(repo, "b3.md", record(authoring=authoring), "--base", head)
 1069 < 1     assert_one_fact_after_the_verdict(
-1070 < 1         p, EXAMPLE_LINE)  # 1 questions, 1/1 recommended picked
+1071 > 1         p, EXAMPLE_LINE)
+1070 < 2         p, EXAMPLE_LINE)  # 1 questions, 1/1 recommended picked
 1071 < 1 
 1072 < 1 
-1073 < 1 # ── (c) M2: no record, one `none recorded` line ─────────────────────────────
-1074 < 1 # "The same `--check --base <sha>` compile of a record with no `authoring` key
-1075 < 1 # exits 0 with `PLAN OK` and prints exactly one line `AUTHORING fact: none
-1076 < 1 # recorded` after the verdict."
-1077 < 1 
+1073 < 2 # ── (c) M2: no record, one `none recorded` line ─────────────────────────────
+1074 < 2 # "The same `--check --base <sha>` compile of a record with no `authoring` key
+1075 < 2 # exits 0 with `PLAN OK` and prints exactly one line `AUTHORING fact: none
+1076 < 2 # recorded` after the verdict."
+1077 < 2 
 1078 < 1 def test_c_a_record_with_no_authoring_key_says_none_recorded(tmp_path):
-1079 < 1     """(c)/[M2]: the same plan, the same tally, no `authoring` key — exit 0,
-1080 < 1     `PLAN OK`, and exactly one `AUTHORING fact: none recorded` line."""
+1079 < 2     """(c)/[M2]: the same plan, the same tally, no `authoring` key — exit 0,
+1080 < 2     `PLAN OK`, and exactly one `AUTHORING fact: none recorded` line."""
 1081 < 1     repo, head = base_repo(tmp_path)
 1082 < 1     p = check(repo, "c.md", record(authoring=None), "--base", head)
 1083 < 1     assert_one_fact_after_the_verdict(p, NONE_LINE)
 1084 < 1 
-1085 < 1 
-1086 < 1 # ── (d) M2: a bare `--check` prints no fact line at all ─────────────────────
-1087 < 1 # "a bare `--check` of either record prints no line beginning `AUTHORING
-1088 < 1 # fact:` at all."
+1085 < 2 
+1086 < 2 # ── (d) M2: a bare `--check` prints no fact line at all ─────────────────────
+1087 < 2 # "a bare `--check` of either record prints no line beginning `AUTHORING
+1088 < 2 # fact:` at all."
 1089 < 1 
 1090 < 1 @pytest.mark.parametrize("label,authoring", [
 1091 < 1     ("with the authoring key", AUTHORING),
 1092 < 1     ("without the authoring key", None),
 1093 < 1 ])
 1094 < 1 def test_d_a_bare_check_prints_no_fact_line(tmp_path, label, authoring):
-1095 < 1     """(d)/[M2]: with no `--base` there is no tree to cost a sitting against —
-1096 < 1     zero lines containing `AUTHORING fact:`, either way. And the bare verdict
-1097 < 1     is the unchanged one the global constraint pins: stdout is `PLAN OK` and
-1098 < 1     nothing else."""
+1095 < 2     """(d)/[M2]: with no `--base` there is no tree to cost a sitting against —
+1096 < 2     zero lines containing `AUTHORING fact:`, either way. And the bare verdict
+1097 < 2     is the unchanged one the global constraint pins: stdout is `PLAN OK` and
+1098 < 2     nothing else."""
 1099 < 1     p = check(tmp_path, "d.md", record(authoring=authoring))
 1100 < 1     out = p.stdout + p.stderr
 1101 < 1     assert p.returncode == 0, out
@@ -1129,10 +1130,10 @@
 1104 < 1     assert p.stdout.strip() == "PLAN OK", out
 1105 < 1 
 1106 < 1 
-1107 < 1 # ── (e) #1440: the record is telemetry — a malformed one reads `-`, never refuses ──
-1108 < 1 
+1107 < 2 # ── (e) #1440: the record is telemetry — a malformed one reads `-`, never refuses ──
+1108 < 2 
 1109 < 1 def _odd():
-1110 < 1     """Every field the fact line reads, said oddly or not at all."""
+1110 < 2     """Every field the fact line reads, said oddly or not at all."""
 1111 < 1     a = copy.deepcopy(AUTHORING)
 1112 < 1     a["minutes"] = "12"
 1113 < 2     a["probes"] = -1
@@ -1142,10 +1143,10 @@
 1117 < 1 
 1118 < 1 
 1119 < 1 def test_e_a_malformed_record_reads_dashes_and_is_not_refused(tmp_path):
-1121 > 1     """(e) #1440: an odd `minutes`, no `routing` and a non-object
+1121 > 2     """(e) #1440: an odd `minutes`, no `routing` and a non-object
 1120 < 2     """(e) #1440: odd `minutes`/`probes`, no `routing` and a non-object
-1121 < 1     question row — exit 0, `PLAN OK`, and one fact line reading each unsaid
-1122 < 1     field as `-` and skipping the row that is not an object."""
+1121 < 2     question row — exit 0, `PLAN OK`, and one fact line reading each unsaid
+1122 < 2     field as `-` and skipping the row that is not an object."""
 1123 < 1     repo, head = base_repo(tmp_path)
 1124 < 1     p = check(repo, "e.md", record(authoring=_odd()), "--base", head)
 1125 < 1     assert_one_fact_after_the_verdict(
@@ -1176,15 +1177,15 @@
 1149 < 2     assert "**Publish:**" in lines[0], p.stdout
 1150 < 1 
 1151 < 1 
-1152 < 1 # ########################################################################### #
-1153 < 1 # THE BODY'S SHAPE                                                            #
-1154 < 1 # ########################################################################### #
-1155 < 1 #
-1156 < 1 # `slip_violations` refuses a body without its six slots in order and a code
-1157 < 1 # fence outside a task's Proof (the three wording slips went in #1440). Every plan is
-1158 < 1 # `tests/fixtures/plan_check_slips/good.md` with one slip put in, re-signed
-1159 < 1 # so the gate record is never the reason it is refused.
-1160 < 1 
+1152 < 2 # ########################################################################### #
+1153 < 2 # THE BODY'S SHAPE                                                            #
+1154 < 2 # ########################################################################### #
+1155 < 2 #
+1156 < 2 # `slip_violations` refuses a body without its six slots in order and a code
+1157 < 2 # fence outside a task's Proof (the three wording slips went in #1440). Every plan is
+1158 < 2 # `tests/fixtures/plan_check_slips/good.md` with one slip put in, re-signed
+1159 < 2 # so the gate record is never the reason it is refused.
+1160 < 2 
 1161 < 1 SLIPS_GOOD = ROOT / "tests/fixtures/plan_check_slips/good.md"
 1162 < 1 SIX_SLOTS_LINE = ("grammar: task 1: the body must carry Claim, Authorized-by, "
 1163 < 1                   "Interfaces, Context, Proof and Stale-if, each once, "
@@ -1192,8 +1193,8 @@
 1165 < 1 
 1166 < 1 
 1167 < 1 def slipped(tmp_path, pattern, repl):
-1168 < 1     """`good.md` with `pattern` replaced by `repl` (multiline), signed and
-1169 < 1     checked: the lines the checker prints."""
+1168 < 2     """`good.md` with `pattern` replaced by `repl` (multiline), signed and
+1169 < 2     checked: the lines the checker prints."""
 1170 < 1     text = re.sub(pattern, repl, SLIPS_GOOD.read_text(), flags=re.M)
 1171 < 1     assert text != SLIPS_GOOD.read_text(), pattern
 1172 < 1     p = run_compiler(write_plan(tmp_path, "p.md", text))
@@ -1236,12 +1237,12 @@
 1209 < 1     assert p.stdout.splitlines() == ["PLAN OK"], p.stdout
 1210 < 1 
 1211 < 1 
-1212 < 1 # === SHARED fact ===
-1213 < 1 #
-1214 < 1 # A path two or more tasks list in their Files draws one `SHARED fact:` line
-1215 < 1 # after the verdict, with or without --base; the exit code is unchanged.
-1216 < 1 
-1217 < 1 
+1212 < 2 # === SHARED fact ===
+1213 < 2 #
+1214 < 2 # A path two or more tasks list in their Files draws one `SHARED fact:` line
+1215 < 2 # after the verdict, with or without --base; the exit code is unchanged.
+1216 < 2 
+1217 < 2 
 1218 < 1 def test_shared_a_file_two_tasks_list_is_named_once():
 1219 < 1     p = run_compiler(ROOT / "tests/fixtures/plan_check_shared/plan.md")
 1220 < 1     shared = [l for l in p.stdout.splitlines() if l.startswith("SHARED fact:")]

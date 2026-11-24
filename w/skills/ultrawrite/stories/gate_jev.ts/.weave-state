@@ -1,15 +1,15 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // What Jev would have said at the proof gate. It reads the gate reader's diet (the task's Claim
-2 < 1 // with its numbered Machine clauses, and the Proof slot) and asks, in one request, whether each
-3 < 1 // clause states a computable fact, whether a probe would catch it false, and whether a leg
-4 < 1 // contradicts the clause it cites, and, when the diet carries `base`, whether a file there already
-5 < 1 // pins the opposite of a clause. The verdict is computed here, from policy.json. Jev judges
-6 < 1 // beside the agent reader; it decides nothing.
-7 < 1 //
-8 < 1 //   bun skills/ultrawrite/stories/gate_jev.ts <diet.json> [--record <gate-verdicts.json> --agent pass|fail --reason <sentence>]
-9 < 1 //   bun skills/ultrawrite/stories/gate_jev.ts --agreement <dir>
-10 < 1 //   bun skills/ultrawrite/stories/gate_jev.ts --readings <dir>
-11 < 1 //   bun skills/ultrawrite/stories/gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"
+1 < 2 // What Jev would have said at the proof gate. It reads the gate reader's diet (the task's Claim
+2 < 2 // with its numbered Machine clauses, and the Proof slot) and asks, in one request, whether each
+3 < 2 // clause states a computable fact, whether a probe would catch it false, and whether a leg
+4 < 2 // contradicts the clause it cites, and, when the diet carries `base`, whether a file there already
+5 < 2 // pins the opposite of a clause. The verdict is computed here, from policy.json. Jev judges
+6 < 2 // beside the agent reader; it decides nothing.
+7 < 2 //
+8 < 2 //   bun skills/ultrawrite/stories/gate_jev.ts <diet.json> [--record <gate-verdicts.json> --agent pass|fail --reason <sentence>]
+9 < 2 //   bun skills/ultrawrite/stories/gate_jev.ts --agreement <dir>
+10 < 2 //   bun skills/ultrawrite/stories/gate_jev.ts --readings <dir>
+11 < 2 //   bun skills/ultrawrite/stories/gate_jev.ts --label <gate-verdicts.json> --task <id> --round <n> --right agent|jev --because "<one line>"
 12 < 1 import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 13 < 1 import {join} from 'node:path';
 14 < 1 import {parseArgs} from 'node:util';
@@ -18,11 +18,11 @@
 17 < 1 const Q = loadQuestions().authoring_gate.questions as Record<string, any>;
 18 < 1 const POLICY_FILE = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8'));
 19 < 1 const POLICY = POLICY_FILE.flag_at;
-20 < 1 // Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
-21 < 1 // entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
-22 < 1 // reading of 2026-09-29; each cell reverts alone.
-24 > 1 // An unknown `caught` key falls back to `caught` with one stderr line naming both (#1528, #1532),
-25 < 1 // and the record names the key asked.
+20 < 2 // Which reading the gate asks (#1497): the `caught` question's key, and whether Jev reads the base
+21 < 2 // entries the extractor marks `own` (the task's own Modify:/Delete: files). A missing cell is the
+22 < 2 // reading of 2026-09-29; each cell reverts alone.
+24 > 2 // An unknown `caught` key falls back to `caught` with one stderr line naming both (#1528, #1532),
+25 < 2 // and the record names the key asked.
 23 < 2 // An unknown `caught` key falls back to `caught` (#1528), and the record names the key asked.
 24 < 1 const ASKED = String(POLICY_FILE.gate_reading?.caught ?? 'caught');
 26 > 1 if (!Object.hasOwn(Q, ASKED)) console.error(`gate_jev: policy.json gate_reading.caught names no question "${ASKED}"; asking "caught"`);
@@ -62,8 +62,8 @@
 58 < 1   return {claim, clauses, probes, legs, base: baseFor(d.base)};
 59 < 1 }
 60 < 1 
-61 < 1 // A base with a `files` array loses the entries marked `own` when own_files is "dropped"; either
-62 < 1 // way no entry keeps the `own` key. Any other base reaches Jev unchanged.
+61 < 2 // A base with a `files` array loses the entries marked `own` when own_files is "dropped"; either
+62 < 2 // way no entry keeps the `own` key. Any other base reaches Jev unchanged.
 63 < 1 function baseFor(base: Record<string, unknown>): Record<string, unknown> {
 64 < 1   if (!Array.isArray(base.files)) return base;
 65 < 1   const files = (base.files as unknown[])
@@ -99,8 +99,8 @@
 95 < 1   return {task: d.task, hash: d.hash, verdict, clauses, contradiction, pinned};
 96 < 1 }
 97 < 1 
-98 < 1 // The one writer of the gate verdict: set the task's {hash, verdict, reason} (what plan_check.py
-99 < 1 // reads) and append the round with Jev's reading beside it; every other key stays as it was.
+98 < 2 // The one writer of the gate verdict: set the task's {hash, verdict, reason} (what plan_check.py
+99 < 2 // reads) and append the round with Jev's reading beside it; every other key stays as it was.
 100 < 1 function record(file: string, task: string, reason: string, round: Round) {
 101 < 1   const rec = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {};
 102 < 1   rec.tasks ??= {};
@@ -112,8 +112,8 @@
 108 < 1 
 109 < 1 const disagrees = (r: Round) => r.agent != null && r.jev != null && r.agent !== r.jev;
 110 < 1 
-111 < 1 // Mark who the run proved right on one disagreeing round (1-based over the task's gate_rounds).
-112 < 1 // Anything else — unknown task, out-of-range round, a round that agrees — writes nothing.
+111 < 2 // Mark who the run proved right on one disagreeing round (1-based over the task's gate_rounds).
+112 < 2 // Anything else — unknown task, out-of-range round, a round that agrees — writes nothing.
 113 < 1 function label(file: string, task: string, n: number, right: 'agent' | 'jev', because: string): boolean {
 114 < 1   if (!existsSync(file)) return false;
 115 < 1   const rec = JSON.parse(readFileSync(file, 'utf8'));
@@ -151,8 +151,8 @@
 147 < 1     `gate-jev outcomes: disagreements ${disagreements}, agent right ${agentRight}, jev right ${jevRight}, unlabelled ${unlabelled}`];
 148 < 1 }
 149 < 1 
-150 < 1 // The census per reading: a reworded question is a different question, so each reading
-151 < 1 // (caught question / own files) is counted apart; a round recorded without one is caught/read.
+150 < 2 // The census per reading: a reworded question is a different question, so each reading
+151 < 2 // (caught question / own files) is counted apart; a round recorded without one is caught/read.
 152 < 1 export function readings(dir: string): string[] {
 153 < 1   const by = new Map<string, {plans: number; rounds: number; agree: number; disagreements: number; agentRight: number;
 154 < 1     jevRight: number; unlabelled: number}>();

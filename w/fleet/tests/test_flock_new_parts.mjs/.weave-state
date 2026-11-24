@@ -1,8 +1,8 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // factory/flock/new_parts.mjs (#1491): the screen parts a run added are the draws.json lines the
-2 < 1 // landed text has and the base's does not, each with its role and naming props; a base with no
-3 < 1 // draws.json makes every landed line new, and text that is not a parts list adds nothing.
-4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+1 < 2 // factory/flock/new_parts.mjs (#1491): the screen parts a run added are the draws.json lines the
+2 < 2 // landed text has and the base's does not, each with its role and naming props; a base with no
+3 < 2 // draws.json makes every landed line new, and text that is not a parts list adds nothing.
+4 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 5 < 1 import { newParts } from '../../factory/flock/new_parts.mjs'
 6 < 1 
 7 < 1 const fails = []

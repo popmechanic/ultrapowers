@@ -1,14 +1,14 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // The scope sim (#1333, #1346): a Flock run never settles green on a change nobody planned or wrote.
-2 < 1 // It builds a throwaway target in a temp dir whose base holds keep.txt, gone.txt and other.txt, and
-3 < 1 // a one-task plan that deletes gone.txt and rewrites keep.txt. The scripted builder does exactly
-4 < 1 // that, so the task's probe and the run-wide check pass; the script's `@unwritten` seam also puts
-5 < 1 // text into other.txt with no builder edit, standing in for run-247's weave fault. Checks:
-6 < 1 //   - the engine exits non-zero and summary.json's outcome is a draft;
-7 < 1 //   - events.jsonl holds a scope:outside row, and every one names exactly other.txt;
-9 > 1 //   - no amendment row names gone.txt (a Delete: path is the task's own).
+1 < 2 // The scope sim (#1333, #1346): a Flock run never settles green on a change nobody planned or wrote.
+2 < 2 // It builds a throwaway target in a temp dir whose base holds keep.txt, gone.txt and other.txt, and
+3 < 2 // a one-task plan that deletes gone.txt and rewrites keep.txt. The scripted builder does exactly
+4 < 2 // that, so the task's probe and the run-wide check pass; the script's `@unwritten` seam also puts
+5 < 2 // text into other.txt with no builder edit, standing in for run-247's weave fault. Checks:
+6 < 2 //   - the engine exits non-zero and summary.json's outcome is a draft;
+7 < 2 //   - events.jsonl holds a scope:outside row, and every one names exactly other.txt;
+9 > 2 //   - no amendment row names gone.txt (a Delete: path is the task's own).
 8 < 2 //   - no driver:amendment row names gone.txt (a Delete: path is the task's own).
-9 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+9 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 10 < 1 import { spawnSync } from 'node:child_process'
 11 < 1 import fs from 'node:fs'
 12 < 1 import os from 'node:os'

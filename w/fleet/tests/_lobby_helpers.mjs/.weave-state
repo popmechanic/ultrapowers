@@ -1,22 +1,22 @@
-0 < 1 /**
-1 < 1  * fleet/tests/_lobby_helpers.mjs — the fixture the four laptop CLIs' exams share.
-2 < 1  *
-3 < 1  * Two pieces, and the launch sims' shared rig (at the bottom):
-4 < 1  *
-5 < 1  *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
-6 < 1  *   appended to `exec.calls`, options included, so a leg can read the stdin a
-7 < 1  *   lobby verb was given; a matching rule answers it; anything unmatched runs
-8 < 1  *   for real when its command is in `passthrough` (`git`, so a plan commit in a
-9 < 1  *   test is a real commit in a real repository) and otherwise answers empty and
-10 < 1  *   green. No rule ever runs `ssh`, `gh` or `curl`: the exams touch no network.
-11 < 1  *   Two kinds of ssh are told apart by their first argument: `ssh exe.dev …` is
-12 < 1  *   a lobby verb, `ssh <ssh_dest> …` is a command on a VM.
-13 < 1  *
-14 < 1  *   `makeTargetRepo` — a temporary *target* repository with a real bare origin
-15 < 1  *   behind it, so a launch's plan push is a real push, `base` is a sha git
-16 < 1  *   actually made, and `branches()` reads the origin's own refs.
-17 < 1  */
-18 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/_lobby_helpers.mjs — the fixture the four laptop CLIs' exams share.
+2 < 2  *
+3 < 2  * Two pieces, and the launch sims' shared rig (at the bottom):
+4 < 2  *
+5 < 2  *   `makeExec` — a recording seam over `cmd`, `argv`, `options`. Every call is
+6 < 2  *   appended to `exec.calls`, options included, so a leg can read the stdin a
+7 < 2  *   lobby verb was given; a matching rule answers it; anything unmatched runs
+8 < 2  *   for real when its command is in `passthrough` (`git`, so a plan commit in a
+9 < 2  *   test is a real commit in a real repository) and otherwise answers empty and
+10 < 2  *   green. No rule ever runs `ssh`, `gh` or `curl`: the exams touch no network.
+11 < 2  *   Two kinds of ssh are told apart by their first argument: `ssh exe.dev …` is
+12 < 2  *   a lobby verb, `ssh <ssh_dest> …` is a command on a VM.
+13 < 2  *
+14 < 2  *   `makeTargetRepo` — a temporary *target* repository with a real bare origin
+15 < 2  *   behind it, so a launch's plan push is a real push, `base` is a sha git
+16 < 2  *   actually made, and `branches()` reads the origin's own refs.
+17 < 2  */
+18 < 2 
 19 < 1 import fs from 'node:fs'
 20 < 1 import os from 'node:os'
 21 < 1 import path from 'node:path'
@@ -26,7 +26,7 @@
 25 < 1 import { EXE_HOST, defaultExec } from '../lobby.mjs'
 26 < 1 import { simEnv } from './_helpers.mjs'
 27 < 1 
-28 < 1 /** A canned answer. `stdout` may be a string or a value to JSON.stringify. */
+28 < 2 /** A canned answer. `stdout` may be a string or a value to JSON.stringify. */
 29 < 1 export const answer = (stdout = '', { code = 0, stderr = '' } = {}) => ({
 30 < 1   code,
 31 < 1   stdout: typeof stdout === 'string' ? stdout : JSON.stringify(stdout),
@@ -36,7 +36,7 @@
 35 < 1 const isLobby = (cmd, argv) => cmd === 'ssh' && argv[0] === EXE_HOST
 36 < 2 const isVmSsh = (cmd, argv) => cmd === 'ssh' && argv.length > 0 && argv[0] !== EXE_HOST
 37 < 1 
-38 < 1 /** A rule matching one lobby verb by the prefix of its remote command string. */
+38 < 2 /** A rule matching one lobby verb by the prefix of its remote command string. */
 39 < 1 export const sshRule = (prefix, res) => ({
 40 < 1   when: (cmd, argv) => isLobby(cmd, argv) && String(argv[1] ?? '').startsWith(prefix),
 41 < 1   answer: res
@@ -45,15 +45,15 @@
 44 < 2 /** A rule matching every `ssh <ssh_dest> …` — a command run on a VM. */
 45 < 2 export const vmRule = (res) => ({ when: isVmSsh, answer: res })
 46 < 1 
-47 < 1 /** A rule matching a local command by its first argument. */
+47 < 2 /** A rule matching a local command by its first argument. */
 48 < 1 export const cmdRule = (cmd, first, res) => ({
 49 < 1   when: (c, argv) => c === cmd && argv[0] === first,
 50 < 1   answer: res
 51 < 1 })
 52 < 1 
-53 < 1 /** One `ls --json` row in the shape exe.dev documents. `ssh_dest` is
-54 < 1  *  deliberately not `<name>.exe.xyz`, so a tool that derives the destination
-55 < 1  *  from the name instead of reading the row is caught. */
+53 < 2 /** One `ls --json` row in the shape exe.dev documents. `ssh_dest` is
+54 < 2  *  deliberately not `<name>.exe.xyz`, so a tool that derives the destination
+55 < 2  *  from the name instead of reading the row is caught. */
 56 < 1 export const vmRow = (name, extra = {}) => ({
 57 < 1   vm_name: name,
 58 < 1   ssh_dest: `exedev@${name}.ssh.exe.xyz`,
@@ -62,7 +62,7 @@
 61 < 1   ...extra
 62 < 1 })
 63 < 1 
-64 < 1 /** The `ls --json` envelope: fleet rows under `vms`, other people's under `shared_vms`. */
+64 < 2 /** The `ls --json` envelope: fleet rows under `vms`, other people's under `shared_vms`. */
 65 < 1 export const vmsPayload = (vms = [], shared = []) => answer({ shared_vms: shared, vms })
 66 < 1 
 67 < 2 /** The ssh arguments after the `-o` options: `{ dest, command }`. */
@@ -78,10 +78,10 @@
 77 < 2   return { dest: rest[0], command: rest.slice(1).join(' ') }
 78 < 2 }
 79 < 2 
-80 < 1 /**
-81 < 1  * The recording seam. `rules` are tried in order; the first match answers.
-82 < 1  * `passthrough` names commands that really run when nothing matched.
-83 < 1  */
+80 < 2 /**
+81 < 2  * The recording seam. `rules` are tried in order; the first match answers.
+82 < 2  * `passthrough` names commands that really run when nothing matched.
+83 < 2  */
 84 < 1 export function makeExec ({ rules = [], passthrough = ['git'] } = {}) {
 85 < 1   const calls = []
 86 < 1   const exec = async (cmd, argv = [], options = undefined) => {
@@ -95,20 +95,20 @@
 94 < 1     return { code: 0, stdout: '', stderr: '' }
 95 < 1   }
 96 < 1   exec.calls = calls
-97 < 1   /** Every remote command string issued as a lobby verb, in order. */
+97 < 2   /** Every remote command string issued as a lobby verb, in order. */
 98 < 1   exec.lobby = () => calls.filter((c) => isLobby(c.cmd, c.argv)).map((c) => c.argv[1])
 99 < 2   /** Every command run on a VM over ssh, in order, as `{ dest, command }`. */
 100 < 2   exec.vm = () => calls.filter((c) => isVmSsh(c.cmd, c.argv)).map((c) => vmCall(c.argv))
-101 < 1   /** The mutating lobby verbs only — what a refusal must never have issued. */
+101 < 2   /** The mutating lobby verbs only — what a refusal must never have issued. */
 102 < 1   exec.mutating = () => exec.lobby().filter((line) =>
 103 < 1     /^(cp|rm|comment|rename|new|tag) /.test(line) || /^integrations (add|attach|detach|edit) /.test(line)
 104 < 1   )
 105 < 1   return exec
 106 < 1 }
 107 < 1 
-108 < 1 // The environment every git below runs under: a HOME of the fixture's own, so
-109 < 1 // no ~/.gitconfig of the box reaches a repository an exam builds — each one
-110 < 1 // sets its own identity a few lines down. `env` last, so a caller can override.
+108 < 2 // The environment every git below runs under: a HOME of the fixture's own, so
+109 < 2 // no ~/.gitconfig of the box reaches a repository an exam builds — each one
+110 < 2 // sets its own identity a few lines down. `env` last, so a caller can override.
 111 < 1 const GIT_HOME = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'fleet-lobby-home-'))
 112 < 1 export const gitEnv = (env) => ({ ...simEnv({ home: GIT_HOME }), ...env })
 113 < 1 
@@ -120,26 +120,26 @@
 119 < 1   return res.stdout
 120 < 1 }
 121 < 1 
-122 < 1 /** A throwaway directory, removed by `cleanup()`. */
+122 < 2 /** A throwaway directory, removed by `cleanup()`. */
 123 < 1 export function tempDir (prefix = 'fleet-lobby-') {
-124 < 1   // realpath: on macOS /tmp is a symlink, and git resolves it — a path git
-125 < 1   // reports would otherwise not compare equal to the one the test built.
+124 < 2   // realpath: on macOS /tmp is a symlink, and git resolves it — a path git
+125 < 2   // reports would otherwise not compare equal to the one the test built.
 126 < 1   return fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), prefix))
 127 < 1 }
 128 < 1 
-129 < 1 /**
-130 < 1  * A real *target* repository: a bare origin with one seed commit on `main`, and
-131 < 1  * a clone of it. `files` is the seed commit's content (default one README);
-132 < 1  * `base` is the sha git made for it, which is what a run's `base=` names.
-133 < 1  *
-134 < 1  *   `origin`     the bare repository's path — the clone's `origin` remote
-135 < 1  *   `dir`        the clone, with `user.name`/`user.email` already set
-136 < 1  *   `git(argv)`  a git command in the clone, answering its trimmed stdout
-137 < 1  *   `branches()` the origin's `refs/heads/*` as `{ '<name>': '<sha>' }`
-138 < 1  *
-139 < 1  * Everything is local git against a path, so a push in an exam is a real push
-140 < 1  * and no socket is opened.
-141 < 1  */
+129 < 2 /**
+130 < 2  * A real *target* repository: a bare origin with one seed commit on `main`, and
+131 < 2  * a clone of it. `files` is the seed commit's content (default one README);
+132 < 2  * `base` is the sha git made for it, which is what a run's `base=` names.
+133 < 2  *
+134 < 2  *   `origin`     the bare repository's path — the clone's `origin` remote
+135 < 2  *   `dir`        the clone, with `user.name`/`user.email` already set
+136 < 2  *   `git(argv)`  a git command in the clone, answering its trimmed stdout
+137 < 2  *   `branches()` the origin's `refs/heads/*` as `{ '<name>': '<sha>' }`
+138 < 2  *
+139 < 2  * Everything is local git against a path, so a push in an exam is a real push
+140 < 2  * and no socket is opened.
+141 < 2  */
 142 < 1 export function makeTargetRepo ({ root, files } = {}) {
 143 < 1   const root_ = root ?? tempDir('fleet-target-')
 144 < 1   const origin = path.join(root_, 'origin.git')
@@ -175,18 +175,18 @@
 174 < 1   }
 175 < 1 }
 176 < 1 
-177 < 1 /**
-178 < 1  * A real *evidence* repository: a bare repository with one seed commit on
-179 < 1  * `main` (the hand archive's branch — no launch may write it), standing in for
-180 < 1  * `https://github.com/<name>.git`. Hand it to `localRemote`/`pointAtOrigin` and
-181 < 1  * that URL is routed here.
-182 < 1  *
-183 < 1  *   `name`            the `<owner>/<repo>` it stands in for
-184 < 1  *   `bare`            the bare repository's path
-185 < 1  *   `git(argv)`       a git command against the bare, answering trimmed stdout
-186 < 1  *   `refs()`          every ref as `{ '<refname>': '<sha>' }`
-187 < 1  *   `seed(ref, files, message)`  a parentless commit of `files` at `ref`; the sha
-188 < 1  */
+177 < 2 /**
+178 < 2  * A real *evidence* repository: a bare repository with one seed commit on
+179 < 2  * `main` (the hand archive's branch — no launch may write it), standing in for
+180 < 2  * `https://github.com/<name>.git`. Hand it to `localRemote`/`pointAtOrigin` and
+181 < 2  * that URL is routed here.
+182 < 2  *
+183 < 2  *   `name`            the `<owner>/<repo>` it stands in for
+184 < 2  *   `bare`            the bare repository's path
+185 < 2  *   `git(argv)`       a git command against the bare, answering trimmed stdout
+186 < 2  *   `refs()`          every ref as `{ '<refname>': '<sha>' }`
+187 < 2  *   `seed(ref, files, message)`  a parentless commit of `files` at `ref`; the sha
+188 < 2  */
 189 < 1 export function makeEvidenceRepo ({ root, name = 'ops/evidence' } = {}) {
 190 < 1   const root_ = root ?? tempDir('fleet-evidence-')
 191 < 1   const bare = path.join(root_, `evidence-${name.replace('/', '-')}.git`)
@@ -234,10 +234,10 @@
 233 < 2   fs.writeFileSync(path.join(target, 'status.json'), JSON.stringify(status))
 234 < 2 }
 235 < 2 
-236 < 1 /** Remove a temp tree. */
+236 < 2 /** Remove a temp tree. */
 237 < 1 export const cleanup = (dir) => fs.rmSync(dir, { recursive: true, force: true })
 238 < 1 
-239 < 1 /** Run `body`, answering the error it threw (or null when it did not throw). */
+239 < 2 /** Run `body`, answering the error it threw (or null when it did not throw). */
 240 < 1 export async function thrown (body) {
 241 < 1   try {
 242 < 1     await body()
@@ -247,14 +247,14 @@
 246 < 1   return null
 247 < 1 }
 248 < 1 
-249 < 1 // ── The launch sims' shared rig ─────────────────────────────────────────────
-250 < 1 // test_launch_credential/duplicate/evidence/plan_path/probe_runners all drive
-251 < 1 // `launch()` over the same seam; what they share lives here, once.
-252 < 1 
-253 < 1 /** An account whose billing caps clear every launch. */
+249 < 2 // ── The launch sims' shared rig ─────────────────────────────────────────────
+250 < 2 // test_launch_credential/duplicate/evidence/plan_path/probe_runners all drive
+251 < 2 // `launch()` over the same seam; what they share lives here, once.
+252 < 2 
+253 < 2 /** An account whose billing caps clear every launch. */
 254 < 1 export const BILLING_OK = { max_cpus: 16, max_memory_gb: 64, tier: 'XLarge', plan: 'Individual' }
 255 < 1 
-257 > 1 /** The compiled plan the stubbed compiler answers: one task, width one. */
+257 > 2 /** The compiled plan the stubbed compiler answers: one task, width one. */
 258 < 1 export const ONE_TASK = {
 259 < 1   tasks: [{ id: '1', title: 'task 1', files: ['f1.txt'], wave: 1, proofRuns: [], proofRunClauses: [] }],
 260 < 1   dag_edges: [],
@@ -271,35 +271,35 @@
 264 < 2 /** The compiled plan the stubbed compiler answers: one task, one wave. */
 265 < 2 export const ONE_TASK = { launch_waves: [[task(1)]], dag_edges: [] }
 266 < 1 
-267 < 1 /** `new` answers the VM it was asked to make, running. */
+267 < 2 /** `new` answers the VM it was asked to make, running. */
 268 < 1 export const NEW_OK = (cmd, argv) =>
 269 < 1   answer({ vm_name: /--name (\S+)/.exec(String(argv[1] ?? ''))?.[1] ?? '', status: 'running' })
 270 < 1 
-271 < 1 /** The engine repository's `ls-remote` answers `engine` as its HEAD. */
+271 < 2 /** The engine repository's `ls-remote` answers `engine` as its HEAD. */
 272 < 1 export const engineRule = (engine) => ({
 273 < 1   when: (cmd, argv) =>
 274 < 1     cmd === 'git' && argv.includes('ls-remote') && argv.some((a) => /ultrapowers/.test(String(a))),
 275 < 1   answer: answer(`${engine}\tHEAD\n`)
 276 < 1 })
 277 < 1 
-278 < 1 /**
-279 < 1  * The compiler the launcher fetches at `engine=`. At a fake engine sha the
-280 < 1  * real `git show` in this checkout fails, so the `gh api` contents call is what
-281 < 1  * answers — and it must answer BEFORE a sim's `recordRule`, whose empty page
-282 < 1  * would otherwise read as a compiler that could not be fetched and refuse the
-283 < 1  * launch. The body is never run: a sim's `compilerRule` answers every `python3`.
-284 < 1  */
+278 < 2 /**
+279 < 2  * The compiler the launcher fetches at `engine=`. At a fake engine sha the
+280 < 2  * real `git show` in this checkout fails, so the `gh api` contents call is what
+281 < 2  * answers — and it must answer BEFORE a sim's `recordRule`, whose empty page
+282 < 2  * would otherwise read as a compiler that could not be fetched and refuse the
+283 < 2  * launch. The body is never run: a sim's `compilerRule` answers every `python3`.
+284 < 2  */
 285 < 1 export const COMPILER_FETCH = {
 286 < 1   when: (cmd, argv) => cmd === 'gh' && argv[0] === 'api' &&
 287 < 1     argv.some((a) => /contents\/skills\/ultrapowers\/scripts\/plan_(check|parse)\.py/.test(String(a))),
 288 < 1   answer: answer('# plan_check.py or plan_parse.py, as the seam hands it back\n')
 289 < 1 }
 290 < 1 
-291 < 1 /**
-292 < 1  * A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch
-293 < 1  * made a full refspec. `evidence` is one `makeEvidenceRepo` or a list of them:
-294 < 1  * the `github.com` URL of each is routed to its own bare instead.
-295 < 1  */
+291 < 2 /**
+292 < 2  * A git argv with its remote pointed at `repo.origin`, and a bare-branch fetch
+293 < 2  * made a full refspec. `evidence` is one `makeEvidenceRepo` or a list of them:
+294 < 2  * the `github.com` URL of each is routed to its own bare instead.
+295 < 2  */
 296 < 1 export const pointAtOrigin = (repo, argv, evidence = []) => {
 297 < 1   const evidences = Array.isArray(evidence) ? evidence : [evidence]
 298 < 1   const bareFor = (a) => {
@@ -317,9 +317,9 @@
 310 < 1   return pointed
 311 < 1 }
 312 < 1 
-313 < 1 /** The target's push, ls-remote and fetch, really run against its local bare
-314 < 1  *  origin — and the evidence repository's (`evidence`, as `pointAtOrigin`
-315 < 1  *  takes it) against its own bare. */
+313 < 2 /** The target's push, ls-remote and fetch, really run against its local bare
+314 < 2  *  origin — and the evidence repository's (`evidence`, as `pointAtOrigin`
+315 < 2  *  takes it) against its own bare. */
 316 < 1 export const localRemote = (repo, evidence = []) => ({
 317 < 1   when: (cmd, argv) => cmd === 'git' &&
 318 < 1     (argv.includes('push') || argv.includes('ls-remote') || argv.includes('fetch')) &&
@@ -328,7 +328,7 @@
 321 < 1   answer: (cmd, argv, options) => defaultExec('git', pointAtOrigin(repo, argv, evidence), options ?? {})
 322 < 1 })
 323 < 1 
-324 < 1 /** What a git that would open a socket answers instead. */
+324 < 2 /** What a git that would open a socket answers instead. */
 325 < 1 export const OFFLINE = answer('', { code: 128, stderr: 'exam: this exam opens no network socket\n' })
 326 < 1 export const NO_REMOTE_OPS = {
 327 < 1   when: (cmd, argv) => cmd === 'git' && argv.some((a) => a === 'clone' || a === 'pull' || a === 'fetch'),
@@ -339,12 +339,12 @@
 332 < 1   answer: OFFLINE
 333 < 1 }
 334 < 1 
-335 < 1 /** The seed of a launch sim's target, and the plan it launches. */
+335 < 2 /** The seed of a launch sim's target, and the plan it launches. */
 336 < 1 export const SEED = { 'README.md': '# target\n', 'src/app.js': 'export const x = 1\n' }
 337 < 1 export const PLAN = '# a plan\n\nOne plan, and a trailing newline.\n'
 338 < 1 
-339 < 1 /** Every `python3` run of the compiler: `plan_check.py` passes, `plan_parse.py`
-340 < 1  *  answers `compiled`. */
+339 < 2 /** Every `python3` run of the compiler: `plan_check.py` passes, `plan_parse.py`
+340 < 2  *  answers `compiled`. */
 341 < 1 export const compilerRule = (compiled) => ({
 342 < 1   when: (cmd) => cmd === 'python3',
 343 < 1   answer: (cmd, argv) =>
@@ -370,19 +370,19 @@
 363 < 2     : answer(`No help available for unrecognized command: ${verb}\n`)
 364 < 2 }
 365 < 2 
-366 < 1 /** `gh api …` answering `res` for every call; `NO_RECORD` is an empty page. */
+366 < 2 /** `gh api …` answering `res` for every call; `NO_RECORD` is an empty page. */
 367 < 1 export const recordRule = (res) => cmdRule('gh', 'api', res)
 368 < 1 export const NO_RECORD = answer('')
 369 < 1 
-370 < 1 /**
-371 < 1  * The seam a good launch reads through, in the order the launch sims need it
-372 < 1  * (`COMPILER_FETCH` before `recordRule`, see above). `gh` is the target's
-373 < 1  * integration name, and `integrations` replaces the default three rows; `rows`
-375 > 1  * is what `ls` answers and `record` what `gh api` answers. With no `engine` the
-376 < 1  * engine's `ls-remote` rule is left out.
+370 < 2 /**
+371 < 2  * The seam a good launch reads through, in the order the launch sims need it
+372 < 2  * (`COMPILER_FETCH` before `recordRule`, see above). `gh` is the target's
+373 < 2  * integration name, and `integrations` replaces the default three rows; `rows`
+375 > 2  * is what `ls` answers and `record` what `gh api` answers. With no `engine` the
+376 < 2  * engine's `ls-remote` rule is left out.
 374 < 2  * is what `ls` answers, `record` what `gh api` answers, `help` what `help`
 375 < 2  * answers. With no `engine` the engine's `ls-remote` rule is left out.
-376 < 1  */
+376 < 2  */
 377 < 1 export const launchRules = ({
 379 > 1   engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, compiled = ONE_TASK
 378 < 2   engine, repo, evidence = [], gh, integrations, rows = [], record = NO_RECORD, help = HELP_OK, compiled = ONE_TASK
@@ -403,12 +403,12 @@
 393 < 1   NO_NETWORK_GIT
 394 < 1 ]
 395 < 1 
-396 < 1 /**
-397 < 1  * A launch sim's workspace under a fresh temp root: a target seeded with
-398 < 1  * `seed` whose origin URL then reads `originUrl`, an evidence repository named
-399 < 1  * `evidence`, and — unless `plan` is null — the plan at `plans-src/a-plan.md`,
-400 < 1  * outside the target. Answers `{ root, repo, evidence, planPath, cleanup }`.
-401 < 1  */
+396 < 2 /**
+397 < 2  * A launch sim's workspace under a fresh temp root: a target seeded with
+398 < 2  * `seed` whose origin URL then reads `originUrl`, an evidence repository named
+399 < 2  * `evidence`, and — unless `plan` is null — the plan at `plans-src/a-plan.md`,
+400 < 2  * outside the target. Answers `{ root, repo, evidence, planPath, cleanup }`.
+401 < 2  */
 402 < 1 export function launchWorkspace ({ prefix, originUrl, seed = SEED, evidence = 'ops/evidence', plan = PLAN }) {
 403 < 1   const root = tempDir(prefix)
 404 < 1   const repo = makeTargetRepo({ root, files: { ...seed } })
@@ -424,9 +424,9 @@
 414 < 1   return { root, repo, evidence: evidenceRepo, planPath, cleanup: () => cleanup(root) }
 415 < 1 }
 416 < 1 
-417 < 1 /** Every `git push` the seam recorded. */
+417 < 2 /** Every `git push` the seam recorded. */
 418 < 1 export const pushCalls = (exec) => exec.calls.filter((c) => c.cmd === 'git' && c.argv.includes('push'))
 419 < 1 
-420 < 1 /** The `--comment '<...>'` value off a recorded `new` call. */
+420 < 2 /** The `--comment '<...>'` value off a recorded `new` call. */
 421 < 1 export const commentOf = (call) => /--comment '([^']*)'/.exec(String(call?.argv[1] ?? ''))?.[1]
 422 < 1 

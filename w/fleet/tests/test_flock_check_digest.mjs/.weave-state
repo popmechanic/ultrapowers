@@ -1,9 +1,9 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 // checks-digest.json (#1491, factory/flock/check_digest.mjs): after a run the engine writes one row per
-2 < 1 // file of its checks/ folder, in file-name order. A claims-v1 run whose probe plants two results with
-4 > 1 // the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, one that is not JSON, and one whose name has no `@` (its copy is null).
+1 < 2 // checks-digest.json (#1491, factory/flock/check_digest.mjs): after a run the engine writes one row per
+2 < 2 // file of its checks/ folder, in file-name order. A claims-v1 run whose probe plants two results with
+4 > 2 // the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, one that is not JSON, and one whose name has no `@` (its copy is null).
 3 < 2 // the FLOCK_CHECK_OUT the engine hands every fact: a readable one per copy, and one that is not JSON.
-4 < 1 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
+4 < 2 // Prints `ALL TESTS PASSED` and exits 0, or names what differed and exits 1.
 5 < 1 import fs from 'node:fs'
 6 < 1 import path from 'node:path'
 7 < 1 import { flockTarget, task, writePlan, flockRun } from './_flock_helpers.mjs'

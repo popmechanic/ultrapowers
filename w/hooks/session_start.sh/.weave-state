@@ -1,0 +1,30 @@
+0 < 1 #!/usr/bin/env bash
+1 < 2 # SessionStart hook: inject the plan-routing rule so every session knows to
+2 < 2 # author implementation plans with ultrawrite and to offer /ultrapowers at the
+3 < 2 # handoff. Without this, the routing depends on the model noticing the ultrawrite
+4 < 2 # skill description at exactly the plan-writing moment — probabilistic, not reliable.
+5 < 2 # Stdout from a SessionStart command hook becomes session context (exit 0).
+6 < 1 set -euo pipefail
+7 < 1 
+8 < 1 cat <<'EOF'
+9 < 1 <ultrapowers-routing>
+10 < 1 The ultrapowers plugin is installed. Two standing rules:
+11 < 1 
+12 < 1 1. For ANY implementation plan, invoke ultrapowers:ultrawrite and follow it.
+13 < 1    ultrawrite is this plugin's owned authoring skill: it elicits the operator's
+14 < 1    claim, shapes the decomposition into signed contracts, runs the proof gate,
+15 < 1    and emits a claims-v1 plan that /ultrapowers runs on the fleet. A
+16 < 1    claims-v1 plan has no steps, but a sequential executor can still implement
+17 < 1    it task-by-task from contract plus proof. This rule wins over a skill's own
+18 < 1    handoff: when superpowers:brainstorming ends with "invoke the writing-plans
+19 < 1    skill", invoke ultrawrite instead — writing-plans emits the legacy grammar,
+20 < 1    which the launcher refuses before any VM (no Claim, no proof gate).
+21 < 1 
+22 < 1 2. At a marked plan's execution handoff, do NOT default to ultrapowers: follow
+23 < 1    ultrawrite's §Execution handoff — read T, parallel width and risk off the plan,
+24 < 1    then offer three options (Ultrapowers, Subagent-Driven, Inline) with the
+25 < 1    best fit tagged "(recommended)". Selecting Ultrapowers authorizes execution:
+26 < 1    the plan is committed and the fleet run launches with no approval pause.
+27 < 1 </ultrapowers-routing>
+28 < 1 EOF
+29 < 1 

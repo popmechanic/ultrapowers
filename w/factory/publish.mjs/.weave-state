@@ -1,25 +1,25 @@
 0 < 1 #!/usr/bin/env node
-1 < 1 /**
-2 < 1  * factory/publish.mjs — a run's publish, once its engine has exited (#1441): the pull
-3 < 1  * request, the self-merge (catching the run up to a moved main), and the deploy the merge
-4 < 1  * earned. The boot calls it once, in plain sequence after the engine unit and never inside
-5 < 1  * it — publish is shell, not a seam (run-186 died on a scripted publish stage inside the
-6 < 1  * engine). GitHub is reached with `curl` and the target with `git`, both off PATH, so the
-7 < 1  * boot sims' stubs answer it exactly as they answered the shell it replaced.
-8 < 1  *
-9 < 1  *   node factory/publish.mjs --engine-exit <code> --hold 0|1 --run-id <run-N> --target-repo <o/r>
-10 < 1  *     --target-dir <dir> --branch <ultra/integration-run-N> --base-sha <sha> --plan <plan.md>
-11 < 1  *     --plan-json <parse> --run-dir <dir> --evidence-dir <runs/<slug>/<N> in the clone>
-13 > 1  *     --evidence-url <url> --github-host <host> --anthropic-url <url> --log <boot log>
+1 < 2 /**
+2 < 2  * factory/publish.mjs — a run's publish, once its engine has exited (#1441): the pull
+3 < 2  * request, the self-merge (catching the run up to a moved main), and the deploy the merge
+4 < 2  * earned. The boot calls it once, in plain sequence after the engine unit and never inside
+5 < 2  * it — publish is shell, not a seam (run-186 died on a scripted publish stage inside the
+6 < 2  * engine). GitHub is reached with `curl` and the target with `git`, both off PATH, so the
+7 < 2  * boot sims' stubs answer it exactly as they answered the shell it replaced.
+8 < 2  *
+9 < 2  *   node factory/publish.mjs --engine-exit <code> --hold 0|1 --run-id <run-N> --target-repo <o/r>
+10 < 2  *     --target-dir <dir> --branch <ultra/integration-run-N> --base-sha <sha> --plan <plan.md>
+11 < 2  *     --plan-json <parse> --run-dir <dir> --evidence-dir <runs/<slug>/<N> in the clone>
+13 > 2  *     --evidence-url <url> --github-host <host> --anthropic-url <url> --log <boot log>
 12 < 2  *     --evidence-url <url> --github-host <host> --anthropic-url <url> --typesafe-url <url> --log <boot log>
-13 < 1  *
-14 < 1  * It appends its rows to the evidence folder's `events.jsonl`, writes `publish.json` and the
-15 < 1  * three publish logs beside it, logs to the boot log, and prints five lines for the boot:
-16 < 1  * the run's state, its phase, the PR url, the PR author and the merge sha (either may be
-17 < 1  * empty). A POST the API refused prints the reply's first 2000 characters and exits 1, which
-18 < 1  * the boot fails the run on; a POST for the pull request that got no answer first looks for the
-19 < 1  * branch's open pull request, and is made once more when there is none.
-20 < 1  */
+13 < 2  *
+14 < 2  * It appends its rows to the evidence folder's `events.jsonl`, writes `publish.json` and the
+15 < 2  * three publish logs beside it, logs to the boot log, and prints five lines for the boot:
+16 < 2  * the run's state, its phase, the PR url, the PR author and the merge sha (either may be
+17 < 2  * empty). A POST the API refused prints the reply's first 2000 characters and exits 1, which
+18 < 2  * the boot fails the run on; a POST for the pull request that got no answer first looks for the
+19 < 2  * branch's open pull request, and is made once more when there is none.
+20 < 2  */
 21 < 1 
 22 < 1 import { spawnSync } from 'node:child_process'
 23 < 1 import fs from 'node:fs'
@@ -33,11 +33,11 @@
 31 < 1 const STORE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'flock', 'weave_store.py')
 32 < 1 const CLOUDFLARE_API_BASE_URL = 'https://cloudflare.int.exe.xyz/client/v4'
 33 < 1 
-35 > 1 /** `publish.self_merge`'s bounds and `publish.probe` off `policyPath`. The self-merge always
-36 < 1  *  runs (a held run is the way to keep one open; settled 2026-11-14 over 62 self-merges in 110
-37 < 1  *  runs); the probe is still an experiment, so a missing file, unparseable JSON, or a probe cell
-38 < 1  *  that is not an object carrying an `enabled` key reads it as disabled. The bounds' defaults
-39 < 1  *  live here alone. */
+35 > 2 /** `publish.self_merge`'s bounds and `publish.probe` off `policyPath`. The self-merge always
+36 < 2  *  runs (a held run is the way to keep one open; settled 2026-11-14 over 62 self-merges in 110
+37 < 2  *  runs); the probe is still an experiment, so a missing file, unparseable JSON, or a probe cell
+38 < 2  *  that is not an object carrying an `enabled` key reads it as disabled. The bounds' defaults
+39 < 2  *  live here alone. */
 34 < 2 /** `publish.self_merge` and `publish.probe` off `policyPath`. A missing file, unparseable
 35 < 2  *  JSON, or a cell that is not an object carrying an `enabled` key reads as disabled, never
 36 < 2  *  a default a broken read falls into; the bounds' defaults live here alone. */
@@ -67,7 +67,7 @@
 57 < 1 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 58 < 1 const nowSeconds = () => Math.floor(Date.now() / 1000)
 59 < 1 
-60 < 1 /** The plan's first `# ` heading, or empty. */
+60 < 2 /** The plan's first `# ` heading, or empty. */
 61 < 1 const planTitle = (planPath) =>
 62 < 1   (fs.readFileSync(planPath, 'utf8').split('\n').find((l) => l.startsWith('# ')) ?? '').slice(2)
 63 < 1 
@@ -84,8 +84,8 @@
 74 < 1   }
 75 < 1   const git = (args, { quiet = false } = {}) =>
 76 < 1     spawnSync('git', ['-C', o.targetDir, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', quiet ? 'ignore' : 'inherit'] })
-77 < 1   // One request, one answer: the status rides as the answer's last line (`-w`), and a curl that
-78 < 1   // could not connect answers no code at all. No `authorization` header — the edge injects it.
+77 < 2   // One request, one answer: the status rides as the answer's last line (`-w`), and a curl that
+78 < 2   // could not connect answers no code at all. No `authorization` header — the edge injects it.
 79 < 1   const api = (method, route, payload) => {
 80 < 1     const argv = ['-sS']
 81 < 1     if (method !== 'GET') argv.push('-X', method)
@@ -99,30 +99,30 @@
 89 < 1   const title = planTitle(o.plan)
 90 < 1   const policy = publishPolicy()
 91 < 1 
-92 < 1   // The target's default branch as the remote advertised it: a PR against a guessed `main` on a
-93 < 1   // `master` repo is refused, or worse taken.
+92 < 2   // The target's default branch as the remote advertised it: a PR against a guessed `main` on a
+93 < 2   // `master` repo is refused, or worse taken.
 94 < 1   const ref = (git(['symbolic-ref', 'refs/remotes/origin/HEAD'], { quiet: true }).stdout ?? '').trim()
 95 < 1   if (!/^refs\/remotes\/origin\/./.test(ref)) {
 96 < 1     return { refusal: "publish: cannot read the target's default branch from refs/remotes/origin/HEAD" }
 97 < 1   }
 98 < 1   const base = ref.slice('refs/remotes/origin/'.length)
 99 < 1 
-100 < 1   // A run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
+100 < 2   // A run the engine did not finish green still gets its PR — as a DRAFT, since the merge is the operator's act.
 101 < 1   const draft = o.engineExit !== 0
 102 < 1   const body = renderPrBody(o.plan, path.join(o.runDir, 'events.jsonl'), o.evidenceUrl,
 103 < 1     path.join(o.runDir, 'provenance.json'), o.planJson).replace(/\n+$/, '')
 104 < 1   const open = () => api('POST', '/pulls', { title: `fleet ${o.runId}: ${title}`, head: o.branch, base, body, draft })
 105 < 1   const answered = (r) => log(`publish: POST /repos/${o.targetRepo}/pulls answered ${r.code || '<nothing>'}`)
-106 < 1   // The open pull request of this run's branch, or null: the branch is the run's alone.
+106 < 2   // The open pull request of this run's branch, or null: the branch is the run's alone.
 107 < 1   const found = () => {
 108 < 1     const g = api('GET', `/pulls?head=${o.targetRepo.split('/')[0]}:${encodeURIComponent(o.branch)}&state=open`)
 109 < 1     const list = /^2\d\d$/.test(g.code) ? json(g.reply) : null
 110 < 1     return Array.isArray(list) && list[0] && typeof list[0] === 'object' ? list[0] : null
 111 < 1   }
-112 < 1   // A request that got no answer may still have opened the pull request (flock-baseline run-22,
-113 < 1   // 2026-11-13: `answered 000` after 17 s with the pull request created 8 s in, and the run ended
-114 < 1   // failed beside a ready pull request nobody merged). On anything but a 2xx the branch's open pull
-115 < 1   // request is taken as this run's; with no answer at all and none open, the request is made once more.
+112 < 2   // A request that got no answer may still have opened the pull request (flock-baseline run-22,
+113 < 2   // 2026-11-13: `answered 000` after 17 s with the pull request created 8 s in, and the run ended
+114 < 2   // failed beside a ready pull request nobody merged). On anything but a 2xx the branch's open pull
+115 < 2   // request is taken as this run's; with no answer at all and none open, the request is made once more.
 116 < 1   let opened = open()
 117 < 1   let pr = /^2\d\d$/.test(opened.code) ? json(opened.reply) ?? {} : null
 118 < 1   if (!pr) {
@@ -140,10 +140,10 @@
 130 < 1   log(`publish: ${prUrl} (base ${base}, draft ${draft}, author ${prAuthor || '<unknown>'})`)
 131 < 1   row('publish:pr', { url: prUrl, number, draft })
 132 < 1 
-133 < 1   // Main's memory (factory/flock/weave_store.py): the entry the engine stored for the run's commit,
-134 < 1   // and the one a catch-up stores for its own, is pushed to the target's weave ref here, always before
-135 < 1   // a merge request and never after one, so main never shows a tree whose stored weave could still
-136 < 1   // arrive late. A push that fails only costs the memory of this landing: the next reader replays it.
+133 < 2   // Main's memory (factory/flock/weave_store.py): the entry the engine stored for the run's commit,
+134 < 2   // and the one a catch-up stores for its own, is pushed to the target's weave ref here, always before
+135 < 2   // a merge request and never after one, so main never shows a tree whose stored weave could still
+136 < 2   // arrive late. A push that fails only costs the memory of this landing: the next reader replays it.
 137 < 1   const pushWeave = (when) => {
 138 < 2     if (!policy.memory) return
 139 < 1     const r = spawnSync('python3', [STORE, 'push', '--repo', o.targetDir, '--remote', 'origin'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
@@ -157,9 +157,9 @@
 147 < 1   let merged = ''
 148 < 1   let mergePhase = ''
 149 < 1 
-150 < 1   // M2: on a moved default branch, hand the target to the Flock's catch-up and, once it says every
-151 < 1   // exam ran green there, force-push the target's new HEAD over the run's own branch — any other
-152 < 1   // exit leaves the target untouched and sets the merge phase.
+150 < 2   // M2: on a moved default branch, hand the target to the Flock's catch-up and, once it says every
+151 < 2   // exam ran green there, force-push the target's new HEAD over the run's own branch — any other
+152 < 2   // exit leaves the target untouched and sets the merge phase.
 154 > 1   const catchup = (runBase, onto) => {
 153 < 2   const refold = (runBase, onto) => {
 154 < 1     const env = {
@@ -195,8 +195,8 @@
 179 < 1     }
 181 > 1     log(`merge: caught up onto ${onto} and pushed ${o.branch}`)
 180 < 2     log(`merge: re-folded onto ${onto} and pushed ${o.branch}`)
-181 < 1     // the catch-up remapped provenance.json to the pushed commit's lines: copy that file alone,
-182 < 1     // since the evidence events.jsonl holds this module's rows (publish:pr, merge) the engine's copy lacks
+181 < 2     // the catch-up remapped provenance.json to the pushed commit's lines: copy that file alone,
+182 < 2     // since the evidence events.jsonl holds this module's rows (publish:pr, merge) the engine's copy lacks
 183 < 1     const prov = path.join(o.runDir, 'provenance.json')
 184 < 1     if (fs.existsSync(prov)) fs.copyFileSync(prov, path.join(o.evidenceDir, 'provenance.json'))
 186 > 1     row('catchup', { ok: true })
@@ -206,13 +206,13 @@
 187 < 1     return true
 188 < 1   }
 189 < 1 
-190 < 1   // M1–M4: before every send, and again after every 405/409 refusal, re-fetch the default branch and
-192 > 1   // catch up onto it if it moved (M2); wait out a `null` mergeable, GitHub's answer for a few seconds
+190 < 2   // M1–M4: before every send, and again after every 405/409 refusal, re-fetch the default branch and
+192 > 2   // catch up onto it if it moved (M2); wait out a `null` mergeable, GitHub's answer for a few seconds
 191 < 2   // re-fold onto it if it moved (M2); wait out a `null` mergeable, GitHub's answer for a few seconds
-192 < 1   // after a push while it recomputes (M3); then PUT the squash merge, titled off the plan's own first
-194 > 1   // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_catchups` merge requests
+192 < 2   // after a push while it recomputes (M3); then PUT the squash merge, titled off the plan's own first
+194 > 2   // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_catchups` merge requests
 193 < 2   // heading, the SHA this clone actually pushed. A 405/409 repeats, up to `max_refolds` merge requests
-194 < 1   // in all; anything else parks.
+194 < 2   // in all; anything else parks.
 195 < 1   const selfMerge = async () => {
 198 > 1     const { maxCatchups, waitSeconds } = policy.selfMerge
 197 > 2     const { maxRefolds, waitSeconds } = policy.selfMerge
@@ -228,10 +228,10 @@
 203 < 2         if (!refold(curBase, tip)) return
 204 < 1         curBase = tip
 205 < 1       }
-206 < 1       // GitHub answers a `mergeable` it computed for whatever head it last processed: right after a
-208 > 1       // the catch-up's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
+206 < 2       // GitHub answers a `mergeable` it computed for whatever head it last processed: right after a
+208 > 2       // the catch-up's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
 207 < 2       // refold's force-push that is the old head (runs 264/265: 405, then 200), so only a reply
-208 < 1       // naming the head this clone pushed counts; any other head is waited out like a null.
+208 < 2       // naming the head this clone pushed counts; any other head is waited out like a null.
 209 < 1       const headSha = (git(['rev-parse', 'HEAD']).stdout ?? '').trim()
 210 < 1       const start = nowSeconds()
 211 < 1       for (;;) {
@@ -267,11 +267,11 @@
 239 < 1     log(`merge: ${mergePhase}`)
 240 < 1   }
 241 < 1 
-242 < 1   // #835: the deploy the self-merge earned, read live, rolled back once on red. The plan's
-243 < 1   // `**Publish:**`/`**Verify:**`/`**Rollback:**` commands are the run's one parse's `publish` object,
-244 < 1   // never grepped off the plan text. An empty answer — the plan named no `**Publish:**` line, or
-245 < 1   // `publish.probe.enabled` is off — keeps the plain "the pull request was merged" phase; either way
-246 < 1   // the probe is never a failure of the run.
+242 < 2   // #835: the deploy the self-merge earned, read live, rolled back once on red. The plan's
+243 < 2   // `**Publish:**`/`**Verify:**`/`**Rollback:**` commands are the run's one parse's `publish` object,
+244 < 2   // never grepped off the plan text. An empty answer — the plan named no `**Publish:**` line, or
+245 < 2   // `publish.probe.enabled` is off — keeps the plain "the pull request was merged" phase; either way
+246 < 2   // the probe is never a failure of the run.
 247 < 1   const publishProbe = () => {
 248 < 1     const cmds = json(fs.readFileSync(o.planJson, 'utf8'))?.publish
 249 < 1     const cmd = (k) => (cmds && typeof cmds === 'object' && typeof cmds[k] === 'string' ? cmds[k] : '')
@@ -280,10 +280,10 @@
 252 < 1     const seconds = policy.probe.timeoutSeconds
 253 < 1     fs.mkdirSync(o.evidenceDir, { recursive: true })
 254 < 1     fs.mkdirSync(o.runDir, { recursive: true })
-255 < 1     // One command in the target under the budget (exit 124 on the budget, as coreutils' `timeout`),
-256 < 1     // its output kept as the last 4000 bytes in `publish-<verb>.log`: the Cloudflare edge's address and
-257 < 1     // a placeholder token in its environment (the edge injects the credential), and ULTRA_PUBLISH_URL
-258 < 1     // when `url` names the deployed app. Answers the exit, the milliseconds and the raw output.
+255 < 2     // One command in the target under the budget (exit 124 on the budget, as coreutils' `timeout`),
+256 < 2     // its output kept as the last 4000 bytes in `publish-<verb>.log`: the Cloudflare edge's address and
+257 < 2     // a placeholder token in its environment (the edge injects the credential), and ULTRA_PUBLISH_URL
+258 < 2     // when `url` names the deployed app. Answers the exit, the milliseconds and the raw output.
 259 < 1     const run = (verb, command, url) => {
 260 < 1       const raw = path.join(o.runDir, `.publish-${verb}-raw.log`)
 261 < 1       const fd = fs.openSync(raw, 'w')

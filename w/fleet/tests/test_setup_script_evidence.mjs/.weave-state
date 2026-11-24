@@ -1,0 +1,56 @@
+0 < 2 /**
+1 < 2  * fleet/tests/test_setup_script_evidence.mjs — the exam for the first-boot
+2 < 2  * setup script carrying the operator's evidence repository (#1395).
+3 < 2  *
+4 < 2  * The VM learns where its record lives from the setup script alone: the boot
+5 < 2  * reads `$FLEET_HOME/fleet-evidence-repo` (`FLEET_HOME` is `/home/exedev`, the
+6 < 2  * setup script's `$HOME`). Legs:
+7 < 2  *
+8 < 2  *   (g) [M7] `renderSetupScript({ run: '7', evidence: 'ops/evidence', ... })`
+9 < 2  *       carries exactly the line
+10 < 2  *       `printf '%s\n' 'ops/evidence' >"$HOME/fleet-evidence-repo"`, once, and
+11 < 2  *       is at most `SETUP_SCRIPT_BUDGET_BYTES` long; an `evidence` that is
+12 < 2  *       absent, or is not `<owner>/<repo>` (it lands inside a single-quoted
+13 < 2  *       shell literal), throws.
+14 < 2  */
+15 < 2 
+16 < 1 import assert from 'node:assert/strict'
+17 < 1 
+18 < 1 import { SETUP_SCRIPT_BUDGET_BYTES, readFleetFiles, renderSetupScript } from '../setup-script.mjs'
+19 < 1 
+20 < 1 const LINE = `printf '%s\\n' 'ops/evidence' >"$HOME/fleet-evidence-repo"`
+21 < 1 
+22 < 2 // (g) [M7] the line, byte for byte, within the budget
+23 < 1 {
+24 < 1   const script = renderSetupScript({ run: '7', evidence: 'ops/evidence', ...readFleetFiles() })
+25 < 1   const lines = script.split('\n')
+26 < 1   assert.equal(lines.filter((l) => l === LINE).length, 1,
+27 < 1     `(g) [M7] the script carries the line ${JSON.stringify(LINE)} exactly once`)
+28 < 1   const bytes = Buffer.byteLength(script, 'utf8')
+29 < 1   assert.ok(bytes <= SETUP_SCRIPT_BUDGET_BYTES,
+30 < 1     `(g) [M7] the script is ${bytes} bytes, within the ${SETUP_SCRIPT_BUDGET_BYTES}-byte budget`)
+31 < 2   // The line sits beside the bootstrap and the unit, before the run starts.
+32 < 1   const at = lines.indexOf(LINE)
+33 < 1   const start = lines.findIndex((l) => l.startsWith('systemctl --user start'))
+34 < 1   assert.ok(at >= 0 && start > at, '(g) [M7] the evidence line is written before the run is started')
+35 < 1 
+36 < 1   const other = renderSetupScript({ run: '7', evidence: 'someone/else.repo', ...readFleetFiles() })
+37 < 1   assert.ok(other.split('\n').includes(`printf '%s\\n' 'someone/else.repo' >"$HOME/fleet-evidence-repo"`),
+38 < 1     '(g) [M7] the repository named is the one handed in')
+39 < 1 }
+40 < 1 
+41 < 2 // (g) [M7] absent or malformed: a throw, never a script
+42 < 1 {
+43 < 1   const files = readFleetFiles()
+44 < 1   for (const evidence of [undefined, null, '', 'ops', 'ops/', '/evidence', 'ops/evidence/x',
+45 < 1     "ops/evi'dence", 'ops/evi dence', 'ops/$(id)', 'ops/..', 42]) {
+46 < 1     assert.throws(() => renderSetupScript({ run: '7', evidence, ...files }),
+47 < 1       /evidence/,
+48 < 1       `(g) [M7] evidence ${JSON.stringify(evidence)} is refused`)
+49 < 1   }
+50 < 1   assert.throws(() => renderSetupScript({ run: '7', ...files }), /evidence/,
+51 < 1     '(g) [M7] a render with no evidence key at all is refused')
+52 < 1 }
+53 < 1 
+54 < 1 console.log('ALL TESTS PASSED')
+55 < 1 

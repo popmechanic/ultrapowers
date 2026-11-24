@@ -1,0 +1,99 @@
+0 < 1 #!/usr/bin/env bun
+1 < 2 // The operator notebook: a private file, read at the start of every planning
+2 < 2 // session, that learns the operator's words. Outside every repo on purpose.
+3 < 2 //
+4 < 2 //   bun skills/ultrawrite/stories/notebook.ts show
+5 < 2 //   bun skills/ultrawrite/stories/notebook.ts add <worked|failed|lands|author|retired> <text>
+6 < 2 //   bun skills/ultrawrite/stories/notebook.ts log <plan-id> --rounds N --explains N --fixes N
+7 < 1 import {existsSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+8 < 1 import {dirname, join} from 'node:path';
+9 < 1 import {parseArgs} from 'node:util';
+10 < 1 import {home} from './jev';
+11 < 1 
+12 < 1 const SECTIONS: Record<string, string> = {
+13 < 1   worked: '## Words that worked',
+14 < 1   failed: '## Words that failed',
+15 < 1   lands: '## Explanations that land',
+16 < 1   author: '## The author decides',
+17 < 1   retired: '## Retired questions',
+18 < 1   readings: '## Plan readings',
+19 < 1 };
+20 < 1 const SEED = `# Operator notebook
+21 < 1 
+22 < 1 Read at the start of every planning session. Every *Please explain* and every fixed line adds one.
+23 < 1 
+24 < 1 ## Words that worked
+25 < 1 
+26 < 1 ## Words that failed
+27 < 1 
+28 < 1 - 2026-09-27: "probe" needed its definition first; lead with "the check a plan runs".
+29 < 1 
+30 < 1 ## Explanations that land
+31 < 1 
+32 < 1 - 2026-09-27: A concrete before-and-after example lands where abstract words didn't.
+33 < 1 - 2026-09-27: A visual explainer page helps when a mechanism is unfamiliar.
+34 < 1 - 2026-09-27: When a design changes quickly, show the old shape beside the new one.
+35 < 1 
+36 < 1 ## The author decides
+37 < 1 
+38 < 1 - 2026-09-27: Filing and plumbing details are the author's to decide; the operator decides what the app does and how it looks.
+39 < 1 
+40 < 1 ## Retired questions
+41 < 1 
+42 < 1 ## Plan readings
+43 < 1 `;
+44 < 1 
+45 < 1 const path = () => join(home(), 'notebook.md');
+46 < 1 
+47 < 1 function ensure(): string {
+48 < 1   const p = path();
+49 < 1   if (!existsSync(p)) {
+50 < 1     mkdirSync(dirname(p), {recursive: true});
+51 < 1     writeFileSync(p, SEED);
+52 < 1   }
+53 < 1   return p;
+54 < 1 }
+55 < 1 
+56 < 1 function add(section: string, text: string, date: string): void {
+57 < 1   const p = ensure();
+58 < 1   const lines = readFileSync(p, 'utf8').split('\n');
+59 < 1   if (lines[lines.length - 1] === '') lines.pop();
+60 < 1   let i = lines.indexOf(SECTIONS[section]) + 1;
+61 < 1   while (i < lines.length && !lines[i].startsWith('## ')) i++;
+62 < 1   while (i > 0 && lines[i - 1] === '') i--;
+63 < 1   lines.splice(i, 0, `- ${date}: ${text}`);
+64 < 1   if (i + 1 < lines.length && lines[i + 1].startsWith('## ')) lines.splice(i + 1, 0, '');
+65 < 1   writeFileSync(p, lines.join('\n') + '\n');
+66 < 1 }
+67 < 1 
+68 < 1 function main(argv: string[]): number {
+69 < 1   const today = new Date().toISOString().slice(0, 10);
+70 < 1   const [cmd, ...rest] = argv;
+71 < 1   if (cmd === 'show') {
+72 < 1     process.stdout.write(readFileSync(ensure(), 'utf8'));
+73 < 1     return 0;
+74 < 1   }
+75 < 1   if (cmd === 'add' && rest.length === 2) {
+76 < 1     if (!(rest[0] in SECTIONS) || rest[0] === 'readings') {
+77 < 1       console.error('notebook: section must be one of worked, failed, lands, author, retired');
+78 < 1       return 2;
+79 < 1     }
+80 < 1     add(rest[0], rest[1], today);
+81 < 1     return 0;
+82 < 1   }
+83 < 1   if (cmd === 'log') {
+84 < 1     const {values: v, positionals} = parseArgs({args: rest, allowPositionals: true,
+85 < 1       options: {rounds: {type: 'string'}, explains: {type: 'string'}, fixes: {type: 'string'}}});
+86 < 1     if (positionals.length !== 1 || !v.rounds || !v.explains || !v.fixes) {
+87 < 1       console.error('usage: notebook.ts log <plan-id> --rounds N --explains N --fixes N');
+88 < 1       return 2;
+89 < 1     }
+90 < 1     add('readings', `${positionals[0]}: rounds ${v.rounds}, please-explain ${v.explains}, lines fixed at touch 1 ${v.fixes}`, today);
+91 < 1     return 0;
+92 < 1   }
+93 < 1   console.error('usage: notebook.ts show | add <section> <text> | log <plan-id> --rounds N --explains N --fixes N');
+94 < 1   return 2;
+95 < 1 }
+96 < 1 
+97 < 1 if (import.meta.main) process.exit(main(process.argv.slice(2)));
+98 < 1 

@@ -1,0 +1,88 @@
+0 < 1 #!/usr/bin/env node
+1 < 2 // The gate Jev base probe: when the gate reader's diet carries a `base` object (what each named
+2 < 2 // file is at BASE), `skills/ultrawrite/stories/gate_jev.ts` hands it to Jev unchanged and asks
+3 < 2 // `pinned`: whether a file there already pins the opposite of a clause. It runs the script against
+4 < 2 // a local stand-in Jev (a node:http server on 127.0.0.1) answering every `fact:` and `caught:`
+5 < 2 // question 0.9, `contradiction` 0.1 and `pinned` by case. The case is argv[2]:
+6 < 2 //   pinned-high  a diet with base, `pinned` answered 0.9;
+7 < 2 //   pinned-low   a diet with base, `pinned` answered 0.1;
+8 < 2 //   no-base      the same diet without base.
+9 < 2 // Prints one JSON line {"verdict", "pinned", "asked_pinned", "state_base"} and exits 0; exits 1
+10 < 2 // only when it could not run.
+11 < 1 import { spawn } from 'node:child_process'
+12 < 1 import fs from 'node:fs'
+13 < 1 import http from 'node:http'
+14 < 1 import os from 'node:os'
+15 < 1 import path from 'node:path'
+16 < 1 import { fileURLToPath } from 'node:url'
+17 < 1 
+18 < 1 const CASE = process.argv[2]
+19 < 1 const PINNED = { 'pinned-high': 0.9, 'pinned-low': 0.1, 'no-base': 0.9 }
+20 < 1 if (!(CASE in PINNED)) { console.log('usage: gate_jev_base_probe.mjs pinned-high|pinned-low|no-base'); process.exit(1) }
+21 < 1 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+22 < 1 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'gate-jev-base-'))
+23 < 1 const HOME = path.join(tmp, 'home')
+24 < 1 fs.mkdirSync(HOME)
+25 < 1 fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
+26 < 1 
+27 < 1 let server
+28 < 1 const fail = (why) => { console.error(`GATE JEV BASE ${CASE} COULD NOT RUN: ${why}`); server?.close(); process.exit(1) }
+29 < 1 
+30 < 2 // the stand-in Jev
+31 < 1 const requests = []
+32 < 1 const answer = (k) => (k.startsWith('fact:') || k.startsWith('caught:') ? 0.9 : k === 'contradiction' ? 0.1 : k === 'pinned' ? PINNED[CASE] : 0.5)
+33 < 1 server = http.createServer((req, res) => {
+34 < 1   let body = ''
+35 < 1   req.on('data', (c) => { body += c })
+36 < 1   req.on('end', () => {
+37 < 1     if (req.method !== 'POST' || req.url !== '/v1/systemone') { res.writeHead(404); res.end(); return }
+38 < 1     let json = {}
+39 < 1     try { json = JSON.parse(body) } catch {}
+40 < 1     requests.push(json)
+41 < 1     const answers = Object.fromEntries(Object.keys(json.questions || {}).map((k) => [k, { noul: answer(k) }]))
+42 < 1     res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify({ answers }))
+43 < 1   })
+44 < 1 })
+45 < 1 await new Promise((r) => server.listen(0, '127.0.0.1', r))
+46 < 1 
+47 < 1 const base = {
+48 < 1   'fleet/tests/census.test.mjs': {
+49 < 1     exists: true, lines: 42, headings: ['census lists the old paths'],
+50 < 1     excerpt: "12: assert.deepEqual(paths, ['skills/old/a.md', 'skills/old/b.md'])",
+51 < 1   },
+52 < 1 }
+53 < 1 const diet = {
+54 < 1   task: '4', hash: 'h1',
+55 < 1   claim: 'The census moves to the new paths. Machine: M1. `census` prints `skills/new/a.md`. M2. `census` exits 0.',
+56 < 1   proof: '- Run: node census_probe.mjs text [M1]\n- Run: node census_probe.mjs exit [M2]\n- Legs: (a) it prints the new path [M1]; (b) it exits 0 [M2].',
+57 < 1   ...(CASE === 'no-base' ? {} : { base }),
+58 < 1 }
+59 < 1 const dietFile = path.join(tmp, 'diet.json')
+60 < 1 fs.writeFileSync(dietFile, JSON.stringify(diet))
+61 < 1 
+62 < 1 const run = await new Promise((resolve) => {
+63 < 1   const p = spawn('bun', [path.join(REPO, 'skills/ultrawrite/stories/gate_jev.ts'), dietFile], {
+64 < 1     cwd: REPO,
+65 < 1     env: { ...process.env, TYPESAFE_BASE_URL: `http://127.0.0.1:${server.address().port}`, ULTRAPOWERS_HOME: HOME },
+66 < 1   })
+67 < 1   let stdout = ''
+68 < 1   let stderr = ''
+69 < 1   p.stdout.on('data', (c) => { stdout += c })
+70 < 1   p.stderr.on('data', (c) => { stderr += c })
+71 < 1   p.on('error', (e) => resolve({ code: -1, stdout, stderr: String(e) }))
+72 < 1   p.on('close', (code) => resolve({ code, stdout, stderr }))
+73 < 1 })
+74 < 1 if (run.code !== 0) fail(`gate_jev exited ${run.code}:\n${run.stdout}${run.stderr}`)
+75 < 1 if (requests.length !== 1) fail(`${requests.length} request(s) made, expected 1`)
+76 < 1 const lines = run.stdout.split('\n').filter(Boolean)
+77 < 1 let out
+78 < 1 try { out = JSON.parse(lines[lines.length - 1]) } catch { fail(`stdout is not JSON: ${run.stdout}`) }
+79 < 1 server.close()
+80 < 1 console.log(JSON.stringify({
+81 < 1   verdict: out.verdict ?? null,
+82 < 1   pinned: out.pinned === undefined ? null : out.pinned,
+83 < 1   asked_pinned: Object.hasOwn(requests[0].questions || {}, 'pinned'),
+84 < 1   state_base: requests[0].state?.base ?? null,
+85 < 1 }))
+86 < 1 process.exit(0)
+87 < 1 

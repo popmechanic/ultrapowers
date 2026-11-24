@@ -1,19 +1,19 @@
-0 < 1 // The accessible role and name of a DOM element, the way the stories and the
-1 < 1 // browser checker name it: role from `role`, else the element's implicit one;
-2 < 1 // name from aria-label, then aria-labelledby, then a label[for] or wrapping
-4 > 1 // label, then the text, but only for a role named from its content (a list,
-5 < 1 // list item, row, table, form or landmark is not), then the title. Comment
-6 < 1 // mode and story play find elements with it.
+0 < 2 // The accessible role and name of a DOM element, the way the stories and the
+1 < 2 // browser checker name it: role from `role`, else the element's implicit one;
+2 < 2 // name from aria-label, then aria-labelledby, then a label[for] or wrapping
+4 > 2 // label, then the text, but only for a role named from its content (a list,
+5 < 2 // list item, row, table, form or landmark is not), then the title. Comment
+6 < 2 // mode and story play find elements with it.
 3 < 2 // label, then the text. Comment mode and story play find elements with it.
-4 < 1 
+4 < 2 
 5 < 1 const INPUT_ROLES: Record<string, string> = {
 6 < 1   checkbox: 'checkbox', radio: 'radio', range: 'slider', number: 'spinbutton',
 7 < 1   button: 'button', submit: 'button', reset: 'button', image: 'button', search: 'searchbox',
 8 < 1 };
 10 > 1 
-11 < 1 // The roles Chrome names from their content, which is what the checker counts
-12 < 1 // (factory/stack/tinyapp/browser.ts asks Chrome's accessibility tree). Read off
-13 < 1 // Chrome on 2026-11-20 (#1532): listitem, row and every landmark came back unnamed.
+11 < 2 // The roles Chrome names from their content, which is what the checker counts
+12 < 2 // (factory/stack/tinyapp/browser.ts asks Chrome's accessibility tree). Read off
+13 < 2 // Chrome on 2026-11-20 (#1532): listitem, row and every landmark came back unnamed.
 14 < 1 const FROM_CONTENT = new Set([
 15 < 1   'button', 'cell', 'checkbox', 'columnheader', 'gridcell', 'heading', 'link', 'menuitem',
 16 < 1   'menuitemcheckbox', 'menuitemradio', 'option', 'radio', 'rowheader', 'switch', 'tab', 'term',
@@ -64,13 +64,11 @@
 51 < 1   return clean(el.textContent);
 52 < 1 }
 53 < 1 
-55 > 1 /** The element's own text: its child text nodes joined, whitespace collapsed, trimmed. */
-56 < 1 export function ownTextOf(el: Element): string {
-57 < 1   let own = '';
-58 < 1   for (const c of el.childNodes) if (c.nodeType === Node.TEXT_NODE) own += c.nodeValue ?? '';
-59 < 1   return clean(own);
-60 < 1 }
-61 < 1 
+55 > 2 /** A reading part's line (it carries data-part="text"), whitespace collapsed and trimmed; '' for any other element. */
+56 < 1 export function textLineOf(el: Element): string {
+57 < 1   return el.getAttribute('data-part') === 'text' ? clean(el.textContent ?? '') : '';
+58 < 1 }
+59 < 1 
 54 < 1 export function nameOf(el: Element): string {
 55 < 1   const label = clean(el.getAttribute('aria-label'));
 56 < 1   if (label) return label;
@@ -97,7 +95,7 @@
 75 < 2   return textOf(el) || clean(el.getAttribute('title'));
 76 < 1 }
 77 < 1 
-78 < 1 /** The nearest element, this one or an ancestor, that has both a role and a name. */
+78 < 2 /** The nearest element, this one or an ancestor, that has both a role and a name. */
 79 < 1 export function named(el: Element | null): Element | null {
 80 < 1   for (let e = el; e; e = e.parentElement) {
 81 < 1     if (roleOf(e) && nameOf(e)) return e;
@@ -107,7 +105,7 @@
 85 < 1 
 86 < 1 export const targetOf = (role: string, name: string): string => `${role} "${name}"`;
 87 < 1 
-88 < 1 /** The first element in the document with this role and name, or null. */
+88 < 2 /** The first element in the document with this role and name, or null. */
 89 < 1 export function find(role: string, name: string, root: ParentNode = document): Element | null {
 90 < 1   for (const el of root.querySelectorAll('*')) {
 91 < 1     if (roleOf(el) === role && nameOf(el) === name) return el;

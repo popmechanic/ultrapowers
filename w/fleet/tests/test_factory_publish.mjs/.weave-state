@@ -1,66 +1,66 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_factory_publish.mjs — the exam for "the boot deploys after
-2 < 1  * its merge, checks the live URL, rolls back on red, and records it" (#835).
-3 < 1  *
-4 < 1  * The rig is `bootRig({ plan, stubs })` from `./_boot_helpers.mjs` (moved
-5 < 1  * there this task, since `test_sims_are_hermetic.mjs` forbids one sim naming
-6 < 1  * another and this file needs the same boot rig `test_factory_boot.mjs`
-7 < 1  * uses). The fixture plan is `FIXTURE_PLAN` plus three header lines right
-8 < 1  * after `**Closes:** #1222`:
-9 < 1  *
-10 < 1  *   **Publish:** bun run --cwd server deploy
-11 < 1  *   **Verify:** bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL
-12 < 1  *   **Rollback:** bunx --cwd server wrangler rollback --yes
-13 < 1  *
-14 < 1  * Two new stubs, `bun` and `bunx`, ride alongside the base stub set: they
-15 < 1  * read a `$HOME/publish-case` marker (`green`/`red`/`deploy-failed`, written
-16 < 1  * by this exam before the boot ever starts) to decide what the deploy and
-17 < 1  * verify commands answer, dump their own environment to
-18 < 1  * `$HOME/publish-env-<verb>.txt` (deploy/verify/rollback), and append one
-19 < 1  * line to `$HOME/rollback-calls` each time `wrangler rollback` runs.
-20 < 1  *
-21 < 1  * Legs, each naming the Machine clause it measures:
-22 < 1  *
-23 < 1  *   (a) [M2, M6] the green case: deploy prints a workers.dev url and exits 0,
-24 < 1  *       verify exits 0 — events.jsonl carries publish:deploy then
-25 < 1  *       publish:verify (both exit 0) and no rollback row; publish.json is
-26 < 1  *       exactly the green shape; no row's own JSON ever carries the stubs'
-27 < 1  *       stdout text; the deploy and verify commands both saw the Cloudflare
-28 < 1  *       env vars, and only the verify probe saw `ULTRA_PUBLISH_URL`;
-29 < 1  *       status.json's phase is the exact "...and the app is published" text;
-30 < 1  *       and publish.json, publish-deploy.log and publish-verify.log sit in
-31 < 1  *       `runs/o-r/<N>/` at the run's tag `o-r/run-<N>` in the evidence
-32 < 1  *       repository (#1395).
-33 < 1  *
-34 < 1  *   (b) [M3] the red case: deploy is green, verify exits 1 — events.jsonl
-35 < 1  *       carries deploy, verify{exit:1}, exactly one rollback{exit:0} row;
-36 < 1  *       publish.json published is false with verify.exit 1 and
-37 < 1  *       rollback.exit 0; the rollback call log carries exactly one line;
-38 < 1  *       status.json state is "done" and phase names the rollback.
-39 < 1  *
-40 < 1  *   (c) [M4] the deploy-failed case: deploy exits 1 and prints no url — only
-41 < 1  *       one publish:deploy{exit:1,url:null} row, no verify/rollback rows;
-42 < 1  *       publish.json is url null, verify null, rollback null; phase names
-43 < 1  *       the deploy failure; no rollback call log and no verify env dump ever
-44 < 1  *       appear (the verify probe never ran).
-45 < 1  *
-46 < 1  *   (d) [M5] a plan with no `**Publish:**` line at all (plain `FIXTURE_PLAN`):
-47 < 1  *       no `publish:*` row beyond `publish:pr`; no `publish.json` committed
-48 < 1  *       to the evidence tree.
-49 < 1  *
-50 < 1  *   (e) [M1] a deploy past its time budget: the engine's `factory/policy.json`
-51 < 1  *       carries `publish.probe.timeout_seconds` 2 and the deploy stub sleeps
-52 < 1  *       10 s before printing its url — the publish:deploy row reads exit 124
-53 < 1  *       and url null, the phase names the failed deploy, and the verify probe
-54 < 1  *       never ran.
-55 < 1  *
-56 < 1  * Every boot is `spawn`ed and awaited (`runBootAsync`), the same asynchronous
-57 < 1  * shape `test_factory_boot.mjs` and `test_factory_preflight.mjs` use, so the
-58 < 1  * in-process proxy stub server's own event loop is never blocked by a
-59 < 1  * synchronous child. Every spawned process gets `env: simEnv({ bin, home,
-60 < 1  * env })`; nothing is ever passed `process.env` directly.
-61 < 1  */
-62 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/test_factory_publish.mjs — the exam for "the boot deploys after
+2 < 2  * its merge, checks the live URL, rolls back on red, and records it" (#835).
+3 < 2  *
+4 < 2  * The rig is `bootRig({ plan, stubs })` from `./_boot_helpers.mjs` (moved
+5 < 2  * there this task, since `test_sims_are_hermetic.mjs` forbids one sim naming
+6 < 2  * another and this file needs the same boot rig `test_factory_boot.mjs`
+7 < 2  * uses). The fixture plan is `FIXTURE_PLAN` plus three header lines right
+8 < 2  * after `**Closes:** #1222`:
+9 < 2  *
+10 < 2  *   **Publish:** bun run --cwd server deploy
+11 < 2  *   **Verify:** bun server/probe/converge-live.ts $ULTRA_PUBLISH_URL
+12 < 2  *   **Rollback:** bunx --cwd server wrangler rollback --yes
+13 < 2  *
+14 < 2  * Two new stubs, `bun` and `bunx`, ride alongside the base stub set: they
+15 < 2  * read a `$HOME/publish-case` marker (`green`/`red`/`deploy-failed`, written
+16 < 2  * by this exam before the boot ever starts) to decide what the deploy and
+17 < 2  * verify commands answer, dump their own environment to
+18 < 2  * `$HOME/publish-env-<verb>.txt` (deploy/verify/rollback), and append one
+19 < 2  * line to `$HOME/rollback-calls` each time `wrangler rollback` runs.
+20 < 2  *
+21 < 2  * Legs, each naming the Machine clause it measures:
+22 < 2  *
+23 < 2  *   (a) [M2, M6] the green case: deploy prints a workers.dev url and exits 0,
+24 < 2  *       verify exits 0 — events.jsonl carries publish:deploy then
+25 < 2  *       publish:verify (both exit 0) and no rollback row; publish.json is
+26 < 2  *       exactly the green shape; no row's own JSON ever carries the stubs'
+27 < 2  *       stdout text; the deploy and verify commands both saw the Cloudflare
+28 < 2  *       env vars, and only the verify probe saw `ULTRA_PUBLISH_URL`;
+29 < 2  *       status.json's phase is the exact "...and the app is published" text;
+30 < 2  *       and publish.json, publish-deploy.log and publish-verify.log sit in
+31 < 2  *       `runs/o-r/<N>/` at the run's tag `o-r/run-<N>` in the evidence
+32 < 2  *       repository (#1395).
+33 < 2  *
+34 < 2  *   (b) [M3] the red case: deploy is green, verify exits 1 — events.jsonl
+35 < 2  *       carries deploy, verify{exit:1}, exactly one rollback{exit:0} row;
+36 < 2  *       publish.json published is false with verify.exit 1 and
+37 < 2  *       rollback.exit 0; the rollback call log carries exactly one line;
+38 < 2  *       status.json state is "done" and phase names the rollback.
+39 < 2  *
+40 < 2  *   (c) [M4] the deploy-failed case: deploy exits 1 and prints no url — only
+41 < 2  *       one publish:deploy{exit:1,url:null} row, no verify/rollback rows;
+42 < 2  *       publish.json is url null, verify null, rollback null; phase names
+43 < 2  *       the deploy failure; no rollback call log and no verify env dump ever
+44 < 2  *       appear (the verify probe never ran).
+45 < 2  *
+46 < 2  *   (d) [M5] a plan with no `**Publish:**` line at all (plain `FIXTURE_PLAN`):
+47 < 2  *       no `publish:*` row beyond `publish:pr`; no `publish.json` committed
+48 < 2  *       to the evidence tree.
+49 < 2  *
+50 < 2  *   (e) [M1] a deploy past its time budget: the engine's `factory/policy.json`
+51 < 2  *       carries `publish.probe.timeout_seconds` 2 and the deploy stub sleeps
+52 < 2  *       10 s before printing its url — the publish:deploy row reads exit 124
+53 < 2  *       and url null, the phase names the failed deploy, and the verify probe
+54 < 2  *       never ran.
+55 < 2  *
+56 < 2  * Every boot is `spawn`ed and awaited (`runBootAsync`), the same asynchronous
+57 < 2  * shape `test_factory_boot.mjs` and `test_factory_preflight.mjs` use, so the
+58 < 2  * in-process proxy stub server's own event loop is never blocked by a
+59 < 2  * synchronous child. Every spawned process gets `env: simEnv({ bin, home,
+60 < 2  * env })`; nothing is ever passed `process.env` directly.
+61 < 2  */
+62 < 2 
 63 < 1 import assert from 'node:assert/strict'
 64 < 1 import fs from 'node:fs'
 65 < 1 import os from 'node:os'
@@ -134,11 +134,11 @@
 133 < 1 const proxyServer = await PUBLISH_RIG.makeProxyServer()
 134 < 1 const PROXY_URL = `http://127.0.0.1:${proxyServer.address().port}`
 135 < 1 
-136 < 1 /** One full `bash factory/boot.sh boot` run of `rig`'s bound fixture plan,
-137 < 1  *  marking `markCase` in `$HOME/publish-case` (when given) before the boot
-138 < 1  *  ever starts, and running `afterEngine(engineDir)` (when given) right after
-139 < 1  *  the engine directory is built. Returns the handles a case's own assertions
-140 < 1  *  need. */
+136 < 2 /** One full `bash factory/boot.sh boot` run of `rig`'s bound fixture plan,
+137 < 2  *  marking `markCase` in `$HOME/publish-case` (when given) before the boot
+138 < 2  *  ever starts, and running `afterEngine(engineDir)` (when given) right after
+139 < 2  *  the engine directory is built. Returns the handles a case's own assertions
+140 < 2  *  need. */
 141 < 1 async function runCase (rig, runN, markCase, afterEngine) {
 142 < 1   const root = fs.mkdtempSync(path.join(os.tmpdir(), `fleet-publish-${runN}-`))
 143 < 1   const home = path.join(root, 'home')
@@ -165,7 +165,7 @@
 164 < 1   return { res, root, home, bin, originDir, evidenceDir, base, plan }
 165 < 1 }
 166 < 1 
-167 < 1 // The run's record is its folder `runs/o-r/<N>/` at its tag `o-r/run-<N>` in the evidence repository.
+167 < 2 // The run's record is its folder `runs/o-r/<N>/` at its tag `o-r/run-<N>` in the evidence repository.
 168 < 1 function readEvidence (evidenceDir, runN, p) {
 169 < 1   return git(evidenceDir, ['show', `o-r/run-${runN}:runs/o-r/${runN}/${p}`])
 170 < 1 }
@@ -174,8 +174,8 @@
 173 < 1   return git(evidenceDir, ['ls-tree', '-r', '--name-only', `o-r/run-${runN}`])
 174 < 1     .split('\n').filter((p) => p.startsWith(`runs/o-r/${runN}/`))
 175 < 1 }
-176 < 1 
-177 < 1 // ── (a) [M2, M6] the green case ───────────────────────────────────────────
+176 < 2 
+177 < 2 // ── (a) [M2, M6] the green case ───────────────────────────────────────────
 178 < 1 
 179 < 1 {
 180 < 1   const runN = '601'
@@ -215,7 +215,7 @@
 212 < 1     "(a) [M2] the publish:verify row names the plan's own verify command literally — $ULTRA_PUBLISH_URL unexpanded (the shell that expands it is the probe's own, not the row)"
 213 < 1   )
 214 < 1 
-215 < 1   // [M6] no row's own JSON line ever carries the stubs' stdout text.
+215 < 2   // [M6] no row's own JSON line ever carries the stubs' stdout text.
 216 < 1   assert.ok(!eventsText.includes('Deployed fixture-worker triggers'), "(a) [M6] events.jsonl never embeds the deploy stub's stdout")
 217 < 1   assert.ok(!eventsText.includes('fixture: verify ok'), "(a) [M6] events.jsonl never embeds the verify stub's stdout")
 218 < 1 
@@ -257,8 +257,8 @@
 251 < 2     `(a) [M2] the run folder at the run's tag carries the three publish files alongside the plan, the base three and the boot log — got ${JSON.stringify(runDirEntries)}`
 252 < 1   )
 253 < 1 
-254 < 1   // [M6] both probe commands ran in the target checkout under the
-255 < 1   // Cloudflare env vars; only the verify probe also carries ULTRA_PUBLISH_URL.
+254 < 2   // [M6] both probe commands ran in the target checkout under the
+255 < 2   // Cloudflare env vars; only the verify probe also carries ULTRA_PUBLISH_URL.
 256 < 1   const deployEnv = fs.readFileSync(path.join(home, 'publish-env-deploy.txt'), 'utf8')
 257 < 1   const verifyEnv = fs.readFileSync(path.join(home, 'publish-env-verify.txt'), 'utf8')
 258 < 1   for (const [label, envText] of [['deploy', deployEnv], ['verify', verifyEnv]]) {
@@ -277,8 +277,8 @@
 271 < 1     '(a) [M2] the verify probe env carries ULTRA_PUBLISH_URL set to the deployed url'
 272 < 1   )
 273 < 1 }
-274 < 1 
-275 < 1 // ── (b) [M3] the red case: verify red, one rollback ───────────────────────
+274 < 2 
+275 < 2 // ── (b) [M3] the red case: verify red, one rollback ───────────────────────
 276 < 1 
 277 < 1 {
 278 < 1   const runN = '602'
@@ -332,8 +332,8 @@
 325 < 1   )
 326 < 1 }
 327 < 1 
-328 < 1 // ── (c) [M4] the deploy-failed case ───────────────────────────────────────
-329 < 1 
+328 < 2 // ── (c) [M4] the deploy-failed case ───────────────────────────────────────
+329 < 2 
 330 < 1 {
 331 < 1   const runN = '603'
 332 < 1   const { res, home, evidenceDir } = await runCase(PUBLISH_RIG, runN, 'deploy-failed')
@@ -378,8 +378,8 @@
 370 < 1   assert.ok(!fs.existsSync(path.join(home, 'publish-env-verify.txt')), '(c) [M4] the verify probe never ran')
 371 < 1 }
 372 < 1 
-373 < 1 // ── (d) [M5] no **Publish:** line at all ──────────────────────────────────
-374 < 1 
+373 < 2 // ── (d) [M5] no **Publish:** line at all ──────────────────────────────────
+374 < 2 
 375 < 1 {
 376 < 1   const runN = '604'
 377 < 1   const { res, evidenceDir } = await runCase(PLAIN_RIG, runN)
@@ -403,15 +403,15 @@
 395 < 1   )
 396 < 1 }
 397 < 1 
-398 < 1 // ── (e) [M1] a deploy past its time budget ────────────────────────────────
-399 < 1 
+398 < 2 // ── (e) [M1] a deploy past its time budget ────────────────────────────────
+399 < 2 
 400 < 1 {
 401 < 1   const runN = '605'
-402 < 1   // The engine's policy.json becomes a real file with a 2 s probe budget.
-403 < 1   // publish.mjs reads the policy.json beside its own resolved path, and node
-404 < 1   // resolves a symlinked main to the checkout's copy, so publish.mjs becomes a
-405 < 1   // real copy too (its `./record.mjs` and `flock/` still resolve through the
-406 < 1   // engine's symlinks).
+402 < 2   // The engine's policy.json becomes a real file with a 2 s probe budget.
+403 < 2   // publish.mjs reads the policy.json beside its own resolved path, and node
+404 < 2   // resolves a symlinked main to the checkout's copy, so publish.mjs becomes a
+405 < 2   // real copy too (its `./record.mjs` and `flock/` still resolve through the
+406 < 2   // engine's symlinks).
 407 < 1   const withShortBudget = (engineDir) => {
 408 < 1     const policyPath = path.join(engineDir, 'factory', 'policy.json')
 409 < 1     const policy = JSON.parse(fs.readFileSync(policyPath, 'utf8'))

@@ -1,26 +1,26 @@
 0 < 1 #!/usr/bin/env python3
-1 < 1 """Run a plan's `Run:` probes against the working tree, the way the sandbox would.
-2 < 1 
-3 < 1 Usage: python3 run_probes.py <plan.md> [<task id> ...]
-4 < 1 
-5 < 1 Reads the plan through `plan_parse` (the sandbox's parser, so the tags are
-7 > 1 stripped exactly as the engine strips them) and runs each task's `Run:` lines
+1 < 2 """Run a plan's `Run:` probes against the working tree, the way the sandbox would.
+2 < 2 
+3 < 2 Usage: python3 run_probes.py <plan.md> [<task id> ...]
+4 < 2 
+5 < 2 Reads the plan through `plan_parse` (the sandbox's parser, so the tags are
+7 > 2 stripped exactly as the engine strips them) and runs each task's `Run:` lines
 6 < 2 stripped exactly as the driver strips them) and runs each task's `Run:` lines
-7 < 1 in the current directory, one `bash -c` per line with stdin closed, printing
-8 < 1 one line per probe:
-9 < 1 
-10 < 1     task 1 run 1 [M1] exit 0
-11 < 1     task 1 run 2 [guard] exit 1
-12 < 1 
-13 < 1 and a last `probes: <n> run, <k> red` line. Exits 0 when every probe exited
-14 < 1 0, 1 when any did not, 2 when the plan cannot be read. `$ULTRA_BASE` is left
-15 < 1 as the caller's environment has it.
-16 < 1 
-17 < 1 It exists because a hand loop over a plan's probes misreports: on 2026-09-28
-18 < 1 `echo "$(basename …) exit $?"` read `$?` after the command substitution had
-19 < 1 reset it, and printed exit 0 for a probe that failed (the stall-stop plan's
-20 < 1 first probe, after #1348). Use this instead of a loop.
-21 < 1 """
+7 < 2 in the current directory, one `bash -c` per line with stdin closed, printing
+8 < 2 one line per probe:
+9 < 2 
+10 < 2     task 1 run 1 [M1] exit 0
+11 < 2     task 1 run 2 [guard] exit 1
+12 < 2 
+13 < 2 and a last `probes: <n> run, <k> red` line. Exits 0 when every probe exited
+14 < 2 0, 1 when any did not, 2 when the plan cannot be read. `$ULTRA_BASE` is left
+15 < 2 as the caller's environment has it.
+16 < 2 
+17 < 2 It exists because a hand loop over a plan's probes misreports: on 2026-09-28
+18 < 2 `echo "$(basename …) exit $?"` read `$?` after the command substitution had
+19 < 2 reset it, and printed exit 0 for a probe that failed (the stall-stop plan's
+20 < 2 first probe, after #1348). Use this instead of a loop.
+21 < 2 """
 22 < 1 
 23 < 1 import subprocess
 24 < 1 import sys

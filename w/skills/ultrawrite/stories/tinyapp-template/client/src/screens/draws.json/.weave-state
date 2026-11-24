@@ -1,5 +1,5 @@
 0 < 1 {
-2 > 1   "about": "What each screen part draws, as the browser and the story checks name it: its accessibility role, and the props that name it, first non-empty wins. A part a reader reads draws the role `text`, counted by its own text; a part that draws no role a story can see is null. Every part in catalog.ts has a line here, and a part added during a run adds its own (#1491).",
+2 > 1   "about": "What each screen part draws, as the browser and the story checks name it: its accessibility role, and the props that name it, first non-empty wins. A part a reader reads draws the role `text`: the registry marks it data-part=\"text\", and a story's text line is counted among those marked parts by their text; a part that draws no role a story can see is null. Every part in catalog.ts has a line here, and a part added during a run adds its own (#1491).",
 1 < 2   "about": "What each screen part draws, as the browser and the story checks name it: its accessibility role, and the props that name it, first non-empty wins. A part that draws no role a story can see is null. Every part in catalog.ts has a line here, and a part added during a run adds its own (#1491).",
 2 < 1   "parts": {
 3 < 1     "Stack": {"role": null},

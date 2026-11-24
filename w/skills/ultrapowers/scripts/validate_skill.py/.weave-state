@@ -1,5 +1,5 @@
 0 < 1 #!/usr/bin/env python3
-1 < 1 """Validate a Claude Code SKILL.md: frontmatter + reference integrity."""
+1 < 2 """Validate a Claude Code SKILL.md: frontmatter + reference integrity."""
 2 < 1 import re, sys, pathlib
 3 < 1 
 4 < 1 def validate(skill_dir: pathlib.Path):
@@ -23,12 +23,12 @@
 22 < 1         errors.append("frontmatter: missing or trivial 'description'")
 23 < 1     if len(desc) > 1024:
 24 < 1         errors.append("frontmatter: 'description' exceeds 1024 chars")
-25 < 1     # A reference prefixed `skills/<name>/` names a sibling skill's file
-27 > 1     # (e.g. ultrapowers' SKILL.md naming `skills/ultrawrite/scripts/routing.py`)
-28 < 1     # and resolves against that skill dir; a bare `scripts/x` resolves
+25 < 2     # A reference prefixed `skills/<name>/` names a sibling skill's file
+27 > 2     # (e.g. ultrapowers' SKILL.md naming `skills/ultrawrite/scripts/routing.py`)
+28 < 2     # and resolves against that skill dir; a bare `scripts/x` resolves
 26 < 2     # (e.g. ultrapowers' SKILL.md invoking ultradocket's record_wf_run.py,
 27 < 2     # #159) and resolves against that skill dir; a bare `scripts/x` resolves
-28 < 1     # against this skill. Either way the file must exist.
+28 < 2     # against this skill. Either way the file must exist.
 29 < 1     for sibling, sub, ref in re.findall(
 30 < 1             r"(?:\bskills/([A-Za-z0-9_-]+)/)?\b(references|scripts|kernel)/([A-Za-z0-9_\-./]+\.\w+)", body):
 31 < 1         base = skill_dir.resolve().parent / sibling if sibling else skill_dir

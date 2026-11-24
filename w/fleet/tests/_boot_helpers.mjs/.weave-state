@@ -1,31 +1,31 @@
-0 < 1 /**
-1 < 1  * fleet/tests/_boot_helpers.mjs — the boot sim's rig, shared.
-2 < 1  *
-3 < 1  * Underscore-prefixed so `test_fleet_suite.py`'s `test_*.mjs` glob does not
-4 < 1  * run it as a test of its own (the same convention `_helpers.mjs` follows).
-5 < 1  *
-6 < 1  * At BASE this rig lived whole inside `test_factory_boot.mjs`: `FIXTURE_PLAN`,
-7 < 1  * `buildOrigin`, `buildEngineDir`, `writeStubs` (the `curl` router answering
-8 < 1  * `/pulls`, `/pulls/7` and `/pulls/7/merge`, the `systemd-run` stub that runs
-9 < 1  * the engine stub inline, `systemctl` a no-op, `claude` a one-line auth
-10 < 1  * answer) and the in-process proxy stub server. `fleet/tests/
-11 < 1  * test_sims_are_hermetic.mjs` forbids one sim naming another
-12 < 1  * (`test_factory_publish.mjs` cannot `import` from `test_factory_boot.mjs`),
-13 < 1  * so this task moves those pieces here, behind one factory function,
-14 < 1  * `bootRig({ plan, stubs })`, and both `test_factory_boot.mjs` and
-15 < 1  * `test_factory_publish.mjs` call it.
-16 < 1  *
-17 < 1  * `plan` overrides the fixture plan text committed to `runs/o-r/<N>/plan.md`
-18 < 1  * in the evidence repository's bare (default `FIXTURE_PLAN`, the boot sim's
-19 < 1  * own one-task plan); `stubs` is a
-20 < 1  * `{name: content}` map of extra executable stub scripts `writeStubs` writes
-21 < 1  * into the case's `bin` directory alongside `claude`/`curl`/`systemd-run`/
-22 < 1  * `systemctl` — `test_factory_publish.mjs` uses it for `bun`/`bunx`.
-23 < 1  *
-24 < 1  * Every process this rig spawns gets `env: simEnv({ bin, home, env })` from
-25 < 1  * `./_helpers.mjs` — nothing is ever passed `process.env` directly.
-26 < 1  */
-27 < 1 
+0 < 2 /**
+1 < 2  * fleet/tests/_boot_helpers.mjs — the boot sim's rig, shared.
+2 < 2  *
+3 < 2  * Underscore-prefixed so `test_fleet_suite.py`'s `test_*.mjs` glob does not
+4 < 2  * run it as a test of its own (the same convention `_helpers.mjs` follows).
+5 < 2  *
+6 < 2  * At BASE this rig lived whole inside `test_factory_boot.mjs`: `FIXTURE_PLAN`,
+7 < 2  * `buildOrigin`, `buildEngineDir`, `writeStubs` (the `curl` router answering
+8 < 2  * `/pulls`, `/pulls/7` and `/pulls/7/merge`, the `systemd-run` stub that runs
+9 < 2  * the engine stub inline, `systemctl` a no-op, `claude` a one-line auth
+10 < 2  * answer) and the in-process proxy stub server. `fleet/tests/
+11 < 2  * test_sims_are_hermetic.mjs` forbids one sim naming another
+12 < 2  * (`test_factory_publish.mjs` cannot `import` from `test_factory_boot.mjs`),
+13 < 2  * so this task moves those pieces here, behind one factory function,
+14 < 2  * `bootRig({ plan, stubs })`, and both `test_factory_boot.mjs` and
+15 < 2  * `test_factory_publish.mjs` call it.
+16 < 2  *
+17 < 2  * `plan` overrides the fixture plan text committed to `runs/o-r/<N>/plan.md`
+18 < 2  * in the evidence repository's bare (default `FIXTURE_PLAN`, the boot sim's
+19 < 2  * own one-task plan); `stubs` is a
+20 < 2  * `{name: content}` map of extra executable stub scripts `writeStubs` writes
+21 < 2  * into the case's `bin` directory alongside `claude`/`curl`/`systemd-run`/
+22 < 2  * `systemctl` — `test_factory_publish.mjs` uses it for `bun`/`bunx`.
+23 < 2  *
+24 < 2  * Every process this rig spawns gets `env: simEnv({ bin, home, env })` from
+25 < 2  * `./_helpers.mjs` — nothing is ever passed `process.env` directly.
+26 < 2  */
+27 < 2 
 28 < 1 import fs from 'node:fs'
 29 < 1 import path from 'node:path'
 30 < 1 import { spawn, spawnSync } from 'node:child_process'
@@ -90,9 +90,9 @@
 89 < 1   ''
 90 < 1 ].join('\n')
 91 < 1 
-92 < 1 // ── the rig's own git plumbing (stays synchronous — nothing it does waits
-93 < 1 //    on the in-process proxy stub server) ────────────────────────────────
-94 < 1 
+92 < 2 // ── the rig's own git plumbing (stays synchronous — nothing it does waits
+93 < 2 //    on the in-process proxy stub server) ────────────────────────────────
+94 < 2 
 95 < 1 const GIT_ENV = simEnv({})
 96 < 1 
 97 < 1 function git (cwd, args) {
@@ -113,14 +113,14 @@
 112 < 1   fs.writeFileSync(path.join(home, '.gitconfig'), '[user]\n\tname = fleet\n\temail = fleet@exe.dev\n')
 113 < 1 }
 114 < 1 
-115 < 1 // The target is always `o/r`; the operator's evidence repository `ops/evidence`,
-116 < 1 // an owner unlike the target's, reached through `GITHUB_INT_HOST` as the boot names it.
+115 < 2 // The target is always `o/r`; the operator's evidence repository `ops/evidence`,
+116 < 2 // an owner unlike the target's, reached through `GITHUB_INT_HOST` as the boot names it.
 117 < 1 const SLUG = 'o-r'
 118 < 1 const EVIDENCE_REPO = 'ops/evidence'
 119 < 1 const EVIDENCE_URL = `https://stub.invalid/${EVIDENCE_REPO}.git`
 120 < 1 
-121 < 1 /** A parentless commit in the evidence bare whose tree is `runs/o-r/<runN>/`
-122 < 1  *  holding `files` (`{name: text}`), pushed to `ref`; returns its sha. */
+121 < 2 /** A parentless commit in the evidence bare whose tree is `runs/o-r/<runN>/`
+122 < 2  *  holding `files` (`{name: text}`), pushed to `ref`; returns its sha. */
 123 < 1 function pushRunFolder (evidenceDir, scratch, runN, files, ref) {
 124 < 1   git(scratch, ['checkout', '-q', '--orphan', `folder-${runN}-${Date.now()}`])
 125 < 1   git(scratch, ['rm', '-rfq', '--ignore-unmatch', '.'])
@@ -133,10 +133,10 @@
 132 < 1   return git(scratch, ['rev-parse', 'HEAD']).trim()
 133 < 1 }
 134 < 1 
-135 < 1 /** Two bares: the target `origin.git`, holding only a `base` commit on `main`,
-136 < 1  *  and the evidence repository `evidence.git`, `main` seeded with a hand
-137 < 1  *  archive, taking the launcher's parentless plan commit — `runs/o-r/<runN>/plan.md`
-138 < 1  *  holding `planText` — on `refs/heads/live/o-r/run-<runN>`. */
+135 < 2 /** Two bares: the target `origin.git`, holding only a `base` commit on `main`,
+136 < 2  *  and the evidence repository `evidence.git`, `main` seeded with a hand
+137 < 2  *  archive, taking the launcher's parentless plan commit — `runs/o-r/<runN>/plan.md`
+138 < 2  *  holding `planText` — on `refs/heads/live/o-r/run-<runN>`. */
 139 < 1 function buildOrigin (root, runN, planText) {
 140 < 1   const originDir = path.join(root, 'origin.git')
 141 < 1   git(root, ['init', '--bare', originDir])
@@ -171,21 +171,21 @@
 170 < 1   return { originDir, evidenceDir, evidenceScratch, base, plan }
 171 < 1 }
 172 < 1 
-173 < 1 /** An earlier run's record: a parentless commit holding `runs/o-r/<runN>/`
-174 < 1  *  with `files`, tagged `o-r/run-<runN>` in the evidence bare. */
+173 < 2 /** An earlier run's record: a parentless commit holding `runs/o-r/<runN>/`
+174 < 2  *  with `files`, tagged `o-r/run-<runN>` in the evidence bare. */
 175 < 1 function seedPastRun (evidenceDir, evidenceScratch, runN, files) {
 176 < 1   return pushRunFolder(evidenceDir, evidenceScratch, runN, files, `refs/tags/${SLUG}/run-${runN}`)
 177 < 1 }
 178 < 1 
-179 < 1 /** What the first-boot setup script leaves: `<home>/fleet-evidence-repo`
-180 < 1  *  naming `ops/evidence` (unless `setting` is false), plus the case HOME's
-181 < 1  *  `.gitconfig` routing that repository's URL to the local evidence bare. */
+179 < 2 /** What the first-boot setup script leaves: `<home>/fleet-evidence-repo`
+180 < 2  *  naming `ops/evidence` (unless `setting` is false), plus the case HOME's
+181 < 2  *  `.gitconfig` routing that repository's URL to the local evidence bare. */
 182 < 1 function wireEvidence (home, evidenceDir, { setting = true } = {}) {
 183 < 1   if (setting) fs.writeFileSync(path.join(home, 'fleet-evidence-repo'), `${EVIDENCE_REPO}\n`)
 184 < 1   fs.appendFileSync(path.join(home, '.gitconfig'), `[url "file://${evidenceDir}"]\n\tinsteadOf = ${EVIDENCE_URL}\n`)
 185 < 1 }
 186 < 1 
-187 < 1 /** Every ref of a bare, `{ref: sha}`, read with `for-each-ref` (no `HEAD`). */
+187 < 2 /** Every ref of a bare, `{ref: sha}`, read with `for-each-ref` (no `HEAD`). */
 188 < 1 function refsOf (bareDir) {
 189 < 1   const map = {}
 190 < 1   for (const line of git(bareDir, ['for-each-ref', '--format=%(refname) %(objectname)']).split('\n')) {
@@ -199,9 +199,9 @@
 198 < 1 function buildEngineDir (home, engineSha) {
 199 < 1   const engineDir = path.join(home, 'engines', engineSha)
 200 < 1   fs.mkdirSync(engineDir, { recursive: true })
-201 < 1   // `factory` is a real directory of symlinks to the real files, plus its own
-202 < 1   // `node_modules`, so the boot's `engine_deps` returns without running npm and
-203 < 1   // nothing is written into the checkout's own `factory/`.
+201 < 2   // `factory` is a real directory of symlinks to the real files, plus its own
+202 < 2   // `node_modules`, so the boot's `engine_deps` returns without running npm and
+203 < 2   // nothing is written into the checkout's own `factory/`.
 204 < 1   const factoryDir = path.join(engineDir, 'factory')
 205 < 1   fs.mkdirSync(factoryDir)
 206 < 1   for (const entry of fs.readdirSync(FACTORY_DIR)) {
@@ -393,19 +393,19 @@
 392 < 1   return `#!/bin/sh\n[ "$1" = --version ] && { echo '${version} (Claude Code)'; exit 0; }\necho '${text}'\n`
 393 < 1 }
 394 < 1 
-395 < 1 // The `/pulls/7` GET names as `head.sha` the origin's tip of the run's integration
-396 < 1 // branch. A case that writes `<home>/stale-heads` (a count) gets that many GETs naming
-397 < 1 // forty zeros first, and every `/pulls/7/merge` PUT answers 405 until a GET has named
-398 < 1 // the pushed tip (the live catch-up of runs 264/265).
-399 < 1 
-400 < 1 /** Writes the base stub set (`claude`, `sudo`, `curl`, `systemd-run`, `systemctl`)
-401 < 1  *  into `binDir`, plus every `[name, content]` of `extraStubs` — additional
-402 < 1  *  executables a case's plan needs (`bun`/`bunx` for the publish probe). */
+395 < 2 // The `/pulls/7` GET names as `head.sha` the origin's tip of the run's integration
+396 < 2 // branch. A case that writes `<home>/stale-heads` (a count) gets that many GETs naming
+397 < 2 // forty zeros first, and every `/pulls/7/merge` PUT answers 405 until a GET has named
+398 < 2 // the pushed tip (the live catch-up of runs 264/265).
+399 < 2 
+400 < 2 /** Writes the base stub set (`claude`, `sudo`, `curl`, `systemd-run`, `systemctl`)
+401 < 2  *  into `binDir`, plus every `[name, content]` of `extraStubs` — additional
+402 < 2  *  executables a case's plan needs (`bun`/`bunx` for the publish probe). */
 403 < 1 function writeStubs (binDir, { claudeAuth, claudeVersion, extraStubs = {} } = {}) {
 404 < 1   writeStub(binDir, 'claude', claudeStub(claudeAuth, claudeVersion))
-405 < 1   // The boot's `sudo -n exeuntu update claude`: a no-op, so the stub's release stands.
+405 < 2   // The boot's `sudo -n exeuntu update claude`: a no-op, so the stub's release stands.
 406 < 1   writeStub(binDir, 'sudo', '#!/bin/sh\nexit 0\n')
-407 < 1   // macOS has no `timeout`: record its argv, then run the rest.
+407 < 2   // macOS has no `timeout`: record its argv, then run the rest.
 408 < 1   writeStub(binDir, 'timeout', '#!/bin/sh\nprintf \'%s\\n\' "$@" > "$FLEET_HOME/timeout-argv"\nshift\nexec "$@"\n')
 409 < 1   writeStub(binDir, 'curl', CURL_STUB)
 410 < 1   writeStub(binDir, 'systemd-run', SYSTEMD_RUN_STUB)
@@ -425,13 +425,13 @@
 424 < 1   }
 425 < 1 }
 426 < 1 
-427 < 1 // A real, always-200 stand-in for the reflection/oauth-usage proxy so
-428 < 1 // `factory/preflight.mjs` (invoked for real by the boot) never needs the
-429 < 1 // network: any `claude auth status` this suite's stub answers with
-430 < 1 // `oauth_token` classifies as `alive` once its fetch actually completes —
-431 < 1 // which requires the child that makes it to run without blocking this
-432 < 1 // process's own event loop (the whole reason every boot is `spawn`ed and
-433 < 1 // awaited rather than `spawnSync`'d).
+427 < 2 // A real, always-200 stand-in for the reflection/oauth-usage proxy so
+428 < 2 // `factory/preflight.mjs` (invoked for real by the boot) never needs the
+429 < 2 // network: any `claude auth status` this suite's stub answers with
+430 < 2 // `oauth_token` classifies as `alive` once its fetch actually completes —
+431 < 2 // which requires the child that makes it to run without blocking this
+432 < 2 // process's own event loop (the whole reason every boot is `spawn`ed and
+433 < 2 // awaited rather than `spawnSync`'d).
 434 < 1 function makeProxyServer () {
 435 < 1   return import('node:http').then(({ default: http }) => {
 436 < 1     const server = http.createServer((_req, res) => {
@@ -442,13 +442,13 @@
 441 < 1   })
 442 < 1 }
 443 < 1 
-444 < 1 /** Spawns `cmd` asynchronously, collecting stdout/stderr and resolving once
-445 < 1  *  the child's `close` event fires (never blocking this process's event
-446 < 1  *  loop — a case's own proxy stub server runs in this same process). A child
-447 < 1  *  that outlives `timeoutMs` is killed so a hung boot cannot hang the exam.
-448 < 1  *  The child leads its own process group, and the returned promise carries
-449 < 1  *  `kill()`, which `SIGKILL`s that whole group — the child and everything it
-450 < 1  *  started — so a case can kill a boot mid-run and leave nothing running. */
+444 < 2 /** Spawns `cmd` asynchronously, collecting stdout/stderr and resolving once
+445 < 2  *  the child's `close` event fires (never blocking this process's event
+446 < 2  *  loop — a case's own proxy stub server runs in this same process). A child
+447 < 2  *  that outlives `timeoutMs` is killed so a hung boot cannot hang the exam.
+448 < 2  *  The child leads its own process group, and the returned promise carries
+449 < 2  *  `kill()`, which `SIGKILL`s that whole group — the child and everything it
+450 < 2  *  started — so a case can kill a boot mid-run and leave nothing running. */
 451 < 1 function runChild (cmd, args, { bin, home, env, timeoutMs } = {}) {
 452 < 1   const child = spawn(cmd, args, {
 453 < 1     env: simEnv({ bin, home, env }),
@@ -460,7 +460,8 @@
 459 < 1   child.stdout.on('data', (d) => { stdout += d })
 460 < 1   child.stderr.on('data', (d) => { stderr += d })
 461 < 1   const kill = () => {
-462 < 1     try { process.kill(-child.pid, 'SIGKILL') } catch { /* the group is already gone */ }
+463 > 1     try { process.kill(-child.pid, 'SIGKILL') } catch {}
+462 < 2     try { process.kill(-child.pid, 'SIGKILL') } catch { /* the group is already gone */ }
 463 < 1   }
 464 < 1   const timer = setTimeout(kill, timeoutMs ?? 120000)
 465 < 1   const done = new Promise((resolve) => child.on('close', (code, signal) => {
@@ -471,21 +472,21 @@
 470 < 1   return done
 471 < 1 }
 472 < 1 
-473 < 1 /** `bash factory/boot.sh <sub>` (default `boot`), with `extraEnv` laid over
-474 < 1  *  `opts.env`; the returned promise carries `kill()` (see `runChild`). */
+473 < 2 /** `bash factory/boot.sh <sub>` (default `boot`), with `extraEnv` laid over
+474 < 2  *  `opts.env`; the returned promise carries `kill()` (see `runChild`). */
 475 < 1 const runBootAsync = (opts = {}, sub = 'boot', extraEnv = {}) =>
 476 < 1   runChild('bash', [BOOT_SH, sub], { ...opts, env: { ...(opts.env ?? {}), ...extraEnv } })
 477 < 1 
-478 < 1 /** `node <argv[0]> ...argv.slice(1)`, awaited — the same shape
-479 < 1  *  `test_factory_preflight.mjs`'s `runAsync` uses. */
+478 < 2 /** `node <argv[0]> ...argv.slice(1)`, awaited — the same shape
+479 < 2  *  `test_factory_preflight.mjs`'s `runAsync` uses. */
 480 < 1 const runAsync = (argv, opts) => runChild(process.execPath, argv, opts)
 481 < 1 
-482 < 1 /**
-483 < 1  * `bootRig({ plan, stubs })` — the rig, bound to one fixture plan and one
-484 < 1  * extra-stub set: `plan` (default `FIXTURE_PLAN`) is the text committed to
-485 < 1  * `.ultrapowers/plan.md` by `buildOrigin`; `stubs` (default `{}`) is folded
-486 < 1  * into every `writeStubs` call this rig object makes.
-487 < 1  */
+482 < 2 /**
+483 < 2  * `bootRig({ plan, stubs })` — the rig, bound to one fixture plan and one
+484 < 2  * extra-stub set: `plan` (default `FIXTURE_PLAN`) is the text committed to
+485 < 2  * `.ultrapowers/plan.md` by `buildOrigin`; `stubs` (default `{}`) is folded
+486 < 2  * into every `writeStubs` call this rig object makes.
+487 < 2  */
 488 < 1 export function bootRig ({ plan = FIXTURE_PLAN, stubs = {} } = {}) {
 489 < 1   return {
 490 < 1     FIXTURE_PLAN: plan,

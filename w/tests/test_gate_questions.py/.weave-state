@@ -1,0 +1,19 @@
+0 < 2 """The authoring gate's caught_v2 question exempts only wiring (#1528), as the gate rule
+1 < 2 in skills/ultrawrite/SKILL.md does."""
+2 < 1 import json
+3 < 1 from pathlib import Path
+4 < 1 
+5 < 1 ROOT = Path(__file__).resolve().parents[1]
+6 < 1 Q = json.loads((ROOT / "skills/ultrawrite/stories/questions.json").read_text())
+7 < 1 
+8 < 1 
+9 < 1 def test_caught_v2_exempts_only_wiring():
+10 < 1     q = Q["sets"]["authoring_gate"]["questions"]["caught_v2"]
+11 < 1     text = json.dumps(q)
+12 < 1     assert "which function calls which" in text and "what a function is passed" in text
+13 < 1     for gone in ("order of steps", "logs a line", "shaped"):
+14 < 1         assert gone not in text, gone
+15 < 1     ctx = q["instructions"]["context"]
+16 < 1     for needed in ("an ordering of events", "a byte-exact string", "a line the code prints or logs"):
+17 < 1         assert needed in ctx, needed
+18 < 1 

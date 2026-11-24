@@ -1,18 +1,18 @@
 0 < 1 #!/usr/bin/env bun
-1 < 1 // Write the starting app a stories-v1 launch builds on: the template (given
-3 > 1 // code), the bundle's store module at client/src/store.js, and the page's one
-4 < 1 // json-render screen at client/src/screen.json: an empty column that runs no
-5 < 1 // action, so the screens check stays red on it until a builder writes the
-6 < 1 // screen. The page reads it itself at build time.
+1 < 2 // Write the starting app a stories-v1 launch builds on: the template (given
+3 > 2 // code), the bundle's store module at client/src/store.js, and the page's one
+4 < 2 // json-render screen at client/src/screen.json: an empty column that runs no
+5 < 2 // action, so the screens check stays red on it until a builder writes the
+6 < 2 // screen. The page reads it itself at build time.
 2 < 2 // code), the bundle's store module at client/src/store.js, and one
 3 < 2 // json-render spec per piece at client/src/pieces/<piece>.json: an empty
 4 < 2 // column that runs no action, so the screens check stays red on it until a
 6 > 2 // builder writes the screen. The page finds the specs itself at build time and
 7 < 2 // draws them in the build order client/src/screens/order.json gives.
 5 < 2 // builder writes the screen. The page finds the specs itself at build time.
-6 < 1 // Refuses a directory that holds anything but .git.
-7 < 1 //
-8 < 1 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
+6 < 2 // Refuses a directory that holds anything but .git.
+7 < 2 //
+8 < 2 //   bun skills/ultrawrite/stories/scaffold.ts <bundle> <dir>
 10 > 1 import {copyFileSync, cpSync, existsSync, readdirSync, writeFileSync} from 'node:fs';
 9 < 2 import {copyFileSync, cpSync, existsSync, mkdirSync, readdirSync, writeFileSync} from 'node:fs';
 10 < 1 import {join, resolve} from 'node:path';

@@ -1,8 +1,8 @@
-0 < 1 // The loose-end reading: each loose end a builder reported (a belief naming a path, optionally
-1 < 1 // with the stale text it saw there) reads as open, resolved or not checked against the code.
-2 < 1 // Pure: `text(path)` is supplied by the caller and returns the file's content in the snapshot
-4 > 1 // being read, null when the file does not exist there, or undefined when no file has that path at the
-5 < 1 // run's base or in that snapshot: such a path cannot be read, so its loose end is not checked.
+0 < 2 // The loose-end reading: each loose end a builder reported (a belief naming a path, optionally
+1 < 2 // with the stale text it saw there) reads as open, resolved or not checked against the code.
+2 < 2 // Pure: `text(path)` is supplied by the caller and returns the file's content in the snapshot
+4 > 2 // being read, null when the file does not exist there, or undefined when no file has that path at the
+5 < 2 // run's base or in that snapshot: such a path cannot be read, so its loose end is not checked.
 3 < 2 // being read, or null when the file does not exist there.
 4 < 1 export function looseEnds(beliefs, text) {
 5 < 1   const items = []

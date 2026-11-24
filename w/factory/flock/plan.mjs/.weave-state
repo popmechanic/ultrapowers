@@ -1,5 +1,5 @@
-0 < 1 // The plan reader: turns a signed plan into the Flock's workload, reading it
-1 < 1 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
+0 < 2 // The plan reader: turns a signed plan into the Flock's workload, reading it
+1 < 2 // through the same parser the sandbox uses (skills/ultrapowers/scripts/plan_parse.py).
 2 < 1 import { spawnSync } from 'node:child_process';
 3 < 1 import { readFileSync } from 'node:fs';
 4 < 1 import { dirname, join, resolve } from 'node:path';
@@ -10,15 +10,15 @@
 9 < 1 
 10 < 1 const bash = (cmd) => ['bash', '-lc', cmd];
 11 < 1 
-12 < 1 // A stories-v1 plan's facts are checker calls, one per probe.
+12 < 2 // A stories-v1 plan's facts are checker calls, one per probe.
 13 < 1 const CHECKER = join(REPO, 'factory', 'stack', 'tinyapp', 'check.ts');
 14 < 1 const sq = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
 15 < 1 export const checkerArgv = (planPath, clause) =>
 16 < 1   ['bun', CHECKER, '--plan', planPath, '--clause', clause, '--copy', '.'];
 17 < 1 
-19 > 1 // A task that writes its piece's json-render screen (its own, or the one page client/src/screen.json) also runs the browser-free screens check,
+19 > 2 // A task that writes its piece's json-render screen (its own, or the one page client/src/screen.json) also runs the browser-free screens check,
 18 < 2 // A task that writes its piece's json-render screen also runs the browser-free screens check,
-19 < 1 // last and with no clause (the engine pairs facts[i] with clauses[i]).
+19 < 2 // last and with no clause (the engine pairs facts[i] with clauses[i]).
 20 < 1 const SCREENS = join(REPO, 'factory', 'stack', 'tinyapp', 'screens.ts');
 21 < 1 export const screensArgv = (planPath, piece) =>
 22 < 1   ['bun', SCREENS, '--plan', planPath, '--piece', piece, '--copy', '.'];
@@ -43,8 +43,8 @@
 39 < 1     grammar: 'stories-v1',
 40 < 1     tasks,
 41 < 1     check: bash(['bun run typecheck', ...guards].join(' && ')),
-42 < 1     // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
-43 < 1     // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
+42 < 2     // Every earlier story is a guard, one checker call each (~4.9 s apiece on radio-station run-5,
+43 < 2     // n=1 run, 2026-09-29), so the check's limit grows with them: 120 s plus 15 s per guard.
 44 < 1     checkTimeoutMs: 120000 + 15000 * guards.length,
 45 < 1     setup: bash(parsed.bootstrapCmd),
 47 > 1     stories: { sentences: Object.fromEntries((parsed.stories || []).map((s) => [s.id, s.sentence])) },
@@ -52,8 +52,8 @@
 47 < 1   };
 48 < 1 }
 49 < 1 
-50 < 1 // The parser's JSON: the run's one parse when the boot wrote it (`planJson`, #1449), else
-51 < 1 // plan_parse.py over `planPath` (a hand run or a sim).
+50 < 2 // The parser's JSON: the run's one parse when the boot wrote it (`planJson`, #1449), else
+51 < 2 // plan_parse.py over `planPath` (a hand run or a sim).
 52 < 1 export function parsedPlan(planPath, planJson) {
 53 < 1   if (planJson) return JSON.parse(readFileSync(planJson, 'utf8'));
 54 < 1   const r = spawnSync('python3', [PARSER, planPath], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });

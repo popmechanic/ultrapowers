@@ -1,36 +1,36 @@
-0 < 1 /**
-1 < 1  * fleet/tests/test_intent_tray.mjs — the exam for `hooks/register.js`, the
-2 < 1  * intent tray mod (#1495, #1526).
-3 < 1  *
-4 < 1  * The module runs inside Claude Code, which this sim does not have. It is
-5 < 1  * imported under Node and driven through a stand-in `$` that offers only the
-6 < 1  * calls the tray may make, each refusing a shape the hooks API types refuse
-7 < 1  * (the plugin-authoring skill's `types/claude-code.d.ts`, Claude Code 2.1.286):
-8 < 1  * an unknown `$` noun throws, a Button hotkey other than one digit or one
-9 < 1  * lowercase letter throws, a value `$.store` cannot keep as JSON throws.
-10 < 1  * Each `load()` imports a fresh copy of the module (a query string on the
-11 < 1  * URL), so one copy is one session; copies sharing a `store` Map are sessions
-12 < 1  * sharing the plugin's one store file.
-13 < 1  *
-14 < 1  * Legs:
-15 < 1  *   (z) the stand-in refuses wrong shapes
-16 < 1  *   (a) Send clears the screen; the band is hidden after it
-17 < 1  *   (b) Clear clears the screen; the band is hidden after it
-18 < 1  *   (c) the tray is kept per working directory; the old global `tray` key is ignored
-19 < 1  *   (d) band buttons carry no bare-digit hotkey: n, s, c
-20 < 1  *   (e) feedback is read by byte offset, only up to the last newline
-21 < 1  *   (f) a repo's feedback history from before the first session is not taken
-22 < 1  *   (g) a second repo's feedback is read from its own offset
-23 < 1  *   (h) two sessions in one repo take a feedback line once
-24 < 1  *   (i) a dropped or failed submit keeps the tray
-26 > 1  *   (j) Open screen is drawn only where $.process is offered (not the Desktop app)
-27 < 1  *   (k) a Send while one is out is ignored; a note that arrives meanwhile stays
-28 < 1  *   (l) two sessions in one repo keep each other's notes; a sent note stays gone
-29 < 1  *   (m) a replaced feedback file is read from its start
-30 < 1  *   (n) a preview pick names its piece, and a pick without one still reads
+0 < 2 /**
+1 < 2  * fleet/tests/test_intent_tray.mjs — the exam for `hooks/register.js`, the
+2 < 2  * intent tray mod (#1495, #1526).
+3 < 2  *
+4 < 2  * The module runs inside Claude Code, which this sim does not have. It is
+5 < 2  * imported under Node and driven through a stand-in `$` that offers only the
+6 < 2  * calls the tray may make, each refusing a shape the hooks API types refuse
+7 < 2  * (the plugin-authoring skill's `types/claude-code.d.ts`, Claude Code 2.1.286):
+8 < 2  * an unknown `$` noun throws, a Button hotkey other than one digit or one
+9 < 2  * lowercase letter throws, a value `$.store` cannot keep as JSON throws.
+10 < 2  * Each `load()` imports a fresh copy of the module (a query string on the
+11 < 2  * URL), so one copy is one session; copies sharing a `store` Map are sessions
+12 < 2  * sharing the plugin's one store file.
+13 < 2  *
+14 < 2  * Legs:
+15 < 2  *   (z) the stand-in refuses wrong shapes
+16 < 2  *   (a) Send clears the screen; the band is hidden after it
+17 < 2  *   (b) Clear clears the screen; the band is hidden after it
+18 < 2  *   (c) the tray is kept per working directory; the old global `tray` key is ignored
+19 < 2  *   (d) band buttons carry no bare-digit hotkey: n, s, c
+20 < 2  *   (e) feedback is read by byte offset, only up to the last newline
+21 < 2  *   (f) a repo's feedback history from before the first session is not taken
+22 < 2  *   (g) a second repo's feedback is read from its own offset
+23 < 2  *   (h) two sessions in one repo take a feedback line once
+24 < 2  *   (i) a dropped or failed submit keeps the tray
+26 > 2  *   (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+27 < 2  *   (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+28 < 2  *   (l) two sessions in one repo keep each other's notes; a sent note stays gone
+29 < 2  *   (m) a replaced feedback file is read from its start
+30 < 2  *   (n) a preview pick names its piece, and a pick without one still reads
 25 < 2  *   (j) the README's tray section names no digit hotkey for the band
-26 < 1  */
-27 < 1 
+26 < 2  */
+27 < 2 
 28 < 1 import assert from 'node:assert/strict'
 29 < 2 import fs from 'node:fs'
 30 < 2 import path from 'node:path'
@@ -47,8 +47,8 @@
 41 < 1   copies += 1
 42 < 1   return import(`${MODULE}?session=${copies}`)
 43 < 1 }
-44 < 1 
-45 < 1 // ── the stand-in $ ───────────────────────────────────────────────────────
+44 < 2 
+45 < 2 // ── the stand-in $ ───────────────────────────────────────────────────────
 46 < 1 
 47 < 1 function strict(obj, where) {
 48 < 1   return new Proxy(obj, {
@@ -116,8 +116,8 @@
 110 < 1   }
 111 < 1 }
 112 < 1 
-113 < 1 /** One host: a store (shared between sessions when passed in), a file system
-114 < 1  *  of absolute path → text, and how `prompt.submit` answers. */
+113 < 2 /** One host: a store (shared between sessions when passed in), a file system
+114 < 2  *  of absolute path → text, and how `prompt.submit` answers. */
 116 > 1 function host({ store = new Map(), files = new Map(), submit = 'ok', process = false } = {}) {
 117 < 1   const h = { store, files, submits: [], opens: [], ticks: [], spawns: [], submit }
 115 < 2 function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
@@ -214,7 +214,7 @@
 193 < 1   return h
 194 < 1 }
 195 < 1 
-196 < 1 /** One session: a fresh copy of the module on a host, started in `cwd`. */
+196 < 2 /** One session: a fresh copy of the module on a host, started in `cwd`. */
 197 < 1 async function session(h, cwd) {
 198 < 1   const { register } = await load()
 199 < 1   const hooks = []
@@ -269,7 +269,7 @@
 248 < 1   return node.props.onPress ? node.props.onPress() : undefined
 249 < 1 }
 250 < 1 
-251 < 1 // (z) the stand-in refuses wrong shapes
+251 < 2 // (z) the stand-in refuses wrong shapes
 252 < 1 {
 253 < 1   const h = host()
 254 < 1   assert.throws(() => h.$.session, /not offered/, '(z) an unknown $ noun throws')
@@ -280,7 +280,7 @@
 259 < 1   await assert.rejects(h.$.fs.read('/nowhere/x'), /ENOENT/, '(z) a missing file rejects')
 260 < 1 }
 261 < 1 
-262 < 1 // (a) Send clears the screen; the band is hidden after it
+262 < 2 // (a) Send clears the screen; the band is hidden after it
 263 < 1 {
 264 < 1   const h = host()
 265 < 1   const s = await session(h, '/work/a')
@@ -293,7 +293,7 @@
 272 < 1   assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'No screen shown', '(a) after Send the pane shows no screen')
 273 < 1 }
 274 < 1 
-275 < 1 // (b) Clear clears the screen; the band is hidden after it
+275 < 2 // (b) Clear clears the screen; the band is hidden after it
 276 < 1 {
 277 < 1   const h = host()
 278 < 1   const s = await session(h, '/work/a')
@@ -304,7 +304,7 @@
 283 < 1   assert.equal(label(await s.band()), 'hidden', '(b) after Clear the band is hidden')
 284 < 1 }
 285 < 1 
-286 < 1 // (c) the tray is kept per working directory; the old global `tray` key is ignored
+286 < 2 // (c) the tray is kept per working directory; the old global `tray` key is ignored
 287 < 1 {
 288 < 1   const store = new Map([['tray', JSON.stringify({ screen: { name: 'Old', stage: '', versions: [], url: '' }, pick: null, notes: [], taken: 0 })]])
 289 < 1   const a = await session(host({ store }), '/work/a')
@@ -316,7 +316,7 @@
 295 < 1   assert.equal(label(await a2.band()), 'Intent tray: Todo list, 1 item', '(c) a later session in the same repo gets its tray back')
 296 < 1 }
 297 < 1 
-298 < 1 // (d) band buttons carry no bare-digit hotkey
+298 < 2 // (d) band buttons carry no bare-digit hotkey
 299 < 1 {
 300 < 1   const s = await session(host(), '/work/a')
 301 < 1   await s.show({ name: 'Todo list', versions: ['A', 'B'] })
@@ -324,7 +324,7 @@
 303 < 1   assert.deepEqual(keys, ['band-note=n', 'band-send=s', 'band-clear=c'], '(d) band hotkeys are n, s, c')
 304 < 1 }
 305 < 1 
-306 < 1 // (e) feedback is read by byte offset, only up to the last newline
+306 < 2 // (e) feedback is read by byte offset, only up to the last newline
 307 < 1 {
 308 < 1   const h = host()
 309 < 1   const s = await session(h, '/work/a')
@@ -342,7 +342,7 @@
 321 < 1   assert.equal(label(await s.band()), 'hidden', '(e) nothing is taken twice')
 322 < 1 }
 323 < 1 
-324 < 1 // (f) a repo's feedback history from before the first session is not taken
+324 < 2 // (f) a repo's feedback history from before the first session is not taken
 325 < 1 {
 326 < 1   const h = host()
 327 < 1   h.files.set(feed('/work/a'), line({ note: 'old one' }) + line({ note: 'old two' }))
@@ -354,7 +354,7 @@
 333 < 1   assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(f) a line written after the start is taken')
 334 < 1 }
 335 < 1 
-336 < 1 // (g) a second repo's feedback is read from its own offset
+336 < 2 // (g) a second repo's feedback is read from its own offset
 337 < 1 {
 338 < 1   const store = new Map()
 339 < 1   const ha = host({ store })
@@ -369,7 +369,7 @@
 348 < 1   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(g) repo b takes its own line')
 349 < 1 }
 350 < 1 
-351 < 1 // (h) two sessions in one repo take a feedback line once
+351 < 2 // (h) two sessions in one repo take a feedback line once
 352 < 1 {
 353 < 1   const store = new Map()
 354 < 1   const files = new Map()
@@ -382,7 +382,7 @@
 361 < 1   assert.deepEqual(held, ['Intent tray: feedback, 1 item', 'hidden'], '(h) the line is taken by one session only')
 362 < 1 }
 363 < 1 
-364 < 1 // (i) a dropped or failed submit keeps the tray
+364 < 2 // (i) a dropped or failed submit keeps the tray
 365 < 1 for (const mode of ['drop', 'throw']) {
 366 < 1   const h = host({ submit: mode })
 367 < 1   const s = await session(h, '/work/a')
@@ -397,7 +397,7 @@
 376 < 1   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
 377 < 1 }
 378 < 1 
-380 > 1 // (j) Open screen is drawn only where $.process is offered (not the Desktop app)
+380 > 2 // (j) Open screen is drawn only where $.process is offered (not the Desktop app)
 381 < 1 {
 382 < 1   const url = 'http://127.0.0.1:4100/compare'
 383 < 1   const desk = await session(host(), '/work/a')
@@ -412,7 +412,7 @@
 392 < 1   assert.deepEqual(h.spawns, [['open', url]], '(j) Open screen opens the preview url')
 393 < 1 }
 394 < 1 
-395 < 1 // (k) a Send while one is out is ignored; a note that arrives meanwhile stays
+395 < 2 // (k) a Send while one is out is ignored; a note that arrives meanwhile stays
 396 < 1 {
 397 < 1   let enter
 398 < 1   const h = host({ submit: (o) => new Promise((done) => { enter = () => done({ text: o.text }) }) })
@@ -439,7 +439,7 @@
 419 < 1   assert.match(h.submits[1], /too small/, '(k) and carries the late note')
 420 < 1 }
 421 < 1 
-422 < 1 // (l) two sessions in one repo keep each other's notes; a sent note stays gone
+422 < 2 // (l) two sessions in one repo keep each other's notes; a sent note stays gone
 423 < 1 {
 424 < 1   const store = new Map()
 425 < 1   const files = new Map()
@@ -459,7 +459,7 @@
 439 < 1   assert.equal(label(await b.band()), 'Intent tray: feedback, 1 item', '(l) the other session drops the sent notes too')
 440 < 1 }
 441 < 1 
-442 < 1 // (m) a replaced feedback file is read from its start
+442 < 2 // (m) a replaced feedback file is read from its start
 443 < 1 {
 444 < 1   const h = host()
 445 < 1   const s = await session(h, '/work/a')
@@ -473,7 +473,7 @@
 453 < 1   assert.match(h.submits[1], /second file/, '(m) its first line is read')
 454 < 1 }
 455 < 1 
-456 < 1 // (n) a preview pick names its piece, and a pick without one still reads
+456 < 2 // (n) a preview pick names its piece, and a pick without one still reads
 457 < 1 {
 458 < 1   const h = host()
 459 < 1   const s = await session(h, '/work/a')
