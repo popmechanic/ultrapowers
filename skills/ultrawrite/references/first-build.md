@@ -46,8 +46,10 @@ superior, and both better than the stories-pipeline Potluck of 2026-11-20. The r
    rule reads a one-task plan as inline; a first build goes to the fleet anyway, for the
    sandbox, the proof and the pull request.
 7. **Touch 2 is the real app.** Serve it from the run's sandbox (`bun run dev` as a user unit,
-   `ssh exe.dev share port <vm> <port>`) and give the operator the link. A draft whose only red
-   probe is the serve probe is still worth serving: read the red before judging the app.
+   `ssh exe.dev share port <vm> <port>`). A draft whose only red probe is the serve probe is
+   still worth serving: read the red before judging the app.
+8. **Walk it before the operator does** (`## The walk`), then give them the link with the
+   walk's answers in the message.
 
 ## The proof
 
@@ -80,7 +82,30 @@ on a stub cannot pass on the app.
 
 **What the proof does not cover.** It shows the rules hold, the page shows what is saved and
 the app starts. It does not show that two browsers sync or that the flow makes sense to a
-person. The operator's smoke does, and it is the verdict (#1609).
+person. The walk looks at that first; the operator's smoke is the verdict.
+
+## The walk
+
+A report for the operator, never a gate: nothing in a run, a check or the launcher reads it.
+
+1. List the six questions: `bun <plugin-root>/skills/ultrawrite/stories/walk.ts questions`.
+2. Open the served app in your own browser (an ssh tunnel to the sandbox's port works where
+   the private link does not) and use it as a first-time user, doing each thing the Claim
+   names. Look at the page, not only its text: a screenshot shows whether it is bare.
+3. Write `<plan-stem>.walk.json` beside the plan: `app`, `run` (the evidence tag), and
+   `answers`, a map from each question id to `answer` (`yes`, `partly` or `no`) and one
+   sentence of `evidence` naming what you saw.
+4. `bun <plugin-root>/skills/ultrawrite/stories/walk.ts render <plan-stem>.walk.json` refuses
+   an incomplete walk and prints the block. Post it as a comment on the run's pull request
+   (`gh pr comment <url> --body-file -`).
+5. Reset the app's saved state so the operator starts empty, then send the link.
+6. When the operator has judged the app, record whether their smoke matched the walk:
+   `walk.ts verdict <plan-stem>.walk.json --operator agree|disagree [--note <text>]`.
+
+An `experiment` (#1609): on 2026-11-24 the six questions separated the two Potluck apps by
+hand (n=1 walk per app). The walk stays on the laptop until it and the operator have agreed
+on n=5 runs, counted by `walk.ts agreement docs/superpowers/plans`; its rollback is skipping
+this section.
 
 ## A worked plan
 

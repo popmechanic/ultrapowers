@@ -149,7 +149,8 @@ again at the PR smoke.
       launch nothing, and go to touch 2. Shopping-list run-1 (2026-10-01) is the
       case: the fleet built nothing, and the engine now ends such a run as done,
       with nothing to build. When any exits 1, launch the plan.
-10. **Touch 2 is the real app at the PR smoke.** Anything wrong is one line in chat
+10. **Touch 2 is the real app at the PR smoke.** Walk it first and post the walk on the pull
+    request (`walk.ts`, as `first-build.md` §The walk says); it reports and never gates. Anything wrong is one line in chat
     and becomes the next ask, which starts at `enrich.md`'s "A later plan for the
     same product".
 11. **Write the notebook:** one `add` line per *Please explain* or fixed word, and
