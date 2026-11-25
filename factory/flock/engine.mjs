@@ -106,10 +106,25 @@ function walk (dir, rel = '') {
   }
   return out
 }
+const unaskable = new Set()
+function checkIgnore (dir, paths) {
+  return spawnSync('git', ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+}
+const askKey = (dir, p) => dir + '\0' + p
+function askIgnored (dir, paths, out) {
+  const r = checkIgnore(dir, paths)
+  if (r.status === 0) { for (const p of r.stdout.split('\0')) if (p) out.add(p); return }
+  if (r.status === 1) return
+  if (paths.length === 1) { unaskable.add(askKey(dir, paths[0])); if (typeof ev === 'function') ev('ignore:unread', { path: paths[0] }); return }
+  const half = paths.length >> 1
+  askIgnored(dir, paths.slice(0, half), out)
+  askIgnored(dir, paths.slice(half), out)
+}
 function ignoredIn (dir, paths) {
-  if (!paths.length) return new Set()
-  const r = spawnSync('git', ['-C', dir, 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
-  return new Set(r.status === 0 ? r.stdout.split('\0').filter(Boolean) : [])
+  const ask = paths.filter((p) => !SKIP.test(p) && !unaskable.has(askKey(dir, p)))
+  const out = new Set()
+  if (ask.length) askIgnored(dir, ask, out)
+  return out
 }
 const textSeen = new Map()
 const nonText = new Set()
@@ -188,16 +203,17 @@ async function syncFromDisk (agent) {
   let drift = 0
   for (const p of known[agent]) {
     const abs = path.join(dir, p)
-    if (fs.existsSync(abs) && !isText(abs, p)) continue
-    const text = readOr(abs)
+    const held = ignored.has(p) && !BASE_PATHS.includes(p)
+    if (!held && fs.statSync(abs, { throwIfNoEntry: false })?.isFile() && !isText(abs, p)) continue
+    const text = held ? null : readOr(abs)
     const view = (await must({ op: 'view', agent, path: p })).text
     const hasWeave = view !== '' || BASE_PATHS.includes(p)
-    if ((text === null || ignored.has(p)) && !hasWeave) continue
+    if (text === null && !hasWeave) continue
     if (text === view) continue
     const r = await must({ op: 'rewrite', agent, path: p, content: text, task: taskOf[agent]?.id })
     edited(agent, p)
     drift += 1
-    ev('fallback', { agent, path: p, peer_lines: r.peer_lines_touched, deleted: text === null })
+    ev('fallback', { agent, path: p, peer_lines: r.peer_lines_touched, deleted: text === null, ignored: held || undefined })
     peerRewrites(agent, p, r.peerRewrites)
   }
   return drift
@@ -359,7 +375,7 @@ const usage = []
 let lastPublish = 0
 let settled = null
 const SYSTEM = `You are one of several agents working on the same repository at the same time, with no one directing you.
-Each agent works in its own copy. Other agents' published work is merged into your copy between your tool calls; when that happens you receive a note naming the files that changed. Re-read a file before editing it if a note says it changed.
+Each agent works in its own copy. Other agents' published work is merged into your copy between your tool calls; when that happens you receive a note naming the files that changed. Re-read a file before editing it if a note says it changed. A file your repository's ignore rules cover stays in your copy: it reaches neither the other agents nor the copy the facts and the check are run on, so anything a fact or the check needs is either a tracked file or built by that command itself.
 Rules:
 - Change an existing file only with the Edit tool. New files may be created any way you like. Shell commands must not overwrite, move or delete existing files.
 - Never run git.
@@ -382,11 +398,16 @@ async function pullInto (agent, task) {
   const r = await must({ op: 'pull', agent })
   const dir = agentDir(agent)
   for (const c of r.changed) known[agent].add(c.path)
-  writeFiles(dir, r.changed.map((c) => [c.path, c.exists ? c.text : null]))
+  const entry = (c) => [c.path, c.exists ? c.text : null]
+  const rules = (c) => path.basename(c.path) === '.gitignore'
+  writeFiles(dir, r.changed.filter(rules).map(entry))
+  const heldHere = ignoredIn(dir, r.changed.map((c) => c.path).filter((p) => !base.has(p)))
+  writeFiles(dir, r.changed.filter((c) => !rules(c) && !heldHere.has(c.path)).map(entry))
   const quiet = (p) => !!scope && !scope.has(p)
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict, quiet: quiet(c.path) || undefined })) })
   const mine = (unsaid[agent] = unsaid[agent] || new Map())
   for (const c of r.changed) {
+    if (heldHere.has(c.path)) continue
     const was = mine.get(c.path)
     mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
   }
@@ -655,7 +676,7 @@ async function session (agent, task) {
         const fp = path.resolve(cwd, ti.file_path)
         const rel = fp.slice(cwd.length + 1)
         known[agent].add(rel)
-        if (ignoredIn(cwd, [rel]).has(rel) && !BASE_PATHS.includes(rel) && (await must({ op: 'view', agent, path: rel })).text === '') return {}
+        if (ignoredIn(cwd, [rel]).has(rel) && !BASE_PATHS.includes(rel)) { await syncFromDisk(agent); return {} }
         const before = pre.get(input.tool_use_id)
         let rec = { peer: 0, peers: [] }, how = 'edit-call'
         if (name === 'Write' || before === null || before === undefined) {
