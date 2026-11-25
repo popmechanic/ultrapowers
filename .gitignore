@@ -16,3 +16,6 @@ evals/results/cells/
 # and run readings, kept on the operator's laptop; see evals/frontier/README.md.
 evals/frontier/corpus/
 evals/frontier/results/
+
+# a theme tool folder's installed packages (bun install in skills/ultrawrite/themes)
+node_modules/
