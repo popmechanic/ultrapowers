@@ -186,4 +186,22 @@ const assertRefusedClean = (d, leg, needles) => {
   bad.cleanup()
 }
 
+{
+  const ws = workspace()
+  const compiled = { tasks: [], dag_edges: [], width: 4, grammar: 'stories-v1' }
+  const exec = makeExec({ rules: launchRules({ engine: ENGINE, repo: ws.repo, evidence: [ws.evidence, ws.other], integrations: ALL_INTEGRATIONS, compiled }) })
+  const result = await launch({
+    argv: [ws.planPath, '--target', TARGET, '--base', ws.repo.base, '--repo', ws.repo.dir, '--engine', ENGINE],
+    exec,
+    config: { evidence: EVIDENCE },
+    now: () => NOW,
+    sleep: async () => {},
+    refreshCredential: () => ({ ok: true }),
+    readUsage: () => ({ unread: true, reason: 'sim' })
+  })
+  assert.equal(result.width, 4, `(f) [M6] width 4, got ${result.width}`)
+  assert.equal(result.memory, '6GB', `(f) [M6] a plan's grammar never raises the box: 2 + width GB, got ${result.memory}`)
+  ws.cleanup()
+}
+
 console.log('ALL TESTS PASSED')

@@ -78,27 +78,11 @@ const isPositiveInt = (value) => isRunNumber(value)
 
 const isMemorySize = (value) => /^[1-9][0-9]*GB$/.test(String(value))
 
-const GRAMMAR_LINE_RE = /^\*\*Grammar:\*\*\s*(\S+)\s*$/
-const TASK_HEADING_RE = /^### Task /
-const FENCE_LINE_RE = /^\s*```/
-
-const planGrammar = (planText) => {
-  let inFence = false
-  for (const line of planText.split('\n')) {
-    if (TASK_HEADING_RE.test(line)) break
-    if (FENCE_LINE_RE.test(line)) { inFence = !inFence; continue }
-    if (inFence) continue
-    const m = GRAMMAR_LINE_RE.exec(line)
-    if (m) return m[1]
-  }
-  return null
-}
-
-function vmSizeFor (width, cap = FLEET_DEFAULTS, browsers = false) {
+function vmSizeFor (width, cap = FLEET_DEFAULTS) {
   const w = Math.max(0, Math.floor(Number(width) || 0))
   const capCpu = Number(cap?.cpu ?? FLEET_DEFAULTS.cpu)
   const capGb = cap?.memoryGb ?? parseMemoryGb(cap?.memory ?? FLEET_DEFAULTS.memory)
-  const wantGb = browsers ? Math.max(6, Math.ceil(2 + 1.25 * w)) : 2 + w
+  const wantGb = 2 + w
   return {
     cpu: String(Math.min(capCpu, 2 + Math.ceil(w / 3))),
     memory: `${Math.min(Number(capGb), wantGb)}GB`
@@ -107,7 +91,7 @@ function vmSizeFor (width, cap = FLEET_DEFAULTS, browsers = false) {
 
 function sizeFromCompile (compiled, { cpuCap, memoryCap, cpu, memory } = {}) {
   const w = Math.max(1, Math.floor(Number(compiled?.payload?.width) || 0))
-  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap }, compiled?.payload?.grammar === 'stories-v1')
+  const sized = vmSizeFor(w, { cpu: cpuCap, memory: memoryCap })
   return {
     width: w,
     cpu: cpu === undefined ? sized.cpu : cpuCap,
@@ -459,9 +443,6 @@ async function launchBody ({
   } catch {
     verdictsText = null
   }
-  if (planGrammar(planText) === 'stories-v1' && /^## Numbers\s*$/m.test(planText)) {
-    throw new Refusal(`launch: plan ${planPath} has a Numbers section; the fleet has no Numbers checker yet (story-planning, after sub-project 2)`)
-  }
 
   const fields = {
     run: '0',
@@ -485,7 +466,7 @@ async function launchBody ({
 
   const engineSource = opts.engine === undefined ? 'main-tip' : 'pinned'
   const engine = opts.engine ?? await defaultEngineSha(exec)
-  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT, stories: planGrammar(planText) === 'stories-v1' })
+  const compiler = await fetchCompilerAt({ exec, engine, pluginRoot: PLUGIN_ROOT })
   if (held !== undefined) held.compilerDir = compiler.dir
 
   const baseFacts = await verifyPlanCompiles({
