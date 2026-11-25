@@ -165,8 +165,9 @@ dependency graphs, clean clones, content merges, disposable sandboxes — each d
 
 A new TinyApp's first version is written by one author, who designs the whole page as ordinary
 code; later changes to it are ordinary plans. The author is handed a library of tested controls
-(UI SDK) and a theme, Pouf by default, in the app's first commit, and is free to use, restyle or
-ignore both. You are asked which theme only when there is more than one to pick from. How the page
+(UI SDK) and a theme, Pouf by default, in the app's first commit. The app must declare UI SDK at
+the pinned version; whether the page uses its controls and the theme, restyled or not, is the
+author's call. You are asked which theme only when there is more than one to pick from. How the page
 reads is not asked while planning: you judge it on the real app, after Claude has walked it once
 as a first-time user (noting how much script the page loads and which controls it uses) and before
 you try it yourself.

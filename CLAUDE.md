@@ -137,7 +137,8 @@ the engine's exit code is the merge decision.
   cell's by default); how the page reads is judged on the real app, at the walk and the smoke.
 - **A new app's first build is one author (2026-11-24, #1606).** `product.ts route` sends a
   product with nothing built to `skills/ultrawrite/references/first-build.md`: one claims-v1
-  task from the ask and the app's rules, on an empty repository. `product.ts built` records
+  task from the ask and the app's rules, on a repository empty but for the README, the record
+  and the placed theme. `product.ts built` records
   it in the app, and a later plan on such an app is an ordinary claims-v1 plan
   (`later plan, claims`). An `experiment` (n=1 run per arm, popmechanic-potluck-3 run-1 and
   run-2: the operator judged the one-author app entirely superior, blind); the stories route
@@ -148,9 +149,9 @@ the engine's exit code is the merge decision.
   (`skills/ultrawrite/stories/walk.ts`). A report, never a gate; an `experiment` (n=1 walk per
   app) kept on the laptop until the walk and the operator have agreed on n=5 runs.
 - **A first build is handed UI SDK and a theme, and made to use neither (2026-11-25).**
-  `place.ts` puts the theme (Pouf by default) in the app's first commit, the task's Context
-  says both are the builder's to use, restyle or ignore, and one probe pins `@ui-sdk/react`
-  and `@ui-sdk/core` at the `ui` cell's version. An `experiment` (n=1 run per arm, blind: the
+  `place.ts` puts the theme (Pouf by default) in the app's first commit, one probe pins
+  `@ui-sdk/react` and `@ui-sdk/core` in `dependencies` at the `ui` cell's version, and the
+  task's Context says using them, restyling them or not using them is the builder's call. An `experiment` (n=1 run per arm, blind: the
   operator ranked Pouf-themed UI SDK first, stock second, bare third); its rollback is the `ui`
   cell of `skills/ultrawrite/stories/policy.json`. Never a catalog: nothing checks that a page
   uses the library or the theme (`docs/adr/0019-tinyapp-themes.md`).
