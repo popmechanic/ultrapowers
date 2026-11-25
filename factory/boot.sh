@@ -137,7 +137,7 @@ write_status() { # $1 = state, $2 = phase (optional)
     --events "$RUN_DIR/events.jsonl" >"$tmp"
   mv "$tmp" "$STATUS_FILE"; log "status: state=$STATE phase=$PHASE"
 }
-ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json checks-digest.json)
+ENGINE_EVIDENCE=(board.json weave-ops.digest.jsonl snapshots.jsonl red-checks.json past.json provenance.json)
 collect_evidence() {
   mkdir -p "$EVIDENCE_DIR/$EVIDENCE_REL"
   [ -f "$RUN_DIR/events.jsonl" ] && cp "$RUN_DIR/events.jsonl" "$EVIDENCE_DIR/$EVIDENCE_REL/events.jsonl"
@@ -278,9 +278,7 @@ boot() {
   moved="$(head -n 1 "$RUN_DIR/base" 2>/dev/null || true)"
   if is_sha "$moved" && [ "$moved" != "$BASE_SHA" ]; then log "engine: the run's base moved to $moved (was $BASE_SHA)"; BASE_SHA="$moved"; fi
   head="$(fleet_git -C "$TARGET_DIR" rev-parse HEAD 2>/dev/null || true)"
-  if [ "$head" = "$BASE_SHA" ]; then
-    if [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
-    finish done "nothing to build: every proof already passes at the base"; exit 0; fi
+  if [ "$head" = "$BASE_SHA" ] && [ "$code" != 0 ]; then fail "engine exit $code" "$code"; fi
   publish "$code"; exit 0
 }
 died() {

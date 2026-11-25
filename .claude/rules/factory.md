@@ -30,7 +30,7 @@ keeps the name `factory/`. Models never run git.
   alone, so the boot opens a draft.
 - Supporting modules: `flock/flock_board.mjs` (the board, in memory; its moves are rows in
   `events.jsonl`), `flock/scope.mjs` (the scope rule, #1333), `flock/pulls.mjs`,
-  `flock/edit_spans.mjs`, `flock/step_receipts.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
+  `flock/edit_spans.mjs`, `flock/past.mjs`, `flock/io.mjs` (the git
   wrapper, the weave keeper client, snapshot writes and `events.jsonl` rows the engine and the
   catch-up share), `flock/nogit/git` (the refusing git first on every builder's PATH),
   `preflight.mjs` (the boot's credential probe), `record.mjs` (the status page and PR body).

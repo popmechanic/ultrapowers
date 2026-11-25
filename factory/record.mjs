@@ -225,25 +225,6 @@ function looseEndsLines (events) {
   return out
 }
 
-function stepReceiptLines (events) {
-  const receipts = events.filter((r) => r && r.kind === 'step:receipt')
-  if (!receipts.length) return []
-  const out = ['### What each step changed', '']
-  for (const r of receipts) {
-    const parts = (Array.isArray(r.diff) ? r.diff : []).filter((d) => d && typeof d === 'object').map((d) => {
-      const path = d.tbl === '$values' ? `values.${safeText(d.cell)}` : `${safeText(d.tbl)}/${safeText(d.row)}/${safeText(d.cell)}`
-      if (d.diff_type === 'added') return `added ${path} = ${safeText(d.to)}`
-      if (d.diff_type === 'removed') return `removed ${path} (was ${safeText(d.from)})`
-      return `changed ${path} ${safeText(d.from)} \u2192 ${safeText(d.to)}`
-    })
-    let changes = parts.length ? parts.join('; ')
-      : r.diff === null ? `stopped at ${safeText(r.stage || 'its first stage')} before changing anything` : 'no change'
-    if (r.truncated === true) changes += '; and more not shown'
-    out.push(`- ${safeText(r.clause)} (exit ${safeText(r.exit)}): ${changes}`)
-  }
-  return out
-}
-
 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -253,14 +234,13 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const provenance = provenanceLines(provenancePath)
   let looseEnds = looseEndsLines(events)
   const draft = draftReasonLines(events)
-  let changes = stepReceiptLines(events)
   const assemble = () => {
     let out = ''
     for (const line of summary) out += line + '\n'
     out += '\n'
     for (const line of rows) out += line + '\n'
     out += '\n'
-    for (const section of [provenance, looseEnds, draft, changes]) {
+    for (const section of [provenance, looseEnds, draft]) {
       for (const line of section) out += line + '\n'
       if (section.length) out += '\n'
     }
@@ -270,18 +250,13 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   const whole = assemble()
   if (whole.length <= BODY_CAP) return whole
   const fullLoose = looseEnds
-  const fullChanges = changes
   looseEnds = looseEnds.filter((l) => !isItem(l))
-  changes = changes.filter((l) => !isItem(l))
   const room = BODY_CAP - assemble().length
-  const looseRoom = Math.max(Math.floor(room / 2), room - itemsLength(fullChanges))
-  looseEnds = cutItems(fullLoose, looseRoom, evidenceUrl)
-  changes = cutItems(fullChanges, room - itemsLength(looseEnds), evidenceUrl)
+  looseEnds = cutItems(fullLoose, room, evidenceUrl)
   return assemble()
 }
 
 const isItem = (line) => line.startsWith('- ')
-const itemsLength = (lines) => lines.filter(isItem).reduce((n, l) => n + l.length + 1, 0)
 
 function cutItems (lines, budget, evidenceUrl) {
   const total = lines.filter(isItem).length

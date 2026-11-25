@@ -72,7 +72,7 @@ evidence repository.
     runs, on the first tick that finds `events.jsonl` changed since the last commit, at most
     `FLEET_COMMIT_SECONDS` seconds apart (default 10) — so the branch is never far behind the
     live run, and a tick that saw no change commits nothing however long it has been.
-    **A Flock run adds eight files beside them** (with `summary.json` and the
+    **A Flock run adds six files beside them** (with `summary.json` and the
     publish files), so its record says what went wrong and not only that it did:
     - `board.json` — the board as it stood at the end: every task with its state and owner, and
       the beliefs.
@@ -98,12 +98,7 @@ evidence repository.
       The PR body's
       `### Provenance` line counts it: a hunk whose `task` joins several with `|` (lines two tasks
       wrote identically) counts each of its tasks once.
-    - `checks-digest.json` — one row per file of the engine's `checks/` folder, in file-name
-      order: `file`, `copy` (the name's text after its last `@`), `mtime`, and the result's
-      `clause`, `exit`, `stage` and `diff` (whether it carried one); a file that is not JSON
-      carries `unreadable: true` instead (#1491). No diff or store is copied.
-    Not kept: the whole snapshots, the raw weave log (whose `content` is the files' full texts) and
-    `checks/` itself. (History: the retired factory engine wrote none of these eight.)
+    Not kept: the whole snapshots and the raw weave log (whose `content` is the files' full texts). (History: the retired factory engine wrote none of these six.)
   - `ultra/integration-run-<N>` on the target — the work, and the only branch the product repository
     ever receives. Pushed only when it is ahead of `base=`; the PR's head.
     It has three fates, decided by the pull request with the highest `number` on that head:
@@ -397,8 +392,7 @@ evidence repository.
   nothing settled), then `Run-wide checks: exit <n>` and `**Evidence:** <the run tag's folder>` —
   `https://github.com/<evidence repo>/tree/<owner>-<repo>/run-<N>/runs/<owner>-<repo>/<N>` — then,
   each only where the run has it and each its own `###` section or line, the provenance of its
-  lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`) and
-  what each story step changed, and last one `Closes #<n>` line per
+  lines, the builders' loose ends, a draft's reason (`**Draft:** <the terminal row's why>`), and last one `Closes #<n>` line per
   number on the plan's `**Closes:**` line, all rendered by `factory/record.mjs pr-body`. A body
   over GitHub's cap gives up builders' lines first, never the summary or the closes. A run with no `edge` row carries only the
   evidence line. The `publish:pr` row it leaves —

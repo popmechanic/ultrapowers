@@ -490,35 +490,6 @@ for (const [runN, version, error] of [
 }
 
 {
-  const runN = '508'
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-h-'))
-  const home = path.join(root, 'home')
-  const bin = path.join(root, 'bin')
-  fs.mkdirSync(home, { recursive: true })
-  fs.mkdirSync(bin, { recursive: true })
-  writeGitConfig(home)
-
-  const { originDir, evidenceDir, base, plan } = buildOrigin(root, runN)
-  wireEvidence(home, evidenceDir)
-  git(root, ['clone', originDir, path.join(home, 'target')])
-  buildEngineDir(home, ENGINE_SHA)
-  writeStubs(bin, { claudeAuth: 'oauth' })
-  fs.writeFileSync(path.join(home, 'engine-lands-nothing'), '')
-
-  const env = {
-    ...baseEnv(PROXY_URL),
-    FLEET_ASSIGNMENT: assignment({ runN, plan, target: 'o/r', base, engine: ENGINE_SHA })
-  }
-  const res = await runBootAsync({ bin, home, env })
-  assert.equal(res.code, 0, `(h) the nothing-ahead run exits 0 — got ${res.code}, stderr tail: ${(res.stderr || '').slice(-4000)}`)
-  const status = JSON.parse(atTag(evidenceDir, runN, 'status.json'))
-  assert.equal(status.state, 'done', `(h) status.json at the tag records state "done" — got ${JSON.stringify(status)}`)
-  assert.equal(status.phase, 'nothing to build: every proof already passes at the base', `(h) the phase says why — got ${JSON.stringify(status.phase)}`)
-  assert.equal(status.pr, null, '(h) no pull request is opened')
-  assert.equal(status.merged, null, `(h) [#1522] no PR opened, so nothing merged — got ${JSON.stringify(status.merged)}`)
-}
-
-{
   const runN = '509'
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'fleet-boot-i-'))
   const home = path.join(root, 'home')

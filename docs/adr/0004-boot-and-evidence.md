@@ -40,9 +40,9 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Run outcome
 
-- **factory/boot.sh boot** — After the engine exits, factory/boot.sh compares the target HEAD with the base: nothing ahead of base ends the run as done when the engine exited 0 (every proof already held at base) and as failed otherwise; anything ahead goes to publish.
+- **factory/boot.sh boot** — After the engine exits, factory/boot.sh compares the target HEAD with the base: nothing ahead of base ends the run as failed when the engine exited non-zero; anything ahead goes to publish (the engine's exit 0 follows a commit, so nothing ahead with exit 0 does not occur).
 - **factory/boot.sh boot** — A run whose main moved while it ran ends on the main it moved to and writes that sha to $RUN_DIR/base. factory/boot.sh adopts it as BASE_SHA, so nothing-ahead-of-base and the publish catch-up are judged against the moved main.
-- **factory/boot.sh boot** — When the engine exits 0 on a snapshot equal to the base, every proof already held there; factory/boot.sh finishes the run as done with 'nothing to build' and publishes nothing.
+- ~~**factory/boot.sh boot** — When the engine exits 0 on a snapshot equal to the base, every proof already held there; factory/boot.sh finishes the run as done with 'nothing to build' and publishes nothing.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Run assignment protocol
 

@@ -14,8 +14,6 @@ import { pullScope } from './pulls.mjs'
 import { looseEnds } from './loose_ends.mjs'
 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { pastItems } from './past.mjs'
-import { stepReceipts, latestResults } from './step_receipts.mjs'
-import { checkDigest } from './check_digest.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
 
@@ -57,9 +55,6 @@ let BASE_NOW = BASE_SHA
 const NOGIT = path.join(HERE, 'nogit')
 
 fs.mkdirSync(OUT, { recursive: true })
-const CHECK_OUT = path.join(OUT, 'checks')
-RUN_ENV.FLOCK_CHECK_OUT = CHECK_OUT
-fs.mkdirSync(CHECK_OUT, { recursive: true })
 fs.rmSync(WORK, { recursive: true, force: true })
 fs.mkdirSync(WORK, { recursive: true })
 const EV = fs.openSync(path.join(OUT, 'events.jsonl'), 'a')
@@ -350,7 +345,7 @@ function edge (reason) {
       perTask[t.id] = res.map((r) => r.exit)
       res.forEach((r, i) => { if (r.exit !== 0) red.push({ task: t.id, cmd: t.facts[i].join(' '), exit: r.exit, tail: r.tail }) })
     }
-    const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: W.checkTimeoutMs ?? 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
+    const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
     for (const p of m.conflicts) await openConflict(p, { addsOnly: !!m.addsOnly[p], bothCreated: !!(m.bothCreated || {})[p], annotated: m.annotated[p], between: ['published copies'] })
     for (const [p, fl] of Object.entries(m.sameAnchor || {})) await sameSpot(p, fl, ['published copies'], null)
@@ -1008,8 +1003,6 @@ await absorbMain('start')
 await Promise.all([spawner(), settle(), mainWatcher()])
 await Promise.all(loops)
 await edgeChain
-for (const row of stepReceipts([...latestResults(CHECK_OUT).values()])) ev('step:receipt', row)
-try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(checkDigest(CHECK_OUT), null, 1)) } catch (e) { log('engine', `checks-digest: ${e.message}`) }
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 ev('loose-ends', { snap: looseSnap, items: looseItems })
@@ -1104,10 +1097,6 @@ function writeFailureRecord () {
   let size = Buffer.byteLength(JSON.stringify(rec))
   for (const c of cands) {
     const e = { ...c }
-    if (c.clause) {
-      const f = path.join(CHECK_OUT, `${String(c.clause).replaceAll('/', '_')}@edge.json`)
-      try { if (fs.statSync(f).size <= 8192) e.checker = JSON.parse(fs.readFileSync(f, 'utf8')) } catch {}
-    }
     const n = Buffer.byteLength(JSON.stringify(e)) + 1
     if (size + n > LIMIT) { rec.truncated = true; continue }
     size += n; rec.red.push(e)

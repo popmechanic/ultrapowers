@@ -24,8 +24,8 @@ not deleted. `/delete-comment` adds to these records; so can any hand change.
 
 - [0001. The weave and the merge](0001-weave-and-merge.md) — 41 decisions
 - [0002. Catching up and publishing a run](0002-catch-up-and-publish.md) — 19 decisions
-- [0003. The Flock engine](0003-flock-engine.md) — 81 decisions, 4 struck
-- [0004. The sandbox boot and its evidence](0004-boot-and-evidence.md) — 32 decisions
+- [0003. The Flock engine](0003-flock-engine.md) — 79 decisions, 6 struck
+- [0004. The sandbox boot and its evidence](0004-boot-and-evidence.md) — 31 decisions, 1 struck
 - [0005. The run record, status page and PR body](0005-run-record.md) — 13 decisions
 - [0006. The TinyApp checker](0006-tinyapp-checker.md) — 31 decisions, superseded by 0018
 - [0007. Talking to exe.dev](0007-exe-dev-lobby.md) — 20 decisions
