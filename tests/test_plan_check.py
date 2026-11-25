@@ -716,9 +716,13 @@ def test_slips_a_fence_outside_proof_is_refused(tmp_path):
     assert "grammar: a code fence outside every task" in lines, lines
 
 
-def test_slips_a_stories_plan_is_untouched():
-    p = run_compiler(ROOT / "evals/fixtures/stories/todo/.ultrapowers/plan.md")
-    assert p.stdout.splitlines() == ["PLAN OK"], p.stdout
+def test_the_check_refuses_a_stories_plan_by_name(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text("# P\n\n**Grammar:** stories-v1\n**Stack:** tinyapp\n")
+    p = run_compiler(plan)
+    assert p.returncode == 2, p.stdout + p.stderr
+    assert ("grammar: stories-v1 was retired on 2026-11-25; "
+            "write the plan as claims-v1") in p.stdout + p.stderr
 
 
 def test_shared_a_file_two_tasks_list_is_named_once():

@@ -67,7 +67,11 @@ _RUN_PATH_TOKEN = re.compile(r"^[^\s]*/[^\s]*\.[A-Za-z0-9]{1,8}$")
 
 def _claims_text(plan_path):
     text = Path(plan_path).read_text()
-    if plan_grammar(text) != CLAIMS_GRAMMAR:
+    try:
+        grammar = plan_grammar(text)
+    except Refusal as exc:
+        raise SystemExit("extract_gate_input: %s" % exc)
+    if grammar != CLAIMS_GRAMMAR:
         raise SystemExit(
             "extract_gate_input: %s declares no `**Grammar:** %s` header — the "
             "proof gate reads claims-v1 plans only." % (plan_path, CLAIMS_GRAMMAR))

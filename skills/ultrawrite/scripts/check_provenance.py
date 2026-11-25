@@ -15,6 +15,7 @@ from routing import ask_jev  # noqa: E402
 from plan_parse import (  # noqa: E402
     CLAIMS_GRAMMAR,
     CLAIM_PROVENANCE_RE,
+    Refusal,
     claim_provenance,
     operator_lines,
     parse_plan_claim,
@@ -147,7 +148,12 @@ def main(argv=None):
         print("provenance: no such plan `%s`" % args.plan, file=sys.stderr)
         return 1
     md_text = path.read_text(encoding="utf-8")
-    if plan_grammar(md_text) != CLAIMS_GRAMMAR:
+    try:
+        grammar = plan_grammar(md_text)
+    except Refusal as exc:
+        print("provenance: %s" % exc, file=sys.stderr)
+        return 1
+    if grammar != CLAIMS_GRAMMAR:
         print("provenance: `%s` is not a %s plan — nothing to resolve"
               % (args.plan, CLAIMS_GRAMMAR))
         return 0

@@ -118,18 +118,6 @@ def test_a_props_issue_with_no_path_names_the_element(app, tmp_path):
     assert not [l for l in lines if "undefined" in l], lines
 
 
-def test_a_checkout_path_with_a_space_still_finds_the_parser(app, tmp_path):
-    home = tmp_path / "a checkout"
-    (home / "factory/stack/tinyapp").mkdir(parents=True)
-    shutil.copyfile(SCREENS, home / "factory/stack/tinyapp/screens.ts")
-    os.symlink(os.path.join(ROOT, "skills"), home / "skills")
-    shutil.copyfile(os.path.join(FIX, "todo.json"), os.path.join(app, SCREEN))
-    r = subprocess.run(["bun", str(home / "factory/stack/tinyapp/screens.ts"), "--plan",
-                        os.path.join(ROOT, "evals/fixtures/stories/todo/.ultrapowers/plan.md"), "--copy", app],
-                       capture_output=True, text=True, timeout=120)
-    assert (r.returncode, r.stdout.splitlines()) == (0, ["SCREENS ok: todo"])
-
-
 def _with_file(app, rel, change, run):
     p = os.path.join(app, rel)
     with open(p, "rb") as f:
