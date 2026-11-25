@@ -1,5 +1,7 @@
 # 0015. Story planning for TinyApps
 
+Superseded by 0018 (2026-11-25).
+
 Status: accepted (2026-11-21)  
 Governs: `skills/ultrawrite/catalog/todo-tags/store.js`, `skills/ultrawrite/catalog/todo/store.js`, `skills/ultrawrite/stories/arrange.ts`, `skills/ultrawrite/stories/ask.ts`, `skills/ultrawrite/stories/bundle.ts`, `skills/ultrawrite/stories/checks.ts`, `skills/ultrawrite/stories/compile.ts`, `skills/ultrawrite/stories/gate_jev.ts`, `skills/ultrawrite/stories/jev_checks.ts`, `skills/ultrawrite/stories/notebook.ts`, `skills/ultrawrite/stories/parts.ts`, `skills/ultrawrite/stories/preview.ts`, `skills/ultrawrite/stories/preview/names.ts`, `skills/ultrawrite/stories/preview/page.tsx`, `skills/ultrawrite/stories/preview/play.ts`, `skills/ultrawrite/stories/preview/probe.ts`, `skills/ultrawrite/stories/product.ts`, `skills/ultrawrite/stories/scaffold.ts`, `skills/ultrawrite/stories/storyui.ts`, `tests/test_preview_server.py`, `tests/test_stories_compile.py`, `tests/test_stories_parse.py`
 

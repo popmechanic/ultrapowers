@@ -26,21 +26,15 @@ python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # v
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, width, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a plan's Run: probes on the working tree, one line each (never a hand loop)
-bun skills/ultrawrite/stories/compile.ts <bundle> --app <dir> --plan-id <id> --date <YYYY-MM-DD> --out <plan.md>   # a bundle → a stories-v1 plan (the app needs bun install first)
-bun skills/ultrawrite/stories/jev_checks.ts <bundle> [--ask-file <ask.txt>]    # code checks, then Jev's; --stage understanding|map|decompose reads product.json
+bun skills/ultrawrite/stories/jev_checks.ts <dir> --stage understanding|map|decompose   # code checks, then Jev's, on the product.json in <dir>
 bun skills/ultrawrite/stories/product.ts check|render|record|route|built <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks, and which route its next plan takes
-bun skills/ultrawrite/stories/arrange.ts <bundle> --app <dir> [--pick <V> | --reshape --note <text>…]   # Jev arranges the whole page from the cards (versions A–C into <bundle>/screens/screen.<V>.json), a pick to screens/screen.json, or a reshape from notes
-bun skills/ultrawrite/stories/preview.ts <bundle> --app <dir> [--port <n>] [--feedback <file>]   # the real screen for the Browser pane, redrawn as specs change; Comment mode notes go to .ultrapowers/feedback.jsonl
 bun skills/ultrawrite/stories/walk.ts questions | render <walk.json> | verdict <walk.json> --operator agree|disagree | agreement <dir>   # the walk of a built app before the operator's smoke: six questions, the block for the PR, the operator's verdict, the agreement count
-bun factory/stack/tinyapp/check.ts --plan <plan.md> --clause S1.1 --copy <app>   # one story step against one copy (exit 0 pass, 1 finding, 2 could not run)
-bun factory/stack/tinyapp/screens.ts (--plan <plan.md> | --bundle <dir>) [--copy <app>] [--piece <piece>]   # every piece's screen spec, no browser (exit 0 pass, 1 finding, 2 could not run)
-python3 evals/readings/checker_kit.py                                        # score the checker against a good todo app and broken copies (run when factory/stack/tinyapp/ changes)
 python3 lint/comments.py [--list <file> | --update]                          # the comment ratchet: no file gains a comment line; --update locks a drop in
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
 node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <sha>   # one run (the Flock); from this checkout, never the plugin cache
 ```
 
-The plan and census scripts take positional arguments only (no `--help`); the story-planning
+The plan and census scripts take positional arguments only (no `--help`); the authoring
 tools under `skills/ultrawrite/stories/` (Bun) take flags and print their usage.
 Nothing runs on push or on a PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
 the engine's exit code is the merge decision.
@@ -55,14 +49,8 @@ the engine's exit code is the merge decision.
 - `skills/ultrawrite/` — plan authoring: the claims-v1 grammar (six body slots, contracts
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
-  `stories/` (story planning for TinyApps in TypeScript: bundle loader, code and Jev
-  checks, the compiler to `stories-v1`, the scaffold, the operator notebook, the screen
-  arranger and the preview, json-render's composer vendored at `stories/vendor/json-render/`
-  (Apache-2.0, never patched), and the
-  TinyApp template: React, json-render screens over 1st-Pouf vendored at
-  `tinyapp-template/client/src/pouf/`, never patched, like `vendor/manyana.py`), `catalog/`
-  (ready pieces; `todo` first). The sandbox-facing half is
-  `skills/ultrapowers/scripts/{probe_block,stories_parse,stories_check}.py`.
+  `stories/` (the TinyApp authoring tools in TypeScript: the product record, the ask, Jev's
+  enrichment checks and the proof gate's Jev read, and the walk of a built app).
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.
 - `fleet/` — laptop tools (launcher, doctor, token, janitor, run reader) and the VM
@@ -137,16 +125,18 @@ the engine's exit code is the merge decision.
   issue's sentence as the Claim, two operator touches per plan, launches serial.
 - **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
-  whole product's map and the build order, into `product.json`, before any story.
-  superpowers is never called for it. The operator is asked only what the app does,
-  who uses it and how it looks.
+  whole product's map and the build order, into `product.json`; enrichment ends at the
+  build order. superpowers is never called for it. The operator is asked only what the app does,
+  who uses it and how it looks, and how it looks is judged on the real app, at the walk and
+  the smoke.
 - **A new app's first build is one author (2026-11-24, #1606).** `product.ts route` sends a
   product with nothing built to `skills/ultrawrite/references/first-build.md`: one claims-v1
-  task from the ask and the app's rules, an empty repository, no stories, parts kit or
-  arranger. `product.ts built` records it in the app, and a later plan on such an app is an
-  ordinary claims-v1 plan (`later plan, claims`), never stories. An `experiment` (n=1 run per arm, popmechanic-potluck-3 run-1 and run-2: the
-  operator judged the one-author app entirely superior, blind); its rollback is the
-  `first_build.route` cell of `skills/ultrawrite/stories/policy.json`.
+  task from the ask and the app's rules, on an empty repository. `product.ts built` records
+  it in the app, and a later plan on such an app is an ordinary claims-v1 plan
+  (`later plan, claims`). An `experiment` (n=1 run per arm, popmechanic-potluck-3 run-1 and
+  run-2: the operator judged the one-author app entirely superior, blind); the stories route
+  it replaced was retired on 2026-11-25, and its rollback is ADR 0018's
+  (`docs/adr/0018-stories-route-retired.md`).
 - **A built app is walked before the operator smokes it (2026-11-24, #1609).** The session
   serving it answers the six `smoke_walk` questions and posts them on the run's pull request
   (`skills/ultrawrite/stories/walk.ts`). A report, never a gate; an `experiment` (n=1 walk per
@@ -235,9 +225,8 @@ the engine's exit code is the merge decision.
   `CLAUDE_CODE_OAUTH_TOKEN` a placeholder); `claude auth status` must show `oauth_token` — a
   run showing `x-api-key` is billing elsewhere. TypeSafe (`api.typesafe.ai`) is reached only
   from the laptop, by ultrawrite's authoring checks (the sandbox asks Jev nothing since 2026-11-14)
-  (`skills/ultrawrite/stories/jev_checks.ts` and `skills/ultrawrite/stories/arrange.ts`, key
-  in `~/.ultrapowers/typesafe.env`) — for judgments over prose, never generation or facts
-  (Jev choosing and placing a screen's pieces is a judgment, never generation).
+  (`skills/ultrawrite/stories/jev_checks.ts` and `skills/ultrawrite/stories/gate_jev.ts`, key
+  in `~/.ultrapowers/typesafe.env`) — for judgments over prose, never generation or facts.
 - **Never force-rotate the Claude token while a run is live.** A refresh revokes the old
   access token at once and every in-flight run dies with `401 OAuth access token has been
   revoked`. While `ssh exe.dev ls` lists a `fleet-r*` VM the token is `not rotated` — by a

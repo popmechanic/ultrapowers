@@ -99,9 +99,6 @@ one-task plan gets `--cpu 3 --memory 3GB` and a ten-task plan `--cpu 6 --memory
 line overrides the formula outright, and either way the number is still checked
 against `billing plan --json` before a VM exists.
 
-A stories-v1 plan's checker runs Chromium, so its memory term is
-`max(6, ceil(2 + 1.25 × W))` GB instead of `2 + W` (#1087).
-
 The `capacity` doctor row is a report of those two facts and of nothing else:
 the pool the account has, beside the `cpu` and `memory` ceiling a run is bounded
 by. It divides one by the other nowhere, because allocated vCPU is
@@ -298,8 +295,7 @@ summary the operator signed, then the `### Receipt` table — one row per `Run:`
 probe with the exit it got — the run-wide checks' exit and the link to the
 run's evidence folder, then, where the run has them, the provenance of its
 lines, the builders' loose ends, a draft's reason (`**Draft:**`, from the
-engine's `terminal` row), Jev's readings of each story step and what each step
-changed, and last the plan's `Closes #<n>` lines. `pr` and `prAuthor` in
+engine's `terminal` row) and what each step changed, and last the plan's `Closes #<n>` lines. `pr` and `prAuthor` in
 `status.json` are the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: when the
 default branch moved, the catch-up (`factory/flock/catchup.mjs`) joined the run's
@@ -367,8 +363,7 @@ A run that dies before the boot has cloned the evidence repository has no page
 at all; the janitor reports it `unread` and the VM's own logs say why.
 
 A non-zero engine exit is a verdict, not a failure: the run is `parked` with a
-draft PR whose body says why. A branch zero commits ahead of base opens no PR: a stories-v1 run that exited 0 there is
-`done` (every proof already passed at the base), anything else is `failed:
+draft PR whose body says why. A branch zero commits ahead of base opens no PR and is `failed:
 engine exit <code>`, because a claims-v1 probe already green at the base proves nothing. A page already `done`, `parked` or `failed` is final:
 restarting the unit exits 0 and opens nothing twice.
 
@@ -722,8 +717,7 @@ list, and `node fleet/tests/probe_exe_facts.mjs` re-reads them.
 an exe VM with 2 vCPU / 4 GB)
 
 Installed since #1492: celld 0.6.1 (2026-10-01). The readings below are 0.5.0's and
-are not re-read on 0.6.1; re-measure them on the first 0.6.1 VM, teardown first,
-since `factory/stack/tinyapp/celld.ts` waits on it.
+are not re-read on 0.6.1; re-measure them on the first 0.6.1 VM, teardown first.
 
 - celld's memory thresholds read root cgroup paths an exe VM does not have:
   `/sys/fs/cgroup/memory.max`, `/sys/fs/cgroup/memory.current` and the v1 path,

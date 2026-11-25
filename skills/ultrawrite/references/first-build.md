@@ -2,22 +2,22 @@
 
 # A new app's first build — one author
 
-Follow this when `bun <plugin-root>/skills/ultrawrite/stories/product.ts route <bundle>/product.json`
+Follow this when `bun <plugin-root>/skills/ultrawrite/stories/product.ts route <dir>/product.json`
 prints `ROUTE fact: first build, one author`. The first version of a new app is one
-claims-v1 task for one builder, written from the operator's ask and the app's rules. No
-stories, cards, parts kit, arranger or template take part; they are for later plans on an
-app that exists (`references/stories.md`).
+claims-v1 task for one builder, written from the operator's ask and the app's rules, on an
+empty repository.
 
 **Why (an `experiment`).** On 2026-11-24 one author and three builders in shared files each
 built Potluck from the same ask, empty repository and probes (popmechanic-potluck-3 run-1 and
 run-2, n=1 run per arm). In a blind smoke test the operator judged the one-author app entirely
-superior, and both better than the stories-pipeline Potluck of 2026-11-20. The rollback is the
-`first_build.route` cell of `skills/ultrawrite/stories/policy.json`: set it to `stories`.
+superior, and both better than the stories-pipeline Potluck of 2026-11-20. Its rollback is a
+checkout of `dd53be04`, from before the stories route was retired
+(`docs/adr/0018-stories-route-retired.md`).
 
 ## The steps
 
 1. **Enrich the ask** as `references/enrich.md` says, through the understanding, the map and
-   the build order. Stop there: draft no cards and no stories.
+   the build order.
 2. **Write the app's rules** off the understanding's product assumptions, one sentence each
    ("only a guest who said yes can bring a dish"). These are what the probes prove.
 3. **Fix three names**, and only these, so probes can call the app without choosing its design:
@@ -43,7 +43,7 @@ superior, and both better than the stories-pipeline Potluck of 2026-11-20. The r
 5. **Write the proof** (next section), rehearse it, run the gate, and check the plan as for
    any claims-v1 plan.
 6. **Record the plan as built by one author** and put the record in the app:
-   `bun <plugin-root>/skills/ultrawrite/stories/product.ts built <bundle>/product.json --plan <plan id>`,
+   `bun <plugin-root>/skills/ultrawrite/stories/product.ts built <dir>/product.json --plan <plan id>`,
    then copy it to `stories/product.json` in the target's first commit, beside the README. A
    later plan finds it there (`enrich.md`, "A later plan for the same product") and
    `product.ts route` then answers `later plan, claims`. The record is written before the
@@ -126,10 +126,8 @@ this section.
 
 ## A later plan
 
-When `product.ts route` prints `ROUTE fact: later plan, claims`, the app was first built by
-one author, so it has no stories, parts kit or screen file and the stories pipeline does not
-apply to it (operator, 2026-11-24). Plan the change as an ordinary claims-v1 plan on an
-existing codebase, as `SKILL.md` says: enrich from the app's `stories/product.json`, sign the
+When `product.ts route` prints `ROUTE fact: later plan, claims`, plan the change as an
+ordinary claims-v1 plan on an existing codebase, as `SKILL.md` says: enrich from the app's `stories/product.json`, sign the
 Claim, write tasks with probes in the same three shapes (a rule through the rules module, the
 page rendered from a seeded store, the app served), run the gate and the walk. A change that
 redesigns how the page reads is one task (`decomposition.md`, "Split by default"). When the

@@ -71,8 +71,7 @@ row below; anything else is stale.
 **What one run actually asks for.** The ceiling is not the size: the launcher
 parses the plan and sizes the box to it. CPU is `min(cpu, 2 + ceil(W / 3))`
 off W, the widest set of tasks with no edge between them, and memory is
-`min(memory, 2 + W)` GB. (A browser term sized TinyApp runs by their state
-exams until cut three, 2026-09-22; it left with them and is owed on #1248.)
+`min(memory, 2 + W)` GB.
 
 **In a browser:** nothing, unless the answer is a bigger plan.
 

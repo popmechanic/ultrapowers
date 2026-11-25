@@ -104,8 +104,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Landing empty
 
-- **land** — When a run settles green but its snapshot is identical to the base, land in factory/flock/engine.mjs commits nothing. For stories-v1 every proof already held there, so the run is done and exits 0 (shopping-list run-1, 2026-10-01: the approved screen and the bundle's store already made the app); factory/boot.sh reads HEAD = BASE with exit 0 as that case.
-- **land** — A claims-v1 run whose settled green snapshot equals the base exits 1 from land in factory/flock/engine.mjs, because a claims-v1 probe already green at the base proves nothing (#1522); only stories-v1 treats it as done.
+- **land** — A run whose settled green snapshot equals the base exits 1 from land in factory/flock/engine.mjs and commits nothing, because a claims-v1 probe already green at the base proves nothing (#1522).
 
 ## Loose ends
 
@@ -131,10 +130,6 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 - **objectTo** — A builder whose task cannot be satisfied as written by any code (two clauses that cannot both hold, or a proof nothing can pass) calls object. objectTo in factory/flock/engine.mjs parks the task at once and, when nothing else is left, the run ends a draft naming the objection. A give-back would hand the task to the next builder who meets the same wall: on flock-baseline run-32 (2026-11-13) the task was given back three times in 24 s and the run ended deadlock without the reason.
 
-## Checker preflight
-
-- **W.stories preflight** — Before any builder spends tokens, a stories-v1 run in factory/flock/engine.mjs runs the first fact on the starting app. Exit 0 or 1 is a green or red finding and expected; anything else (bun or the checker missing, read as 124/127, a crash, a timeout) is the sandbox, not the app, and ends the run a draft before it starts.
-
 ## Compact record
 
 - **BASE_FILES_0** — In factory/flock/engine.mjs BASE_PATHS and BASE_FILES move with the base when main moves mid-run, but BASE_FILES_0 stays the text at --base because it is the start of the compact record's patch chain (snapshots.jsonl written by compactRecord).
@@ -155,10 +150,6 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 - **factory/flock/nogit/git** — Flock builder agents never run git: factory/flock/engine.mjs puts factory/flock/nogit first on every builder's PATH, whose git script prints 'git: agents never run git' and exits 1. The engine and weave own all version control.
 
-## Flock check timeout
-
-- **factory/flock/plan.mjs storiesWorkload checkTimeoutMs** — A stories-v1 run's whole-run check runs every earlier story as a guard, one checker call each, measured at about 4.9 s per call (radio-station run-5, n=1 run, 2026-09-29). The check's time limit therefore grows with the guard count: 120 s plus 15 s per guard.
-
 ## Flock engine shape
 
 - **factory/flock/engine.mjs** — The Flock engine in factory/flock/engine.mjs is plain code, not a model: it seeds the board from the plan, runs one builder session per claim on its own copy, keeps every copy's weave, merges peers after each tool batch and tests every published snapshot at the edge. Builders pull their own work from the board and never run git. A run leaves the target exactly one commit ahead of --base and writes events.jsonl, which the pull request card reads.
@@ -178,10 +169,6 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Flock settled experiments
 
 - **MAIN_POLL_MS** — On 2026-11-14 the operator settled the Flock's experiments over n=110 runs (2026-09-26..11-15), keeping one behaviour each and cutting unused modes (rollback: a checkout before the cut): a builder is told only of peer changes its work touches (pulls.mjs, 72 runs, 146 changes held quiet); a change outside every task's Files that no builder wrote fails the edge (scope.mjs, 0 refusals); loose ends become the task L:loose at the first green (7 runs); a builder may object to an unsatisfiable plan (2 objections); and the run follows main as a peer from main's stored weave (13 moves, no clash drafted). The main poll interval is --main-poll, else policy cell flock.main.poll_seconds, else 60 s.
-
-## Flock task facts
-
-- **factory/flock/plan.mjs storiesWorkload / screensArgv** — A stories-v1 task whose Files include its piece's json-render screen (client/src/pieces/<piece>.json or client/src/screen.json) also runs the browser-free screens check (factory/stack/tinyapp/screens.ts). The engine pairs facts[i] with clauses[i] by position, so the screens check is appended last and carries no clause; the engine labels a red screens fact `(screens)` in place of a missing clause.
 
 ## Past run brief
 
