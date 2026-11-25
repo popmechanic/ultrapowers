@@ -113,10 +113,7 @@ function planProbes (planPath, planJson) {
   try { parsed = parsedPlan(planPath, planJson) } catch { return null }
   return (parsed.tasks || []).map((t) => ({
     id: String(t.id),
-    probes: parsed.grammar === 'stories-v1'
-      ? (t.probes || []).map((p) => ({ cmd: 'story checker', proves: p.clause }))
-      : (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
-    extra: parsed.grammar === 'stories-v1' ? 'screens check' : null,
+    probes: (t.proofRuns || []).map((cmd, i) => ({ cmd, proves: ((t.proofRunClauses || [])[i] || []).join(', ') })),
   }))
 }
 
@@ -153,7 +150,6 @@ function receiptLines (planPath, planJson, rows, evidenceUrl) {
         const exit = typeof exits[i] === 'number' ? String(exits[i]) : '—'
         out.push(`| ${t.id} | ${p.cmd === '—' ? '—' : probeCell(p.cmd)} | ${receiptCell(p.proves || '—')} | ${exit} |`)
       })
-      if (t.extra) for (const x of exits.slice(t.probes.length)) out.push(`| ${t.id} | ${probeCell(t.extra)} | — | ${typeof x === 'number' ? x : '—'} |`)
     }
     out.push('', `Run-wide checks: exit ${edge.check ?? '—'}`)
   }
@@ -248,19 +244,6 @@ function stepReceiptLines (events) {
   return out
 }
 
-function newPartsLines (events) {
-  const row = events.filter((r) => r && r.kind === 'parts:new').at(-1)
-  const parts = row && Array.isArray(row.parts) ? row.parts.filter((p) => p && typeof p === 'object') : []
-  if (!parts.length) return []
-  const out = ['### New screen parts', '']
-  for (const p of parts) {
-    const names = Array.isArray(p.name) && p.name.length ? `, named by ${p.name.map(safeText).join(' or ')}` : ''
-    out.push(`- ${safeText(p.part)}: ${p.role ? `draws a ${safeText(p.role)}${names}` : 'draws no role a story can see'}`)
-  }
-  out.push('', 'A builder added these to this app\'s screen parts. One worth keeping can be copied into the TinyApp template so the next app starts with it.')
-  return out
-}
-
 export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath, planJson) {
   const planText = readFileSync(planPath, 'utf8')
   const summary = planSummaryLines(planText)
@@ -271,14 +254,13 @@ export function renderPrBody (planPath, eventsPath, evidenceUrl, provenancePath,
   let looseEnds = looseEndsLines(events)
   const draft = draftReasonLines(events)
   let changes = stepReceiptLines(events)
-  const parts = newPartsLines(events)
   const assemble = () => {
     let out = ''
     for (const line of summary) out += line + '\n'
     out += '\n'
     for (const line of rows) out += line + '\n'
     out += '\n'
-    for (const section of [provenance, looseEnds, draft, parts, changes]) {
+    for (const section of [provenance, looseEnds, draft, changes]) {
       for (const line of section) out += line + '\n'
       if (section.length) out += '\n'
     }

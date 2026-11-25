@@ -148,49 +148,19 @@ function lines (text) {
 }
 
 {
-  const F = '```'
-  const PROBE = '{"clause":"S1.1","do":[{"click":{"name":"Add","role":"button"}}],"expect":[{"unchanged":true}],"given":[],"holds_before":true,"judge":null,"layer":"ui","see":[{"count":1,"name":"Add","role":"button"}]}'
-  const storiesPlan = path.join(FIXTURES, 'stories-plan.md')
-  fs.writeFileSync(storiesPlan, `# Sim plan
-
-**Grammar:** stories-v1
-**Stack:** tinyapp
-**Plan-id:** p1
-**Kind:** behaviour
-**Summary:** One. Two. Three.
-**Store:** \`store.js\` sha256:${'0'.repeat(64)}
-
-## Stories
-
-- S1: You add a note; it shows.
-
-### Task 1: The note piece
-
-**Piece:** note
-**Depends-on-pieces:** none
-
-**Files:**
-- Create: \`client/src/pieces/note.json\`
-
-**Purpose:** Keep notes.
-
-**Stories:**
-- S1: You add a note; it shows.
-
-**Proof:**
-${F}probe
-${PROBE}
-${F}
-`)
-  const edgeEvents = path.join(FIXTURES, 'edge-events.jsonl')
-  fs.writeFileSync(edgeEvents, JSON.stringify({ kind: 'edge', snap: 1, perTask: { 1: [0, 1] }, check: 0 }) + '\n')
-  const r = run(['pr-body', storiesPlan, '--events', edgeEvents])
-  assert.equal(r.status, 0, '(e) pr-body over a stories-v1 plan with an edge row exits 0')
-  assert.deepEqual(
-    lines(r.stdout).filter((l) => l.startsWith('| 1 |')),
-    ['| 1 | `story checker` | S1.1 | 0 |', '| 1 | `screens check` | — | 1 |'],
-    '(e) the exit after the task probes is the screens check, a Receipt row of its own'
-  )
+  const plan = path.join(FIXTURES, 'retired-stories.md')
+  fs.writeFileSync(plan, '# Sim plan\n\n**Summary:** One. Two. Three.\n\n### Task 1: The note piece\n')
+  const planJson = path.join(FIXTURES, 'retired-stories.json')
+  fs.writeFileSync(planJson, JSON.stringify({ grammar: 'stories-v1', tasks: [{ id: 1, title: 'The note piece', probes: [{ clause: 'S1.1' }] }] }))
+  const eventsFile = path.join(FIXTURES, 'retired-stories-events.jsonl')
+  fs.writeFileSync(eventsFile,
+    JSON.stringify({ kind: 'parts:new', parts: [{ part: 'Chip', role: 'status' }] }) + '\n' +
+    JSON.stringify({ kind: 'edge', snap: 1, perTask: { 1: [0, 1] }, check: 0 }) + '\n')
+  const r = run(['pr-body', plan, '--events', eventsFile, '--plan-json', planJson])
+  assert.equal(r.status, 0, `an old stories run renders without its retired sections: ${r.stderr}`)
+  for (const gone of ['### New screen parts', 'story checker', 'screens check']) {
+    assert.ok(!r.stdout.includes(gone), `an old stories run renders without its retired sections: found ${gone}`)
+  }
 }
 
 {

@@ -15,7 +15,6 @@ import { looseEnds } from './loose_ends.mjs'
 import { gitIn, utf8, writeFiles, snapshotEntries, startWeave, readEventRows, POLICY_FLOCK, EXAM_MS } from './io.mjs'
 import { pastItems } from './past.mjs'
 import { stepReceipts, latestResults } from './step_receipts.mjs'
-import { DRAWS, newParts } from './new_parts.mjs'
 import { checkDigest } from './check_digest.mjs'
 import { peerNote } from './peer_note.mjs'
 import { buildProvenance } from './provenance.mjs'
@@ -187,7 +186,7 @@ function runFacts (cwd, task) {
 }
 const redOf = (res) => res.map((r, i) => ({ i, ...r })).filter((r) => r.exit !== 0)
 const redText = (task, red) => red.map((r) =>
-  `fact ${r.i + 1}${task.clauses ? ` (${task.clauses[r.i] ?? 'screens'})` : ''} exit ${r.exit}\n${r.tail}`).join('\n\n')
+  `fact ${r.i + 1} exit ${r.exit}\n${r.tail}`).join('\n\n')
 
 function peerOf (answers) {
   const peers = new Set()
@@ -349,7 +348,7 @@ function edge (reason) {
     for (const t of board.tasks.values()) {
       const res = runFacts(dir, t)
       perTask[t.id] = res.map((r) => r.exit)
-      res.forEach((r, i) => { if (r.exit !== 0) red.push({ task: t.id, clause: t.clauses ? t.clauses[i] : undefined, cmd: t.facts[i].join(' '), exit: r.exit, tail: r.tail }) })
+      res.forEach((r, i) => { if (r.exit !== 0) red.push({ task: t.id, cmd: t.facts[i].join(' '), exit: r.exit, tail: r.tail }) })
     }
     const chk = W.check ? spawnSync(W.check[0], W.check.slice(1), { cwd: dir, encoding: 'utf8', timeout: W.checkTimeoutMs ?? 120000, env: RUN_ENV }) : { status: 0, stdout: '', stderr: '' }
     const factsGreen = Object.values(perTask).every((xs) => xs.every((x) => x === 0))
@@ -384,7 +383,7 @@ Rules:
 - To wait for another agent's work, call wait_for. Never wait with shell sleep or a polling loop: peers' work reaches your copy only between your tool calls, so a shell loop cannot see it arrive.
 - Publish whenever your change is coherent, so the others build on it.
 - If something fails because of another agent's unfinished work, prefer not to rewrite their lines: post a belief saying what you saw, and carry on with your own part.
-- Your task's Files are where the plan expects you to write, not a fence. When the task needs a change elsewhere (a part the screens lack, a helper another file should hold), make it: it is recorded as an amendment, and nothing reverts it.
+- Your task's Files are where the plan expects you to write, not a fence. When the task needs a change elsewhere (a helper another file should hold), make it: it is recorded as an amendment, and nothing reverts it.
 - If your task cannot be done as the plan is written, by any code (two clauses that cannot both be true, or a proof nothing can pass), call object and name the clauses: the task then waits for the operator. Say it as soon as you are sure, before trying again. A change outside your Files is code you can write, so it is never a reason to object.
 - If a note says a file merged with conflict marks, look at that part of the file. When it says what both sides meant (edit it if not), call resolve_conflict for that file.
 - When your task's facts pass on your copy, call done: it publishes your copy for you and closes it.`
@@ -982,15 +981,6 @@ let PAST = null
     } catch (e) { log('past: nothing read —', String(e.message || e).split('\n')[0]) }
   }
 }
-if (W.stories) {
-  const first = W.tasks.find((t) => t.facts.length)
-  const r = runFacts(SETUP ? DEPS_DIR : BASE_DIR, { facts: [first.facts[0]] })[0]
-  ev('checker:start', { exit: r.exit })
-  if (r.exit !== 0 && r.exit !== 1) {
-    await stall('checker', { tail: r.tail.slice(-300) })
-    terminal('draft', 'the checker cannot run on this sandbox: ' + r.tail.slice(-300), null)
-  }
-}
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 const pool = []
 lastRise = now()
@@ -1023,8 +1013,6 @@ try { fs.writeFileSync(path.join(OUT, 'checks-digest.json'), JSON.stringify(chec
 const looseSnap = outcome && outcome.pr === 'ready' ? outcome.snap : lastEdge ? lastEdge.snap : null
 const looseItems = looseEnds(board.beliefs, textAt(looseSnap))
 ev('loose-ends', { snap: looseSnap, items: looseItems })
-const addedParts = newParts(BASE_FILES[DRAWS] ?? null, textAt(looseSnap)(DRAWS))
-if (addedParts.length) ev('parts:new', { snap: looseSnap, parts: addedParts })
 const summary = {
   workload: W.name, builders_max: buildersMax, cap: CAP, model: MODEL, settled, wall_ms: now(),
   base: BASE_NOW,
@@ -1074,7 +1062,7 @@ async function land () {
     const sha = commitSnapshot(outcome.snap, `flock: settled ${outcome.snap}`)
     if (!sha) {
       ev('landing:empty', { snap: outcome.snap, grammar: W.grammar })
-      return W.grammar === 'stories-v1' ? 0 : 1
+      return 1
     }
     for (const t of W.tasks) ev('landing', { task: t.id, candidateSha: sha })
     await storeEntry(sha)
