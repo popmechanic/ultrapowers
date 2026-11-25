@@ -32,6 +32,16 @@ def record(tmp_path, **sub):
     return path
 
 
+def record_with_intent(tmp_path, **intent):
+    with open(TODO) as f:
+        p = json.load(f)
+    p["intent"].update(intent)
+    path = str(tmp_path / "product.json")
+    with open(path, "w") as f:
+        json.dump(p, f)
+    return path
+
+
 def test_nothing_built_is_a_first_build():
     assert run("route", TODO) == (0, "ROUTE fact: first build, one author")
 
@@ -77,3 +87,16 @@ def test_built_with_no_next_plan_is_refused(tmp_path):
 def test_an_unknown_by_is_refused(tmp_path):
     code, out = run("check", record(tmp_path, by="team"))
     assert code == 2 and "by must be solo or stories" in out
+
+
+def test_a_record_may_name_its_theme(tmp_path):
+    assert run("check", record_with_intent(tmp_path, theme="pouf")) == (0, "PRODUCT OK: 2 concept(s), 1 plan(s)")
+
+
+def test_a_record_without_a_theme_still_passes():
+    assert run("check", TODO) == (0, "PRODUCT OK: 2 concept(s), 1 plan(s)")
+
+
+def test_an_empty_theme_is_refused(tmp_path):
+    code, out = run("check", record_with_intent(tmp_path, theme=""))
+    assert code == 2 and "intent: theme must be a theme's name or a path" in out

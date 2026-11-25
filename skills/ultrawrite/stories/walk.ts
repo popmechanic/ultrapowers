@@ -6,7 +6,8 @@ import {loadQuestions} from './jev';
 
 type Question = {instructions: {question: string}};
 type Answer = {answer?: unknown; evidence?: unknown};
-export type Walk = {app?: string; run?: string; answers?: Record<string, Answer>; operator?: string; note?: string};
+export type Walk = {app?: string; run?: string; answers?: Record<string, Answer>; operator?: string; note?: string;
+  script_bytes?: number; slots?: string[]};
 
 const WORDS = ['yes', 'partly', 'no'];
 const USAGE = 'usage: walk.ts questions | render <walk.json> | verdict <walk.json> --operator agree|disagree [--note <text>] | agreement <dir>';
@@ -30,6 +31,8 @@ export function problems(w: Walk): string[] {
     if (typeof a.evidence !== 'string' || !a.evidence.trim()) out.push(`walk: ${id} carries no evidence`);
   }
   for (const id of Object.keys(answers)) if (!ids.includes(id)) out.push(`walk: ${id} is not one of the questions`);
+  if (w.script_bytes !== undefined && (typeof w.script_bytes !== 'number' || !Number.isFinite(w.script_bytes))) out.push('walk: script_bytes must be a number of bytes');
+  if (w.slots !== undefined && (!Array.isArray(w.slots) || !w.slots.every((s) => typeof s === 'string'))) out.push('walk: slots must be a list of slot names');
   return out;
 }
 
@@ -37,8 +40,11 @@ const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 
 export function render(w: Walk): string {
   const rows = questions().map(([id, q]) => `| ${cell(q)} | ${w.answers![id].answer} | ${cell(String(w.answers![id].evidence))} |`);
-  return ['### Experience walk', '', `${w.app ?? 'the app'}, ${w.run ?? 'run not named'}. A report for the operator; it gates nothing.`, '',
+  const lines = [...(w.script_bytes === undefined ? [] : [`Script the page loads: ${w.script_bytes.toLocaleString('en-US')} bytes.`]),
+    ...(w.slots === undefined ? [] : [`UI SDK slots on the page: ${w.slots.length ? `${w.slots.length} (${[...w.slots].sort().join(', ')})` : 'none'}.`])];
+  const table = ['### Experience walk', '', `${w.app ?? 'the app'}, ${w.run ?? 'run not named'}. A report for the operator; it gates nothing.`, '',
     '| Question | Answer | Evidence |', '|---|---|---|', ...rows].join('\n');
+  return lines.length ? `${table}\n\n${lines.join('\n')}` : table;
 }
 
 export function agreement(dir: string): string {
