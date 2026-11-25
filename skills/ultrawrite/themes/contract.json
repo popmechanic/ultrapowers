@@ -6,18 +6,30 @@
     "Declare the layers before any rule: structure.css begins \"@layer ui-sdk, structure;\" and a theme's theme.css begins \"@layer ui-sdk, structure, <name>;\", because UI SDK injects its behaviour CSS into the ui-sdk layer at runtime.",
     "Popup placement is set inline by UI SDK (fixed position, anchor insets and the offset from the trigger), so it is not a theme's to move: a theme sizes and dresses a popup, never places it.",
     "Variants are attributes the author sets, data-variant and data-size, never a UI SDK prop.",
-    "UI SDK's icon tokens (--ui-icon-*) mean nothing without its web.css, which a theme replaces, so a theme draws every icon the contract marks itself."
+    "UI SDK's icon tokens (--ui-icon-*) mean nothing without its web.css, which a theme replaces, so a theme draws every icon the contract marks itself.",
+    "A theme is a folder whose name is its layer name, so the name must be a plain identifier (a letter, then letters, digits, hyphens or underscores) other than ui-sdk or structure.",
+    "A theme folder holds theme.css, README.md and LICENSE, and optionally font.css (the @font-face rules, inlined before theme.css) and kit.tsx (layout components); only its top-level files whose names do not begin with a dot are placed in an app.",
+    "theme.css's first statement is its layer line, before any comment."
+  ],
+  "variables": [
+    {"name": "--theme-dialog-width", "default": "min(28rem, calc(100vw - 2rem))", "purpose": "The width of dialog and alert-dialog content."},
+    {"name": "--theme-dialog-max-height", "default": "calc(100dvh - 2rem)", "purpose": "The tallest dialog and alert-dialog content grows before it scrolls."},
+    {"name": "--theme-field-gap", "default": "0.375rem", "purpose": "The gap between a field's label, control, description and error."},
+    {"name": "--theme-label-gap", "default": "0.5rem", "purpose": "The gap between a checkbox, switch or radio and the label text that wraps it."},
+    {"name": "--theme-toast-width", "default": "min(22rem, calc(100vw - 2rem))", "purpose": "The width of the toast region and so of every toast."},
+    {"name": "--theme-toast-gap", "default": "0.75rem", "purpose": "The gap between toasts while the stack is expanded."},
+    {"name": "--theme-toast-y", "default": "0px", "purpose": "A vertical shift on one toast. structure.css sets it while the stack is expanded; a theme sets it on a collapsed toast to make it peek out behind the front one, or on an entering toast ([data-starting-style]) to slide it in."}
   ],
   "components": [
     {"name": "Button", "slots": [
-      {"slot": "button", "in": "markup", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-pending]", "kind": "css"}], "structural": "inline-flex layout"}
+      {"slot": "button", "in": "markup", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-pending]", "kind": "css"}], "theme": "lay out its label and any icon, such as inline-flex with a gap"}
     ]},
     {"name": "Field", "slots": [
-      {"slot": "field", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}], "structural": "column layout"},
+      {"slot": "field", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}], "structure": "a column with a gap of --theme-field-gap"},
       {"slot": "field-label", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "field-description", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}], "structural": "zero the <p> margin"},
-      {"slot": "field-error", "in": "markup", "states": [], "structural": "zero the <p> margin"},
-      {"slot": "label", "in": "markup", "states": [{"state": ":has(> [data-disabled])", "kind": "css"}], "structural": "a row that aligns its checkbox or switch with the text"}
+      {"slot": "field-description", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}], "structure": "zero the <p> margin"},
+      {"slot": "field-error", "in": "markup", "states": [], "structure": "zero the <p> margin"},
+      {"slot": "label", "in": "markup", "states": [{"state": ":has(> [data-disabled])", "kind": "css"}], "structure": "when it wraps a checkbox, switch or radio, an inline row that aligns it with the text, with a gap of --theme-label-gap"}
     ]},
     {"name": "Input", "slots": [
       {"slot": "input", "in": "markup", "states": [{"state": "::placeholder", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-filled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}]}
@@ -27,124 +39,124 @@
     ]},
     {"name": "Number Input", "slots": [
       {"slot": "number-input", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "number-input-group", "in": "markup", "states": [{"state": ":has(:focus-visible)", "kind": "css"}, {"state": ":has([data-invalid])", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-scrubbing]", "kind": "css"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "the group is one box around the control and its step buttons"},
+      {"slot": "number-input-group", "in": "markup", "states": [{"state": ":has(:focus-visible)", "kind": "css"}, {"state": ":has([data-invalid])", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-scrubbing]", "kind": "css"}, {"state": "[data-readonly]", "kind": "markup"}], "theme": "draw one box around the control and its step buttons"},
       {"slot": "number-input-control", "in": "markup", "states": [{"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "number-input-decrement", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}, {"state": ":active", "kind": "css"}], "structural": "draw the minus"},
-      {"slot": "number-input-increment", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}, {"state": ":active", "kind": "css"}], "structural": "draw the plus"},
+      {"slot": "number-input-decrement", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}, {"state": ":active", "kind": "css"}], "theme": "draw the minus"},
+      {"slot": "number-input-increment", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}, {"state": ":active", "kind": "css"}], "theme": "draw the plus"},
       {"slot": "number-input-hidden-input", "in": "markup", "states": [], "hidden": true}
     ]},
     {"name": "Select", "slots": [
-      {"slot": "select-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-placeholder]", "kind": "markup"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "draw the chevron"},
+      {"slot": "select-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-placeholder]", "kind": "markup"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "theme": "draw the chevron"},
       {"slot": "select-value", "in": "markup", "states": [{"state": "[data-placeholder]", "kind": "markup"}]},
       {"slot": "select-form-input", "in": "markup", "states": [], "hidden": true},
-      {"slot": "select-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-side]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
+      {"slot": "select-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-side]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structure": "reset the browser's [popover] border, padding and background; scroll when the list is long; min-width from --anchor-width, max-height from --available-height", "theme": "the popup's surface: background, border, radius, shadow and padding"},
       {"slot": "select-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-selected]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "select-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "structural": "draw the check"}
+      {"slot": "select-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "theme": "draw the check"}
     ]},
     {"name": "Dialog", "slots": [
       {"slot": "dialog-trigger", "in": "markup", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "dialog-close", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "dialog-backdrop", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "position: fixed; inset: 0"},
-      {"slot": "dialog-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-presentation=\"sheet\"]", "kind": "css"}], "structural": "position: fixed; inset: 0; margin: auto; height: fit-content; a width; scroll when taller than the viewport"},
-      {"slot": "dialog-title", "in": "live", "states": [], "structural": "zero the <h2> margin"},
-      {"slot": "dialog-description", "in": "live", "states": [], "structural": "zero the <p> margin"}
+      {"slot": "dialog-backdrop", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structure": "position: fixed; inset: 0", "theme": "the dimming"},
+      {"slot": "dialog-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-presentation=\"sheet\"]", "kind": "css"}], "structure": "fixed and centred (inset: 0; margin: auto; height: fit-content), width --theme-dialog-width, max-height --theme-dialog-max-height, scrolling when taller than that", "theme": "the dialog's surface"},
+      {"slot": "dialog-title", "in": "live", "states": [], "structure": "zero the <h2> margin"},
+      {"slot": "dialog-description", "in": "live", "states": [], "structure": "zero the <p> margin"}
     ]},
     {"name": "Alert Dialog", "slots": [
       {"slot": "alert-dialog-trigger", "in": "markup", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "alert-dialog-close", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "alert-dialog-backdrop", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "position: fixed; inset: 0"},
-      {"slot": "alert-dialog-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "position: fixed; inset: 0; margin: auto; height: fit-content; a width; scroll when taller than the viewport"},
-      {"slot": "alert-dialog-title", "in": "live", "states": [], "structural": "zero the <h2> margin"},
-      {"slot": "alert-dialog-description", "in": "live", "states": [], "structural": "zero the <p> margin"}
+      {"slot": "alert-dialog-backdrop", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structure": "position: fixed; inset: 0", "theme": "the dimming"},
+      {"slot": "alert-dialog-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structure": "fixed and centred (inset: 0; margin: auto; height: fit-content), width --theme-dialog-width, max-height --theme-dialog-max-height, scrolling when taller than that", "theme": "the dialog's surface"},
+      {"slot": "alert-dialog-title", "in": "live", "states": [], "structure": "zero the <h2> margin"},
+      {"slot": "alert-dialog-description", "in": "live", "states": [], "structure": "zero the <p> margin"}
     ]},
     {"name": "Checkbox", "slots": [
-      {"slot": "checkbox", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "a fixed size"},
-      {"slot": "checkbox-indicator", "in": "markup", "states": [{"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "draw the check, and the minus when indeterminate"},
+      {"slot": "checkbox", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "theme": "a fixed size"},
+      {"slot": "checkbox-indicator", "in": "markup", "states": [{"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "theme": "draw the check, and the minus when indeterminate"},
       {"slot": "checkbox-input", "in": "markup", "states": [], "hidden": true}
     ]},
     {"name": "Switch", "slots": [
-      {"slot": "switch", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "a fixed size"},
-      {"slot": "switch-thumb", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": ":dir(rtl)", "kind": "css"}], "structural": "a fixed size; slide across on [data-checked], reversed in right-to-left text"},
+      {"slot": "switch", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "theme": "a fixed size"},
+      {"slot": "switch-thumb", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": ":dir(rtl)", "kind": "css"}], "theme": "a fixed size; slide across on [data-checked], reversed under :dir(rtl)"},
       {"slot": "switch-input", "in": "markup", "states": [], "hidden": true}
     ]},
     {"name": "Segmented Control", "slots": [
-      {"slot": "segmented-control", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}], "structural": "the items in a row"},
+      {"slot": "segmented-control", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}], "structure": "the positioning context the indicator sits in (position: relative; isolation: isolate)", "theme": "the items in a row"},
       {"slot": "segmented-control-item", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": ":hover", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}]},
-      {"slot": "segmented-control-indicator", "in": "markup", "states": [], "structural": "position and size from --segmented-control-indicator-left, -top, -width and -height"},
+      {"slot": "segmented-control-indicator", "in": "markup", "states": [], "structure": "absolute, behind the items, placed and sized from --segmented-control-indicator-left, -top, -width and -height", "theme": "its look"},
       {"slot": "segmented-control-input", "in": "markup", "states": [], "hidden": true}
     ]},
     {"name": "Radio", "slots": [
       {"slot": "radio-group", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "radio", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "a fixed size"},
-      {"slot": "radio-indicator", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "draw the dot"},
+      {"slot": "radio", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-unchecked]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "theme": "a fixed size"},
+      {"slot": "radio-indicator", "in": "markup", "states": [{"state": "[data-checked]", "kind": "markup"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "theme": "draw the dot"},
       {"slot": "radio-input", "in": "markup", "states": [], "hidden": true}
     ]},
     {"name": "Tabs", "slots": [
       {"slot": "tabs", "in": "markup", "states": []},
-      {"slot": "tabs-list", "in": "markup", "states": [], "structural": "the tabs in a row"},
+      {"slot": "tabs-list", "in": "markup", "states": [], "structure": "the positioning context the indicator sits in (position: relative; isolation: isolate)", "theme": "the tabs in a row"},
       {"slot": "tabs-tab", "in": "markup", "states": [{"state": "[data-selected]", "kind": "markup"}, {"state": ":hover", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "tabs-indicator", "in": "markup", "states": [], "structural": "position and size from --active-tab-left, -top, -width and -height"},
+      {"slot": "tabs-indicator", "in": "markup", "states": [], "structure": "absolute, behind the tabs, placed and sized from --active-tab-left, -top, -width and -height", "theme": "its look"},
       {"slot": "tabs-panel", "in": "markup", "states": [{"state": ":focus-visible", "kind": "css"}]}
     ]},
     {"name": "Menu", "slots": [
       {"slot": "menu-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}]},
-      {"slot": "menu-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
+      {"slot": "menu-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structure": "reset the browser's [popover] border, padding and background; scroll when the list is long; min-width from --anchor-width, max-height from --available-height", "theme": "the popup's surface: background, border, radius, shadow and padding"},
       {"slot": "menu-group", "in": "live", "states": [], "optional": true},
       {"slot": "menu-radio-group", "in": "live", "states": [], "optional": true},
       {"slot": "menu-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "menu-checkbox-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-checked]", "kind": "markup"}]},
       {"slot": "menu-radio-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-checked]", "kind": "markup"}]},
-      {"slot": "menu-item-indicator", "in": "live", "states": [], "structural": "draw the check"},
+      {"slot": "menu-item-indicator", "in": "live", "states": [], "theme": "draw the check"},
       {"slot": "menu-group-label", "in": "live", "states": []},
       {"slot": "menu-separator", "in": "live", "states": []}
     ]},
     {"name": "Popover", "slots": [
       {"slot": "popover-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}]},
-      {"slot": "popover-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}]},
-      {"slot": "popover-title", "in": "live", "states": [], "structural": "zero the <h2> margin"},
-      {"slot": "popover-description", "in": "live", "states": [], "structural": "zero the <p> margin"},
+      {"slot": "popover-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "theme": "the popup's surface; UI SDK resets the browser's [popover] chrome itself"},
+      {"slot": "popover-title", "in": "live", "states": [], "structure": "zero the <h2> margin"},
+      {"slot": "popover-description", "in": "live", "states": [], "structure": "zero the <p> margin"},
       {"slot": "popover-close", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}]}
     ]},
     {"name": "Tooltip", "slots": [
       {"slot": "tooltip-trigger", "in": "markup", "states": []},
-      {"slot": "tooltip-content", "in": "markup", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}]}
+      {"slot": "tooltip-content", "in": "markup", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "theme": "the tooltip's surface; UI SDK resets the browser's [popover] chrome itself"}
     ]},
     {"name": "Toast", "slots": [
-      {"slot": "toast-region", "in": "markup", "states": [], "structural": "a width; height from --toast-front-height, growing to --toast-stack-height while [data-expanded]"},
+      {"slot": "toast-region", "in": "markup", "states": [], "structure": "width --theme-toast-width; height from --toast-front-height, growing while [data-expanded] to --toast-stack-height plus a --theme-toast-gap between toasts", "theme": "any margin from the screen's edge; UI SDK places the region"},
       {"slot": "toast-list", "in": "markup", "states": []},
-      {"slot": "toast", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-expanded]", "kind": "css"}], "structural": "absolute in the region; height from --toast-height; moved by --toast-offset while expanded"},
-      {"slot": "toast-title", "in": "live", "states": []},
-      {"slot": "toast-description", "in": "live", "states": []},
+      {"slot": "toast", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-expanded]", "kind": "css"}], "structure": "absolute in the region, stacked by --toast-index, clipped to the front toast's height while collapsed, height --toast-height and moved by --toast-offset and --theme-toast-gap while expanded, following a swipe", "theme": "its surface; optionally set --theme-toast-y to move a collapsed toast (a peek behind the front one) or an entering one"},
+      {"slot": "toast-title", "in": "live", "states": [], "structure": "zero the margin"},
+      {"slot": "toast-description", "in": "live", "states": [], "structure": "zero the margin"},
       {"slot": "toast-action", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}]},
-      {"slot": "toast-close", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}], "structural": "draw the X"}
+      {"slot": "toast-close", "in": "live", "states": [{"state": ":hover", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}], "theme": "draw the X"}
     ]},
     {"name": "Combobox", "slots": [
       {"slot": "combobox-label", "in": "markup", "states": [{"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "combobox-input", "in": "markup", "states": [{"state": "::placeholder", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-open]", "kind": "css"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}]},
-      {"slot": "combobox-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}], "structural": "draw the chevron"},
+      {"slot": "combobox-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}], "theme": "draw the chevron"},
       {"slot": "combobox-form-input", "in": "markup", "states": [], "hidden": true},
-      {"slot": "combobox-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
+      {"slot": "combobox-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structure": "reset the browser's [popover] border, padding and background; scroll when the list is long; min-width from --anchor-width, max-height from --available-height", "theme": "the popup's surface: background, border, radius, shadow and padding"},
       {"slot": "combobox-list", "in": "live", "states": [], "optional": true},
       {"slot": "combobox-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-selected]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
-      {"slot": "combobox-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "structural": "draw the check"},
+      {"slot": "combobox-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "theme": "draw the check"},
       {"slot": "combobox-empty", "in": "live", "states": []}
     ]},
     {"name": "Meter", "slots": [
       {"slot": "meter", "in": "markup", "states": []},
       {"slot": "meter-label", "in": "markup", "states": []},
       {"slot": "meter-value", "in": "markup", "states": []},
-      {"slot": "meter-track", "in": "markup", "states": [], "structural": "a height and a width"},
-      {"slot": "meter-indicator", "in": "markup", "states": [], "structural": "the track's height; its width is set inline"}
+      {"slot": "meter-track", "in": "markup", "states": [], "structure": "the positioning context, clipping the fill, 0.5rem high", "theme": "its width, any other height, and the well's look"},
+      {"slot": "meter-indicator", "in": "markup", "states": [], "structure": "absolute, the track's full height; UI SDK sets its width inline", "theme": "the fill's look, which must read against the track"}
     ]},
     {"name": "Progress", "slots": [
       {"slot": "progress", "in": "markup", "states": [{"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-complete]", "kind": "markup"}]},
       {"slot": "progress-label", "in": "markup", "states": []},
       {"slot": "progress-value", "in": "markup", "states": []},
-      {"slot": "progress-track", "in": "markup", "states": [], "structural": "a height and a width"},
-      {"slot": "progress-indicator", "in": "markup", "states": [{"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-complete]", "kind": "markup"}], "structural": "the track's height; its width is set inline, and it has none while indeterminate"}
+      {"slot": "progress-track", "in": "markup", "states": [], "structure": "the positioning context, clipping the fill, 0.5rem high", "theme": "its width, any other height, and the well's look"},
+      {"slot": "progress-indicator", "in": "markup", "states": [{"state": "[data-indeterminate]", "kind": "markup"}, {"state": "[data-complete]", "kind": "markup"}], "structure": "absolute, the track's full height; UI SDK sets its width inline, and none while [data-indeterminate]", "theme": "the fill's look, which must read against the track, and a width and motion while [data-indeterminate]"}
     ]},
     {"name": "Separator", "slots": [
-      {"slot": "separator", "in": "markup", "states": [{"state": "[data-orientation=\"horizontal\"]", "kind": "markup"}, {"state": "[data-orientation=\"vertical\"]", "kind": "markup"}], "structural": "a height when horizontal, a width when vertical"}
+      {"slot": "separator", "in": "markup", "states": [{"state": "[data-orientation=\"horizontal\"]", "kind": "markup"}, {"state": "[data-orientation=\"vertical\"]", "kind": "markup"}], "structure": "1px high when horizontal, 1px wide and stretched when vertical", "theme": "its colour"}
     ]}
   ]
 }

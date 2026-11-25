@@ -1,15 +1,16 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 
 import pytest
 
-pytestmark = pytest.mark.skipif(shutil.which("bun") is None, reason="bun is not installed")
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 THEMES = os.path.join(ROOT, "skills/ultrawrite/themes")
 LIB = os.path.join(THEMES, "lib.ts")
+STRUCTURE = os.path.join(THEMES, "structure.css")
+needs_bun = pytest.mark.skipif(shutil.which("bun") is None, reason="bun is not installed")
 
 NAMES = ["Button", "Field", "Input", "Textarea", "Number Input", "Select", "Dialog",
          "Alert Dialog", "Checkbox", "Switch", "Segmented Control", "Radio", "Tabs", "Menu",
@@ -53,9 +54,32 @@ def test_every_state_says_its_kind_and_every_slot_where_it_renders():
                 assert st["kind"] in ("markup", "css"), (s["slot"], st)
 
 
-def test_the_contract_states_the_layer_order_and_four_facts():
-    assert contract()["layers"] == ["ui-sdk", "structure"]
-    assert len(contract()["facts"]) == 4
+def test_the_contract_states_the_layer_order_and_its_facts():
+    c = contract()
+    assert c["layers"] == ["ui-sdk", "structure"]
+    facts = " ".join(c["facts"])
+    for words in ["@layer ui-sdk, structure, <name>;", "plain identifier", "README.md", "LICENSE",
+                  "font.css", "kit.tsx", "top-level", "before any comment", "data-variant",
+                  "never places it", "draws every icon"]:
+        assert words in facts, words
+
+
+def test_every_slot_says_who_does_its_duties_in_words():
+    for c in contract()["components"]:
+        for s in c["slots"]:
+            assert "structural" not in s, s["slot"]
+            assert set(s) <= {"slot", "in", "states", "structure", "theme", "hidden", "optional"}, s["slot"]
+            for k in ("structure", "theme"):
+                assert k not in s or (isinstance(s[k], str) and s[k].strip()), (s["slot"], k)
+
+
+def test_the_contract_lists_every_variable_structure_reads():
+    css = open(STRUCTURE).read()
+    used = set(re.findall(r"--theme-[\w-]+", css))
+    listed = contract()["variables"]
+    assert {v["name"] for v in listed} == used
+    for v in listed:
+        assert set(v) == {"name", "default", "purpose"} and v["default"] and v["purpose"], v
 
 
 def test_the_pin_is_written_once():
@@ -67,6 +91,7 @@ def test_the_pin_is_written_once():
     assert deps["react"] == deps["react-dom"] == "19.1.0"
 
 
+@needs_bun
 def test_resolve_theme_strips_a_trailing_slash(tmp_path):
     d = tmp_path / "mine"
     d.mkdir()
