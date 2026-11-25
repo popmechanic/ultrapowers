@@ -9,7 +9,7 @@ pytestmark = pytest.mark.skipif(shutil.which("bun") is None, reason="bun is not 
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOL = os.path.join(ROOT, "skills/ultrawrite/stories/product.ts")
-TODO = os.path.join(ROOT, "skills/ultrawrite/catalog/todo/product.json")
+TODO = os.path.join(ROOT, "evals/fixtures/product/product.json")
 
 
 def run(*args):
@@ -31,8 +31,16 @@ def test_nothing_built_is_a_first_build():
     assert run("route", TODO) == (0, "ROUTE fact: first build, one author")
 
 
-def test_a_stories_built_plan_routes_later_plans_to_stories(tmp_path):
-    assert run("route", record(tmp_path, status="built", plan="p1")) == (0, "ROUTE fact: later plan, stories")
+def test_a_stories_built_app_routes_later_plans_to_claims(tmp_path):
+    path = record(tmp_path, status="built", plan="p1", by="stories")
+    assert run("check", path)[0] == 0
+    assert run("route", path) == (0, "ROUTE fact: later plan, claims")
+
+
+def test_render_refuses_a_bundle(tmp_path):
+    code, _ = run("render", TODO, "--bundle", str(tmp_path), "--out", str(tmp_path / "p.md"))
+    assert code != 0
+    assert not (tmp_path / "p.md").exists()
 
 
 def test_built_marks_the_next_plan_and_routes_later_plans_to_claims(tmp_path):

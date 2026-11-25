@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import {readFileSync, writeFileSync} from 'node:fs';
-import {join} from 'node:path';
 import {parseArgs} from 'node:util';
-import {KINDS, type Page} from './bundle';
+
+const KINDS = ['behaviour', 'preserve'];
 
 export type Assumption = {text: string; about: 'product' | 'technical'; state: 'decided' | 'open'; by: 'author' | 'operator'};
 export type Concept = {id: string; purpose: string; part: string; status: 'keep' | 'defer' | 'cut'; relies_on: string[]};
@@ -151,11 +151,7 @@ export function checkProduct(p: unknown): string[] {
 }
 
 export function routeOf(p: Product): string {
-  const built = p.subprojects.filter((s) => s.status === 'built');
-  if (built.some((s) => s.by === 'solo')) return 'ROUTE fact: later plan, claims';
-  if (built.length) return 'ROUTE fact: later plan, stories';
-  const cell = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).first_build;
-  return cell?.route === 'stories' ? 'ROUTE fact: first build, stories' : 'ROUTE fact: first build, one author';
+  return p.subprojects.some((s) => s.status === 'built') ? 'ROUTE fact: later plan, claims' : 'ROUTE fact: first build, one author';
 }
 
 export function markBuilt(p: Product, plan: string): string | null {
@@ -179,7 +175,7 @@ export function saveProduct(path: string, p: Product): void {
 
 const SAY = {keep: 'First version', defer: 'Later', cut: 'Not doing'} as const;
 
-export function renderProduct(p: Product, page?: Page & {subproject?: string}): string {
+export function renderProduct(p: Product): string {
   const out = [`# ${p.intent.name}`, '', p.intent.summary.join(' '), '',
     `**Who uses it:** ${p.intent.audience.join(', ')}`, '', '**It succeeds when:**',
     ...p.intent.success.map((s) => `- ${s}`), '', '## What it does', ''];
@@ -194,16 +190,9 @@ export function renderProduct(p: Product, page?: Page & {subproject?: string}): 
   if (p.subprojects.length) {
     out.push('## The order we build it in', '');
     p.subprojects.forEach((s, i) => {
-      const mark = page?.subproject === s.id ? ' **(this plan)**' : s.status === 'built' ? ' (built)' : '';
+      const mark = s.status === 'built' ? ' (built)' : '';
       out.push(`${i + 1}. **${s.title}**${mark}: ${s.reason}`);
     });
-    out.push('');
-  }
-  if (page?.subproject) {
-    const s = p.subprojects.find((x) => x.id === page.subproject);
-    out.push(`## This plan: ${s?.title ?? page.title}`, '', '### What you will be able to do', '');
-    page.stories.forEach((st, i) => out.push(`${i + 1}. ${st.sentence}`));
-    if (page.links?.length) out.push('', '### What goes together', '', ...page.links.map((l) => `- ${l.sentence}`));
     out.push('');
   }
   return out.join('\n');
@@ -227,7 +216,7 @@ export function recordPicks(p: Product): number {
 function main(argv: string[]): number {
   const [cmd, file, ...rest] = argv;
   if (!file || !['check', 'render', 'record', 'route', 'built'].includes(cmd)) {
-    console.error('usage: product.ts check <product.json> | render <product.json> [--bundle <dir>] --out <product.md> | record <product.json> | route <product.json> | built <product.json> --plan <id>');
+    console.error('usage: product.ts check <product.json> | render <product.json> --out <product.md> | record <product.json> | route <product.json> | built <product.json> --plan <id>');
     return 2;
   }
   let p: Product;
@@ -267,13 +256,17 @@ function main(argv: string[]): number {
     saveProduct(file, p);
     return 0;
   }
-  const {values: v} = parseArgs({args: rest, options: {bundle: {type: 'string'}, out: {type: 'string'}}});
+  let v: {out?: string};
+  try {
+    v = parseArgs({args: rest, options: {out: {type: 'string'}}}).values;
+  } catch {
+    v = {};
+  }
   if (!v.out) {
-    console.error('usage: product.ts render <product.json> [--bundle <dir>] --out <product.md>');
+    console.error('usage: product.ts render <product.json> --out <product.md>');
     return 2;
   }
-  const page = v.bundle ? JSON.parse(readFileSync(join(v.bundle, 'page.json'), 'utf8')) : undefined;
-  writeFileSync(v.out, renderProduct(p, page));
+  writeFileSync(v.out, renderProduct(p));
   console.log(`RENDERED ${v.out}`);
   return 0;
 }

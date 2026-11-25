@@ -1,11 +1,8 @@
 {
   "version": "authoring-policy-v1",
-  "first_build": {"route": "solo", "rollback": "stories", "experiment": true, "n": 1,
-                  "window": "the Potluck comparison of 2026-11-24, one run per arm (popmechanic-potluck-3 run-1 one author, run-2 three builders): the operator judged the one-author app entirely superior in a blind smoke test (#1606)"},
-  "flag_at": {"two_apps": 0.5, "one_need_below": 0.5, "same_people_below": 0.5,
-              "story_passes_near_miss": 0.5, "branches_on_text": 0.5, "same_need": 0.5,
+  "flag_at": {"two_apps": 0.5, "one_need_below": 0.5,
               "assumption_surprises": 0.5, "essential_below": 0.5, "serves_summary_below": 0.5,
-              "stands_alone_below": 0.5, "link_expected_below": 0.5,
+              "stands_alone_below": 0.5,
               "gate_fact": 0.5, "gate_caught_below": 0.5, "gate_contradiction": 0.5, "gate_pinned": 0.5,
               "routing_risk": 0.5, "about_product": 0.5},
   "gate_reading": {"caught": "caught_v2", "own_files": "dropped", "n": 23,

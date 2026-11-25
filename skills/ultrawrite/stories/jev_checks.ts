@@ -2,16 +2,14 @@
 import {existsSync, readFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {parseArgs} from 'node:util';
-import {loadBundle, type Bundle} from './bundle';
-import {runChecks} from './checks';
 import {checkProduct, saveProduct, type Product} from './product';
 import {at, defaultAsk, loadQuestions, noul, type Ask} from './jev';
 
 const SETS = loadQuestions() as Record<string, any>;
-const GROUPS = ['ambiguity', 'coherence', 'near_miss', 'content_branch', 'redundancy', 'surprise', 'map', 'decompose', 'gate', 'link', 'about_product'];
+const GROUPS = ['ambiguity', 'coherence', 'surprise', 'map', 'decompose', 'about_product'];
 const Q = Object.fromEntries(GROUPS.map((g) => [g, SETS[`authoring_${g}`].questions]));
 const POLICY = JSON.parse(readFileSync(join(import.meta.dir, 'policy.json'), 'utf8')).flag_at;
-const STAGES = ['understanding', 'map', 'decompose', 'bundle'];
+const STAGES = ['understanding', 'map', 'decompose'];
 
 type Out = {flags: string[]; doubts: string[]; reads: number};
 
@@ -99,64 +97,12 @@ async function decompose(p: Product, ask: Ask, out: Out) {
   }
 }
 
-async function bundleStage(b: Bundle, ask: Ask, out: Out, askText?: string) {
-  const one = reader(ask, out, b.product, 'bundle');
-  const stories = new Map(b.page.stories.map((s) => [s.id, s]));
-  const summary = (b.product?.intent.summary ?? b.page.summary ?? []).join(' ');
-  const audience = b.product?.intent.audience.join(', ') ?? 'the people who use the app';
-  const coherence = b.cards.map((c) => one(
-    {piece: {name: c.piece, purpose: c.purpose, actions: c.actions.map((a) => ({name: a.name, description: a.description}))}},
-    Q.coherence, `piece ${c.piece} coherence`, c.piece));
-  const nearMiss = b.cards.map((c) => {
-    const story = stories.get(c.main_story ?? '');
-    return one({piece: {name: c.piece, purpose: c.purpose}, story: story?.sentence ?? '',
-      story_steps: (story?.steps ?? []).map((st) => ({tool: st.tool, args: st.args, see: st.see ?? []})), near_miss: c.near_miss ?? ''},
-    Q.near_miss, `piece ${c.piece} near-miss`, c.piece);
-  });
-  const actions = b.cards.flatMap((c) => c.actions.map((a) => ({piece: c.piece, name: a.name, description: a.description})));
-  const storeRead = actions.length ? one({store_module: b.storeText.slice(0, 20000), actions},
-    Object.fromEntries(actions.map((_, i) => [`branches_on_text_${i}`, at(Q.content_branch.branches_on_text, {i})])),
-    `store for ${actions.length} action(s)`, 'store') : null;
-  const pairs: [number, number][] = [];
-  for (let i = 0; i < b.cards.length; i++) for (let j = i + 1; j < b.cards.length; j++) pairs.push([i, j]);
-  const pairRead = pairs.length ? one({pieces: b.cards.map((c) => ({name: c.piece, purpose: c.purpose}))},
-    Object.fromEntries(pairs.map(([i, j]) => [`same_need_${i}_${j}`, at(Q.redundancy.same_need, {i, j})])),
-    `${pairs.length} pair(s) of pieces`, 'pieces') : null;
-  const links = (b.page.links ?? []).map((l) => one({audience, summary, link: l.sentence}, Q.link, `link ${l.id}`, l.id));
-  if (askText && askText.trim() !== (b.product?.understanding.ask ?? '').trim()) await ambiguity(one, askText, out);
-  const storeGet = storeRead && (await storeRead());
-  let n = 0;
-  for (const [k, c] of b.cards.entries()) {
-    const get = await coherence[k]();
-    let v = get('one_need', (x) => x < POLICY.one_need_below);
-    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its purpose reads as more than one need (one_need ${f2(v)})`);
-    v = get('same_people', (x) => x < POLICY.same_people_below);
-    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: its actions serve different people (same_people ${f2(v)})`);
-    v = (await nearMiss[k]())('story_passes_near_miss', (x) => x >= POLICY.story_passes_near_miss);
-    if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: main story ${c.main_story} does not rule out its near-miss (story_passes_near_miss ${f2(v)})`);
-    for (const act of c.actions) {
-      v = storeGet!(`branches_on_text_${n++}`, (x) => x >= POLICY.branches_on_text, 'branches_on_text', act.name);
-      if (v !== null) out.flags.push(`JEV flag: piece ${c.piece}: ${act.name} may act on the wording of typed text (branches_on_text ${f2(v)})`);
-    }
-  }
-  const pairGet = pairRead && (await pairRead());
-  for (const [i, j] of pairs) {
-    const [x, y] = [b.cards[i], b.cards[j]];
-    const v = pairGet!(`same_need_${i}_${j}`, (z) => z >= POLICY.same_need, 'same_need', `${x.piece}+${y.piece}`);
-    if (v !== null) out.flags.push(`JEV flag: pieces ${x.piece} and ${y.piece} serve the same need (same_need ${f2(v)})`);
-  }
-  for (const [k, l] of (b.page.links ?? []).entries()) {
-    const v = (await links[k]())('link_expected', (x) => x < POLICY.link_expected_below);
-    if (v !== null) out.doubts.push(`DOUBT: ask whether this should happen: ${l.sentence}`);
-  }
-}
-
 async function main(): Promise<number> {
   const {values, positionals} = parseArgs({allowPositionals: true,
-    options: {'ask-file': {type: 'string'}, stage: {type: 'string'}}});
-  const stage = values.stage ?? 'bundle';
+    options: {stage: {type: 'string'}}});
+  const stage = values.stage ?? '';
   if (positionals.length !== 1 || !STAGES.includes(stage)) {
-    console.error('usage: jev_checks.ts <bundle> [--ask-file <ask.txt>] [--stage understanding|map|decompose|bundle]');
+    console.error('usage: jev_checks.ts <dir holding product.json> --stage understanding|map|decompose');
     return 2;
   }
   const dir = positionals[0];
@@ -171,26 +117,14 @@ async function main(): Promise<number> {
       console.log(`${errs.length} problem(s) in product.json`);
       return 2;
     }
-  } else if (stage !== 'bundle') {
+  } else {
     console.log(`jev_checks: stage ${stage} reads ${productPath}, which does not exist; write the product record first`);
     return 2;
   }
   try {
     if (stage === 'understanding') await understanding(product!, defaultAsk, out);
     else if (stage === 'map') await map(product!, defaultAsk, out);
-    else if (stage === 'decompose') await decompose(product!, defaultAsk, out);
-    else {
-      const b = loadBundle(dir);
-      const {refusals, facts} = runChecks(b);
-      for (const l of [...refusals, ...facts]) console.log(l);
-      if (refusals.length) {
-        console.log(`${refusals.length} refusal(s); fix them before Jev reads the draft`);
-        return 2;
-      }
-      const askText = values['ask-file'] ? readFileSync(values['ask-file'], 'utf8') : undefined;
-      await bundleStage(b, defaultAsk, out, askText);
-      product = b.product;
-    }
+    else await decompose(product!, defaultAsk, out);
   } catch (e) {
     console.log(`jev_checks: ${(e as Error).message}`);
     return 2;
