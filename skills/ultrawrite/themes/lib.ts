@@ -2,7 +2,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { basename, join, resolve, sep } from 'node:path';
 
 export type State = { state: string; kind: 'markup' | 'css' };
-export type Slot = { slot: string; in: 'markup' | 'live'; states: State[]; structural?: string };
+export type Slot = { slot: string; in: 'markup' | 'live'; states: State[]; structural?: string; hidden?: boolean };
 export type Component = { name: string; slots: Slot[] };
 export type Contract = { version: 'theme-contract-v1'; sdk: string; layers: string[]; facts: string[]; components: Component[] };
 

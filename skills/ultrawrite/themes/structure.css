@@ -1,0 +1,59 @@
+@layer ui-sdk, structure;
+
+@layer structure {
+  :where([data-slot], [data-slot]::before, [data-slot]::after) {
+    box-sizing: border-box;
+  }
+
+  :where([data-slot="dialog-content"], [data-slot="alert-dialog-content"]) {
+    position: fixed;
+    inset: 0;
+    margin: auto;
+    width: var(--theme-dialog-width, min(28rem, calc(100vw - 2rem)));
+    height: fit-content;
+    max-height: var(--theme-dialog-max-height, calc(100dvh - 2rem));
+    overflow-y: auto;
+  }
+
+  :where([data-slot="dialog-backdrop"], [data-slot="alert-dialog-backdrop"]) {
+    position: fixed;
+    inset: 0;
+  }
+
+  :where([data-slot="select-content"], [data-slot="menu-content"], [data-slot="combobox-content"]) {
+    border: 0;
+    padding: 0;
+    background: none;
+    overflow-y: auto;
+    min-width: var(--anchor-width);
+    max-height: var(--available-height);
+  }
+
+  :where(
+    [data-slot="dialog-title"],
+    [data-slot="dialog-description"],
+    [data-slot="alert-dialog-title"],
+    [data-slot="alert-dialog-description"],
+    [data-slot="popover-title"],
+    [data-slot="popover-description"],
+    [data-slot="field-description"],
+    [data-slot="field-error"],
+    [data-slot="toast-title"],
+    [data-slot="toast-description"]
+  ) {
+    margin: 0;
+  }
+
+  :where([data-slot="field"]) {
+    display: flex;
+    flex-direction: column;
+    gap: var(--theme-field-gap, 0.375rem);
+    min-width: 0;
+  }
+
+  :where(label, [data-slot="label"]):has(> :is([data-slot="checkbox"], [data-slot="switch"], [data-slot="radio"])) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--theme-label-gap, 0.5rem);
+  }
+}
