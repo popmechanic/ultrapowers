@@ -84,7 +84,7 @@ evidence repository.
       `git apply` accepts; applying the rows' patches in order onto base rebuilds each tested
       snapshot, and no file text is copied whole. The patches total at most 524288 bytes; a row
       whose patch did not fit carries `patch: null` and `truncated: true`.
-    - `red-checks.json` — every check red at the last tested snapshot: its task, clause, command,
+    - `red-checks.json` — every check red at the last tested snapshot: its task, command,
       exit and output tail, at most 65536 bytes.
     - `past.json` — the previous run's items the builders were briefed with: `{run, items}`, at
       most 10 items of at most 300 characters each. Written only when the previous run on the

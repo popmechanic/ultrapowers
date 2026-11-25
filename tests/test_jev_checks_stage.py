@@ -33,3 +33,9 @@ def test_the_bundle_stage_is_gone(tmp_path):
     code, _, err = run(record_dir(tmp_path), "--stage", "bundle")
     assert code == 2
     assert err.startswith("usage:")
+
+
+def test_the_retired_ask_file_flag_prints_usage(tmp_path):
+    code, _, err = run(record_dir(tmp_path), "--ask-file", "x", "--stage", "map")
+    assert code == 2
+    assert err.startswith("usage:")

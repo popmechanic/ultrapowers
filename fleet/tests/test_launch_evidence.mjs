@@ -199,8 +199,8 @@ const assertRefusedClean = (d, leg, needles) => {
     refreshCredential: () => ({ ok: true }),
     readUsage: () => ({ unread: true, reason: 'sim' })
   })
-  assert.equal(result.width, 4, `(f) [M6] width 4, got ${result.width}`)
-  assert.equal(result.memory, '6GB', `(f) [M6] a plan's grammar never raises the box: 2 + width GB, got ${result.memory}`)
+  assert.equal(result.width, 4, `(f2) [M6] width 4, got ${result.width}`)
+  assert.equal(result.memory, '6GB', `(f2) [M6] a plan's grammar never raises the box: 2 + width GB, got ${result.memory}`)
   ws.cleanup()
 }
 

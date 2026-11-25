@@ -98,8 +98,14 @@ async function decompose(p: Product, ask: Ask, out: Out) {
 }
 
 async function main(): Promise<number> {
-  const {values, positionals} = parseArgs({allowPositionals: true,
-    options: {stage: {type: 'string'}}});
+  let values: {stage?: string} = {};
+  let positionals: string[] = [];
+  try {
+    ({values, positionals} = parseArgs({allowPositionals: true,
+      options: {stage: {type: 'string'}}}));
+  } catch {
+    positionals = [];
+  }
   const stage = values.stage ?? '';
   if (positionals.length !== 1 || !STAGES.includes(stage)) {
     console.error('usage: jev_checks.ts <dir holding product.json> --stage understanding|map|decompose');

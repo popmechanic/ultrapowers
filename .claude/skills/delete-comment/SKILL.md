@@ -21,7 +21,7 @@ leaves, and what it knew goes somewhere better.
 | `keep` | load-bearing text, or undecided | leave; the ratchet holds it |
 
 Pragmas (`#!`, `@ts-`, `eslint-`, `noqa`, `type: ignore`, inline `@type` casts) are not comments
-to the lint and are never touched. Vendored code (`vendor/`, `pouf/`) and fixtures are out of
+to the lint and are never touched. Vendored code (`vendor/`) and fixtures are out of
 scope.
 
 ## Steps

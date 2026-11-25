@@ -13,7 +13,7 @@ is confirmed. Spec:
 The operator decides what the app does, who uses it and how it looks. Before any
 question or page reaches them, check it against that sentence; if it fails, you
 decide it and record it. They never see: kind, concept, sub-project,
-probe, waiver, ids, statuses or Jev scores. Every question is one AskUserQuestion
+probe, ids, statuses or Jev scores. Every question is one AskUserQuestion
 with (Recommended) and *Please explain*, and opens by naming what it touches
 ("This is about the radio app…").
 
