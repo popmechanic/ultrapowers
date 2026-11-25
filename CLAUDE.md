@@ -21,7 +21,7 @@ made before the retirement.
 ## Commands
 
 ```bash
-python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs)
+python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs; the theme tests skip until bun install in skills/ultrawrite/themes)
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, width, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
@@ -55,7 +55,7 @@ the engine's exit code is the merge decision.
   `stories/` (the TinyApp authoring tools in TypeScript: the product record, the ask, Jev's
   enrichment checks and the proof gate's Jev read, and the walk of a built app), `themes/`
   (a first build's UI: `contract.json`, `structure.css` under every theme, the Pouf theme,
-  and `sample.ts`, `check.ts`, `place.ts`; `bun install` there once, UI SDK pinned by the
+  `README.md` for a theme's author, and `sample.ts`, `check.ts`, `place.ts`; `bun install` there once, UI SDK pinned by the
   `ui` cell of `stories/policy.json`).
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.

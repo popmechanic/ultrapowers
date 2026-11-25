@@ -41,8 +41,8 @@ the UI paragraph, and no place step.
    where `<theme>` is the record's `intent.theme`, else the `ui` cell's `theme`. It refuses a
    theme that fails `check.ts` and writes nothing then; otherwise it writes
    `client/src/theme/` (`structure.css`, `<name>/` and `theme.json`) and prints the
-   `- Modify:` lines after `PLACED <name>`, the folder name the rest of this recipe calls
-   `<name>`. Keep those lines for step 5's Files.
+   ``- Modify: `<path>` `` lines after `PLACED <name>`, the folder name the rest of this
+   recipe calls `<name>`. Keep those lines, backticks and all, for step 5's Files.
 5. **Write the plan**, claims-v1, one task (the task shape is `SKILL.md`'s):
    - **Claim:** the operator's do-and-see sentence, confirmed with the three-sentence summary
      in one touch.
@@ -161,7 +161,8 @@ A report for the operator, never a gate: nothing in a run, a check or the launch
 3. Write `<plan-stem>.walk.json` beside the plan: `app`, `run` (the evidence tag),
    `answers`, a map from each question id to `answer` (`yes`, `partly` or `no`) and one
    sentence of `evidence` naming what you saw, the first console result as `script_bytes`
-   (a number) and the clipboard, pasted as it is, as `slots` (a list).
+   (a whole number) and the clipboard, pasted as it is, as `slots` (a list; `render` sorts it
+   and drops repeats).
 4. `bun <plugin-root>/skills/ultrawrite/stories/walk.ts render <plan-stem>.walk.json` refuses
    an incomplete walk and prints the block, with the script size and the slots. Then, from
    the app's checkout,
