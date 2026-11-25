@@ -538,6 +538,7 @@ def parse_plan_text(text):
 
 
 def parse_plan_full(text):
+    plan_grammar(text)
     header_lines, task_bodies = _split_plan(text)
     bootstrap_cmd, publish = _parse_header(header_lines)
     checks = _parse_checks(header_lines)

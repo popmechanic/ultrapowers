@@ -17,3 +17,25 @@ def test_the_parser_refuses_a_stories_plan_by_name(tmp_path):
         "grammar: stories-v1 was retired on 2026-11-25; "
         "write the plan as claims-v1")
     assert "Traceback" not in r.stderr
+
+
+def test_the_probe_runner_refuses_a_stories_plan_by_name(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(RETIRED)
+    r = subprocess.run([sys.executable, str(ROOT / "skills/ultrapowers/scripts/run_probes.py"),
+                        str(plan)], capture_output=True, text=True)
+    assert r.returncode != 0
+    assert ("grammar: stories-v1 was retired on 2026-11-25; "
+            "write the plan as claims-v1") in r.stdout + r.stderr
+    assert "Traceback" not in r.stderr
+
+
+def test_the_routing_reader_refuses_a_stories_plan_by_name(tmp_path):
+    plan = tmp_path / "plan.md"
+    plan.write_text(RETIRED)
+    r = subprocess.run([sys.executable, str(ROOT / "skills/ultrawrite/scripts/routing.py"),
+                        str(plan)], capture_output=True, text=True)
+    assert r.returncode != 0
+    assert ("grammar: stories-v1 was retired on 2026-11-25; "
+            "write the plan as claims-v1") in r.stdout + r.stderr
+    assert "Traceback" not in r.stderr

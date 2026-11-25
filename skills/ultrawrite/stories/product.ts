@@ -259,7 +259,8 @@ function main(argv: string[]): number {
   let v: {out?: string};
   try {
     v = parseArgs({args: rest, options: {out: {type: 'string'}}}).values;
-  } catch {
+  } catch (e) {
+    console.error((e as Error).message);
     v = {};
   }
   if (!v.out) {
