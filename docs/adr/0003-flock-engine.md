@@ -104,8 +104,8 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Landing empty
 
-- **land** — When a run settles green but its snapshot is identical to the base, land in factory/flock/engine.mjs commits nothing. For stories-v1 every proof already held there, so the run is done and exits 0 (shopping-list run-1, 2026-10-01: the approved screen and the bundle's store already made the app); factory/boot.sh reads HEAD = BASE with exit 0 as that case.
-- **land** — A claims-v1 run whose settled green snapshot equals the base exits 1 from land in factory/flock/engine.mjs, because a claims-v1 probe already green at the base proves nothing (#1522); only stories-v1 treats it as done.
+- ~~**land** — When a run settles green but its snapshot is identical to the base, land in factory/flock/engine.mjs commits nothing. For stories-v1 every proof already held there, so the run is done and exits 0 (shopping-list run-1, 2026-10-01: the approved screen and the bundle's store already made the app); factory/boot.sh reads HEAD = BASE with exit 0 as that case.~~ Struck 2026-11-25, superseded by 0018.
+- **land** — A run whose settled green snapshot equals the base exits 1 from land in factory/flock/engine.mjs and commits nothing, because a claims-v1 probe already green at the base proves nothing (#1522).
 
 ## Loose ends
 
@@ -133,7 +133,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Checker preflight
 
-- **W.stories preflight** — Before any builder spends tokens, a stories-v1 run in factory/flock/engine.mjs runs the first fact on the starting app. Exit 0 or 1 is a green or red finding and expected; anything else (bun or the checker missing, read as 124/127, a crash, a timeout) is the sandbox, not the app, and ends the run a draft before it starts.
+- ~~**W.stories preflight** — Before any builder spends tokens, a stories-v1 run in factory/flock/engine.mjs runs the first fact on the starting app. Exit 0 or 1 is a green or red finding and expected; anything else (bun or the checker missing, read as 124/127, a crash, a timeout) is the sandbox, not the app, and ends the run a draft before it starts.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Compact record
 
@@ -157,7 +157,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Flock check timeout
 
-- **factory/flock/plan.mjs storiesWorkload checkTimeoutMs** — A stories-v1 run's whole-run check runs every earlier story as a guard, one checker call each, measured at about 4.9 s per call (radio-station run-5, n=1 run, 2026-09-29). The check's time limit therefore grows with the guard count: 120 s plus 15 s per guard.
+- ~~**factory/flock/plan.mjs storiesWorkload checkTimeoutMs** — A stories-v1 run's whole-run check runs every earlier story as a guard, one checker call each, measured at about 4.9 s per call (radio-station run-5, n=1 run, 2026-09-29). The check's time limit therefore grows with the guard count: 120 s plus 15 s per guard.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Flock engine shape
 
@@ -181,7 +181,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Flock task facts
 
-- **factory/flock/plan.mjs storiesWorkload / screensArgv** — A stories-v1 task whose Files include its piece's json-render screen (client/src/pieces/<piece>.json or client/src/screen.json) also runs the browser-free screens check (factory/stack/tinyapp/screens.ts). The engine pairs facts[i] with clauses[i] by position, so the screens check is appended last and carries no clause; the engine labels a red screens fact `(screens)` in place of a missing clause.
+- ~~**factory/flock/plan.mjs storiesWorkload / screensArgv** — A stories-v1 task whose Files include its piece's json-render screen (client/src/pieces/<piece>.json or client/src/screen.json) also runs the browser-free screens check (factory/stack/tinyapp/screens.ts). The engine pairs facts[i] with clauses[i] by position, so the screens check is appended last and carries no clause; the engine labels a red screens fact `(screens)` in place of a missing clause.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Past run brief
 

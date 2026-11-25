@@ -1,5 +1,7 @@
 # 0014. The TinyApp template
 
+Superseded by 0018 (2026-11-25).
+
 Status: accepted (2026-11-21)  
 Governs: `skills/ultrawrite/stories/tinyapp-template/client/src/app.tsx`, `skills/ultrawrite/stories/tinyapp-template/client/src/public.ts`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/catalog.ts`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/example.ts`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/functions.ts`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/pieces.ts`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/registry.tsx`, `skills/ultrawrite/stories/tinyapp-template/client/src/screens/state.ts`, `skills/ultrawrite/stories/tinyapp-template/scripts/build-client.ts`, `skills/ultrawrite/stories/tinyapp-template/scripts/pack-client.ts`, `skills/ultrawrite/stories/tinyapp-template/server/index.ts`, `tests/test_tinyapp_template.py`, `skills/ultrawrite/stories/tinyapp-template/server/client-files.ts`
 

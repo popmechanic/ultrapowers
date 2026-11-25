@@ -7,14 +7,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const CASE = process.argv[2]
-if (!['bundle', 'map', 'decompose', 'understanding'].includes(CASE)) {
-  console.log('usage: jev_calls_probe.mjs bundle|map|decompose|understanding'); process.exit(2)
+if (!['map', 'decompose', 'understanding'].includes(CASE)) {
+  console.log('usage: jev_calls_probe.mjs map|decompose|understanding'); process.exit(2)
 }
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'jev-calls-'))
-const COPY = path.join(tmp, 'todo-tags')
+const COPY = path.join(tmp, 'product')
 const HOME = path.join(tmp, 'home')
-fs.cpSync(path.join(REPO, 'skills/ultrawrite/catalog/todo-tags'), COPY, { recursive: true })
+fs.cpSync(path.join(REPO, 'evals/fixtures/product'), COPY, { recursive: true })
 fs.mkdirSync(HOME)
 fs.writeFileSync(path.join(HOME, 'typesafe.env'), 'TYPESAFE_API_KEY=fake-key\n')
 
@@ -53,30 +53,10 @@ const states = requests.map((r) => r.body.state || {})
 const nq = (r) => Object.keys(r.body.questions || {}).length
 const has = (k) => requests.filter((r) => r.body.state && Object.hasOwn(r.body.state, k))
 
-if (CASE === 'bundle') {
-  const store = has('store_module')
-  if (store.length !== 1) fail(`${store.length} request(s) carry store_module, expected 1`)
-  if (nq(store[0]) !== 5) fail(`the store request asks ${nq(store[0])} question(s), expected 5`)
-  const pieces = has('pieces')
-  if (pieces.length !== 1) fail(`${pieces.length} request(s) carry pieces, expected 1`)
-  if (!Array.isArray(pieces[0].body.state.pieces) || pieces[0].body.state.pieces.length !== 2) fail('the pieces request does not carry 2 entries')
-  const near = has('near_miss')
-  if (!near.length) fail('no request carries near_miss')
-  for (const r of near) {
-    if (!Array.isArray(r.body.state.story_steps) || !r.body.state.story_steps.length) fail('a near_miss request carries no story_steps')
-  }
-  const link = has('link')
-  if (!link.length) fail('no request carries link')
-  for (const r of link) {
-    if (typeof r.body.state.summary !== 'string' || !r.body.state.summary) fail('a link request carries no summary string')
-  }
-  for (const r of requests) {
-    if (r.headers.authorization !== 'Bearer fake-key') fail(`a request carries authorization ${JSON.stringify(r.headers.authorization)}`)
-  }
-  const product = JSON.parse(fs.readFileSync(path.join(COPY, 'product.json'), 'utf8'))
-  const n = (product.readings || []).filter((x) => x.question === 'branches_on_text').length
-  if (n !== 5) fail(`product.json holds ${n} branches_on_text reading(s), expected 5`)
-} else if (CASE === 'map') {
+for (const r of requests) {
+  if (r.headers.authorization !== 'Bearer fake-key') fail(`a request carries authorization ${JSON.stringify(r.headers.authorization)}`)
+}
+if (CASE === 'map') {
   for (const s of states) {
     if (!Array.isArray(s.other_purposes) || s.other_purposes.length !== 1) fail(`a map request carries other_purposes ${JSON.stringify(s.other_purposes)}`)
     if (Object.hasOwn(s, 'purpose')) fail('a map request carries a top-level purpose')

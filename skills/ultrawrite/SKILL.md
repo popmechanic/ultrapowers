@@ -18,7 +18,7 @@ hooks:
 A task says **what will be true** and **how that is examined**. It never says how to do
 the work: there is no Steps slot, so procedure has nowhere to live. The implementer
 derives it from a contract and its probes, against real code the plan never saw.
-A TinyApp target is planned differently: see Story planning below.
+A TinyApp target starts with enrichment: see TinyApp targets below.
 
 **Announce at start:** "I'm using ultrawrite to author this plan."
 
@@ -72,13 +72,13 @@ without the line closes nothing. The line is free prose to `plan_check.py` — n
 it, so a number scraped from `**Goal:**` is never used: the Goal line cites decisions as
 well as tickets, which is why scraping it was rejected.
 
-## Story planning — TinyApp targets (`stories-v1`)
+## TinyApp targets
 
-A TinyApp plan is compiled from a story bundle, not written. **Before any TinyApp plan,
-read `references/stories.md` in full and follow it step by step**, after the enrichment in
-`references/enrich.md`. Its commands use `<plugin-root>`, which is `${CLAUDE_PLUGIN_ROOT}`.
-A new app's first build is the exception: when `product.ts route` says so, it is one
-claims-v1 task for one author, written as `references/first-build.md` says.
+Every TinyApp plan starts with the enrichment in `references/enrich.md`. Then
+`product.ts route` decides the rest: a new app's first build (`first build, one author`) is
+one claims-v1 task for one author, written as `references/first-build.md` says; a later plan
+(`later plan, claims`) is an ordinary claims-v1 plan on the existing app. Their commands use
+`<plugin-root>`, which is `${CLAUDE_PLUGIN_ROOT}`.
 
 ## Task shape — pinned to what the parser actually reads
 

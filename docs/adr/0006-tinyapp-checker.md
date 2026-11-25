@@ -1,5 +1,7 @@
 # 0006. The TinyApp checker
 
+Superseded by 0018 (2026-11-25).
+
 Status: accepted (2026-11-21)  
 Governs: `evals/readings/checker_kit.py`, `factory/stack/tinyapp/browser.ts`, `factory/stack/tinyapp/celld.ts`, `factory/stack/tinyapp/check.ts`, `factory/stack/tinyapp/probe.ts`, `factory/stack/tinyapp/screens.ts`
 

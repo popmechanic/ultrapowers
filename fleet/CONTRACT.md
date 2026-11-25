@@ -84,8 +84,8 @@ evidence repository.
       `git apply` accepts; applying the rows' patches in order onto base rebuilds each tested
       snapshot, and no file text is copied whole. The patches total at most 524288 bytes; a row
       whose patch did not fit carries `patch: null` and `truncated: true`.
-    - `red-checks.json` — every check red at the last tested snapshot: its task, clause, command,
-      exit, output tail and the checker's own result when there is one, at most 65536 bytes.
+    - `red-checks.json` — every check red at the last tested snapshot: its task, command,
+      exit and output tail, at most 65536 bytes.
     - `past.json` — the previous run's items the builders were briefed with: `{run, items}`, at
       most 10 items of at most 300 characters each. Written only when the previous run on the
       target did not end `done`. The previous run is the one with the highest
@@ -211,8 +211,7 @@ evidence repository.
   the one payload the sizing reads), takes
   W — the parse's `width`, the most tasks the plan can have ready at once —
   and asks for `min(cpu, 2 + ceil(W / 3))` vCPU and
-  `min(memory, 2 + W)GB` (`max(6, ceil(2 + 1.25 × W))`GB for a stories-v1 plan, whose
-  checker runs Chromium; #1087), where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
+  `min(memory, 2 + W)GB`, where the `cpu`/`memory` pair of `~/.ultrapowers/fleet.json` (or
   `FLEET_DEFAULTS`) is the CEILING; `--cpu` or `--memory` on the launch line wins outright, and
   either number is refused when `billing plan --json` cannot seat it.
   The verb carries NO `--integration`, and the launcher refuses its own line

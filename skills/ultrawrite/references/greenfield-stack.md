@@ -102,43 +102,33 @@ Object's socket echoes and closes cleanly on the same build (macOS arm64,
 2026-09-17). A plan that wants facets keeps them behind a flag, and only for
 verbs that are not sockets.
 
-A **stories-v1** plan does not scaffold with the generator: its launch base is
-`skills/ultrawrite/stories/tinyapp-template/` written by `stories/scaffold.ts`
-(a React 19 page, one `AppStore` Durable Object with the SQLite persister). It
-is still a TinyApp; builders write each piece's screen as a json-render spec and
-no page code, as `## Screens` says (operator, 2026-10-01).
-
-A new app's **first build** uses neither the generator nor the template: it starts from an
-empty repository and one author writes the page as ordinary React, as
-`first-build.md` says (operator, 2026-11-24, an `experiment`: n=1 run per arm,
-popmechanic-potluck-3 run-1 and run-2; rollback the `first_build.route` policy cell). Its
+A new app's **first build** does not use the generator: it starts from an empty repository
+and one author writes the page as ordinary React, as `first-build.md` says (operator,
+2026-11-24, an `experiment`: n=1 run per arm, popmechanic-potluck-3 run-1 and run-2;
+rollback a checkout of `dd53be04`, `docs/adr/0018-stories-route-retired.md`). Its
 check is `bun install && bunx tsc --noEmit`, since nothing is installed before the builder
 opens and no test is written.
 
 **Who is signed in** comes from Cloudflare Access, never from the app: the
-template's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
-for (null when Access did not run), the page keeps it as the hook's `who`, and
-every store tool gets it as `run`'s third argument, so a role rule lives in the
-signed store module. A story step's `"as": "<email>" | null` sets who is signed
-in from that step on; the checker sets the hook's `who` the same way. The rule
-runs in the page, so it stops the screens and the page's tools, not a client
-that writes the store directly; a server-side lock is its own piece (radio rs4,
-2026-09-28).
+app's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
+for (null when Access did not run), the page keeps it, and every store write is
+given it, so a role rule lives in the app's rules module. The rule runs in the
+page, so it stops the page's own writes, not a client that writes the store
+directly; a server-side lock is its own task (radio rs4, 2026-09-28).
 
 ## Going online
 
 A TinyApp goes online as **one Cloudflare Worker** that serves both the page and
-the store (operator, 2026-09-29). The template's `scripts/pack-client.ts`
-(`bun run pack`) builds `client/index.html` and writes every output file into
-`server/client-files.ts`, and `bun run deploy` runs `pack-client` before
-`wrangler deploy`, so there is no second host for the page. The Worker answers
+the store (operator, 2026-09-29). The app's `bun run pack` builds the page and
+writes every output file into the Worker's own source, and `bun run deploy` packs
+before `wrangler deploy`, so there is no second host for the page. The Worker answers
 these routes and no others:
 
-- `/` — the page, public and read-only: it mounts only the pieces whose spec
-  says `"public": true` and re-reads `/public.json` every 5 s instead of syncing.
+- `/` — the page, public and read-only: it shows only what a visitor may see and
+  re-reads `/public.json` every 5 s instead of syncing.
 - `/public.json` — the saved snapshot of the store, read-only.
 - `/health` — `200` when the Worker is up; what a plan's Verify line reads.
-- `/staff` — the same page with every piece, its WebMCP tools and the sync.
+- `/staff` — the same page with everything on it, its write controls and the sync.
 - `/sync` — the store's `WsSynchronizer` socket.
 - `/me` — who is signed in, as `## The store, and the TinyApp shape` says.
 
@@ -146,73 +136,20 @@ these routes and no others:
 `/public.json` and `/health` public. The operator sets that Access application
 in the Cloudflare dashboard; no plan does, and no task writes Access config.
 
-A plan marks a piece a visitor may see with `"public": true` in its spec,
-`client/src/pieces/<piece>.json`; a piece without it is mounted only under
-`/staff`. A public piece renders on both, and hides its staff controls with
-`visible` on `/session/staff` — so the public page is the same screens with the
-write controls gone, not a second app.
+The public page is the same page with the write controls gone, not a second app.
 
 A plan that publishes carries two header lines, verbatim:
 
 - **Publish:** bun install && bun run deploy
 - **Verify:** curl -fsS "$ULTRA_PUBLISH_URL/health"
 
-and sets the Worker's `name` in `server/wrangler.jsonc`. The Cloudflare account
-goes in the app's `deploy` script, never in the config: `"deploy": "bun
-scripts/pack-client.ts && CLOUDFLARE_ACCOUNT_ID=<id> bunx wrangler deploy --config
-server/wrangler.jsonc"`. celld refuses `account_id` and `workers_dev` in the config
-it starts from, and the story checker runs every step under celld (radio-station,
+and sets the Worker's `name` in the app's wrangler config. The Cloudflare account
+goes in the app's `deploy` script, never in the config: `"deploy": "bun run pack &&
+CLOUDFLARE_ACCOUNT_ID=<id> bunx wrangler deploy --config <wrangler config>"`. celld
+refuses `account_id` and `workers_dev` in the config it starts from (radio-station,
 2026-09-29: `celld deploy does not support these config keys: account_id,
 workers_dev`). The Publish line runs once the plan's tasks have merged; the Verify
 line exits 0 only when the deployed Worker answers `/health`.
-
-## Screens
-
-A TinyApp's screens are built from **1st-Pouf**, not hand-written page code
-(operator, 2026-10-01; this replaces the 2026-09-16 Tailwind + shadcn styling
-experiment).
-
-- **The spec.** The page is one screen, `client/src/screen.json`, a
-  json-render spec — `{root, elements, public?}`, where `public` lists the
-  element ids whose subtrees a signed-out visitor sees on `/` — over the catalog in
-  `client/src/screens/catalog.ts`: 1st-Pouf's pieces with Zod props, and the
-  store-bound `ActionButton`, `ActionCheckbox`, `DraftInput` and `DraftNumber`. The page is
-  React 19; a builder writes specs, and a part only when a story needs one.
-- **The parts list grows in the open (operator, 2026-11-20, #1491).** Each part has a
-  line in `client/src/screens/draws.json` naming the accessibility role it draws and
-  the props that name it (`ActionButton`: a button, by `name` then `label`). A story
-  that expects to see a role no part draws is a `PARTS fact:` while planning, and
-  compile tells that piece's task to add the part; any builder whose screen needs one
-  adds it: its props in `catalog.ts`, a wrapper over a 1st-Pouf component in
-  `registry.tsx`, its `draws.json` line, and any label function in `functions.ts`. The
-  PR lists the run's new parts under `### New screen parts`; one worth keeping is copied
-  into the template by hand, so the next app starts with it. Before this, the parts were
-  closed to a run, and potluck-2 run-1 (2026-11-20) ended a draft on a status label no
-  part could draw.
-- **Where the spec starts.** The screen starts as the whole page the operator
-  picked while planning (`<bundle>/screens/screen.json`, which compile copies
-  in), else the scaffold's empty column; every piece's builder edits it from there.
-- **The reads.** A row shows its own cells; a row naming another table's row (a tag's
-  `todoId`) reads that row's text through the `$computed` functions `lookup` and `format` in
-  `client/src/screens/functions.ts`, which every renderer is given (#1524).
-- **The writes.** Saved data changes only through card actions, run from an
-  element's `action` prop. `$bindState` and json-render's built-in state
-  actions write only under `/draft/` (a built-in with no `statePath` writes its own
-  default, so it names one), and no screen binds `$bindItem`, which writes the row.
-- **The look.** 1st-Pouf (moji2002/1st-pouf, MIT, Copyright (c) 2026 Mojtaba
-  Beheshti) is vendored byte-identical at `client/src/pouf/` from commit
-  `1993b1ec9f2d93b6753929d1f70c89f8ef89b13e`, pinned by
-  `client/src/pouf.vendor.json`, and never patched; its `blocks/` and `demos/`
-  folders, which nothing imports, are left out (the manifest's `omitted`). Tailwind v4 compiles its
-  theme at build through `bun-plugin-tailwind` in `scripts/build-client.ts`,
-  which `bun run pack` and the story checker both run. The font is
-  `@fontsource-variable/nunito`, bundled, so no font host is dialled.
-- **The check.** `bun factory/stack/tinyapp/screens.ts (--plan <plan.md> |
-  --bundle <dir>) [--copy <app>] [--piece <piece>]` checks every spec without a
-  browser (exit 0 pass, 1 finding, 2 could not run); the engine runs it as one
-  more fact of each piece's task, so a missing or miswired button is caught
-  there. It also checks the parts: every part has its `draws.json` line, and
-  `client/src/pouf/` is byte-for-byte its pin.
 
 ## The engine boundary
 
@@ -225,5 +162,5 @@ down, never how a run executes.
 Any greenfield plan run on the fleet must start from a tree whose run-wide
 `Check:` is **green at BASE**: a Check already red before any work is a red no
 task owns (authoring-gotchas.md). So a greenfield plan driven through
-`/ultrapowers` starts from a seeded, passing skeleton — for a TinyApp,
-`skills/ultrawrite/stories/scaffold.ts`.
+`/ultrapowers` starts from a seeded, passing skeleton; for a TinyApp's first build,
+`first-build.md` says what the base holds and what its check is.

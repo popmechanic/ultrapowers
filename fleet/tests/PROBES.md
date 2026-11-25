@@ -40,7 +40,7 @@ four before any change to `skills/ultrawrite/stories/gate_jev.ts`,
     for c in record agreement; do node fleet/tests/gate_jev_probe.mjs $c; done
     for c in pinned-high pinned-low no-base; do node fleet/tests/gate_jev_base_probe.mjs $c; done
     for c in own-files own-only rollback typo; do node fleet/tests/gate_jev_reading_probe.mjs $c; done
-    for c in bundle map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
+    for c in map decompose understanding; do node fleet/tests/jev_calls_probe.mjs $c; done
 
 - `gate_jev_probe.mjs` — `record`: one request asking the five clause keys,
   the verdict record left alone and one `gate_rounds` entry written;

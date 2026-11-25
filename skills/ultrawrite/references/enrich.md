@@ -3,32 +3,33 @@
 # Enrich the ask
 
 Every TinyApp plan starts here. The operator's words are coarse on purpose; this
-stage turns them into a product record (`<bundle>/product.json`) the rest of the
-pipeline verifies. No story is drafted until stage 4 is confirmed. Spec:
+stage turns them into a product record (`<dir>/product.json`, `<dir>` being the folder
+the plan is authored in) that the plan is written from. No plan is drafted until stage 4
+is confirmed. Spec:
 `docs/superpowers/specs/2026-09-28-enrich-the-ask-design.md`.
 
 ## The one rule for the operator
 
 The operator decides what the app does, who uses it and how it looks. Before any
 question or page reaches them, check it against that sentence; if it fails, you
-decide it and record it. They never see: kind, concept, sub-project, card, piece,
-probe, waiver, ids, statuses or Jev scores. Every question is one AskUserQuestion
+decide it and record it. They never see: kind, concept, sub-project,
+probe, ids, statuses or Jev scores. Every question is one AskUserQuestion
 with (Recommended) and *Please explain*, and opens by naming what it touches
 ("This is about the radio app…").
 
 ## A later plan for the same product
 
-If the target app has `stories/product.json`, copy it into the bundle (an app first built by
-one author carries it too, and `product.ts route` then answers `later plan, claims`) and start at
+If the target app has `stories/product.json`, copy it into `<dir>` (an app first built by
+one author carries it, and `product.ts route` then answers `later plan, claims`) and start at
 stage 4: the map and the understanding are already signed. Add to the map only
-what the new ask brings (stage 3 for those concepts alone). Pass the new ask with
-`--ask-file` to the bundle stage; Jev reads its sentences because they are new.
-The ask file holds only the operator's own words for this plan: never notes, earlier picks or the author's lines, because Jev reads every sentence in it.
+what the new ask brings (stage 3 for those concepts alone). The plan itself is an ordinary
+claims-v1 plan (`references/first-build.md`, "A later plan").
 
-**A change to something already built** (touch 2 said "delete should ask first"):
-name the built plan that owns it as `page.json`'s `subproject`, and carry cards
-only for the concepts the change touches. Compile keeps the plan's earlier plan
-ids in its `history`.
+**A change to something already built** (the smoke said "delete should ask first"):
+at stage 4 mark the built plan that owns it `next`. `product.ts built` marks the `next`
+plan built under the new plan id and moves its earlier plan id into `history`; with no
+`next` plan it marks the last plan built by one author, and with neither it refuses with
+`no plan is next`.
 
 ## 1. Intent
 
@@ -44,7 +45,7 @@ are unsure of. Mark each assumption `about: product` (what it does, who uses it,
 how it looks) or `about: technical`; decide the technical ones yourself
 (`state: decided, by: author`). Run:
 
-    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage understanding
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <dir> --stage understanding
 
 Show the operator what they said and the product assumptions only, in one
 question: "Here is what I understood — correct anything, or say yes." Every
@@ -60,7 +61,7 @@ does or sees ("Listeners see what is on air right now"), under a plain heading
 (`part`). Never list plumbing (sync, storage, login mechanics); a product decision
 such as "who may edit a show page" is listed, in those words. Run:
 
-    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage map
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <dir> --stage map
 
 Split any concept flagged as two needs. Then
 ask which belong in the **First version**: one multi-select question per heading,
@@ -71,40 +72,30 @@ most First-version recommendations first. Jev's `recommend` lines set
 ("Back office, 1 of 2"). Unticked
 ones become **Later** unless flagged "may not serve what the product is for", which
 you offer as **Not doing**. Record the answer as `status` (keep / defer / cut) and
-run `bun <plugin-root>/skills/ultrawrite/stories/product.ts record <bundle>/product.json`.
+run `bun <plugin-root>/skills/ultrawrite/stories/product.ts record <dir>/product.json`.
 
 ## 4. The order we build it in
 
 Group the First version into plans, each usable and judgeable on its own, in the
 order they must be built, each with a plain `reason`. Run:
 
-    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <bundle> --stage decompose
+    bun <plugin-root>/skills/ultrawrite/stories/jev_checks.ts <dir> --stage decompose
 
 Regroup any plan flagged "may not be usable on its own". Ask the operator in one
 question: "We build X first, then Y, then Z, because …; start with X?" Mark the
 chosen one `next`, the rest `planned`. `bun <plugin-root>/skills/ultrawrite/stories/product.ts
-check <bundle>/product.json` must print `PRODUCT OK`.
+check <dir>/product.json` must print `PRODUCT OK`.
 
 ## How it looks
 
 "How it looks", the third of the operator's three decisions, is never asked in
-words during enrichment. It is answered on the real screen: Jev arranges each
-piece's screen into versions (`bun <plugin-root>/skills/ultrawrite/stories/arrange.ts`), the
-operator picks one in the Browser pane and pins notes on it in Comment mode
-(`references/stories.md`, the See it step).
+words during enrichment. It is judged on the real app, at the walk and the operator's
+smoke (`references/first-build.md`, "The walk").
 
 ## Then
 
-A new app's first build stops here: `product.ts route` on the record prints
-`ROUTE fact: first build, one author`, and the plan is written as
+Enrichment ends at the build order. A new app's first build follows: `product.ts route` on
+the record prints `ROUTE fact: first build, one author`, and the plan is written as
 `skills/ultrawrite/references/first-build.md` says, from the understanding and the rules
-alone. No cards, stories or screens follow, so `How it looks` is asked at the smoke, on
-the real app.
-
-Otherwise draft the bundle for the `next` plan only (`references/stories.md`, steps 4–8):
-cards carry `concept` (or `concepts`, one per map line a screen covers),
-`page.json` carries `subproject`, and the coverage rule decides which stories
-must exist. The operator sees the real screen before the
-sign question. What the operator signs is
-`bun <plugin-root>/skills/ultrawrite/stories/product.ts render <bundle>/product.json --bundle <bundle> --out <bundle>/product.md`,
-shown in the sign question with the approved screen.
+alone. When it prints `ROUTE fact: later plan, claims`, the `next` plan is an ordinary
+claims-v1 plan on the existing app (`first-build.md`, "A later plan").

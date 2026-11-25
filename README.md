@@ -161,21 +161,12 @@ leaves behind survives it except the evidence it pushed.
 None of this is magic, exactly. It's all premised on a handful of older, sturdy ideas —
 dependency graphs, clean clones, content merges, disposable sandboxes — each doing one small job well.
 
-## TinyApp screens
+## How a TinyApp looks
 
-A TinyApp's screens come out in the look of [1st-Pouf](https://github.com/moji2002/1st-pouf), a
-small open-source component set by Mojtaba Beheshti, used here under its MIT licence and kept
-exactly as its author published it. Nobody writes page code for a screen: each one is a short
-description of which pieces it shows and which action each button runs. The run checks every
-screen itself and catches a button that is missing or wired to the wrong action before you see it.
-
-## See it before you sign
-
-While a TinyApp is being planned, you see its real screen in Claude's Browser pane, not a
-mock-up. Jev offers two or three arrangements of it, built only from what the app can actually
-do, and you pick the one you like. Then you pin notes on any part of it in Comment mode — click
-a button or drag a box around an area and say what should change — and watch each story play
-out on it. What you sign is the screen the fleet starts building from.
+A new TinyApp's first version is written by one author, who designs the whole page as ordinary
+code; later changes to it are ordinary plans. How it looks is not asked while planning: you judge
+it on the real app, after Claude has walked it once as a first-time user and before you try it
+yourself.
 
 ## Get started
 
@@ -265,19 +256,14 @@ and [`skills/ultrapowers/references/`](skills/ultrapowers/references/).
 
 ## The intent tray
 
-When Claude has a screen ready for you to look at, it opens the intent tray beside the chat (its
-tool for that is `show_screen`). The tray is where you tell Claude what you want from that screen:
-pick a version, add notes, and send them all back with one press.
+The intent tray sits beside the chat. It is where you collect notes on what you want changed and
+send them all back to Claude with one press.
 
 A band above the prompt carries three buttons: **Add note** (`n`), **Send** (`s`) and **Clear**
 (`c`). Click a button, or press its letter once the band has focus (`ctrl+x tab`). The band shows
-only while the tray holds a screen, pick or note, and Send and Clear empty it. In the pane the
-note box takes typing, so click a version, Send or Clear there. `/tray` opens the
-tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands everything —
-your pick first, then each note in the order you added it — to Claude as one message.
-
-A preview page can leave picks and notes for the tray too: it writes them, one JSON object per
-line, to `.ultrapowers/feedback.jsonl` in the session's working directory, and the tray takes them
-in as if you had made them.
+only while the tray holds a note, and Send and Clear empty it. In the pane the
+note box takes typing, so click Send or Clear there. `/tray` opens the
+tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands every
+note, in the order you added it, to Claude as one message.
 
 The tray needs Claude Code `2.1.287` or later.

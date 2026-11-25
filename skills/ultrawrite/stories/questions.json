@@ -3,7 +3,7 @@
   "about": "The Jev question sets the authoring tools beside this file ask while a plan is written (ask.ts, gate_jev.ts, jev_checks.ts, through jev.ts's loadQuestions), moved here from factory/questions.json so each file has one reader (#1449). Each set says when it is asked (`when`), who reads it (`reader`), how to turn it off (`rollback`), the keys its reader sends (`state`), where it came from (`provenance`) and whether its readings are calibrated; thresholds live in policy.json beside this file. A question is literal: it names no policy word, and nothing here decides anything. A Jev `null` routes that reading to the set's stated rollback, never to a guess. A reworded question is a different question: its readings mean something else.",
   "sets": {
     "authoring_ambiguity": {
-      "when": "At jev_checks.ts --stage understanding and --stage bundle",
+      "when": "At jev_checks.ts --stage understanding",
       "reader": "skills/ultrawrite/stories/jev_checks.ts",
       "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
       "state": [
@@ -27,7 +27,7 @@
       }
     },
     "authoring_coherence": {
-      "when": "At jev_checks.ts --stage bundle; one_need also at --stage map",
+      "when": "At jev_checks.ts --stage map",
       "reader": "skills/ultrawrite/stories/jev_checks.ts",
       "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
       "state": [
@@ -42,84 +42,6 @@
           "criteria": {
             "true": "One need",
             "false": "Two or more needs joined together"
-          }
-        },
-        "same_people": {
-          "type": "noul",
-          "instructions": "Do all of `piece.actions` serve the same people for the same reason?",
-          "criteria": {
-            "true": "The same people, the same reason",
-            "false": "Some actions serve different people or a different reason"
-          }
-        }
-      }
-    },
-    "authoring_near_miss": {
-      "when": "At jev_checks.ts --stage bundle",
-      "reader": "skills/ultrawrite/stories/jev_checks.ts",
-      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
-      "state": [
-        "piece",
-        "story",
-        "story_steps",
-        "near_miss"
-      ],
-      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
-      "calibrated": false,
-      "questions": {
-        "story_passes_near_miss": {
-          "type": "noul",
-          "instructions": {
-            "question": "If the app behaved like `near_miss` instead, would `story` still come out exactly as it is written?",
-            "context": "`story` is the main story that should prove `piece` works; `story_steps` are its steps, each an action called (`tool`, `args`) and what the person then sees (`see`). `near_miss` is a look-alike that must fail it."
-          },
-          "criteria": {
-            "true": "The story cannot tell the two apart",
-            "false": "The story would come out differently for the look-alike"
-          }
-        }
-      }
-    },
-    "authoring_content_branch": {
-      "when": "At jev_checks.ts --stage bundle",
-      "reader": "skills/ultrawrite/stories/jev_checks.ts",
-      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
-      "state": [
-        "store_module",
-        "actions"
-      ],
-      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
-      "calibrated": false,
-      "questions": {
-        "branches_on_text": {
-          "type": "noul",
-          "instructions": {
-            "question": "Does the action named `actions[i].name` in `store_module` behave differently depending on the wording of text the person typed, beyond whether it is empty?",
-            "context": "`store_module` is the app's whole store code; `actions` are its actions, each with the piece it belongs to and its description. An action that treats a title ending in '?' differently is the kind of thing asked about."
-          },
-          "criteria": {
-            "true": "It inspects the words and changes behaviour",
-            "false": "It stores or compares the text without reading its wording"
-          }
-        }
-      }
-    },
-    "authoring_redundancy": {
-      "when": "At jev_checks.ts --stage bundle",
-      "reader": "skills/ultrawrite/stories/jev_checks.ts",
-      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
-      "state": [
-        "pieces"
-      ],
-      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
-      "calibrated": false,
-      "questions": {
-        "same_need": {
-          "type": "noul",
-          "instructions": "Do `pieces[i].purpose` and `pieces[j].purpose` describe the same need?",
-          "criteria": {
-            "true": "The same need, twice",
-            "false": "Different needs"
           }
         }
       }
@@ -282,31 +204,6 @@
         }
       }
     },
-    "authoring_link": {
-      "when": "At jev_checks.ts --stage bundle",
-      "reader": "skills/ultrawrite/stories/jev_checks.ts",
-      "rollback": "skills/ultrawrite/stories/policy.json flag_at: flags off, the author's own read decides",
-      "state": [
-        "audience",
-        "summary",
-        "link"
-      ],
-      "provenance": "moved here from factory/questions.json (authoring-questions-v2, #1449), 2026-09-29",
-      "calibrated": false,
-      "questions": {
-        "link_expected": {
-          "type": "noul",
-          "instructions": {
-            "question": "Would `audience` expect this to happen: `link`?",
-            "context": "`summary` says what the product is, why it exists and how it is used. `link` is a rule the app follows when something is deleted or changed."
-          },
-          "criteria": {
-            "true": "They would expect it",
-            "false": "It would surprise or upset them"
-          }
-        }
-      }
-    },
     "authoring_routing": {
       "when": "At plan_check.py --base, once per plan, for its ROUTING fact line",
       "reader": "skills/ultrapowers/scripts/plan_check.py",
@@ -375,26 +272,6 @@
             "false": "It is a technical choice the person using the app would never see"
           }
         }
-      }
-    },
-    "authoring_arrange": {
-      "when": "At arrange.ts, once per version of the whole page while a plan is drafted, before any story names a control, and once per reshape from the notes pinned on the approved page",
-      "reader": "skills/ultrawrite/stories/arrange.ts",
-      "rollback": "flag off: the builder writes the page from the cards alone",
-      "state": [
-        "user_request",
-        "context",
-        "capabilities",
-        "already_built",
-        "selected_elements"
-      ],
-      "provenance": "operator decisions 2026-10-01; whole page 2026-11-20",
-      "calibrated": false,
-      "guidance": "Use only the controls and text offered; every control offered belongs on the page.",
-      "versions": {
-        "A": "One calm column for the whole page: what it is at the top, then the controls, then the lists.",
-        "B": "The whole page grouped in cards, each text box side by side with its button.",
-        "C": "The lists first and largest on the page, the controls that add to them below."
       }
     },
     "smoke_walk": {

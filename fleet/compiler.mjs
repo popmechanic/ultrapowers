@@ -7,10 +7,7 @@ import { ENGINE_REPO, Refusal, git, output } from './lobby.mjs'
 const CHECKER_REL = 'skills/ultrapowers/scripts/plan_check.py'
 const PARSER_REL = 'skills/ultrapowers/scripts/plan_parse.py'
 
-const STORIES_RELS = ['stories_parse.py', 'stories_check.py', 'probe_block.py']
-  .map((f) => `skills/ultrapowers/scripts/${f}`)
-
-export async function fetchCompilerAt ({ exec, engine, pluginRoot, stories = false }) {
+export async function fetchCompilerAt ({ exec, engine, pluginRoot }) {
   const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'fleet-compiler-'))
   const fetchOne = async (rel) => {
     const tried = []
@@ -42,7 +39,6 @@ export async function fetchCompilerAt ({ exec, engine, pluginRoot, stories = fal
   try {
     const parser = await fetchOne(PARSER_REL)
     const checker = await fetchOne(CHECKER_REL)
-    if (stories) for (const rel of STORIES_RELS) await fetchOne(rel)
     return { dir, scriptPath: checker.filePath, parserPath: parser.filePath }
   } catch (error) {
     await fsp.rm(dir, { recursive: true, force: true })

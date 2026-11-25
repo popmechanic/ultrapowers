@@ -74,14 +74,6 @@ function section (text, name) {
 }
 
 {
-  const out = body([{ kind: 'parts:new', snap: 'abc', parts: [{ part: 'Status', role: 'status', name: ['label'] }, { part: 'Meter', role: null, name: [] }] }])
-  const np = section(out, '### New screen parts')
-  assert.ok(np.includes('- Status: draws a status, named by label'), `(c3) a part with a role: ${np}`)
-  assert.ok(np.includes('- Meter: draws no role a story can see'), `(c3) a part with none: ${np}`)
-  assert.ok(!body([]).includes('### New screen parts'), '(c3) no row, no section')
-}
-
-{
   const out = body([{ kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'v', diff_type: 'modified', from: 'a', to: 'y'.repeat(70000) }], truncated: false }])
   assert.ok(out.length <= 60000, `(d) [M4] body is ${out.length} characters`)
 }

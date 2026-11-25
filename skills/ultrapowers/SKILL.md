@@ -229,12 +229,9 @@ approved plan, **is** the authorization to execute — no further approval pause
    `gh pr update-branch <N>` when it is behind main (GitHub's strict rule
    refuses a behind merge; this is a GitHub merge, not the kernel's fold),
    then `gh pr merge --squash <N>` — or re-driven as a narrower plan. A run
-   that builds nothing opens no PR. A stories-v1 run whose every proof already
-   passes at the base ends `done` (phase `nothing to build: every proof already
-   passes at the base`, `merged` null, tasks closed as already true at the
-   base). Anything else ends `failed: engine exit <code>`, because a claims-v1
-   probe already green at the base proves nothing. Either way the record is
-   pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
+   that builds nothing opens no PR and ends `failed: engine exit <code>`,
+   because a claims-v1 probe already green at the base proves nothing. In
+   every case the record is pushed and tagged `<owner>-<repo>/run-<N>`. The laptop never fetches a run
    branch.
 
 5. **Reap.** `node ${CLAUDE_PLUGIN_ROOT}/fleet/janitor.mjs` removes the VMs of runs

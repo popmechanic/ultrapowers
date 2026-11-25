@@ -24,7 +24,7 @@ lint/comments-baseline.json. Decisions live in docs/adr/, not in comments.
 ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "lint" / "comments-baseline.json"
 SOURCE = re.compile(r"\.(mjs|cjs|js|jsx|ts|tsx|py|sh)$")
-EXCLUDED = re.compile(r"(^|/)(vendor|pouf)/|^evals/fixtures/|^tests/fixtures/")
+EXCLUDED = re.compile(r"(^|/)vendor/|^evals/fixtures/|^tests/fixtures/")
 SHELL_NAMES = {"factory/flock/nogit/git"}
 PRAGMA = re.compile(
     r"^(#!|//\s*@ts-|/\*\s*eslint|//\s*eslint|#\s*noqa|#\s*type:\s*ignore|#\s*pragma|"
