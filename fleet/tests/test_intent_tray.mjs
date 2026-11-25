@@ -76,8 +76,8 @@ function elements() {
   }
 }
 
-function host({ store = new Map(), files = new Map(), submit = 'ok', process = false } = {}) {
-  const h = { store, files, submits: [], opens: [], ticks: [], spawns: [], submit }
+function host({ store = new Map(), files = new Map(), submit = 'ok' } = {}) {
+  const h = { store, files, submits: [], opens: [], ticks: [], tools: [], submit }
   const missing = (p) => Object.assign(new Error(`ENOENT: ${p}`), { code: 'ENOENT' })
   h.$ = strict({
     store: strict({
@@ -144,6 +144,7 @@ function host({ store = new Map(), files = new Map(), submit = 'ok', process = f
         onlyKeys(o, ['name', 'description', 'inputSchema'], 'tool.register')
         assert.equal(typeof o.name, 'string', 'tool.register: name')
         assert.equal(typeof o.description, 'string', 'tool.register: description')
+        h.tools.push(o.name)
       },
     }, '.tool'),
     clock: strict({
@@ -154,18 +155,6 @@ function host({ store = new Map(), files = new Map(), submit = 'ok', process = f
         return { cancel() {} }
       },
     }, '.clock'),
-    ...(process
-      ? {
-          process: strict({
-            spawn: (o) => {
-              onlyKeys(o, ['argv', 'cwd', 'env'], 'process.spawn')
-              assert.ok(Array.isArray(o.argv) && o.argv.every((a) => typeof a === 'string'), 'process.spawn: argv')
-              h.spawns.push(o.argv)
-              return { async *[Symbol.asyncIterator]() {}, result: Promise.resolve({ code: 0 }) }
-            },
-          }, '.process'),
-        }
-      : {}),
   }, '')
   return h
 }
@@ -192,7 +181,7 @@ async function session(h, cwd) {
     tick: () => tick(),
     pane: () => fire('ui.render', { component: 'Pane', requestId: 'intent-tray' }),
     band: () => fire('ui.render', { component: 'AbovePrompt' }),
-    show: (input) => fire('tool.call', { tool: 'mcp__ultrapowers__show_screen', input }),
+    hooks,
   }
   return s
 }
@@ -237,9 +226,9 @@ const press = async (s, where, key) => {
 {
   const h = host()
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', stage: 'how it looks', versions: ['A', 'B'] })
-  assert.equal(label(await s.band()), 'Intent tray: Todo list, 0 items', '(a) the band shows once a screen is shown')
-  await press(s, 'pane', 'pick-B')
+  h.files.set(feed('/work/a'), line({ kind: 'pick', chose: 'B' }))
+  await s.tick()
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(a) the band shows once a pick arrives')
   await press(s, 'band', 'band-send')
   assert.equal(h.submits.length, 1, '(a) Send submits one prompt')
   assert.equal(label(await s.band()), 'hidden', '(a) after Send the band is hidden')
@@ -249,7 +238,14 @@ const press = async (s, where, key) => {
 {
   const h = host()
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+  assert.deepEqual(h.tools, [], '(a2) the tray registers no tool')
+  assert.ok(!s.hooks.some((x) => x.ev === 'tool.call'), '(a2) the tray hooks no tool call')
+  assert.equal(label(await s.band()), 'hidden', '(a2) with nothing in it the band is hidden')
+}
+
+{
+  const h = host()
+  const s = await session(h, '/work/a')
   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
   await press(s, 'band', 'band-clear')
   assert.equal(h.submits.length, 0, '(b) Clear submits nothing')
@@ -259,17 +255,16 @@ const press = async (s, where, key) => {
 {
   const store = new Map([['tray', JSON.stringify({ screen: { name: 'Old', stage: '', versions: [], url: '' }, pick: null, notes: [], taken: 0 })]])
   const a = await session(host({ store }), '/work/a')
-  await a.show({ name: 'Todo list', versions: ['A'] })
   await find(await a.pane(), 'view-note').props.onSubmit('feels cramped')
   const b = await session(host({ store }), '/work/b')
   assert.equal(label(await b.band()), 'hidden', '(c) a session in another repo shows no band')
   const a2 = await session(host({ store }), '/work/a')
-  assert.equal(label(await a2.band()), 'Intent tray: Todo list, 1 item', '(c) a later session in the same repo gets its tray back')
+  assert.equal(label(await a2.band()), 'Intent tray: feedback, 1 item', '(c) a later session in the same repo gets its tray back')
 }
 
 {
   const s = await session(host(), '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
+  await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
   const keys = buttons(await s.band()).map((b) => `${b.key}=${b.hotkey}`)
   assert.deepEqual(keys, ['band-note=n', 'band-send=s', 'band-clear=c'], '(d) band hotkeys are n, s, c')
 }
@@ -277,13 +272,12 @@ const press = async (s, where, key) => {
 {
   const h = host()
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A'] })
   h.files.set(feed('/work/a'), line({ note: 'café ☕ first' }) + '{"note":"sec')
   await s.tick()
-  assert.equal(label(await s.band()), 'Intent tray: Todo list, 1 item', '(e) a half-written line is not taken yet')
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(e) a half-written line is not taken yet')
   h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + 'ond"}\n')
   await s.tick()
-  assert.equal(label(await s.band()), 'Intent tray: Todo list, 2 items', '(e) the line is taken once it ends')
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 2 items', '(e) the line is taken once it ends')
   await press(s, 'band', 'band-send')
   assert.match(h.submits[0], /"note":"second"/, '(e) the completed line reads whole')
   assert.match(h.submits[0], /"note":"café ☕ first"/, '(e) a multibyte line reads whole')
@@ -331,37 +325,23 @@ const press = async (s, where, key) => {
 for (const mode of ['drop', 'throw']) {
   const h = host({ submit: mode })
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
-  await press(s, 'pane', 'pick-A')
+  h.files.set(feed('/work/a'), line({ kind: 'pick', chose: 'A' }))
+  await s.tick()
   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
   await press(s, 'band', 'band-send')
   assert.equal(h.submits.length, 1, `(i ${mode}) Send tried once`)
-  assert.equal(label(await s.band()), 'Intent tray: Todo list, 2 items', `(i ${mode}) the pick and the note are kept`)
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 2 items', `(i ${mode}) the pick and the note are kept`)
   h.submit = 'ok'
   await press(s, 'band', 'band-send')
   assert.equal(label(await s.band()), 'hidden', `(i ${mode}) a later Send that enters clears the tray`)
 }
 
 {
-  const url = 'http://127.0.0.1:4100/compare'
-  const desk = await session(host(), '/work/a')
-  await desk.show({ name: 'Todo list', versions: ['A'], url })
-  assert.equal(find(await desk.band(), 'band-open'), undefined, '(j) no $.process: the band has no Open screen')
-  assert.equal(find(await desk.pane(), 'open-screen'), undefined, '(j) no $.process: the pane has no Open screen')
-  const h = host({ process: true })
-  const cli = await session(h, '/work/a')
-  await cli.show({ name: 'Todo list', versions: ['A'], url })
-  assert.ok(find(await cli.pane(), 'open-screen'), '(j) with $.process the pane has Open screen')
-  await press(cli, 'band', 'band-open')
-  assert.deepEqual(h.spawns, [['open', url]], '(j) Open screen opens the preview url')
-}
-
-{
   let enter
   const h = host({ submit: (o) => new Promise((done) => { enter = () => done({ text: o.text }) }) })
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
-  await press(s, 'pane', 'pick-B')
+  h.files.set(feed('/work/a'), line({ kind: 'pick', chose: 'B' }))
+  await s.tick()
   await find(await s.pane(), 'view-note').props.onSubmit('feels cramped')
   const out = press(s, 'band', 'band-send')
   await new Promise((r) => setImmediate(r))
@@ -372,7 +352,7 @@ for (const mode of ['drop', 'throw']) {
   await s.tick()
   enter()
   await out
-  assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(k) the sent screen and pick are cleared, the late note stays')
+  assert.equal(label(await s.band()), 'Intent tray: feedback, 1 item', '(k) the sent pick and note are cleared, the late note stays')
   const left = await s.pane()
   assert.equal(String(find(left, 'text-0').props.children[0]), '[element] button "Add": too small', '(k) the note that came in meanwhile stays')
   assert.doesNotMatch(h.submits[0], /too small/, '(k) the late note was not in the first Send')
@@ -417,12 +397,11 @@ for (const mode of ['drop', 'throw']) {
 {
   const h = host()
   const s = await session(h, '/work/a')
-  await s.show({ name: 'Todo list', versions: ['A', 'B'] })
   h.files.set(feed('/work/a'), line({ kind: 'pick', piece: 'todo', chose: 'B' }))
   await s.tick()
-  assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'Todo list  picked: todo B', '(n) the pane names the piece')
+  assert.equal(String(find(await s.pane(), 'screen').props.children[0]), 'No screen shown  picked: todo B', '(n) the pane names the piece')
   await press(s, 'band', 'band-send')
-  assert.match(h.submits[0], /\{"kind":"pick","screen":"Todo list","piece":"todo","chose":"B"\}/, '(n) the pick is sent with its piece')
+  assert.match(h.submits[0], /\{"kind":"pick","screen":"","piece":"todo","chose":"B"\}/, '(n) the pick is sent with its piece')
   h.files.set(feed('/work/a'), h.files.get(feed('/work/a')) + line({ kind: 'pick', chose: 'A' }))
   await s.tick()
   await press(s, 'band', 'band-send')
