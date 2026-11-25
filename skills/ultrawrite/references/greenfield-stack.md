@@ -109,6 +109,16 @@ rollback a checkout of `dd53be04`, `docs/adr/0018-stories-route-retired.md`). It
 check is `bun install && bunx tsc --noEmit`, since nothing is installed before the builder
 opens and no test is written.
 
+A first build is also **handed UI SDK and a theme**: `@ui-sdk/react` and `@ui-sdk/core`,
+pinned exactly at the `sdk` of the `ui` cell in `skills/ultrawrite/stories/policy.json`,
+and a theme folder that
+`skills/ultrawrite/themes/place.ts` writes to `client/src/theme/` in the first commit, over a
+`structure.css` shared by every theme. A theme is plain CSS and optional layout components,
+loaded as text and inlined into the page in place of UI SDK's `web.css`, under the layer
+order `ui-sdk, structure, <theme name>`. The builder may use, restyle or ignore either, and
+nothing checks which (operator, 2026-11-25, an `experiment`: n=1 run per arm, blind; rollback
+the cell's, `docs/adr/0019-tinyapp-themes.md`).
+
 **Who is signed in** comes from Cloudflare Access, never from the app: the
 app's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
 for (null when Access did not run), the page keeps it, and every store write is
