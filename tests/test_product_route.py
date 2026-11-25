@@ -46,7 +46,8 @@ def test_render_refuses_a_bundle(tmp_path):
     (tmp_path / "page.json").write_text("{}")
     code, err = run_err("render", TODO, "--bundle", str(tmp_path), "--out", str(tmp_path / "p.md"))
     assert code == 2
-    assert err.startswith("usage:")
+    assert any(l.startswith("usage:") for l in err.splitlines())
+    assert "bundle" in err
     assert not (tmp_path / "p.md").exists()
 
 
