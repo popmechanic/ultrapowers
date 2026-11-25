@@ -113,6 +113,7 @@
   :where([data-slot="toast"]) {
     --theme-toast-y: 0px;
     position: absolute;
+    z-index: calc(100 - var(--toast-index));
     inset-inline: 0;
     height: var(--toast-height);
     translate: var(--toast-swipe-x, 0px) calc(var(--theme-toast-y) + var(--toast-swipe-y, 0px));

@@ -838,8 +838,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: var(--pouf-surface);
-    box-shadow: 0 1px 1px rgba(58, 46, 92, 0.3);
+    background: var(--pouf-ink);
     transition: opacity 250ms var(--pouf-ease-press), scale 250ms var(--pouf-ease-spring);
 
     &[data-checked] { opacity: 1; scale: 1; }
@@ -956,8 +955,6 @@
     min-width: max(var(--anchor-width), 200px);
   }
 
-  [data-slot="menu-item"][data-disabled] { opacity: 0.5; cursor: not-allowed; }
-
   :is([data-slot="menu-checkbox-item"], [data-slot="menu-radio-item"]) {
     padding-inline-start: 40px;
 
@@ -1069,7 +1066,6 @@
     color: var(--pouf-ink);
     box-shadow: var(--pouf-shadow-card);
     user-select: none;
-    z-index: calc(100 - var(--toast-index));
     scale: calc(1 - var(--toast-index) * 0.05);
     transition: translate 420ms var(--pouf-ease-spring), scale 420ms var(--pouf-ease-spring), opacity 200ms ease, height 300ms ease;
 
@@ -1266,7 +1262,7 @@
   }
 
   :is([data-slot="meter-value"], [data-slot="progress-value"]) {
-    color: var(--pouf-muted);
+    color: var(--pouf-value-ink, var(--pouf-muted));
     font-family: var(--pouf-font-mono);
     font-size: 13px;
     font-weight: 700;
@@ -1308,7 +1304,7 @@
     --pouf-bar: var(--pouf-tone, var(--pouf-accent));
 
     &[data-indeterminate] { cursor: progress; }
-    &[data-complete] { --pouf-bar: var(--pouf-up); }
+    &[data-complete] { --pouf-value-ink: var(--pouf-ink); }
   }
 
   [data-slot="progress-indicator"] {
@@ -1317,10 +1313,10 @@
       animation: pouf-indeterminate 1400ms cubic-bezier(0.65, 0, 0.35, 1) infinite;
     }
 
-    &[data-complete] { background: var(--pouf-bar, var(--pouf-up)); }
+    &[data-complete] { --pouf-bar: var(--pouf-up); }
   }
 
-  [data-slot="progress-indicator"][data-indeterminate]:dir(rtl) { animation-direction: reverse; }
+  [data-slot="progress-indicator"][data-indeterminate]:dir(rtl) { animation-name: pouf-indeterminate-rtl; }
 
   [data-slot="separator"] {
     flex: none;
@@ -1336,7 +1332,6 @@
     }
 
     &[data-orientation="vertical"] {
-      align-self: stretch;
       width: 2px;
       height: auto;
       margin-inline: var(--pouf-s3);
@@ -1346,6 +1341,11 @@
   @keyframes pouf-indeterminate {
     from { translate: -100% 0; }
     to { translate: 250% 0; }
+  }
+
+  @keyframes pouf-indeterminate-rtl {
+    from { translate: 100% 0; }
+    to { translate: -250% 0; }
   }
 
   @keyframes pouf-spin {
