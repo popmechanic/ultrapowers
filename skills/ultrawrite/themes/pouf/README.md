@@ -47,6 +47,17 @@ ${styles}
 }
 ```
 
+TypeScript does not know a `.css` import: `bunx tsc --noEmit` in a strict project with
+`@types/bun` (1.4.5) fails with "Cannot find module '…css'" on each of the three lines. Add an
+ambient declaration anywhere your `tsconfig.json` includes, such as `server/css.d.ts`:
+
+```ts
+declare module '*.css' {
+  const text: string;
+  export default text;
+}
+```
+
 `markup` is your server render (`renderToString(<App />)`) and `clientJs` your bundled client
 script, which hydrates `#root`. The `<style>` elements sit outside the React root, so
 hydration leaves them alone and the client bundle needs no CSS. To see every component in the
@@ -130,8 +141,9 @@ Button-like parts are `Button`, `DialogTrigger`, `DialogClose`, `AlertDialogTrig
   fills purple and a check or a dash pops in.
 - **Switch**: a 60×34 pill track that turns mint when on, and a white cushion thumb that
   springs across. It reverses in right-to-left text.
-- **Radio**: a 28px round well like the checkbox. Checked, it fills purple and a white dot
-  springs in. A `RadioGroup` is a column.
+- **Radio**: a 28px round well like the checkbox. Checked, it fills purple and an ink dot
+  springs in (6.1:1 on the purple, like the checkbox's ink check). A `RadioGroup` is a
+  column.
 - **Segmented Control, Tabs**: one lavender well holding the choices; the chosen one sits on a
   raised purple thumb (`SegmentedControlIndicator`, `TabsIndicator`) that springs across when
   the choice changes. Unchosen choices are muted and brighten on hover. Tabs stack the list
@@ -197,10 +209,10 @@ Build it from the tokens and the cushion recipes rather than new colours:
   the edge, and the ink label on the fill is well above 4.5:1.
 - The gap between a select's trigger and its popup is UI SDK's offset, not the theme's, and
   the same holds for menus, popovers, comboboxes and tooltips.
-- A checked radio is a purple fill (1.69:1 against the page) with a white dot (1.99:1 on the
-  purple); its 2px edge (3.38:1) is what meets 3:1, and the label beside it says which choice
-  it is. A meter's or progress bar's pastel fill is under 3:1 against its well (mint 1.11:1),
-  so the fill's own darker edge (at least 3.2:1 for every tone) marks where it ends.
+- A meter's or progress bar's pastel fill is under 3:1 against its well (mint 1.11:1), so the
+  fill's own darker edge (at least 3.2:1 for every tone) marks where it ends.
+- The combobox trigger is a purple cushion, 1.69:1 against the page like the solid buttons;
+  its ink chevron is 6.1:1 on the purple.
 - The toast's close button is a lavender well on the white card (1.18:1) with a faint edge;
   the ink X in it is 10.3:1.
 - Light only: the theme sets `color-scheme: light` and has no dark tokens.
