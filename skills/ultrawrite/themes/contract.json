@@ -37,7 +37,7 @@
       {"slot": "select-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-placeholder]", "kind": "markup"}, {"state": ":focus-visible", "kind": "css"}, {"state": "[data-invalid]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}, {"state": "[data-readonly]", "kind": "markup"}], "structural": "draw the chevron"},
       {"slot": "select-value", "in": "markup", "states": [{"state": "[data-placeholder]", "kind": "markup"}]},
       {"slot": "select-form-input", "in": "markup", "states": [], "hidden": true},
-      {"slot": "select-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-side]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height; transform-origin from --transform-origin"},
+      {"slot": "select-content", "in": "live", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-side]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
       {"slot": "select-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-selected]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "select-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "structural": "draw the check"}
     ]},
@@ -89,6 +89,8 @@
     {"name": "Menu", "slots": [
       {"slot": "menu-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": ":hover", "kind": "css"}, {"state": ":active", "kind": "css"}, {"state": ":focus-visible", "kind": "css"}]},
       {"slot": "menu-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
+      {"slot": "menu-group", "in": "live", "states": [], "optional": true},
+      {"slot": "menu-radio-group", "in": "live", "states": [], "optional": true},
       {"slot": "menu-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "menu-checkbox-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-checked]", "kind": "markup"}]},
       {"slot": "menu-radio-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-checked]", "kind": "markup"}]},
@@ -122,6 +124,7 @@
       {"slot": "combobox-trigger", "in": "markup", "states": [{"state": "[data-open]", "kind": "css"}, {"state": "[data-disabled]", "kind": "markup"}], "structural": "draw the chevron"},
       {"slot": "combobox-form-input", "in": "markup", "states": [], "hidden": true},
       {"slot": "combobox-content", "in": "live", "states": [{"state": "[data-starting-style]", "kind": "css"}, {"state": "[data-ending-style]", "kind": "css"}, {"state": "[data-modality=\"keyboard\"]", "kind": "css"}], "structural": "reset the browser's [popover] border, padding, background and overflow; min-width from --anchor-width, max-height from --available-height"},
+      {"slot": "combobox-list", "in": "live", "states": [], "optional": true},
       {"slot": "combobox-item", "in": "live", "states": [{"state": "[data-highlighted]", "kind": "markup"}, {"state": "[data-selected]", "kind": "markup"}, {"state": "[data-disabled]", "kind": "markup"}]},
       {"slot": "combobox-item-indicator", "in": "live", "states": [{"state": "[data-selected]", "kind": "markup"}], "structural": "draw the check"},
       {"slot": "combobox-empty", "in": "live", "states": []}
