@@ -17,6 +17,11 @@ def run(*args):
     return r.returncode, r.stdout.strip()
 
 
+def run_err(*args):
+    r = subprocess.run(["bun", TOOL, *args], capture_output=True, text=True, timeout=30)
+    return r.returncode, r.stderr.strip()
+
+
 def record(tmp_path, **sub):
     with open(TODO) as f:
         p = json.load(f)
@@ -38,8 +43,10 @@ def test_a_stories_built_app_routes_later_plans_to_claims(tmp_path):
 
 
 def test_render_refuses_a_bundle(tmp_path):
-    code, _ = run("render", TODO, "--bundle", str(tmp_path), "--out", str(tmp_path / "p.md"))
-    assert code != 0
+    (tmp_path / "page.json").write_text("{}")
+    code, err = run_err("render", TODO, "--bundle", str(tmp_path), "--out", str(tmp_path / "p.md"))
+    assert code == 2
+    assert err.startswith("usage:")
     assert not (tmp_path / "p.md").exists()
 
 
