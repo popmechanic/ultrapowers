@@ -60,8 +60,8 @@ declare module '*.css' {
 
 `markup` is your server render (`renderToString(<App />)`) and `clientJs` your bundled client
 script, which hydrates `#root`. The `<style>` elements sit outside the React root, so
-hydration leaves them alone and the client bundle needs no CSS. To see every component in the
-theme, from this plugin's checkout: `bun skills/ultrawrite/themes/sample.ts --theme pouf`.
+hydration leaves them alone and the client bundle needs no CSS. Every component's look is
+described under What it styles below.
 
 ## Tokens
 
@@ -70,7 +70,7 @@ All tokens are custom properties on `:root`. To change one, set it in your own u
 
 | Token | Value | Use |
 | --- | --- | --- |
-| `--pouf-bg` | `#f0e9ff` | Page background, and the fill of fields and tracks |
+| `--pouf-bg` | `#f0e9ff` | Page background, and the fill of fields |
 | `--pouf-surface` | `#ffffff` | Cards, dialogs, popups and read-only fields |
 | `--pouf-ink` | `#3a2e5c` | Text (10.3:1 on bg) |
 | `--pouf-muted` | `#71609b` | Secondary text, placeholders (4.63:1 on bg, 5.46:1 on white) |
@@ -82,6 +82,7 @@ All tokens are custom properties on `:root`. To change one, set it in your own u
 | `--pouf-up` `--pouf-down` `--pouf-warn` `--pouf-info` `--pouf-idle` | mint, pink, yellow, blue, purple | Meaning, not colour |
 | `--pouf-edge` | `#8a6fd1` | The 2px edge of fields, checkboxes and switches (3.38:1 on bg). An invalid field sets it to the danger edge for whatever it holds |
 | `--pouf-ring` | `#6f55b8` | The 3px focus ring inside a field (4.85:1 on bg) |
+| `--pouf-well-deep` | `#5b4499` | The well of a meter or progress bar (6.52:1 on bg), so every tone's bar reads against it at 3.85:1 or more |
 | `--pouf-danger-edge` | `#c2410c` | The 3px edge of an invalid control (4.39:1 on bg) |
 | `--pouf-danger-ink` | `#9a3412` | The label of an invalid field and an invalid number (6.2:1 on bg) |
 | `--pouf-focus-outline` | ink | The 3px keyboard focus outline on everything that is not a field |
@@ -163,9 +164,10 @@ Button-like parts are `Button`, `DialogTrigger`, `DialogClose`, `AlertDialogTrig
   input and trigger on one row; outside one, put them in a row yourself. The popup and its
   options match the select's, and a "no match" line is muted.
 - **Meter, Progress**: the label in small capitals with the value at the end of the line, over
-  an 18px pill well with a filled bar. A meter is blue, progress purple and mint once complete;
-  an unknown progress slides a short bar along the well. Each bar's end has a darker edge in
-  its own tone, so it stands out from the well.
+  an 18px deep purple pill well with an ink rim and a glossy pastel bar. A meter is blue,
+  progress purple and mint once complete; an unknown progress slides a short bar along the
+  well. Every tone's bar is at least 3.85:1 against the well (purple; mint 5.87:1), so a full
+  bar never reads as an empty one.
 - **Separator**: a 2px soft lavender line, horizontal or vertical.
 - A `<label>` (or `Label`) wrapping a checkbox, switch or radio lines them up with the text.
 
@@ -209,8 +211,6 @@ Build it from the tokens and the cushion recipes rather than new colours:
   the edge, and the ink label on the fill is well above 4.5:1.
 - The gap between a select's trigger and its popup is UI SDK's offset, not the theme's, and
   the same holds for menus, popovers, comboboxes and tooltips.
-- A meter's or progress bar's pastel fill is under 3:1 against its well (mint 1.11:1), so the
-  fill's own darker edge (at least 3.2:1 for every tone) marks where it ends.
 - The combobox trigger is a purple cushion, 1.69:1 against the page like the solid buttons;
   its ink chevron is 6.1:1 on the purple.
 - The toast's close button is a lavender well on the white card (1.18:1) with a faint edge;
