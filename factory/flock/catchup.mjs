@@ -104,7 +104,7 @@ const exam = (cmd, timeout) => {
 }
 if (work.setup) exam(work.setup, EXAM_MS.setup)
 for (const t of work.tasks) for (const f of t.facts) exam(f, EXAM_MS.fact)
-if (work.check) exam(work.check, work.checkTimeoutMs ?? 120_000)
+if (work.check) exam(work.check, 120_000)
 if (out(['rev-parse', 'HEAD']) !== head) back('an exam moved HEAD')
 if (memory) {
   const r = store('settle', '--repo', T, '--commit', head, '--from', memory.file)

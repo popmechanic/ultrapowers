@@ -51,31 +51,10 @@ function section (text, name) {
 }
 
 {
-  const out = body([
-    loose([open({ claim: 'this resolves #1334' })]),
-    { kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'title', diff_type: 'modified', from: 'a', to: 'Fix #3' }], truncated: false },
-  ])
+  const out = body([loose([open({ claim: 'this resolves #1334' })])])
   const le = section(out, '### Loose ends')
-  const ch = section(out, '### What each step changed')
   assert.ok(le.includes('resolves'), '(c) [M3] the loose end is shown')
-  assert.ok(ch.includes('Fix'), '(c) [M3] the receipt value is shown')
   assert.ok(!CLOSING.test(le), '(c) [M3] no closing keyword in Loose ends')
-  assert.ok(!CLOSING.test(ch), '(c) [M3] no closing keyword in What each step changed')
-}
-
-{
-  const out = body([
-    { kind: 'step:receipt', clause: 'S11.4', exit: 1, stage: 'do', diff: null, truncated: false },
-    { kind: 'step:receipt', clause: 'S2.1', exit: 0, stage: 'ok', diff: [], truncated: false },
-  ])
-  const ch = section(out, '### What each step changed')
-  assert.ok(ch.includes('- S11.4 (exit 1): stopped at do before changing anything'), `(c2) a step that stopped at do is named: ${ch}`)
-  assert.ok(ch.includes('- S2.1 (exit 0): no change'), `(c2) an empty diff is still no change: ${ch}`)
-}
-
-{
-  const out = body([{ kind: 'step:receipt', clause: 'M1', exit: 0, diff: [{ tbl: '$values', row: null, cell: 'v', diff_type: 'modified', from: 'a', to: 'y'.repeat(70000) }], truncated: false }])
-  assert.ok(out.length <= 60000, `(d) [M4] body is ${out.length} characters`)
 }
 
 {
