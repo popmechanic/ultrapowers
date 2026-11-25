@@ -316,18 +316,21 @@ const sections: Record<string, () => ReactNode> = {
         { text: 'Unchecked', props: {} },
         { text: 'Mixed', props: { defaultChecked: 'indeterminate' as const } },
         { text: 'Disabled', props: { disabled: true, defaultChecked: true } },
-        { text: 'Invalid', props: {}, invalid: true },
         { text: 'Read only', props: { readOnly: true, defaultChecked: true } },
-      ].map(({ text, props, invalid }) => (
-        <Field key={text} name={`checkbox-${text}`} invalid={invalid}>
-          <Label>
-            <Checkbox {...props}>
-              <CheckboxIndicator />
-            </Checkbox>
-            {text}
-          </Label>
-        </Field>
+      ].map(({ text, props }) => (
+        <Label key={text}>
+          <Checkbox {...props}>
+            <CheckboxIndicator />
+          </Checkbox>
+          {text}
+        </Label>
       ))}
+      <Field name="checkbox-invalid" invalid>
+        <Checkbox>
+          <CheckboxIndicator />
+        </Checkbox>
+        <FieldLabel>Invalid</FieldLabel>
+      </Field>
     </>
   ),
   Switch: () => (
@@ -336,18 +339,21 @@ const sections: Record<string, () => ReactNode> = {
         { text: 'On', props: { defaultChecked: true } },
         { text: 'Off', props: {} },
         { text: 'Disabled', props: { disabled: true } },
-        { text: 'Invalid', props: {}, invalid: true },
         { text: 'Read only', props: { readOnly: true, defaultChecked: true } },
-      ].map(({ text, props, invalid }) => (
-        <Field key={text} name={`switch-${text}`} invalid={invalid}>
-          <Label>
-            <Switch {...props}>
-              <SwitchThumb />
-            </Switch>
-            {text}
-          </Label>
-        </Field>
+      ].map(({ text, props }) => (
+        <Label key={text}>
+          <Switch {...props}>
+            <SwitchThumb />
+          </Switch>
+          {text}
+        </Label>
       ))}
+      <Field name="switch-invalid" invalid>
+        <FieldLabel>Invalid</FieldLabel>
+        <Switch>
+          <SwitchThumb />
+        </Switch>
+      </Field>
     </>
   ),
   'Segmented Control': () => (
