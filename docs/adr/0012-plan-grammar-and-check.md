@@ -85,3 +85,15 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Stale if predicates
 
 - **plan_check.py evaluate_stale_if** — plan_check.py answers each Stale-if predicate at BASE: one that holds is a refusal because the plan is stale before dispatch; one the machine cannot decide (for example gh unreachable) is printed as an advisory after the verdict, because an unreachable network is evidence about the laptop, not the plan.
+
+## Stories plan checks
+
+- ~~**stories_check.py** — skills/ultrapowers/scripts/stories_check.py, the laptop's check of a stories-v1 plan, verifies only that the signed store module is the one the plan names (by sha256) and that every probe calls only tools its tasks list. Hollow probes are refused by compile.ts when it derives probes from the store and caught again by the checker (factory/stack/tinyapp/check.ts) at run time.~~ Struck 2026-11-25, superseded by 0018.
+
+## Stories plan grammar
+
+- ~~**skills/ultrapowers/scripts/stories_parse.py** — skills/ultrapowers/scripts/stories_parse.py emits the same top-level fields as the claims-v1 parser (tasks, dag_edges, width, checks, bootstrapCmd, publish, per-task wave) so the Flock engine reads either grammar unchanged. A stories-v1 task's proofRuns stay empty: its facts are its probe blocks, which factory/flock/plan.mjs turns into check.ts calls itself.~~ Struck 2026-11-25, superseded by 0018.
+
+## Stories probe grammar
+
+- ~~**skills/ultrapowers/scripts/probe_block.py** — A stories-v1 plan carries each state probe as one fenced ```probe block holding one JSON object with keys clause, layer (store|ui|saved), as, given, do, expect, see, judge and holds_before; checks are a closed set (cell eq/absent, row absent, value eq/absent, unchanged). `as` sets the signed-in user before a call and persists until the next `as`. skills/ultrapowers/scripts/probe_block.py validates the shape only; deciding a check is factory/stack/tinyapp/probe.ts's alone. Note: the ui do-forms now include select.~~ Struck 2026-11-25, superseded by 0018.

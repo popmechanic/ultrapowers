@@ -25,9 +25,11 @@ stage 4: the map and the understanding are already signed. Add to the map only
 what the new ask brings (stage 3 for those concepts alone). The plan itself is an ordinary
 claims-v1 plan (`references/first-build.md`, "A later plan").
 
-**A change to something already built** (touch 2 said "delete should ask first"):
-plan it against the built plan that owns it. `product.ts built` keeps that plan's earlier
-plan ids in its `history`.
+**A change to something already built** (the smoke said "delete should ask first"):
+at stage 4 mark the built plan that owns it `next`. `product.ts built` marks the `next`
+plan built under the new plan id and moves its earlier plan id into `history`; with no
+`next` plan it marks the last plan built by one author, and with neither it refuses with
+`no plan is next`.
 
 ## 1. Intent
 

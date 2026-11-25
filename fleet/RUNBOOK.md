@@ -355,7 +355,7 @@ after a sleep.
 |---|---|
 | `running` | the boot has prepared the clone and the record; it installs the engine's dependencies, proves the credential and runs the engine |
 | `publishing` | the engine exited and the branch is ahead of base: pushing, opening the PR, catching up to a moved main and merging |
-| `done` | the engine exited 0: `pr` is the ready PR, `prAuthor` who GitHub says opened it, `merged` the squash commit's sha or null when the PR was left open; or a run with nothing to build, `pr` and `merged` null |
+| `done` | the engine exited 0: `pr` is the ready PR, `prAuthor` who GitHub says opened it, `merged` the squash commit's sha or null when the PR was left open |
 | `parked` | the engine exited non-zero (its `terminal` row says why); `pr` is a draft PR |
 | `failed` | a step outside the engine broke; `error` says which |
 

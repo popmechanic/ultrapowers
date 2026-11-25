@@ -32,6 +32,7 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Launch compiler at engine sha
 
 - **fleet/compiler.mjs CHECKER_REL PARSER_REL** — fleet/compiler.mjs resolves plan_check.py and plan_parse.py inside the engine tree at the launch's engine sha, never against the laptop checkout. plan_check.py imports plan_parse.py from its own directory, so both land side by side in one temp directory.
+- ~~**fleet/compiler.mjs STORIES_RELS** — For a stories-v1 plan, plan_check.py and plan_parse.py import stories_parse.py, stories_check.py and probe_block.py from their own directory, so fleet/compiler.mjs fetches those three beside them only when the caller passes stories: true. A claims-v1 launch never fetches them.~~ Struck 2026-11-25, superseded by 0018.
 - **fleet/compiler.mjs fetchCompilerAt** — The launcher once ran the compiler of the installed plugin build while the sandbox ran the engine checkout at engine=, so a plan that compiled on the laptop was refused an hour later (run-26, 2026-09-17). fleet/compiler.mjs fetchCompilerAt therefore reads each file at the engine sha via `git show`, then the GitHub raw contents API, treating a non-zero exit or empty stdout as no answer; when neither answers it refuses, never falling back to the local copy.
 - **fleet/compiler.mjs requireCompilerPath** — fleet/compiler.mjs refuses any compile called without a compilerPath before running a subprocess, rather than compiling with whatever copy sits beside it, because a default is how a launch ends up with a compiler the sandbox does not have.
 - **fleet/compiler.mjs verifyPlanCompiles** — fleet/compiler.mjs verifyPlanCompiles runs `plan_check.py --base <base>` before any lobby verb, push or ls-remote; a non-zero exit is a refusal carrying the compiler's text verbatim. On a clean check it returns the STALE fact:, GREEN-AT-BASE fact: and AUTHORING fact: lines in printed order so the launch line shows them, since those are advisory and the compile still exits 0.
@@ -189,9 +190,13 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 - **fleet/launch.mjs refuseUnlaunchable / toolchainViolations** — A probe or check whose command word the sandbox lacks would exit 127 in its first second on the VM, after the push and the new verb. fleet/launch.mjs refuseUnlaunchable checks every word against SANDBOX_TOOLCHAIN (toolchainViolations) first and refuses by name (#645).
 
+## Plan grammar detection
+
+- ~~**fleet/launch.mjs planGrammar** — planGrammar in fleet/launch.mjs reads the plan header's own **Grammar:** line, not any occurrence in the body, so a claims-v1 plan that quotes a stories-v1 header inside a fenced example is not treated as stories-v1; fleet/tests/test_launch_stories_grammar.mjs guards it.~~ Struck 2026-11-25, superseded by 0018.
+
 ## Publish preflight
 
-- **fleet/launch.mjs refuseUnlaunchable / assetsConfigAtBase** — exe.dev's edge replaces the Authorization header, so wrangler's asset-upload JWT is refused 401 (#1312) and a publishing plan whose wrangler.jsonc at --base declares assets could only die in publish:deploy after every task merged. fleet/launch.mjs refuseUnlaunchable refuses such a plan before sizing, credential and push (#1313). The TinyApp template packs its page into the Worker and declares no assets; the guard stays for other targets while the edge replaces the header.
+- **fleet/launch.mjs refuseUnlaunchable / assetsConfigAtBase** — exe.dev's edge replaces the Authorization header, so wrangler's asset-upload JWT is refused 401 (#1312) and a publishing plan whose wrangler.jsonc at --base declares assets could only die in publish:deploy after every task merged. fleet/launch.mjs refuseUnlaunchable refuses such a plan before sizing, credential and push (#1313). A TinyApp packs its page into the Worker (greenfield-stack.md, Going online) and declares no assets; the guard stays for other targets while the edge replaces the header.
 
 ## Sandbox toolchain
 
