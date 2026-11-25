@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { NOT_INSTALLED, installed, loadContract, resolveTheme, themesDir } from './lib';
+import { type Theme, installProblem, loadContract, resolveTheme, themesDir } from './lib';
 import { renderedSlots } from './sample.ts';
 
 const USAGE = 'usage: bun check.ts <theme dir or name> [--slots <walk.json>] | --structure';
@@ -17,6 +17,8 @@ const COLOUR_WORDS = new Set(NAMED.split(' '));
 const COLOUR_FUNCTION = /\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
 const RESETS = new Set(['none', 'inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const DIR_MASK = ':-theme-check-dir(';
+const LAYER_NAME = /^[A-Za-z][A-Za-z0-9_-]*$/;
+const TAKEN = new Set(['ui-sdk', 'structure']);
 
 type Item = { prelude: string; body: string | null };
 type Alt = { slots: Set<string>; states: Set<string> };
@@ -277,15 +279,18 @@ function required() {
   return loadContract().components.flatMap((c) => c.slots).filter((s) => !s.hidden && !s.optional);
 }
 
-export function findings(themeDir: string): string[] {
-  const { name, dir } = resolveTheme(themeDir);
+export function findings({ name, dir }: Theme): string[] {
   const out: string[] = [];
+  const layerName = LAYER_NAME.test(name) && !TAKEN.has(name);
+  if (!layerName) out.push(`theme: the folder name ${name} cannot be a layer name`);
   const themeCss = join(dir, 'theme.css');
   if (!existsSync(themeCss)) out.push('theme: theme.css is missing');
   else {
     const css = readFileSync(themeCss, 'utf8');
     const layers = `@layer ui-sdk, structure, ${name};`;
-    if (!css.trimStart().startsWith(layers)) out.push(`theme: theme.css must begin "${layers}"`);
+    const head = css.trimStart();
+    if (layerName && head.startsWith('/*')) out.push(`theme: theme.css must begin "${layers}", before any comment`);
+    else if (layerName && !head.startsWith(layers)) out.push(`theme: theme.css must begin "${layers}"`);
     out.push(...loads('theme.css', css));
     const font = join(dir, 'font.css');
     if (existsSync(font)) out.push(...loads('font.css', readFileSync(font, 'utf8')));
@@ -328,8 +333,7 @@ function structureFindings(): string[] {
   return [...new Set(out)];
 }
 
-function walkFindings(themeDir: string, walkFile: string): string[] {
-  const { dir } = resolveTheme(themeDir);
+function walkFindings({ dir }: Theme, walkFile: string): string[] {
   const themeCss = join(dir, 'theme.css');
   if (!existsSync(themeCss)) throw new Error(`${dir} has no theme.css`);
   const walk = JSON.parse(readFileSync(walkFile, 'utf8'));
@@ -355,21 +359,23 @@ function main(argv: string[]): number {
       console.log(USAGE);
       return 2;
     }
-    if (!installed()) {
-      console.log(NOT_INSTALLED);
+    const problem = installProblem();
+    if (problem !== null) {
+      console.log(problem);
       return 2;
     }
+    const resolved = resolveTheme(theme);
     if (rest[0] === '--slots') {
-      const out = walkFindings(theme, rest[1]);
+      const out = walkFindings(resolved, rest[1]);
       if (out.length) console.log(out.join('\n'));
       return 0;
     }
-    const out = findings(theme);
+    const out = findings(resolved);
     if (out.length) {
       console.log(out.join('\n'));
       return 1;
     }
-    console.log(`THEME OK: ${resolveTheme(theme).name}, ${required().length} slots`);
+    console.log(`THEME OK: ${resolved.name}, ${required().length} slots`);
     return 0;
   } catch (e) {
     console.log(`could not run: ${(e as Error).message}`);

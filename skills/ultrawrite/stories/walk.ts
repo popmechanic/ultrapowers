@@ -31,8 +31,8 @@ export function problems(w: Walk): string[] {
     if (typeof a.evidence !== 'string' || !a.evidence.trim()) out.push(`walk: ${id} carries no evidence`);
   }
   for (const id of Object.keys(answers)) if (!ids.includes(id)) out.push(`walk: ${id} is not one of the questions`);
-  if (w.script_bytes !== undefined && (typeof w.script_bytes !== 'number' || !Number.isFinite(w.script_bytes))) out.push('walk: script_bytes must be a number of bytes');
-  if (w.slots !== undefined && (!Array.isArray(w.slots) || !w.slots.every((s) => typeof s === 'string'))) out.push('walk: slots must be a list of slot names');
+  if (w.script_bytes !== undefined && !(Number.isInteger(w.script_bytes) && w.script_bytes >= 0)) out.push('walk: script_bytes must be a number of bytes');
+  if (w.slots !== undefined && (!Array.isArray(w.slots) || !w.slots.every((s) => typeof s === 'string' && /^\S+$/.test(s)))) out.push('walk: slots must be a list of slot names');
   return out;
 }
 
@@ -40,8 +40,9 @@ const cell = (s: string) => s.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim();
 
 export function render(w: Walk): string {
   const rows = questions().map(([id, q]) => `| ${cell(q)} | ${w.answers![id].answer} | ${cell(String(w.answers![id].evidence))} |`);
+  const slots = w.slots === undefined ? undefined : [...new Set(w.slots)].sort();
   const lines = [...(w.script_bytes === undefined ? [] : [`Script the page loads: ${w.script_bytes.toLocaleString('en-US')} bytes.`]),
-    ...(w.slots === undefined ? [] : [`UI SDK slots on the page: ${w.slots.length ? `${w.slots.length} (${[...w.slots].sort().join(', ')})` : 'none'}.`])];
+    ...(slots === undefined ? [] : [`UI SDK slots on the page: ${slots.length ? `${slots.length} (${slots.join(', ')})` : 'none'}.`])];
   const table = ['### Experience walk', '', `${w.app ?? 'the app'}, ${w.run ?? 'run not named'}. A report for the operator; it gates nothing.`, '',
     '| Question | Answer | Evidence |', '|---|---|---|', ...rows].join('\n');
   return lines.length ? `${table}\n\n${lines.join('\n')}` : table;

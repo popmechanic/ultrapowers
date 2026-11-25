@@ -60,3 +60,18 @@ def test_no_slots_reads_none(tmp_path):
 def test_a_bad_field_is_named(tmp_path):
     assert run_walk("render", walk(tmp_path, slots="button", script_bytes="big")) == (
         2, "walk: script_bytes must be a number of bytes\nwalk: slots must be a list of slot names")
+
+
+@pytest.mark.parametrize("value", [-1, 1.5])
+def test_script_bytes_must_be_a_whole_number_of_bytes(tmp_path, value):
+    assert run_walk("render", walk(tmp_path, script_bytes=value)) == (2, "walk: script_bytes must be a number of bytes")
+
+
+def test_slots_are_deduplicated_and_sorted(tmp_path):
+    out = render(walk(tmp_path, slots=["tabs", "button", "tabs"]))
+    assert out.splitlines()[-1] == "UI SDK slots on the page: 2 (button, tabs)."
+
+
+@pytest.mark.parametrize("name", ["two words", "button\nselect-item", ""])
+def test_a_slot_name_with_whitespace_is_a_problem(tmp_path, name):
+    assert run_walk("render", walk(tmp_path, slots=["button", name])) == (2, "walk: slots must be a list of slot names")

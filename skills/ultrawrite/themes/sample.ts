@@ -1,18 +1,19 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BunPlugin } from 'bun';
-import { NOT_INSTALLED, installed, resolveTheme, themesDir } from './lib';
+import { flag, installProblem, resolveTheme, themesDir } from './lib';
 
 const ENTRY = 'theme-sample-client';
 const DEFAULT_PORT = 8790;
 
-const ready = installed();
+const problem = installProblem();
+const ready = problem === null;
 const server = ready ? await import('react-dom/server') : null;
 const react = ready ? await import('react') : null;
 const sample = ready ? await import('./sample.tsx') : null;
 
 function need<T>(value: T | null): T {
-  if (value === null) throw new Error(NOT_INSTALLED);
+  if (value === null) throw new Error(problem ?? 'could not run');
   return value;
 }
 
@@ -56,7 +57,7 @@ function inline(tag: 'style' | 'script', text: string, attrs: string): string {
   return `<${tag}${attrs}>${safe}</${tag}>`;
 }
 
-export function themeFiles(themeDir: string): string[] {
+function themeFiles(themeDir: string): string[] {
   const files = [join(themesDir(), 'structure.css')];
   const font = join(themeDir, 'font.css');
   if (existsSync(font)) files.push(font);
@@ -89,16 +90,12 @@ function fail(message: string): never {
 }
 
 function main(argv: string[]): void {
-  if (!ready) fail(NOT_INSTALLED);
-  const flag = (name: string) => {
-    const i = argv.indexOf(name);
-    return i === -1 ? undefined : argv[i + 1];
-  };
+  if (problem !== null) fail(problem);
   if (argv.includes('--slots')) {
     console.log(JSON.stringify(renderedSlots()));
     process.exit(0);
   }
-  const themeArg = flag('--theme');
+  const themeArg = flag(argv, '--theme');
   if (!themeArg) fail('usage: bun sample.ts --theme <name or dir> [--port <n>] | --slots');
   let dir: string;
   try {
@@ -107,7 +104,7 @@ function main(argv: string[]): void {
     fail(`could not run: ${(e as Error).message}`);
   }
   if (!existsSync(join(dir, 'theme.css'))) fail(`could not run: ${dir} has no theme.css`);
-  const portArg = flag('--port');
+  const portArg = flag(argv, '--port');
   const port = portArg === undefined ? DEFAULT_PORT : Number(portArg);
   if (!Number.isInteger(port) || port < 0 || port > 65535) fail(`could not run: --port ${portArg} is not a port`);
   const served = Bun.serve({
