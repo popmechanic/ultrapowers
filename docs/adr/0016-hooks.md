@@ -16,17 +16,19 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 ## Intent tray sync
 
 - **hooks/register.js GONE_KEPT** — hooks/register.js keeps the ids of notes that were sent, cleared or dropped (the gone list, capped at GONE_KEPT = 500) and merges it across sessions, so a session holding an older copy of the tray cannot bring those notes back.
-- **hooks/register.js changed, merge** — hooks/register.js tracks whether this session set the pick since its last save; when merging what other sessions stored, a pick this session set keeps its value, otherwise the stored value stands.
-- **hooks/register.js merge** — merge in hooks/register.js folds in what other sessions in the same repo stored: their notes join this session's except any id on the shared gone list, and their pick stands unless this session changed its own since its last save; the feedback offset only moves forward within the same file mark.
+- ~~**hooks/register.js changed, merge** — hooks/register.js tracks whether this session set the pick since its last save; when merging what other sessions stored, a pick this session set keeps its value, otherwise the stored value stands.~~ Struck 2026-11-25, superseded by 0018.
+- **hooks/register.js merge (notes)** — merge in hooks/register.js folds in what other sessions in the same repo stored: their notes join this session's except any id on the shared gone list.
+- ~~**hooks/register.js merge** — merge in hooks/register.js folds in what other sessions in the same repo stored: their notes join this session's except any id on the shared gone list, and their pick stands unless this session changed its own since its last save; the feedback offset only moves forward within the same file mark.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Intent tray feedback file
 
-- **hooks/register.js mark, markOf** — hooks/register.js records the first whole line of .ultrapowers/feedback.jsonl (mark) together with the byte offset already consumed. A different first line, or a file shorter than the offset, means the file was replaced, and the tray rereads it from the start.
-- **hooks/register.js session.start** — When a repo has no stored tray, hooks/register.js sets the feedback offset to the end of .ultrapowers/feedback.jsonl at session start, so lines written before the repo's first tray session are not imported as new notes.
+- ~~**hooks/register.js mark, markOf** — hooks/register.js records the first whole line of .ultrapowers/feedback.jsonl (mark) together with the byte offset already consumed. A different first line, or a file shorter than the offset, means the file was replaced, and the tray rereads it from the start.~~ Struck 2026-11-25, superseded by 0018.
+- ~~**hooks/register.js session.start** — When a repo has no stored tray, hooks/register.js sets the feedback offset to the end of .ultrapowers/feedback.jsonl at session start, so lines written before the repo's first tray session are not imported as new notes.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Intent tray protocol
 
-- **hooks/register.js** — The intent tray mod in hooks/register.js collects the operator's notes in a pane beside the chat, through /note, and from the records a page appends to .ultrapowers/feedback.jsonl. Send hands everything to Claude as one prompt containing a ```json block of pick and note records.
+- **hooks/register.js** — The intent tray mod in hooks/register.js collects the operator's notes in a pane beside the chat, through /note. Send hands every note to Claude as one prompt containing a ```json block of note records. The tray reads no file; a tray stored earlier with pick, piece, offset or mark keys loads its notes and gone list and drops the rest at the next save.
+- ~~**hooks/register.js** — The intent tray mod in hooks/register.js collects the operator's notes in a pane beside the chat, through /note, and from the records a page appends to .ultrapowers/feedback.jsonl. Send hands everything to Claude as one prompt containing a ```json block of pick and note records.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Keep working stop hook
 

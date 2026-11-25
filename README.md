@@ -261,13 +261,9 @@ send them all back to Claude with one press.
 
 A band above the prompt carries three buttons: **Add note** (`n`), **Send** (`s`) and **Clear**
 (`c`). Click a button, or press its letter once the band has focus (`ctrl+x tab`). The band shows
-only while the tray holds a pick or a note, and Send and Clear empty it. In the pane the
+only while the tray holds a note, and Send and Clear empty it. In the pane the
 note box takes typing, so click Send or Clear there. `/tray` opens the
-tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands everything —
-your pick first, then each note in the order you added it — to Claude as one message.
-
-A page you are looking at can leave picks and notes for the tray too: it writes them, one JSON object per
-line, to `.ultrapowers/feedback.jsonl` in the session's working directory, and the tray takes them
-in as if you had made them.
+tray yourself, and `/note <element>: <note>` adds a note about one element. Send hands every
+note, in the order you added it, to Claude as one message.
 
 The tray needs Claude Code `2.1.287` or later.

@@ -37,6 +37,6 @@ not deleted. `/delete-comment` adds to these records; so can any hand change.
 - [0013. Authoring records, provenance and the census](0013-authoring-records.md) — 25 decisions
 - [0014. The TinyApp template](0014-tinyapp-template.md) — 19 decisions, superseded by 0018
 - [0015. Story planning for TinyApps](0015-story-planning.md) — 60 decisions, superseded by 0018
-- [0016. The plugin hooks](0016-hooks.md) — 9 decisions, 3 struck
+- [0016. The plugin hooks](0016-hooks.md) — 6 decisions, 8 struck
 - [0017. The test suite and fleet sims](0017-test-rig.md) — 9 decisions
 - [0018. The stories route is retired](0018-stories-route-retired.md) — 20 decisions

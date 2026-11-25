@@ -126,9 +126,8 @@ the engine's exit code is the merge decision.
 - **Enrich before drafting (2026-09-28).** Every TinyApp plan runs ultrawrite's own
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
   whole product's map and the build order, into `product.json`; enrichment ends at the
-  build order. superpowers is never called for it. The operator is asked only what the app does,
-  who uses it and how it looks, and how it looks is judged on the real app, at the walk and
-  the smoke.
+  build order. superpowers is never called for it. The operator is asked only what the app does
+  and who uses it; how it looks is judged on the real app, at the walk and the smoke.
 - **A new app's first build is one author (2026-11-24, #1606).** `product.ts route` sends a
   product with nothing built to `skills/ultrawrite/references/first-build.md`: one claims-v1
   task from the ask and the app's rules, on an empty repository. `product.ts built` records
