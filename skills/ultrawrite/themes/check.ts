@@ -9,7 +9,12 @@ const GROUPS = new Set([':is', ':where', ':matches', ':-webkit-any', ':-moz-any'
 const RECURSE = new Set(['layer', 'media', 'supports', 'container', 'scope', 'document', 'starting-style']);
 const LOOKS = [/^color$/, /^background/, /^border(-(top|right|bottom|left|block|inline)(-(start|end))?)?-color$/,
   /^border(-(top|bottom|start|end)-(left|right|start|end))?-radius$/, /^box-shadow$/, /^font/, /^outline-color$/,
-  /^fill$/, /^stroke$/];
+  /^fill$/, /^stroke$/, /^caret-color$/, /^accent-color$/, /^text-decoration-color$/, /^text-shadow$/,
+  /^-webkit-text-fill-color$/, /^column-rule-color$/];
+const SHORTHANDS = /^(border(-(top|right|bottom|left|block|inline)(-(start|end))?)?|outline|column-rule|text-decoration)$/;
+const NAMED = 'aliceblue antiquewhite aqua aquamarine azure beige bisque black blanchedalmond blue blueviolet brown burlywood cadetblue chartreuse chocolate coral cornflowerblue cornsilk crimson cyan darkblue darkcyan darkgoldenrod darkgray darkgreen darkgrey darkkhaki darkmagenta darkolivegreen darkorange darkorchid darkred darksalmon darkseagreen darkslateblue darkslategray darkslategrey darkturquoise darkviolet deeppink deepskyblue dimgray dimgrey dodgerblue firebrick floralwhite forestgreen fuchsia gainsboro ghostwhite gold goldenrod gray green greenyellow grey honeydew hotpink indianred indigo ivory khaki lavender lavenderblush lawngreen lemonchiffon lightblue lightcoral lightcyan lightgoldenrodyellow lightgray lightgreen lightgrey lightpink lightsalmon lightseagreen lightskyblue lightslategray lightslategrey lightsteelblue lightyellow lime limegreen linen magenta maroon mediumaquamarine mediumblue mediumorchid mediumpurple mediumseagreen mediumslateblue mediumspringgreen mediumturquoise mediumvioletred midnightblue mintcream mistyrose moccasin navajowhite navy oldlace olive olivedrab orange orangered orchid palegoldenrod palegreen paleturquoise palevioletred papayawhip peachpuff peru pink plum powderblue purple rebeccapurple red rosybrown royalblue saddlebrown salmon sandybrown seagreen seashell sienna silver skyblue slateblue slategray slategrey snow springgreen steelblue tan teal thistle tomato turquoise violet wheat white whitesmoke yellow yellowgreen transparent currentcolor canvas canvastext linktext visitedtext activetext buttonface buttontext buttonborder field fieldtext highlight highlighttext selecteditem selecteditemtext mark marktext graytext accentcolor accentcolortext';
+const COLOUR_WORDS = new Set(NAMED.split(' '));
+const COLOUR_FUNCTION = /\b(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix|light-dark)\(/i;
 const RESETS = new Set(['none', 'inherit', 'initial', 'unset', 'revert', 'revert-layer']);
 const DIR_MASK = ':-theme-check-dir(';
 
@@ -70,15 +75,18 @@ function items(css: string): Item[] {
   return out;
 }
 
-function walkRules(css: string, onRule: (selector: string, body: string) => void): void {
+function walkRules(css: string, onRule: (selector: string, body: string) => void, onNested?: (selector: string) => void): void {
   for (const { prelude, body } of items(css)) {
     if (body === null) continue;
     if (prelude.startsWith('@')) {
       const name = /^@([\w-]+)/.exec(prelude)?.[1] ?? '';
-      if (RECURSE.has(name)) walkRules(body, onRule);
+      if (RECURSE.has(name)) walkRules(body, onRule, onNested);
       continue;
     }
-    if (items(body).some((it) => it.body !== null)) throw new Error(`the rule ${prelude} is still nested after flattening`);
+    if (items(body).some((it) => it.body !== null)) {
+      if (!onNested) throw new Error(`the rule ${prelude} is still nested after flattening`);
+      onNested(prelude);
+    }
     onRule(prelude, body);
   }
 }
@@ -170,11 +178,22 @@ function slotOf(simple: string): string | null {
   return m ? (m[1] ?? m[2] ?? m[3]) : null;
 }
 
+function lowered(simple: string): boolean {
+  const group = /^(:[\w-]+)\((.*)\)$/s.exec(simple);
+  if (!group) return false;
+  const name = group[1].toLowerCase();
+  if (name === ':lang') return true;
+  if (!GROUPS.has(name) && name !== ':not') return false;
+  const args = splitTop(group[2], ',');
+  return args.length > 0 && args.every((a) => simples(a).length === 1 && lowered(a));
+}
+
 function alternatives(compound: string): Alt[] {
   let alts: Alt[] = [{ slots: new Set(), states: new Set() }];
   for (const simple of simples(compound)) {
     const slot = slotOf(simple);
     const group = /^(:[\w-]+)\((.*)\)$/s.exec(simple);
+    if (lowered(simple)) continue;
     if (slot !== null) {
       for (const a of alts) a.slots.add(slot);
     } else if (group && GROUPS.has(group[1].toLowerCase())) {
@@ -238,9 +257,18 @@ function loads(file: string, css: string): string[] {
     const value = unquote(m[1] ?? m[2]);
     if (!/^data:/i.test(value)) out.push(`theme: ${file} loads ${value}, which is not a data URL`);
   }
-  for (const m of bare.replace(imports, '').matchAll(/url\(\s*("[^"]*"|'[^']*'|[^)]*?)\s*\)/gi)) {
+  const rest = bare.replace(imports, '');
+  for (const m of rest.matchAll(/url\(\s*("[^"]*"|'[^']*'|[^)]*?)\s*\)/gi)) {
     const value = unquote(m[1]);
     if (!/^data:/i.test(value)) out.push(`theme: ${file} loads ${value}, which is not a data URL`);
+  }
+  for (const m of rest.matchAll(/image-set\(/gi)) {
+    const start = m.index + m[0].length - 1;
+    const args = rest.slice(start + 1, balanced(rest, start, '(', ')') - 1);
+    for (const arg of splitTop(args, ',')) {
+      const str = /^("[^"]*"|'[^']*')/.exec(arg.trim());
+      if (str && !/^data:/i.test(unquote(str[1]))) out.push(`theme: ${file} loads ${unquote(str[1])}, which is not a data URL`);
+    }
   }
   return out;
 }
@@ -265,7 +293,7 @@ export function findings(themeDir: string): string[] {
     for (const slot of required()) {
       const states = map.get(slot.slot) ?? new Set<string>();
       const sel = `[data-slot="${slot.slot}"]`;
-      if (!states.has('')) out.push(`theme: no rule styles ${sel}`);
+      if (!map.has(slot.slot)) out.push(`theme: no rule styles ${sel}`);
       for (const st of slot.states) if (!satisfies(states, st.state)) out.push(`theme: no rule styles ${sel}${st.state}`);
     }
   }
@@ -277,14 +305,26 @@ export function findings(themeDir: string): string[] {
   return out;
 }
 
+function carriesColour(value: string): boolean {
+  if (/#[0-9a-f]{3,8}\b/i.test(value) || COLOUR_FUNCTION.test(value)) return true;
+  return value.toLowerCase().split(/[\s,()\/]+/).some((w) => COLOUR_WORDS.has(w));
+}
+
+function setsALook(property: string, value: string): boolean {
+  if (RESETS.has(value.toLowerCase())) return false;
+  if (LOOKS.some((re) => re.test(property))) return true;
+  if (property === 'filter' && /drop-shadow\(/i.test(value)) return true;
+  return SHORTHANDS.test(property) && carriesColour(value);
+}
+
 function structureFindings(): string[] {
   const out: string[] = [];
-  walkRules(flatten(readFileSync(join(themesDir(), 'structure.css'), 'utf8')), (_selector, body) => {
+  const css = stripComments(readFileSync(join(themesDir(), 'structure.css'), 'utf8'));
+  walkRules(css, (_selector, body) => {
     for (const { property, value } of declarations(body)) {
-      if (RESETS.has(value.toLowerCase())) continue;
-      if (LOOKS.some((re) => re.test(property))) out.push(`structure: ${property} sets a look`);
+      if (setsALook(property, value)) out.push(`structure: ${property} sets a look`);
     }
-  });
+  }, (selector) => out.push(`structure: ${selector} nests a rule`));
   return [...new Set(out)];
 }
 
