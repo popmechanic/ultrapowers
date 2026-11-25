@@ -237,7 +237,6 @@ def test_without_node_modules_it_says_how_to_fix_it(tmp_path):
 POUF = os.path.join(THEMES, "pouf")
 
 
-@pytest.mark.xfail(strict=True, reason="Task 5 adds the eleven remaining components")
 def test_pouf_passes_the_check():
     code, out = check(POUF)
     assert code == 0, out

@@ -11,38 +11,46 @@ Using it, restyling it or ignoring it is the app author's call.
 
 ## Load it
 
-A theme is three stylesheets read as text and inlined in this order: the shared
-`structure.css` (one folder up), this folder's `font.css`, then this folder's `theme.css`.
-Each declares the layer order `ui-sdk, structure, pouf` before any rule, so UI SDK's own
-runtime CSS stays underneath, the structure sheet sits above it, and Pouf above both. Any
-rule you write outside a layer beats all three. Do not also load `@ui-sdk/core/web.css`.
+In an app the files sit at `client/src/theme/structure.css` (shared by every theme) and
+`client/src/theme/pouf/` (`font.css`, `theme.css`, `kit.tsx`). A theme is the three
+stylesheets inlined in this order: `structure.css`, `font.css`, `theme.css`. `structure.css`
+declares the layer order `ui-sdk, structure` before any rule and `theme.css` declares
+`ui-sdk, structure, pouf`; `font.css` declares no layer (it holds only the `@font-face`). So
+UI SDK's own runtime CSS stays underneath, the structure sheet sits above it, and Pouf above
+both. Any rule you write outside a layer beats all three. Do not also load
+`@ui-sdk/core/web.css`.
 
-With plain `Bun.build` and no CSS pipeline, import the files as text and put each in a
-`<style>` element in the server render, so the first paint is already styled. The sample
-page (`../sample.ts`) does exactly this:
+Import the three files as text and put each in a `<style>` element in the server render, so
+the first paint is already styled. Bun's `with { type: 'text' }` import works both when Bun
+runs the server directly and when `Bun.build` bundles it. From a module at `server/page.ts`
+(change the `../` paths if yours sits elsewhere):
 
 ```ts
-import { readFileSync } from 'node:fs';
+import structure from '../client/src/theme/structure.css' with { type: 'text' };
+import font from '../client/src/theme/pouf/font.css' with { type: 'text' };
+import theme from '../client/src/theme/pouf/theme.css' with { type: 'text' };
 
-const files = ['themes/structure.css', 'themes/pouf/font.css', 'themes/pouf/theme.css'];
-const styles = files
-  .map((file) => `<style>${readFileSync(file, 'utf8').replace(/<\/style/gi, '<\\/style')}</style>`)
+const styles = [structure, font, theme]
+  .map((css) => `<style>${css.replace(/<\/style/gi, '<\\/style')}</style>`)
   .join('\n');
 
-const page = `<!doctype html>
+export function page(markup: string, clientJs: string): string {
+  return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 ${styles}
 </head>
-<body><div id="root">${markup}</div><script type="module">${clientJs}</script></body>
+<body><div id="root">${markup}</div><script type="module">${clientJs.replace(/<\/script/gi, '<\\/script')}</script></body>
 </html>`;
+}
 ```
 
-The `<style>` elements sit outside the React root, so hydration leaves them alone and the
-client bundle needs no CSS. To see every component in the theme:
-`bun skills/ultrawrite/themes/sample.ts --theme pouf`.
+`markup` is your server render (`renderToString(<App />)`) and `clientJs` your bundled client
+script, which hydrates `#root`. The `<style>` elements sit outside the React root, so
+hydration leaves them alone and the client bundle needs no CSS. To see every component in the
+theme, from this plugin's checkout: `bun skills/ultrawrite/themes/sample.ts --theme pouf`.
 
 ## Tokens
 
@@ -74,12 +82,13 @@ All tokens are custom properties on `:root`. To change one, set it in your own u
 | `--pouf-field-depth` | box-shadow | The recessed top and bottom of a field, under its edge |
 | `--pouf-overlay` | ink at 35% | Modal backdrop |
 | `--pouf-ease-spring` `-pop` `-slide` `-press` | cubic-beziers | The springy overshoot of pops and slides, and the checkbox's press |
-| `--pouf-icon-chevron` `-check` `-minus` `-plus` | SVG data URLs | Icons drawn as masks in `currentColor` |
-| `--pouf-tone` | unset | The fill of a button, stepper or badge. Set it with a `.pouf-tone-*` class |
+| `--pouf-icon-chevron` `-check` `-minus` `-plus` `-x` | SVG data URLs | Icons drawn as masks in `currentColor` |
+| `--pouf-tone` | unset | The fill of a button, stepper, badge, segmented or tab thumb, or meter or progress bar. Set it with a `.pouf-tone-*` class |
 
 Pouf also sets the structure sheet's sizes: `--theme-dialog-width` (440px, less 32px of
-gutter on a narrow screen), `--theme-dialog-max-height`, `--theme-field-gap` (8px) and
-`--theme-label-gap` (12px).
+gutter on a narrow screen), `--theme-dialog-max-height`, `--theme-field-gap` (8px),
+`--theme-label-gap` (12px), `--theme-toast-width` (380px, less 32px of gutter) and
+`--theme-toast-gap` (12px between toasts in an expanded stack).
 
 ## Variants you set
 
@@ -89,10 +98,12 @@ gutter on a narrow screen), `--theme-dialog-max-height`, `--theme-field-gap` (8p
 | `data-variant="destructive"` | any button-like part | Orange cushion |
 | `data-variant="quiet"` | any button-like part | No cushion until hover; for a tertiary action beside a primary one |
 | `data-size="sm"` / `"lg"` | any button-like part | 38px / 56px tall (48px by default). Buttons inside a dialog default to `sm` |
-| `class="pouf-tone-mint"` (or pink, blue, yellow, orange, purple) | a solid button, a stepper button, a badge | Changes its fill |
+| `class="pouf-tone-mint"` (or pink, blue, yellow, orange, purple) | a solid button, a stepper button, a badge, a `SegmentedControl` or `TabsList`, a `Meter` or `Progress`, a `ComboboxTrigger` | Changes its fill |
 
-Button-like parts are `Button`, `DialogTrigger`, `DialogClose`, `AlertDialogTrigger` and
-`AlertDialogClose`; the theme styles all five alike.
+Button-like parts are `Button`, `DialogTrigger`, `DialogClose`, `AlertDialogTrigger`,
+`AlertDialogClose`, `MenuTrigger`, `PopoverTrigger`, `PopoverClose`, `TooltipTrigger` and
+`ToastAction`; the theme styles all ten alike. Buttons inside a popover or a toast default to
+`sm`, as in a dialog.
 
 ## What it styles
 
@@ -119,7 +130,32 @@ Button-like parts are `Button`, `DialogTrigger`, `DialogClose`, `AlertDialogTrig
   fills purple and a check or a dash pops in.
 - **Switch**: a 60×34 pill track that turns mint when on, and a white cushion thumb that
   springs across. It reverses in right-to-left text.
-- A `<label>` (or `Label`) wrapping a checkbox or switch lines them up with the text.
+- **Radio**: a 28px round well like the checkbox. Checked, it fills purple and a white dot
+  springs in. A `RadioGroup` is a column.
+- **Segmented Control, Tabs**: one lavender well holding the choices; the chosen one sits on a
+  raised purple thumb (`SegmentedControlIndicator`, `TabsIndicator`) that springs across when
+  the choice changes. Unchosen choices are muted and brighten on hover. Tabs stack the list
+  above the panel.
+- **Menu**: the trigger is a button with a chevron that flips while open. The popup is the
+  select's white cushion; a highlighted item gets the recessed well, a checkbox or radio item
+  shows a check in a gutter at its start, and group labels are small muted capitals between
+  soft separators.
+- **Popover**: a white cushion that pops from its trigger, with a title, a muted description
+  and small buttons in a row.
+- **Tooltip**: a small ink chip with lavender text that pops from its trigger.
+- **Toast**: a white card at the bottom end of the screen with its title, muted description, a
+  small action button and a round close button with an X. It springs up into place; older
+  toasts peek out behind the newest and the stack fans out on hover or focus.
+- **Combobox**: the label is a field label, the input wears the field look, and the trigger is
+  a round purple cushion with a chevron beside the input. Inside a `Field` the theme puts the
+  input and trigger on one row; outside one, put them in a row yourself. The popup and its
+  options match the select's, and a "no match" line is muted.
+- **Meter, Progress**: the label in small capitals with the value at the end of the line, over
+  an 18px pill well with a filled bar. A meter is blue, progress purple and mint once complete;
+  an unknown progress slides a short bar along the well. Each bar's end has a darker edge in
+  its own tone, so it stands out from the well.
+- **Separator**: a 2px soft lavender line, horizontal or vertical.
+- A `<label>` (or `Label`) wrapping a checkbox, switch or radio lines them up with the text.
 
 ## Kit
 
@@ -159,7 +195,14 @@ Build it from the tokens and the cushion recipes rather than new colours:
 - Solid buttons are under 3:1 against the page on purpose: the purple fill is 1.69:1 and the
   orange destructive fill 1.48:1 against `--pouf-bg`. The cushion's lip and drop shadow mark
   the edge, and the ink label on the fill is well above 4.5:1.
-- The gap between a select's trigger and its popup is UI SDK's offset, not the theme's.
+- The gap between a select's trigger and its popup is UI SDK's offset, not the theme's, and
+  the same holds for menus, popovers, comboboxes and tooltips.
+- A checked radio is a purple fill (1.69:1 against the page) with a white dot (1.99:1 on the
+  purple); its 2px edge (3.38:1) is what meets 3:1, and the label beside it says which choice
+  it is. A meter's or progress bar's pastel fill is under 3:1 against its well (mint 1.11:1),
+  so the fill's own darker edge (at least 3.2:1 for every tone) marks where it ends.
+- The toast's close button is a lavender well on the white card (1.18:1) with a faint edge;
+  the ink X in it is 10.3:1.
 - Light only: the theme sets `color-scheme: light` and has no dark tokens.
 - Looked at in Chromium only, at 1100px and 375px wide.
 

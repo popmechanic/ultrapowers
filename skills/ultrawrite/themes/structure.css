@@ -56,4 +56,86 @@
     align-items: center;
     gap: var(--theme-label-gap, 0.5rem);
   }
+
+  :where([data-slot="segmented-control"], [data-slot="tabs-list"]) {
+    position: relative;
+    isolation: isolate;
+  }
+
+  :where([data-slot="segmented-control-indicator"]) {
+    position: absolute;
+    z-index: -1;
+    top: var(--segmented-control-indicator-top);
+    left: var(--segmented-control-indicator-left);
+    width: var(--segmented-control-indicator-width);
+    height: var(--segmented-control-indicator-height);
+  }
+
+  :where([data-slot="tabs-indicator"]) {
+    position: absolute;
+    z-index: -1;
+    top: var(--active-tab-top);
+    left: var(--active-tab-left);
+    width: var(--active-tab-width);
+    height: var(--active-tab-height);
+  }
+
+  :where([data-slot="meter-track"], [data-slot="progress-track"]) {
+    position: relative;
+    overflow: hidden;
+    height: 0.5rem;
+  }
+
+  :where([data-slot="meter-indicator"], [data-slot="progress-indicator"]) {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+  }
+
+  :where([data-slot="separator"][data-orientation="horizontal"]) {
+    height: 1px;
+  }
+
+  :where([data-slot="separator"][data-orientation="vertical"]) {
+    width: 1px;
+    align-self: stretch;
+  }
+
+  :where([data-slot="toast-region"]) {
+    width: var(--theme-toast-width, min(22rem, calc(100vw - 2rem)));
+    height: var(--toast-front-height);
+  }
+
+  :where([data-slot="toast-region"][data-expanded]) {
+    height: calc(var(--toast-stack-height) + (var(--toast-count) - 1) * var(--theme-toast-gap, 0.75rem));
+  }
+
+  :where([data-slot="toast"]) {
+    --theme-toast-y: 0px;
+    position: absolute;
+    inset-inline: 0;
+    height: var(--toast-height);
+    translate: var(--toast-swipe-x, 0px) calc(var(--theme-toast-y) + var(--toast-swipe-y, 0px));
+  }
+
+  :where([data-slot="toast-region"][data-side="bottom"] [data-slot="toast"]) {
+    bottom: 0;
+  }
+
+  :where([data-slot="toast-region"][data-side="top"] [data-slot="toast"]) {
+    top: 0;
+  }
+
+  :where([data-slot="toast"]:not([data-front], [data-expanded])) {
+    height: var(--toast-front-height);
+    overflow: hidden;
+  }
+
+  :where([data-slot="toast-region"][data-side="bottom"] [data-slot="toast"][data-expanded]) {
+    --theme-toast-y: calc(-1 * (var(--toast-offset) + var(--toast-index) * var(--theme-toast-gap, 0.75rem)));
+  }
+
+  :where([data-slot="toast-region"][data-side="top"] [data-slot="toast"][data-expanded]) {
+    --theme-toast-y: calc(var(--toast-offset) + var(--toast-index) * var(--theme-toast-gap, 0.75rem));
+  }
 }
