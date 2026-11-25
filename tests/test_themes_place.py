@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import shutil
 import subprocess
 
@@ -77,3 +78,29 @@ def test_a_theme_subfolder_is_not_copied(tmp_path):
 def test_an_app_that_is_not_a_folder_exits_2(tmp_path):
     code, out = place("--theme", "pouf", "--app", str(tmp_path / "nope"))
     assert code == 2 and "is not a folder" in out
+
+
+def probe_from_first_build():
+    text = open(os.path.join(ROOT, "skills/ultrawrite/references/first-build.md")).read()
+    lines = [l for l in text.splitlines() if l.startswith("- Run: ") and "@ui-sdk/react" in l]
+    assert len(lines) == 1
+    return re.sub(r" \[[A-Z][0-9.]+\]$", "", lines[0][len("- Run: "):])
+
+
+def stub(d, dependencies):
+    d.mkdir()
+    (d / "package.json").write_text(json.dumps({"name": "stub", "dependencies": dependencies}))
+    return d
+
+
+def run_in(d, cmd):
+    return subprocess.run(["bash", "-c", cmd], cwd=d, capture_output=True, text=True, timeout=60).returncode
+
+
+def test_the_version_probe_fails_without_the_pin_and_passes_with_it(tmp_path):
+    cmd = probe_from_first_build()
+    v = json.load(open(os.path.join(ROOT, "skills/ultrawrite/stories/policy.json")))["ui"]["sdk"]
+    assert v in cmd
+    assert run_in(stub(tmp_path / "a", {"react": "19.1.0"}), cmd) != 0
+    assert run_in(stub(tmp_path / "b", {"@ui-sdk/react": "^" + v, "@ui-sdk/core": v}), cmd) != 0
+    assert run_in(stub(tmp_path / "c", {"@ui-sdk/react": v, "@ui-sdk/core": v}), cmd) == 0
