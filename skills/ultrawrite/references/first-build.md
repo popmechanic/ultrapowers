@@ -46,7 +46,10 @@ superior, and both better than the stories-pipeline Potluck of 2026-11-20. The r
    `bun <plugin-root>/skills/ultrawrite/stories/product.ts built <bundle>/product.json --plan <plan id>`,
    then copy it to `stories/product.json` in the target's first commit, beside the README. A
    later plan finds it there (`enrich.md`, "A later plan for the same product") and
-   `product.ts route` then answers `later plan, claims`.
+   `product.ts route` then answers `later plan, claims`. The record is written before the
+   run, so it says built from then on: when a first build drafts and is planned again, run
+   `built` with the new plan id (the old id moves to the plan's `history`) and keep following
+   this recipe, whatever the route line says, until a first build has merged.
 7. **Launch held** (`--hold`) on that repository: one commit holding the README and
    `stories/product.json`. Keep the plan itself in an untracked folder of the clone
    (`plans/`, named in `.git/info/exclude`), since `plan_check.py` reads the plan from
@@ -130,8 +133,9 @@ existing codebase, as `SKILL.md` says: enrich from the app's `stories/product.js
 Claim, write tasks with probes in the same three shapes (a rule through the rules module, the
 page rendered from a seeded store, the app served), run the gate and the walk. A change that
 redesigns how the page reads is one task (`decomposition.md`, "Split by default"). When the
-plan is written, mark its plan built with `product.ts built` and include the updated
-`stories/product.json` in the run's Files.
+plan is written, mark its plan built with `product.ts built` and commit the updated
+`stories/product.json` to the app's main yourself before the launch: a builder never sees the
+record, so it is not one of the run's Files.
 
 ## A worked plan
 

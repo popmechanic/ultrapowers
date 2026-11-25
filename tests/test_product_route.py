@@ -1,4 +1,3 @@
-"""Which route a plan takes (skills/ultrawrite/stories/product.ts route, built; #1606)."""
 import json
 import os
 import shutil
@@ -44,6 +43,15 @@ def test_built_marks_the_next_plan_and_routes_later_plans_to_claims(tmp_path):
     assert (sub["status"], sub["plan"], sub["by"]) == ("built", "p1", "solo")
     assert run("route", path) == (0, "ROUTE fact: later plan, claims")
     assert run("check", path)[0] == 0
+
+
+def test_a_first_build_planned_again_is_marked_again(tmp_path):
+    path = record(tmp_path)
+    assert run("built", path, "--plan", "p1")[0] == 0
+    assert run("built", path, "--plan", "p2") == (0, "BUILT p2: one author")
+    with open(path) as f:
+        sub = json.load(f)["subprojects"][0]
+    assert (sub["plan"], sub["history"], sub["by"]) == ("p2", ["p1"], "solo")
 
 
 def test_built_with_no_next_plan_is_refused(tmp_path):

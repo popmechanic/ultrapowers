@@ -52,7 +52,7 @@ const kinds = (r, p) => (r.rows || []).filter((x) => x.path === p).map((x) => x.
 {
   const t = flockTarget({ 'a.txt': 'a\n', 'b.txt': 'b\n' })
   const plan = writePlan(t, { claim: 'a.txt says A and b.txt says B.', check: 'test -f a.txt', tasks: [one(1, 'a.txt', 'grep -q A a.txt'), one(2, 'b.txt', 'grep -q B b.txt')] })
-  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'A\n', 'state.db': 'local\n' }, 2: { 'b.txt': 'B\n', '.gitignore': 'state.db\n' }, '@hold_ms': { 2: 2500 } } })
+  const r = await flockRun(t, { plan, script: { 1: { 'a.txt': 'A\n', 'state.db': 'local\n' }, 2: { 'b.txt': 'B\n', '.gitignore': 'state.db\n' }, '@hold_ms': { 2: 6000 } } })
   const { tree, show } = landed(t, r)
   if (show('a.txt') !== 'A' || show('b.txt') !== 'B') fails.push('(d) a.txt or b.txt did not land')
   if (!tree.includes('.gitignore')) fails.push('(d) .gitignore did not land')

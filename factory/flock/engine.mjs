@@ -108,20 +108,22 @@ function walk (dir, rel = '') {
 }
 const unaskable = new Set()
 function checkIgnore (dir, paths) {
-  return spawnSync('git', ['-C', dir, 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+  return spawnSync('git', ['-C', dir, '-c', 'core.excludesFile=/dev/null', 'check-ignore', '--stdin', '-z'], { input: paths.join('\0') + '\0', encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+}
+const askKey = (dir, p) => dir + '\0' + p
+function askIgnored (dir, paths, out) {
+  const r = checkIgnore(dir, paths)
+  if (r.status === 0) { for (const p of r.stdout.split('\0')) if (p) out.add(p); return }
+  if (r.status === 1) return
+  if (paths.length === 1) { unaskable.add(askKey(dir, paths[0])); if (typeof ev === 'function') ev('ignore:unread', { path: paths[0] }); return }
+  const half = paths.length >> 1
+  askIgnored(dir, paths.slice(0, half), out)
+  askIgnored(dir, paths.slice(half), out)
 }
 function ignoredIn (dir, paths) {
-  const ask = paths.filter((p) => !SKIP.test(p) && !unaskable.has(p))
-  if (!ask.length) return new Set()
-  const r = checkIgnore(dir, ask)
-  if (r.status === 0) return new Set(r.stdout.split('\0').filter(Boolean))
-  if (r.status === 1) return new Set()
+  const ask = paths.filter((p) => !SKIP.test(p) && !unaskable.has(askKey(dir, p)))
   const out = new Set()
-  for (const p of ask) {
-    const one = checkIgnore(dir, [p]).status
-    if (one === 0) out.add(p)
-    else if (one !== 1) { unaskable.add(p); if (typeof ev === 'function') ev('ignore:unread', { path: p }) }
-  }
+  if (ask.length) askIgnored(dir, ask, out)
   return out
 }
 const textSeen = new Map()
@@ -405,6 +407,7 @@ async function pullInto (agent, task) {
   if (r.changed.length) ev('pull', { agent, changed: r.changed.map((c) => ({ path: c.path, from: c.from, added: c.added, removed: c.removed, conflict: c.conflict, quiet: quiet(c.path) || undefined })) })
   const mine = (unsaid[agent] = unsaid[agent] || new Map())
   for (const c of r.changed) {
+    if (heldHere.has(c.path)) continue
     const was = mine.get(c.path)
     mine.set(c.path, was ? { ...c, added: c.added + was.added, removed: c.removed + was.removed, ...(c.conflict ? {} : { conflict: was.conflict, addsOnly: was.addsOnly, bothCreated: was.bothCreated, annotated: was.annotated }) } : c)
   }

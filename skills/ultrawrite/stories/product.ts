@@ -159,7 +159,8 @@ export function routeOf(p: Product): string {
 }
 
 export function markBuilt(p: Product, plan: string): string | null {
-  const s = p.subprojects.find((x) => x.status === 'next');
+  const s = p.subprojects.find((x) => x.status === 'next')
+    ?? p.subprojects.findLast((x) => x.status === 'built' && x.by === 'solo');
   if (!s) return 'no plan is next';
   if (s.plan && s.plan !== plan) s.history = [...(s.history ?? []), s.plan];
   s.status = 'built';
