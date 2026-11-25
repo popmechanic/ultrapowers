@@ -51,14 +51,15 @@ def skipped(s):
     return s.get("hidden") or s.get("optional")
 
 
-def synthetic(tmp_path, name="synth", drop_slot=None, drop_state=None, extra=""):
+def synthetic(tmp_path, name="synth", drop_slot=None, drop_state=None, drop_bare=None, extra=""):
     rules = [f"@layer ui-sdk, structure, {name};", f"@layer {name} {{"]
     for c in contract()["components"]:
         for s in c["slots"]:
             if s["slot"] == drop_slot or skipped(s):
                 continue
             sel = f'[data-slot="{s["slot"]}"]'
-            rules.append(sel + "{display:block}")
+            if s["slot"] != drop_bare:
+                rules.append(sel + "{display:block}")
             rules += [sel + st["state"] + "{opacity:.5}" for st in s["states"] if (s["slot"], st["state"]) != drop_state]
     rules.append("}" + extra)
     d = tmp_path / name
@@ -127,7 +128,28 @@ def test_a_pressed_attribute_satisfies_active(tmp_path):
 def test_an_ancestor_or_has_does_not_count(tmp_path):
     d = synthetic(tmp_path, drop_slot="switch-thumb",
                   extra='@layer synth{[data-slot="switch-thumb"] span{top:0} div:has([data-slot="switch-thumb"]){top:0}}')
-    assert check(d)[0] == 1
+    code, out = check(d)
+    assert code == 1 and 'theme: no rule styles [data-slot="switch-thumb"]' in out.splitlines()
+
+
+def test_a_slot_styled_only_through_a_state_rule_is_styled(tmp_path):
+    code, out = check(synthetic(tmp_path, drop_bare="button"))
+    assert code == 0 and out.startswith("THEME OK: synth")
+
+
+@pytest.mark.parametrize("rules", [
+    '[data-slot="meter-track"]{inset-inline-start:0}',
+    '[data-slot="meter-track"]{border-start-start-radius:4px}',
+])
+def test_a_logical_property_is_still_a_rule_for_its_slot(tmp_path, rules):
+    d = synthetic(tmp_path, drop_slot="meter-track", extra="@layer synth{" + rules + "}")
+    assert check(d)[0] == 0
+
+
+def test_a_logical_property_on_a_state_rule_keeps_the_state(tmp_path):
+    d = synthetic(tmp_path, drop_slot="tabs-panel",
+                  extra='@layer synth{[data-slot="tabs-panel"]:focus-visible{border-start-start-radius:2px;inset-inline-end:0}}')
+    assert check(d)[0] == 0
 
 
 def test_a_wrong_layer_line_a_relative_url_and_missing_docs_are_findings(tmp_path):
@@ -147,6 +169,8 @@ def test_a_wrong_layer_line_a_relative_url_and_missing_docs_are_findings(tmp_pat
     e = synthetic(tmp_path, name="e")
     open(os.path.join(e, "font.css"), "w").write('@import "y.css";')
     assert check(e) == (1, "theme: font.css loads y.css, which is not a data URL\n")
+    f = synthetic(tmp_path, name="f", extra='a{background-image:image-set("x.png" 1x, "data:image/png;base64,AA" 2x)}')
+    assert check(f) == (1, "theme: theme.css loads x.png, which is not a data URL\n")
 
 
 def test_a_missing_theme_css_is_named(tmp_path):
@@ -165,6 +189,23 @@ def test_structure_passes_and_a_colour_in_it_fails(tmp_path):
     with open(tool / "structure.css", "a") as f:
         f.write("\na{color:red}\n")
     assert check("--structure", tool=str(tool / "check.ts")) == (1, "structure: color sets a look\n")
+
+
+@pytest.mark.parametrize("rule,line", [
+    ("a{border:1px solid red}", "structure: border sets a look"),
+    ("a{border-width:1px;border-style:solid;border-color:red}", "structure: border-color sets a look"),
+    ("a{outline:2px solid #00f}", "structure: outline sets a look"),
+    ("a{text-decoration:underline currentColor}", "structure: text-decoration sets a look"),
+    ("a{caret-color:blue}", "structure: caret-color sets a look"),
+    ("a{filter:drop-shadow(0 0 2px)}", "structure: filter sets a look"),
+    ("a{background:transparent}", "structure: background sets a look"),
+    ("a{b{top:0}}", "structure: a nests a rule"),
+])
+def test_structure_fails_on_each_look(tmp_path, rule, line):
+    tool = tool_copy(tmp_path)
+    with open(tool / "structure.css", "a") as f:
+        f.write("\n" + rule + "\n")
+    assert check("--structure", tool=str(tool / "check.ts")) == (1, line + "\n")
 
 
 def test_a_slot_the_contract_does_not_list_is_named(tmp_path):
