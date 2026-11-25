@@ -28,6 +28,7 @@ def test_the_probe_runner_refuses_a_stories_plan_by_name(tmp_path):
     assert ("grammar: stories-v1 was retired on 2026-11-25; "
             "write the plan as claims-v1") in r.stdout + r.stderr
     assert "Traceback" not in r.stderr
+    assert "cannot read" not in r.stdout + r.stderr
 
 
 def test_the_routing_reader_refuses_a_stories_plan_by_name(tmp_path):
