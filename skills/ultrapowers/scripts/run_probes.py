@@ -14,8 +14,11 @@ def main(argv):
         return 2
     try:
         result, _ = parse_plan_full(Path(argv[0]).read_text())
-    except (OSError, Refusal) as e:
+    except OSError as e:
         print(f"run_probes: cannot read {argv[0]}: {e}", file=sys.stderr)
+        return 2
+    except Refusal as e:
+        print(e, file=sys.stderr)
         return 2
     only = set(argv[1:])
     ran = red = 0

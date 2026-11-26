@@ -295,7 +295,7 @@ summary the operator signed, then the `### Receipt` table — one row per `Run:`
 probe with the exit it got — the run-wide checks' exit and the link to the
 run's evidence folder, then, where the run has them, the provenance of its
 lines, the builders' loose ends, a draft's reason (`**Draft:**`, from the
-engine's `terminal` row) and what each step changed, and last the plan's `Closes #<n>` lines. `pr` and `prAuthor` in
+engine's `terminal` row), and last the plan's `Closes #<n>` lines. `pr` and `prAuthor` in
 `status.json` are the answer's `html_url` and `user.login`.
 A ready PR merges itself, on the run's own evidence and nobody else's: when the
 default branch moved, the catch-up (`factory/flock/catchup.mjs`) joined the run's

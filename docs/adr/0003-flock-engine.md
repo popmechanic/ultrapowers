@@ -1,7 +1,7 @@
 # 0003. The Flock engine
 
 Status: accepted (2026-11-21)  
-Governs: `factory/flock/compact_record.mjs`, `factory/flock/engine.mjs`, `factory/flock/flock_board.mjs`, `factory/flock/io.mjs`, `factory/flock/loose_ends.mjs`, `factory/flock/nogit/git`, `factory/flock/plan.mjs`, `factory/flock/provenance.mjs`, `factory/flock/pulls.mjs`, `factory/flock/scope.mjs`, `factory/flock/step_receipts.mjs`, `factory/jev-client.mjs`
+Governs: `factory/flock/compact_record.mjs`, `factory/flock/engine.mjs`, `factory/flock/flock_board.mjs`, `factory/flock/io.mjs`, `factory/flock/loose_ends.mjs`, `factory/flock/nogit/git`, `factory/flock/plan.mjs`, `factory/flock/provenance.mjs`, `factory/flock/pulls.mjs`, `factory/flock/scope.mjs`, `factory/jev-client.mjs`
 
 Recovered from the code comments removed by `/delete-comment` on 2026-11-21: each entry is a
 decision the code cannot show on its own. Symbols are named; line numbers are not.
@@ -94,8 +94,8 @@ decision the code cannot show on its own. Symbols are named; line numbers are no
 
 ## Flock step receipts
 
-- **stepReceipts (factory/flock/step_receipts.mjs)** — factory/flock/step_receipts.mjs keeps one receipt per story-step checker result, green or red, in clause order with the store diff cut to 50 entries. A result with no diff (the step stopped before the checker read the store) keeps its row with diff:null, so a checked step never goes missing from the PR.
-- **latestResults (factory/flock/step_receipts.mjs)** — latestResults in factory/flock/step_receipts.mjs picks one checker result per clause from a checks/ folder: the edge's own `<clause>@edge.json` when present, otherwise the newest by mtime across all copies.
+- ~~**stepReceipts (factory/flock/step_receipts.mjs)** — factory/flock/step_receipts.mjs keeps one receipt per story-step checker result, green or red, in clause order with the store diff cut to 50 entries. A result with no diff (the step stopped before the checker read the store) keeps its row with diff:null, so a checked step never goes missing from the PR.~~ Struck 2026-11-25, superseded by 0018.
+- ~~**latestResults (factory/flock/step_receipts.mjs)** — latestResults in factory/flock/step_receipts.mjs picks one checker result per clause from a checks/ folder: the edge's own `<clause>@edge.json` when present, otherwise the newest by mtime across all copies.~~ Struck 2026-11-25, superseded by 0018.
 
 ## Jev client
 
