@@ -21,13 +21,16 @@ made before the retirement.
 ## Commands
 
 ```bash
-python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs)
+python3 -m pytest                                                            # the test gate (pytest.ini scopes it to tests/; bridges fleet/tests/test_*.mjs; the theme tests skip until bun install in skills/ultrawrite/themes)
 python3 skills/ultrapowers/scripts/validate_skill.py skills/ultrapowers      # validate a skill dir
 python3 skills/ultrapowers/scripts/plan_parse.py <plan.md>                   # what the sandbox reads: tasks, edges, width, checks
 python3 skills/ultrapowers/scripts/plan_check.py --base <sha> <plan.md>      # the laptop's check: records, and the plan against its base
 python3 skills/ultrapowers/scripts/run_probes.py <plan.md> [<task id>...]    # a plan's Run: probes on the working tree, one line each (never a hand loop)
 bun skills/ultrawrite/stories/jev_checks.ts <dir> --stage understanding|map|decompose   # code checks, then Jev's, on the product.json in <dir>
 bun skills/ultrawrite/stories/product.ts check|render|record|route|built <product.json> …   # the product record: its shape, its page in the operator's words, the operator's picks, and which route its next plan takes
+bun skills/ultrawrite/themes/sample.ts --theme <name or dir> [--port <n>] | --slots   # serve every contract component in every state under a theme (--slots: the slots its server render shows); exit 2 could not run
+bun skills/ultrawrite/themes/check.ts <theme> | --structure | <theme> --slots <walk.json>   # a theme against contract.json, structure.css against its rules, a walk's slots against a theme (exit 0 pass, 1 finding, 2 could not run; --slots reports and exits 0)
+bun skills/ultrawrite/themes/place.ts --theme <name or dir> --app <clone>   # check, then write client/src/theme/ into a first build's clone and print its Modify: lines (exit 0 placed, 1 refused, 2 could not run)
 bun skills/ultrawrite/stories/walk.ts questions | render <walk.json> | verdict <walk.json> --operator agree|disagree | agreement <dir>   # the walk of a built app before the operator's smoke: six questions, the block for the PR, the operator's verdict, the agreement count
 python3 lint/comments.py [--list <file> | --update]                          # the comment ratchet: no file gains a comment line; --update locks a drop in
 node fleet/doctor.mjs --json                                                 # which fleet prerequisite is missing
@@ -35,7 +38,7 @@ node fleet/launch.mjs <plan.md> --target <owner>/<repo> --base <sha> --engine <s
 ```
 
 The plan and census scripts take positional arguments only (no `--help`); the authoring
-tools under `skills/ultrawrite/stories/` (Bun) take flags and print their usage.
+tools under `skills/ultrawrite/stories/` and `skills/ultrawrite/themes/` (Bun) take flags and print their usage.
 Nothing runs on push or on a PR: the sandbox opens a ready PR when the engine's run ended green and a draft otherwise, so
 the engine's exit code is the merge decision.
 
@@ -50,7 +53,10 @@ the engine's exit code is the merge decision.
   signed, edges derived, `- Run:` proofs), `references/` (`greenfield-stack.md`,
   `authoring-gotchas.md`), `scripts/` (provenance and base-fact pins, `authoring_census.py`),
   `stories/` (the TinyApp authoring tools in TypeScript: the product record, the ask, Jev's
-  enrichment checks and the proof gate's Jev read, and the walk of a built app).
+  enrichment checks and the proof gate's Jev read, and the walk of a built app), `themes/`
+  (a first build's UI: `contract.json`, `structure.css` under every theme, the Pouf theme,
+  `README.md` for a theme's author, and `sample.ts`, `check.ts`, `place.ts`; `bun install` there once, UI SDK pinned by the
+  `ui` cell of `stories/policy.json`).
 - `factory/` — the engine the sandbox runs (see `.claude/rules/factory.md`). Its npm deps are
   `factory/package.json`'s.
 - `fleet/` — laptop tools (launcher, doctor, token, janitor, run reader) and the VM
@@ -127,10 +133,12 @@ the engine's exit code is the merge decision.
   enrichment (`skills/ultrawrite/references/enrich.md`): intent, understanding, the
   whole product's map and the build order, into `product.json`; enrichment ends at the
   build order. superpowers is never called for it. The operator is asked only what the app does
-  and who uses it; how it looks is judged on the real app, at the walk and the smoke.
+  and who uses it, and which theme only when more than one exists (`intent.theme`, the `ui`
+  cell's by default); how the page reads is judged on the real app, at the walk and the smoke.
 - **A new app's first build is one author (2026-11-24, #1606).** `product.ts route` sends a
   product with nothing built to `skills/ultrawrite/references/first-build.md`: one claims-v1
-  task from the ask and the app's rules, on an empty repository. `product.ts built` records
+  task from the ask and the app's rules, on a repository empty but for the README, the record
+  and the placed theme. `product.ts built` records
   it in the app, and a later plan on such an app is an ordinary claims-v1 plan
   (`later plan, claims`). An `experiment` (n=1 run per arm, popmechanic-potluck-3 run-1 and
   run-2: the operator judged the one-author app entirely superior, blind); the stories route
@@ -140,6 +148,13 @@ the engine's exit code is the merge decision.
   serving it answers the six `smoke_walk` questions and posts them on the run's pull request
   (`skills/ultrawrite/stories/walk.ts`). A report, never a gate; an `experiment` (n=1 walk per
   app) kept on the laptop until the walk and the operator have agreed on n=5 runs.
+- **A first build is handed UI SDK and a theme, and made to use neither (2026-11-25).**
+  `place.ts` puts the theme (Pouf by default) in the app's first commit, one probe pins
+  `@ui-sdk/react` and `@ui-sdk/core` in `dependencies` at the `ui` cell's version, and the
+  task's Context says using them, restyling them or not using them is the builder's call. An `experiment` (n=1 run per arm, blind: the
+  operator ranked Pouf-themed UI SDK first, stock second, bare third); its rollback is the `ui`
+  cell of `skills/ultrawrite/stories/policy.json`. Never a catalog: nothing checks that a page
+  uses the library or the theme (`docs/adr/0019-tinyapp-themes.md`).
 - **No local process writes run state** (`skills/ultrapowers/SKILL.md` §Client step 5, #660):
   the sandbox is the one writer of a run and the launcher reaps by hand after a sleep, so
   nothing on a timer here merges, reaps or edits. Reading is telemetry and is wanted: watch a

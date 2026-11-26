@@ -40,3 +40,4 @@ not deleted. `/delete-comment` adds to these records; so can any hand change.
 - [0016. The plugin hooks](0016-hooks.md) — 6 decisions, 8 struck
 - [0017. The test suite and fleet sims](0017-test-rig.md) — 9 decisions
 - [0018. The stories route is retired](0018-stories-route-retired.md) — 20 decisions
+- [0019. TinyApp themes](0019-tinyapp-themes.md) — 26 decisions

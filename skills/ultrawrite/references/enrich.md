@@ -88,9 +88,13 @@ check <dir>/product.json` must print `PRODUCT OK`.
 
 ## How it looks
 
-"How it looks", the third of the operator's three decisions, is never asked in
-words during enrichment. It is judged on the real app, at the walk and the operator's
-smoke (`references/first-build.md`, "The walk").
+"How it looks", the third of the operator's three decisions, is which theme the first build
+is handed (`references/first-build.md`, step 4). The default is the `theme` of the `ui` cell
+in `skills/ultrawrite/stories/policy.json`. Ask the operator only when more than one theme
+folder exists under `<plugin-root>/skills/ultrawrite/themes/` or they bring their own; record
+any choice other than the default as `intent.theme`, a theme's name or a path, read from
+the directory `place.ts` is run in (the field is optional). How the page reads is still judged on the real app, at the walk and the
+operator's smoke (`references/first-build.md`, "The walk").
 
 ## Then
 

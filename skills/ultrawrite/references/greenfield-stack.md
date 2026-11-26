@@ -102,12 +102,22 @@ Object's socket echoes and closes cleanly on the same build (macOS arm64,
 2026-09-17). A plan that wants facets keeps them behind a flag, and only for
 verbs that are not sockets.
 
-A new app's **first build** does not use the generator: it starts from an empty repository
-and one author writes the page as ordinary React, as `first-build.md` says (operator,
+A new app's **first build** does not use the generator: it starts from a repository empty
+but for the README, the product record and the placed theme, and one author writes the page as ordinary React, as `first-build.md` says (operator,
 2026-11-24, an `experiment`: n=1 run per arm, popmechanic-potluck-3 run-1 and run-2;
 rollback a checkout of `dd53be04`, `docs/adr/0018-stories-route-retired.md`). Its
 check is `bun install && bunx tsc --noEmit`, since nothing is installed before the builder
 opens and no test is written.
+
+A first build is also **handed UI SDK and a theme**: `@ui-sdk/react` and `@ui-sdk/core`,
+which the app declares in `dependencies` at exactly the `sdk` of the `ui` cell in
+`skills/ultrawrite/stories/policy.json` (one probe checks the pin), and a theme folder that
+`skills/ultrawrite/themes/place.ts` writes to `client/src/theme/` in the first commit, over a
+`structure.css` shared by every theme. A theme is plain CSS and optional layout components,
+loaded as text and inlined into the page in place of UI SDK's `web.css`, under the layer
+order `ui-sdk, structure, <theme name>`. Whether the page uses the components and the theme,
+restyled or not, is the builder's call, and nothing checks which (operator, 2026-11-25, an `experiment`: n=1 run per arm, blind; rollback
+the cell's, `docs/adr/0019-tinyapp-themes.md`).
 
 **Who is signed in** comes from Cloudflare Access, never from the app: the
 app's Worker answers `/me` with the email `ctx.access.getIdentity()` vouches
