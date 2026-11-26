@@ -216,7 +216,8 @@ Build it from the tokens and the cushion recipes rather than new colours:
 - The toast's close button is a lavender well on the white card (1.18:1) with a faint edge;
   the ink X in it is 10.3:1.
 - Light only: the theme sets `color-scheme: light` and has no dark tokens.
-- Looked at in Chromium only, at 1100px and 375px wide.
+- Looked at in Chromium only, at 1100px and 375px wide; the deep well under the meter and
+  progress bars was looked at on a wide page only.
 
 ## Font
 

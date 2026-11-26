@@ -106,8 +106,7 @@ def test_a_write_that_fails_midway_leaves_no_theme_folder(tmp_path):
     finally:
         os.chmod(locked, 0o644)
     assert code == 2 and out.startswith("could not run:")
-    assert not (app / "client/src/theme").exists()
-    assert os.listdir(app / "client/src") == []
+    assert os.listdir(app) == []
 
 
 @needs_install

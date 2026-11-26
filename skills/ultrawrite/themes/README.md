@@ -15,10 +15,10 @@ A theme is one folder. Its name is the theme's layer name, so it must be a plain
 | File | Needed | What it holds |
 | --- | --- | --- |
 | `theme.css` | yes | Every rule, inside `@layer <name> { … }` |
-| `README.md` | yes | How to load it, its tokens and variants, and where it falls short |
+| `README.md` | yes | For the app's author, who has only your folder: the exact lines that load `structure.css`, `font.css` and `theme.css` in that order with no CSS pipeline (copy the form of Pouf's "Load it"), its tokens and variants, and where it falls short |
 | `LICENSE` | yes | The theme's licence |
 | `font.css` | no | `@font-face` rules only, with the font as a `data:` URL; it is inlined before `theme.css` |
-| `kit.tsx` | no | Layout components (a stack, a card) the app may use |
+| `kit.tsx` | no | Layout components (a stack, a card) the app may use. It imports only React and must typecheck under a strict `tsconfig`, since the app's own check covers it |
 
 Only the folder's top-level files whose names do not begin with a dot are placed in an app;
 subfolders are not.
@@ -49,7 +49,9 @@ sets (`data-variant`, `data-size`).
 `variables` lists every `--theme-*` custom property `structure.css` reads, with its default
 and purpose: dialog width and height, the field and label gaps, the toast width and gap, and
 `--theme-toast-y`, which a theme may set to make collapsed toasts peek out or to slide one in.
-Set the sizes on `:root` in your layer, and `--theme-toast-y` on the toast itself.
+Set the sizes on `:root` in your layer. Set `--theme-toast-y` only on a collapsed toast
+(`:not([data-front], [data-expanded])`) or an entering one: a rule on every toast overrides
+the structure sheet's expanded stack, and the toasts no longer fan out.
 
 ## Look, then check
 
