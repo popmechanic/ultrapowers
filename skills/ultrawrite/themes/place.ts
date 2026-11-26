@@ -51,7 +51,7 @@ function main(argv: string[]): number {
     }
     const files = readdirSync(dir).filter((f) => !f.startsWith('.') && statSync(join(dir, f)).isFile());
     const record = { theme: name, source: source(), sdk: uiCell().sdk };
-    mkdirSync(join(appDir, 'client', 'src'), { recursive: true });
+    const made = mkdirSync(join(appDir, 'client', 'src'), { recursive: true });
     const staging = mkdtempSync(join(appDir, 'client', 'src', '.theme-'));
     try {
       mkdirSync(join(staging, name));
@@ -60,7 +60,7 @@ function main(argv: string[]): number {
       writeFileSync(join(staging, 'theme.json'), JSON.stringify(record) + '\n');
       renameSync(staging, target);
     } catch (e) {
-      rmSync(staging, { recursive: true, force: true });
+      rmSync(made ?? staging, { recursive: true, force: true });
       throw e;
     }
     const lines = [
